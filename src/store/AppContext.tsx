@@ -88,8 +88,19 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, prospects: [...state.prospects, ...action.payload] };
     case 'UPDATE_PIPELINE_COLUMN':
       return { ...state, pipelineColumns: state.pipelineColumns.map(c => c.id === action.payload.id ? action.payload : c) };
-    case 'DELETE_PIPELINE_COLUMN':
-      return { ...state, pipelineColumns: state.pipelineColumns.filter(c => c.id !== action.payload) };
+    case 'DELETE_PIPELINE_COLUMN': {
+      const remaining = state.pipelineColumns.filter(c => c.id !== action.payload);
+      const fallbackStage = remaining.length > 0 ? remaining[0].id : 'nouveau';
+      return {
+        ...state,
+        pipelineColumns: remaining,
+        prospects: state.prospects.map(p =>
+          p.etape_pipeline === action.payload
+            ? { ...p, etape_pipeline: fallbackStage as PipelineStage, date_modification: new Date().toISOString() }
+            : p
+        ),
+      };
+    }
     case 'ADD_PIPELINE_COLUMN':
       return { ...state, pipelineColumns: [...state.pipelineColumns, action.payload] };
     default:

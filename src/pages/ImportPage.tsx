@@ -73,7 +73,7 @@ export default function ImportPage() {
       }
 
       // Parse rows with flexible column names
-      const parsed: { nom: string; contact: string; telephone: string; adresse: string; notes: string; index: number }[] = [];
+      const parsed: { nom: string; contact: string; telephone: string; adresse: string; score: number; index: number }[] = [];
 
       rows.forEach((row, index) => {
         const nom = row['Etablissement'] || row['etablissement'] || row['Nom'] || row['nom'] || row['nom_etablissement'] || '';
@@ -104,12 +104,14 @@ export default function ImportPage() {
           row['Adresse'] || row['adresse'] || row['Adresse complete'] || ''
         ).trim();
 
-        const notes = String(
-          row['Notes'] || row['notes'] || row['Notes/qualite'] || row['notes/qualite'] ||
-          row['Qualite'] || row['qualite'] || row['Notes/Qualite'] || ''
-        ).trim();
+        const rawScore =
+          row['Notes/qualite'] || row['notes/qualite'] || row['Notes/Qualite'] ||
+          row['Qualite'] || row['qualite'] || row['Score'] || row['score'] ||
+          row['Note'] || row['note'] || '';
+        const scoreNum = parseInt(String(rawScore), 10);
+        const score = !isNaN(scoreNum) && scoreNum >= 0 && scoreNum <= 100 ? scoreNum : 50;
 
-        parsed.push({ nom: nomStr, contact, telephone, adresse, notes, index });
+        parsed.push({ nom: nomStr, contact, telephone, adresse, score, index });
       });
 
       if (parsed.length === 0) {
@@ -158,10 +160,10 @@ export default function ImportPage() {
           etape_pipeline: 'nouveau' as PipelineStage,
           tags: [],
           commercial_id: state.currentUser?.id || 'com-1',
-          notes: row.notes,
+          notes: '',
           date_creation: now,
           date_modification: now,
-          score: 50,
+          score: row.score,
         });
         success++;
       });
@@ -188,7 +190,7 @@ export default function ImportPage() {
         'Nom/Prenom': 'Jean Dupont',
         'Telephone': '04 71 00 00 00',
         'Adresse': '1 Rue Exemple, 42000 Saint-Etienne',
-        'Notes/qualite': 'Notes ici',
+        'Notes/qualite': '75',
       }];
       const ws = XLSX.utils.json_to_sheet(template);
       const wb = XLSX.utils.book_new();
@@ -307,7 +309,7 @@ export default function ImportPage() {
         {/* Validation info */}
         <div className="mt-4 bg-gray-50 rounded-lg p-4 text-xs text-gray-600 space-y-1">
           <p className="font-medium text-gray-700">Colonnes attendues:</p>
-          <p>Etablissement, Nom/Prenom, Telephone, Adresse, Notes/qualite</p>
+          <p>Etablissement, Nom/Prenom, Telephone, Adresse, Notes/qualite (score de 0 a 100)</p>
           <p className="mt-2 text-gray-500">Les adresses seront automatiquement geocodees pour la carte (via OpenStreetMap).</p>
           <p className="text-gray-500">La ville, le code postal et le departement seront remplis automatiquement.</p>
         </div>

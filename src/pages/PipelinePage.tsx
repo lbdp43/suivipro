@@ -81,12 +81,16 @@ export default function PipelinePage() {
   };
 
   const deleteColumn = (col: PipelineColumn) => {
-    const count = (prospectsByStage[col.id] || []).length;
-    if (count > 0) {
-      alert(`Impossible de supprimer "${col.label}" : ${count} prospect(s) sont encore dans cette etape. Deplacez-les d'abord.`);
+    if (columns.length <= 1) {
+      alert('Impossible de supprimer la derniere etape.');
       return;
     }
-    if (confirm(`Supprimer l'etape "${col.label}" ?`)) {
+    const count = (prospectsByStage[col.id] || []).length;
+    const firstOther = columns.find(c => c.id !== col.id);
+    const msg = count > 0
+      ? `Supprimer l'etape "${col.label}" ?\n\n${count} prospect(s) seront deplaces vers "${firstOther?.label}".`
+      : `Supprimer l'etape "${col.label}" ?`;
+    if (confirm(msg)) {
       dispatch({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });
     }
   };
@@ -218,10 +222,9 @@ export default function PipelinePage() {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          className={`p-1 ${count > 0 ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
+                          className="p-1 text-gray-400 hover:text-red-600"
                           onClick={() => deleteColumn(col)}
-                          disabled={count > 0}
-                          title={count > 0 ? `${count} prospect(s) dans cette etape` : 'Supprimer'}
+                          title={count > 0 ? `${count} prospect(s) seront deplaces` : 'Supprimer'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -234,7 +237,7 @@ export default function PipelinePage() {
 
             <p className="text-[10px] text-gray-400 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
-              Une etape ne peut etre supprimee que si aucun prospect ne s'y trouve
+              Supprimer une etape deplacera ses prospects vers la premiere etape restante
             </p>
           </div>
         </div>
