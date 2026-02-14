@@ -56,14 +56,21 @@ export default function MapPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [showRdvPanel, setShowRdvPanel] = useState(false);
   const [rdvWeekOffset, setRdvWeekOffset] = usePersistedState<number>('map_rdv_week', 0);
+  const [rdvFilterCommercial, setRdvFilterCommercial] = usePersistedState<string>('map_rdv_commercial', '');
 
-  // RDV de la semaine selectionnee
+  // RDV de la semaine selectionnee (filtre par commercial si actif)
   const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
   const weekRdvs = useMemo(() => {
     return state.appointments
       .filter(a => a.date >= weekRange.start && a.date <= weekRange.end && a.statut !== 'annule')
+      .filter(a => !rdvFilterCommercial || a.commercial_id === rdvFilterCommercial)
       .sort((a, b) => a.date === b.date ? a.heure_debut.localeCompare(b.heure_debut) : a.date.localeCompare(b.date));
-  }, [state.appointments, weekRange]);
+  }, [state.appointments, weekRange, rdvFilterCommercial]);
+
+  // Set de prospect_ids qui ont un RDV cette semaine (pour filtrer la carte)
+  const rdvProspectIds = useMemo(() => {
+    return new Set(weekRdvs.map(a => a.prospect_id));
+  }, [weekRdvs]);
 
   // Compter les RDV a venir toutes semaines confondues (pour le badge)
   const totalUpcomingRdv = useMemo(() => {
@@ -110,6 +117,10 @@ export default function MapPage() {
   const filteredProspects = useMemo(() => {
     return state.prospects.filter(p => {
       if (!p.latitude || !p.longitude) return false;
+      // Quand le panneau RDV est actif : n'afficher que les prospects avec RDV cette semaine
+      if (showRdvPanel) {
+        return rdvProspectIds.has(p.id);
+      }
       if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
@@ -126,7 +137,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, searchTerm]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, searchTerm, showRdvPanel, rdvProspectIds]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -211,7 +222,11 @@ export default function MapPage() {
             )}
           </button>
           <div className="text-sm text-gray-500">
-            {filteredProspects.length} prospect{filteredProspects.length > 1 ? 's' : ''}
+            {showRdvPanel ? (
+              <span className="text-blue-600 font-medium">{filteredProspects.length} RDV</span>
+            ) : (
+              <>{filteredProspects.length} prospect{filteredProspects.length > 1 ? 's' : ''}</>
+            )}
           </div>
         </div>
 
@@ -395,6 +410,38 @@ export default function MapPage() {
               </button>
             </div>
 
+            {/* Filtre par commercial */}
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1">
+                <Users className="w-3 h-3" /> Commercial :
+              </span>
+              <button
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${!rdvFilterCommercial ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                onClick={() => setRdvFilterCommercial('')}
+              >
+                Tous
+              </button>
+              {state.commerciaux.map(c => {
+                const count = state.appointments.filter(a => a.commercial_id === c.id && a.date >= weekRange.start && a.date <= weekRange.end && a.statut !== 'annule').length;
+                return (
+                  <button
+                    key={c.id}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 ${
+                      rdvFilterCommercial === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    onClick={() => setRdvFilterCommercial(rdvFilterCommercial === c.id ? '' : c.id)}
+                  >
+                    {c.prenom}
+                    <span className={`text-[9px] rounded-full w-4 h-4 flex items-center justify-center ${
+                      rdvFilterCommercial === c.id ? 'bg-white/20' : 'bg-gray-200'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Liste des RDV groupes par jour */}
             {weekRdvs.length === 0 ? (
               <div className="text-center py-4 text-gray-400 text-xs">
@@ -497,7 +544,7 @@ export default function MapPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           {filteredProspects.map(prospect => {
-            const markerColor = PIPELINE_COLORS[prospect.etape_pipeline];
+            const markerColor = showRdvPanel ? '#2563eb' : PIPELINE_COLORS[prospect.etape_pipeline];
             return (
               <Marker
                 key={prospect.id}
@@ -535,6 +582,25 @@ export default function MapPage() {
                         ) : null;
                       })}
                     </div>
+                    {/* RDV info si mode RDV actif */}
+                    {showRdvPanel && (() => {
+                      const prospectRdvs = weekRdvs.filter(a => a.prospect_id === prospect.id);
+                      if (prospectRdvs.length === 0) return null;
+                      return (
+                        <div className="mt-2 p-1.5 bg-blue-50 rounded border border-blue-200">
+                          {prospectRdvs.map(rdv => {
+                            const com = state.commerciaux.find(c => c.id === rdv.commercial_id);
+                            return (
+                              <div key={rdv.id} className="text-[10px] text-blue-700 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 flex-shrink-0" />
+                                <span className="font-medium">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</span>
+                                <span className="text-blue-500">({com?.prenom})</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                     <div className="mt-2 flex gap-2">
                       {prospect.telephone && (
                         <button
