@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
+import { Link } from 'react-router-dom';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -23,7 +24,6 @@ export default function Layout() {
     { to: '/appels', icon: Phone, label: 'Appels', adminOnly: false },
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
-    { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: true },
     { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
   ];
@@ -129,7 +129,15 @@ export default function Layout() {
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1" />
-          <div className="flex items-center gap-2 text-sm text-gray-600">
+          <div className="flex items-center gap-3 text-sm text-gray-600">
+            <Link
+              to="/emails"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              title="Templates d'emails"
+            >
+              <Mail className="w-4 h-4" />
+              <span className="hidden sm:inline">Emails</span>
+            </Link>
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
             }`}>

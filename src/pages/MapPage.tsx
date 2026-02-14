@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { Filter, MapPin, Phone, Mail, ExternalLink, Route } from 'lucide-react';
+import { Filter, MapPin, Phone, Mail, ExternalLink, Route, Calendar, Clock, Download, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
-import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage } from '../types';
+import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { formatDate, downloadICS, isThisWeek } from '../utils/helpers';
 
 // Custom marker icon factory
 function createMarkerIcon(color: string): L.DivIcon {
@@ -20,7 +21,7 @@ function createMarkerIcon(color: string): L.DivIcon {
 }
 
 export default function MapPage() {
-  const { state } = useApp();
+  const { state, dispatch, getProspect } = useApp();
   const { startCall } = useCallModal();
   const [selectedTypes, setSelectedTypes] = usePersistedState<EstablishmentType[]>('map_types', []);
   const [selectedStages, setSelectedStages] = usePersistedState<PipelineStage[]>('map_stages', []);
@@ -28,6 +29,14 @@ export default function MapPage() {
   const [selectedSecteurs, setSelectedSecteurs] = usePersistedState<string[]>('map_secteurs', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [showWeekRdv, setShowWeekRdv] = usePersistedState<boolean>('map_show_week_rdv', true);
+
+  // RDV de la semaine en cours
+  const weekRdvs = useMemo(() => {
+    return state.appointments
+      .filter(a => isThisWeek(a.date) && a.statut !== 'annule' && a.statut !== 'termine')
+      .sort((a, b) => a.date === b.date ? a.heure_debut.localeCompare(b.heure_debut) : a.date.localeCompare(b.date));
+  }, [state.appointments]);
 
   // Extract unique sectors with prospect counts
   const allSecteurs = useMemo(() => {
@@ -291,8 +300,8 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* Map */}
-      <div className="flex-1">
+      {/* Map + RDV panel */}
+      <div className="flex-1 relative">
         <MapContainer center={center} zoom={9} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -361,6 +370,103 @@ export default function MapPage() {
             );
           })}
         </MapContainer>
+
+        {/* RDV de la semaine - panneau flottant */}
+        {weekRdvs.length > 0 && (
+          <div className="absolute top-3 right-3 z-[1000] w-80 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+            {/* Header */}
+            <button
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-brewery-50 hover:bg-brewery-100 transition-colors"
+              onClick={() => setShowWeekRdv(!showWeekRdv)}
+            >
+              <span className="text-xs font-semibold text-brewery-700 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                RDV cette semaine ({weekRdvs.length})
+              </span>
+              {showWeekRdv ? <ChevronUp className="w-4 h-4 text-brewery-500" /> : <ChevronDown className="w-4 h-4 text-brewery-500" />}
+            </button>
+
+            {showWeekRdv && (
+              <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                {weekRdvs.map(rdv => {
+                  const prospect = getProspect(rdv.prospect_id);
+                  const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
+                  const isToday = rdv.date === new Date().toISOString().split('T')[0];
+                  const statusColors: Record<string, string> = {
+                    planifie: 'bg-blue-100 text-blue-700',
+                    confirme: 'bg-green-100 text-green-700',
+                  };
+
+                  return (
+                    <div key={rdv.id} className={`px-4 py-2.5 hover:bg-gray-50 ${isToday ? 'bg-amber-50/50' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-900 truncate">
+                            {prospect?.nom_etablissement || 'Inconnu'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-mono text-gray-500">
+                              {formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}
+                            </span>
+                            {isToday && (
+                              <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 rounded">AUJOURD'HUI</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                              <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
+                            </span>
+                            {rdv.lieu && (
+                              <span className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
+                                <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className={`badge text-[9px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
+                          {APPOINTMENT_STATUS_LABELS[rdv.statut]}
+                        </span>
+                      </div>
+                      {/* Actions rapides */}
+                      <div className="flex items-center gap-1.5 mt-2">
+                        {prospect?.telephone && (
+                          <button
+                            className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-medium hover:bg-green-100"
+                            onClick={() => startCall(prospect.id)}
+                          >
+                            <Phone className="w-3 h-3" /> Appeler
+                          </button>
+                        )}
+                        {rdv.statut === 'planifie' && (
+                          <button
+                            className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-medium hover:bg-blue-100"
+                            onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
+                          >
+                            Confirmer
+                          </button>
+                        )}
+                        {prospect && (
+                          <button
+                            className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-100"
+                            onClick={() => downloadICS(rdv, prospect)}
+                          >
+                            <Download className="w-3 h-3" /> .ics
+                          </button>
+                        )}
+                        <Link
+                          to="/rdv"
+                          className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-100 ml-auto"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
