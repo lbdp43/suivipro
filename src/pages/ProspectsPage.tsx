@@ -198,6 +198,9 @@ export default function ProspectsPage() {
                   <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
                     <MapPin className="w-3 h-3" /> {p.ville || p.adresse}{p.secteur ? ` - ${p.secteur}` : ''}
                   </div>
+                  {p.notes && (
+                    <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 italic">{p.notes}</p>
+                  )}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
                       className="text-[9px] text-white px-1.5 py-0.5 rounded-full font-medium"
