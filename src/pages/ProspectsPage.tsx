@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X,
-  Edit2, Trash2, Save, Clock, Calendar,
+  Edit2, Trash2, Save, Clock, Calendar, MessageSquare,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -24,6 +24,26 @@ export default function ProspectsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [filterSecteur, setFilterSecteur] = useState('');
+  const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
+  const [quickNoteText, setQuickNoteText] = useState('');
+
+  const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setQuickNoteId(prospect.id);
+    setQuickNoteText(prospect.notes);
+  };
+
+  const saveQuickNote = () => {
+    if (!quickNoteId) return;
+    const prospect = state.prospects.find(p => p.id === quickNoteId);
+    if (prospect) {
+      dispatch({
+        type: 'UPDATE_PROSPECT',
+        payload: { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() },
+      });
+    }
+    setQuickNoteId(null);
+  };
 
   // Get unique sectors for filter
   const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
@@ -164,9 +184,9 @@ export default function ProspectsPage() {
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {filteredProspects.map(p => (
-            <button
+            <div
               key={p.id}
-              className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+              className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
                 selectedId === p.id ? 'bg-brewery-50 border-l-4 border-l-brewery-500' : ''
               }`}
               onClick={() => setSearchParams({ id: p.id })}
@@ -195,9 +215,27 @@ export default function ProspectsPage() {
                     })}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-300 mt-1" />
+                {/* Quick action buttons */}
+                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                  {p.telephone && (
+                    <button
+                      className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                      onClick={e => { e.stopPropagation(); startCall(p.id); }}
+                      title="Appeler"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                    onClick={e => openQuickNote(p, e)}
+                    title="Notes rapides"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -363,6 +401,43 @@ export default function ProspectsPage() {
           <div className="text-center text-gray-400">
             <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">Selectionnez un prospect pour voir ses details</p>
+          </div>
+        </div>
+      )}
+
+      {/* Quick notes modal */}
+      {quickNoteId && (
+        <div className="modal-backdrop" onClick={() => setQuickNoteId(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-amber-500" />
+                Notes rapides - {state.prospects.find(p => p.id === quickNoteId)?.nom_etablissement}
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-32 resize-none focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+                placeholder="Ajoutez vos notes ici..."
+                value={quickNoteText}
+                onChange={e => setQuickNoteText(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setQuickNoteId(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
+                onClick={saveQuickNote}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
+              </button>
+            </div>
           </div>
         </div>
       )}
