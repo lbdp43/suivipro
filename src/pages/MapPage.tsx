@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { Filter, MapPin, Phone, Mail, ExternalLink, Route, Calendar, Clock, Download, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import {
+  Filter, MapPin, Phone, Mail, ExternalLink, Route, Calendar, Download,
+  ChevronLeft, ChevronRight, Users, X, Check,
+} from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatDate, downloadICS, isThisWeek } from '../utils/helpers';
+import { formatDate, downloadICS } from '../utils/helpers';
 
 // Custom marker icon factory
 function createMarkerIcon(color: string): L.DivIcon {
@@ -20,6 +23,28 @@ function createMarkerIcon(color: string): L.DivIcon {
   });
 }
 
+function getWeekRange(offset: number): { start: string; end: string; label: string } {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + offset * 7);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
+  let label: string;
+  if (offset === 0) label = `Cette semaine`;
+  else if (offset === 1) label = `Sem. prochaine`;
+  else if (offset === -1) label = `Sem. derniere`;
+  else if (offset > 0) label = `+${offset} sem.`;
+  else label = `${offset} sem.`;
+  label += ` (${fmt(monday)} - ${fmt(sunday)})`;
+  const toDateStr = (d: Date) => d.toISOString().split('T')[0];
+  return { start: toDateStr(monday), end: toDateStr(sunday), label };
+}
+
+const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam', 0: 'Dim' };
+
 export default function MapPage() {
   const { state, dispatch, getProspect } = useApp();
   const { startCall } = useCallModal();
@@ -29,14 +54,32 @@ export default function MapPage() {
   const [selectedSecteurs, setSelectedSecteurs] = usePersistedState<string[]>('map_secteurs', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [showWeekRdv, setShowWeekRdv] = usePersistedState<boolean>('map_show_week_rdv', true);
+  const [showRdvPanel, setShowRdvPanel] = useState(false);
+  const [rdvWeekOffset, setRdvWeekOffset] = usePersistedState<number>('map_rdv_week', 0);
 
-  // RDV de la semaine en cours
+  // RDV de la semaine selectionnee
+  const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
   const weekRdvs = useMemo(() => {
     return state.appointments
-      .filter(a => isThisWeek(a.date) && a.statut !== 'annule' && a.statut !== 'termine')
+      .filter(a => a.date >= weekRange.start && a.date <= weekRange.end && a.statut !== 'annule')
       .sort((a, b) => a.date === b.date ? a.heure_debut.localeCompare(b.heure_debut) : a.date.localeCompare(b.date));
+  }, [state.appointments, weekRange]);
+
+  // Compter les RDV a venir toutes semaines confondues (pour le badge)
+  const totalUpcomingRdv = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return state.appointments.filter(a => a.date >= today && a.statut !== 'annule' && a.statut !== 'termine').length;
   }, [state.appointments]);
+
+  // Grouper par jour
+  const rdvByDay = useMemo(() => {
+    const map: Record<string, typeof weekRdvs> = {};
+    for (const rdv of weekRdvs) {
+      if (!map[rdv.date]) map[rdv.date] = [];
+      map[rdv.date].push(rdv);
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
+  }, [weekRdvs]);
 
   // Extract unique sectors with prospect counts
   const allSecteurs = useMemo(() => {
@@ -57,7 +100,6 @@ export default function MapPage() {
   }, [state.prospects]);
 
   const selectTournee = (secteur: string) => {
-    // Toggle : si deja selectionne seul, on deselectionne
     if (selectedSecteurs.length === 1 && selectedSecteurs[0] === secteur) {
       setSelectedSecteurs([]);
     } else {
@@ -67,7 +109,6 @@ export default function MapPage() {
 
   const filteredProspects = useMemo(() => {
     return state.prospects.filter(p => {
-      // Only show prospects with valid coordinates
       if (!p.latitude || !p.longitude) return false;
       if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
@@ -115,6 +156,14 @@ export default function MapPage() {
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
+  const today = new Date().toISOString().split('T')[0];
+
+  const statusColors: Record<string, string> = {
+    planifie: 'bg-blue-100 text-blue-700',
+    confirme: 'bg-green-100 text-green-700',
+    termine: 'bg-gray-100 text-gray-600',
+    annule: 'bg-red-100 text-red-400',
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -141,6 +190,23 @@ export default function MapPage() {
             {activeFilterCount > 0 && (
               <span className="bg-white text-brewery-600 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
                 {activeFilterCount}
+              </span>
+            )}
+          </button>
+          {/* Bouton RDV */}
+          <button
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showRdvPanel ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+            onClick={() => setShowRdvPanel(!showRdvPanel)}
+          >
+            <Calendar className="w-4 h-4" />
+            RDV
+            {totalUpcomingRdv > 0 && (
+              <span className={`text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+                showRdvPanel ? 'bg-white/20' : 'bg-blue-600 text-white'
+              }`}>
+                {totalUpcomingRdv}
               </span>
             )}
           </button>
@@ -298,19 +364,140 @@ export default function MapPage() {
             )}
           </div>
         )}
+
+        {/* ========== PANNEAU RDV PAR SEMAINE ========== */}
+        {showRdvPanel && (
+          <div className="pt-3 border-t border-gray-100 fade-in">
+            {/* Navigation semaine */}
+            <div className="flex items-center justify-between mb-3">
+              <button
+                className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+                onClick={() => setRdvWeekOffset(w => w - 1)}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="text-center">
+                <p className="text-xs font-semibold text-gray-900">{weekRange.label}</p>
+                {rdvWeekOffset !== 0 && (
+                  <button
+                    className="text-[9px] text-brewery-600 hover:underline"
+                    onClick={() => setRdvWeekOffset(0)}
+                  >
+                    Revenir a cette semaine
+                  </button>
+                )}
+              </div>
+              <button
+                className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+                onClick={() => setRdvWeekOffset(w => w + 1)}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Liste des RDV groupes par jour */}
+            {weekRdvs.length === 0 ? (
+              <div className="text-center py-4 text-gray-400 text-xs">
+                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                Aucun RDV cette semaine
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {rdvByDay.map(([dateStr, rdvs]) => {
+                  const d = new Date(dateStr + 'T00:00:00');
+                  const dayName = DAY_NAMES_SHORT[d.getDay()] || '';
+                  const isToday = dateStr === today;
+                  return (
+                    <div key={dateStr}>
+                      <div className={`flex items-center gap-2 mb-1 ${isToday ? 'text-brewery-700' : 'text-gray-500'}`}>
+                        <span className={`text-[10px] font-bold uppercase ${isToday ? 'bg-brewery-100 text-brewery-700 px-1.5 py-0.5 rounded' : ''}`}>
+                          {dayName} {d.getDate()}/{d.getMonth() + 1}
+                          {isToday && ' - AUJOURD\'HUI'}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-200" />
+                        <span className="text-[10px] text-gray-400">{rdvs.length} RDV</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {rdvs.map(rdv => {
+                          const prospect = getProspect(rdv.prospect_id);
+                          const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
+                          return (
+                            <div key={rdv.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${isToday ? 'bg-brewery-50/50' : 'bg-gray-50'} hover:bg-gray-100 transition-colors`}>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-mono text-gray-500 w-20 flex-shrink-0">
+                                    {rdv.heure_debut}-{rdv.heure_fin}
+                                  </span>
+                                  <span className="text-xs font-semibold text-gray-900 truncate">
+                                    {prospect?.nom_etablissement || 'Inconnu'}
+                                  </span>
+                                  <span className={`badge text-[8px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
+                                    {APPOINTMENT_STATUS_LABELS[rdv.statut]}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-0.5 ml-20">
+                                  <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                    <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
+                                  </span>
+                                  {rdv.lieu && (
+                                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
+                                      <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Actions rapides */}
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {prospect?.telephone && (
+                                  <button
+                                    className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100"
+                                    onClick={() => startCall(prospect.id)}
+                                    title="Appeler"
+                                  >
+                                    <Phone className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {rdv.statut === 'planifie' && (
+                                  <button
+                                    className="p-1.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+                                    onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
+                                    title="Confirmer"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {prospect && (
+                                  <button
+                                    className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                    onClick={() => downloadICS(rdv, prospect)}
+                                    title="Exporter .ics"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Map + RDV panel */}
-      <div className="flex-1 relative">
+      {/* Map */}
+      <div className="flex-1">
         <MapContainer center={center} zoom={9} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           {filteredProspects.map(prospect => {
-            // Couleur du marqueur = couleur de l'etape pipeline
             const markerColor = PIPELINE_COLORS[prospect.etape_pipeline];
-
             return (
               <Marker
                 key={prospect.id}
@@ -370,103 +557,6 @@ export default function MapPage() {
             );
           })}
         </MapContainer>
-
-        {/* RDV de la semaine - panneau flottant */}
-        {weekRdvs.length > 0 && (
-          <div className="absolute top-3 right-3 z-[1000] w-80 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-            {/* Header */}
-            <button
-              className="w-full flex items-center justify-between px-4 py-2.5 bg-brewery-50 hover:bg-brewery-100 transition-colors"
-              onClick={() => setShowWeekRdv(!showWeekRdv)}
-            >
-              <span className="text-xs font-semibold text-brewery-700 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" />
-                RDV cette semaine ({weekRdvs.length})
-              </span>
-              {showWeekRdv ? <ChevronUp className="w-4 h-4 text-brewery-500" /> : <ChevronDown className="w-4 h-4 text-brewery-500" />}
-            </button>
-
-            {showWeekRdv && (
-              <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
-                {weekRdvs.map(rdv => {
-                  const prospect = getProspect(rdv.prospect_id);
-                  const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
-                  const isToday = rdv.date === new Date().toISOString().split('T')[0];
-                  const statusColors: Record<string, string> = {
-                    planifie: 'bg-blue-100 text-blue-700',
-                    confirme: 'bg-green-100 text-green-700',
-                  };
-
-                  return (
-                    <div key={rdv.id} className={`px-4 py-2.5 hover:bg-gray-50 ${isToday ? 'bg-amber-50/50' : ''}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-900 truncate">
-                            {prospect?.nom_etablissement || 'Inconnu'}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] font-mono text-gray-500">
-                              {formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}
-                            </span>
-                            {isToday && (
-                              <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 rounded">AUJOURD'HUI</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                              <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
-                            </span>
-                            {rdv.lieu && (
-                              <span className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
-                                <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`badge text-[9px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
-                          {APPOINTMENT_STATUS_LABELS[rdv.statut]}
-                        </span>
-                      </div>
-                      {/* Actions rapides */}
-                      <div className="flex items-center gap-1.5 mt-2">
-                        {prospect?.telephone && (
-                          <button
-                            className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-medium hover:bg-green-100"
-                            onClick={() => startCall(prospect.id)}
-                          >
-                            <Phone className="w-3 h-3" /> Appeler
-                          </button>
-                        )}
-                        {rdv.statut === 'planifie' && (
-                          <button
-                            className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-medium hover:bg-blue-100"
-                            onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
-                          >
-                            Confirmer
-                          </button>
-                        )}
-                        {prospect && (
-                          <button
-                            className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-100"
-                            onClick={() => downloadICS(rdv, prospect)}
-                          >
-                            <Download className="w-3 h-3" /> .ics
-                          </button>
-                        )}
-                        <Link
-                          to="/rdv"
-                          className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-100 ml-auto"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
