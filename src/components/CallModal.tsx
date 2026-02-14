@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, Download, MapPin } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
-import { generateId, formatDurationTimer, detectConflicts } from '../utils/helpers';
+import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
 
 // ============================================
 // Context for triggering calls from anywhere
@@ -50,6 +50,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [rdvLieu, setRdvLieu] = useState('');
   const [rdvNotes, setRdvNotes] = useState('');
   const [rdvCommercialId, setRdvCommercialId] = useState('');
+  // Post-RDV confirmation
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [createdRdvId, setCreatedRdvId] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -91,6 +94,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setRdvLieu(prospect.adresse ? `${prospect.adresse}, ${prospect.ville}` : '');
     setRdvNotes('');
     setRdvCommercialId(state.currentUser?.id || 'com-1');
+    setShowConfirmation(false);
+    setCreatedRdvId('');
     setShowModal(true);
 
     // Trigger native phone dialer
@@ -187,10 +192,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
     // 4. Create RDV if filled
     if (showRdv && rdvDate) {
+      const rdvId = generateId('rdv');
       dispatch({
         type: 'ADD_APPOINTMENT',
         payload: {
-          id: generateId('rdv'),
+          id: rdvId,
           prospect_id: prospectId,
           commercial_id: rdvCommercialId || state.currentUser?.id || 'com-1',
           date: rdvDate,
@@ -201,6 +207,12 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           statut: 'planifie',
         },
       });
+      // Show confirmation screen with agenda + export
+      setCreatedRdvId(rdvId);
+      setShowConfirmation(true);
+      setCallActive(false);
+      setCallTimer(0);
+      return;
     }
 
     setShowModal(false);
@@ -249,21 +261,23 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center" onClick={() => { if (!callActive) cancelCall(); }}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {/* Header */}
-            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-gray-900">
-                  {callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
-                </h3>
-                <p className="text-sm text-gray-500 mt-0.5">{prospect.nom_etablissement}</p>
+            {!showConfirmation && (
+              <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900">
+                    {callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">{prospect.nom_etablissement}</p>
+                </div>
+                {!callActive && (
+                  <button className="p-1 rounded hover:bg-gray-100" onClick={cancelCall}>
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                )}
               </div>
-              {!callActive && (
-                <button className="p-1 rounded hover:bg-gray-100" onClick={cancelCall}>
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              )}
-            </div>
+            )}
 
-            <div className="p-5 space-y-4">
+            {!showConfirmation && <div className="p-5 space-y-4">
               {/* Active call: timer */}
               {callActive && (
                 <div className="text-center py-6">
@@ -554,10 +568,10 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   )}
                 </>
               )}
-            </div>
+            </div>}
 
             {/* Footer */}
-            {!callActive && (
+            {!callActive && !showConfirmation && (
               <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
                 <button
                   className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -573,6 +587,95 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                 </button>
               </div>
             )}
+
+            {/* ========== CONFIRMATION POST-RDV ========== */}
+            {showConfirmation && (() => {
+              const createdRdv = state.appointments.find(a => a.id === createdRdvId);
+              const rdvProspect = prospect;
+              const rdvCommercial = state.commerciaux.find(c => c.id === (createdRdv?.commercial_id || rdvCommercialId));
+              // Agenda du commercial pour la journee du RDV
+              const dayRdvs = createdRdv ? state.appointments
+                .filter(a => a.commercial_id === createdRdv.commercial_id && a.date === createdRdv.date && a.statut !== 'annule')
+                .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut)) : [];
+
+              return (
+                <div className="p-5 space-y-4">
+                  {/* Success header */}
+                  <div className="text-center">
+                    <div className="w-14 h-14 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
+                      <CheckCircle className="w-7 h-7 text-green-600" />
+                    </div>
+                    <h3 className="font-bold text-gray-900">RDV cree avec succes !</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {rdvProspect?.nom_etablissement} - {formatDate(createdRdv?.date || '')}
+                    </p>
+                  </div>
+
+                  {/* RDV summary */}
+                  {createdRdv && (
+                    <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs text-blue-700">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span className="font-medium">{formatDate(createdRdv.date)} de {createdRdv.heure_debut} a {createdRdv.heure_fin}</span>
+                      </div>
+                      {createdRdv.lieu && (
+                        <div className="flex items-center gap-2 text-xs text-blue-600">
+                          <MapPin className="w-3.5 h-3.5" />
+                          {createdRdv.lieu}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-xs text-blue-600">
+                        <Users className="w-3.5 h-3.5" />
+                        {rdvCommercial?.prenom} {rdvCommercial?.nom}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Agenda du jour pour ce commercial */}
+                  {dayRdvs.length > 1 && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase mb-2">
+                        Agenda de {rdvCommercial?.prenom} le {formatDate(createdRdv?.date || '')}
+                      </p>
+                      <div className="space-y-1">
+                        {dayRdvs.map(rdv => {
+                          const p = state.prospects.find(pr => pr.id === rdv.prospect_id);
+                          const isCurrent = rdv.id === createdRdvId;
+                          return (
+                            <div
+                              key={rdv.id}
+                              className={`flex items-center gap-2 text-xs py-1 px-2 rounded ${isCurrent ? 'bg-green-100 font-medium text-green-800' : 'text-gray-600'}`}
+                            >
+                              <span className="font-mono w-20 flex-shrink-0">{rdv.heure_debut}-{rdv.heure_fin}</span>
+                              <span className="truncate">{p?.nom_etablissement || 'RDV'}</span>
+                              {isCurrent && <span className="text-[9px] text-green-600 ml-auto">Nouveau</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    {createdRdv && rdvProspect && (
+                      <button
+                        className="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
+                        onClick={() => downloadICS(createdRdv, rdvProspect)}
+                      >
+                        <Download className="w-4 h-4" /> Exporter .ics
+                      </button>
+                    )}
+                    <button
+                      className="flex-1 px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+                      onClick={() => { setShowConfirmation(false); setShowModal(false); }}
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

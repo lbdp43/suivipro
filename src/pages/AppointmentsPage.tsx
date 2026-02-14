@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, Download, Trash2, Edit2, Check,
-  AlertTriangle, Users, Filter,
+  AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
+import CommercialAgenda from '../components/CommercialAgenda';
 
 export default function AppointmentsPage() {
   const { state, dispatch, getProspect } = useApp();
@@ -16,6 +17,8 @@ export default function AppointmentsPage() {
   // Filtres persistants
   const [filterStatus, setFilterStatus] = usePersistedState<AppointmentStatus | ''>('rdv_status', '');
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
+  const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda'>('rdv_view', 'list');
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -133,15 +136,20 @@ export default function AppointmentsPage() {
     annule: 'bg-red-100 text-red-700',
   };
 
-  // Agenda vue rapide pour le commercial filtre
-  const commercialAgenda = useMemo(() => {
-    if (!filterCommercial) return [];
-    const today = new Date().toISOString().split('T')[0];
-    return state.appointments
-      .filter(a => a.commercial_id === filterCommercial && a.date >= today && a.statut !== 'annule')
-      .sort((a, b) => a.date === b.date ? a.heure_debut.localeCompare(b.heure_debut) : a.date.localeCompare(b.date))
-      .slice(0, 8);
-  }, [filterCommercial, state.appointments]);
+  // Week label
+  const getWeekLabel = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + weekOffset * 7);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
+    if (weekOffset === 0) return `Cette semaine (${fmt(monday)} - ${fmt(sunday)})`;
+    if (weekOffset === 1) return `Semaine prochaine (${fmt(monday)} - ${fmt(sunday)})`;
+    if (weekOffset === -1) return `Semaine derniere (${fmt(monday)} - ${fmt(sunday)})`;
+    return `${fmt(monday)} - ${fmt(sunday)}`;
+  };
 
   const renderRdvCard = (rdv: Appointment) => {
     const prospect = getProspect(rdv.prospect_id);
@@ -219,6 +227,21 @@ export default function AppointmentsPage() {
           <p className="text-sm text-gray-500 mt-0.5">Gestion des RDV et export calendrier</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Toggle Liste / Agenda */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              onClick={() => setViewMode('list')}
+            >
+              <List className="w-3.5 h-3.5" /> Liste
+            </button>
+            <button
+              className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${viewMode === 'agenda' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              onClick={() => setViewMode('agenda')}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Agenda
+            </button>
+          </div>
           {upcoming.length > 0 && (
             <button
               className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 flex items-center gap-2 text-sm font-medium"
@@ -300,56 +323,78 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      {/* Agenda rapide du commercial selectionne */}
-      {filterCommercial && commercialAgenda.length > 0 && (
-        <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
-          <h3 className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5" />
-            Agenda de {state.commerciaux.find(c => c.id === filterCommercial)?.prenom} (prochains RDV)
-          </h3>
-          <div className="space-y-1">
-            {commercialAgenda.map(rdv => {
-              const prospect = getProspect(rdv.prospect_id);
-              return (
-                <div key={rdv.id} className="flex items-center gap-3 text-xs py-1 border-b border-blue-100 last:border-0">
-                  <span className="text-blue-600 font-mono w-20 flex-shrink-0">{formatDate(rdv.date)}</span>
-                  <span className="text-blue-500 font-mono w-24 flex-shrink-0">{rdv.heure_debut}-{rdv.heure_fin}</span>
-                  <span className="text-gray-700 font-medium truncate">{prospect?.nom_etablissement || 'Inconnu'}</span>
-                  <span className={`badge text-[9px] ml-auto ${statusColors[rdv.statut]}`}>
-                    {APPOINTMENT_STATUS_LABELS[rdv.statut]}
-                  </span>
-                </div>
-              );
-            })}
+      {/* ===================== AGENDA VIEW ===================== */}
+      {viewMode === 'agenda' && (
+        <div className="space-y-3">
+          {/* Week navigation */}
+          <div className="flex items-center justify-between">
+            <button
+              className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+              onClick={() => setWeekOffset(w => w - 1)}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-gray-900">{getWeekLabel()}</p>
+              {weekOffset !== 0 && (
+                <button
+                  className="text-[10px] text-brewery-600 hover:underline mt-0.5"
+                  onClick={() => setWeekOffset(0)}
+                >
+                  Revenir a cette semaine
+                </button>
+              )}
+            </div>
+            <button
+              className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+              onClick={() => setWeekOffset(w => w + 1)}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
+
+          {/* Agenda grid */}
+          <CommercialAgenda
+            appointments={state.appointments}
+            commerciaux={state.commerciaux}
+            getProspect={getProspect}
+            filterCommercial={filterCommercial}
+            weekOffset={weekOffset}
+            onEditRdv={openEditForm}
+          />
         </div>
       )}
 
-      {/* Upcoming */}
-      {upcoming.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3">A venir ({upcoming.length})</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcoming.map(renderRdvCard)}
-          </div>
-        </div>
-      )}
+      {/* ===================== LIST VIEW ===================== */}
+      {viewMode === 'list' && (
+        <>
+          {/* Upcoming */}
+          {upcoming.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-3">A venir ({upcoming.length})</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {upcoming.map(renderRdvCard)}
+              </div>
+            </div>
+          )}
 
-      {/* Past */}
-      {past.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-gray-700 mb-3">Passes / Termines ({past.length})</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-75">
-            {past.map(renderRdvCard)}
-          </div>
-        </div>
-      )}
+          {/* Past */}
+          {past.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-gray-700 mb-3">Passes / Termines ({past.length})</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-75">
+                {past.map(renderRdvCard)}
+              </div>
+            </div>
+          )}
 
-      {appointments.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Aucun rendez-vous</p>
-        </div>
+          {appointments.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">Aucun rendez-vous</p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Form modal */}
