@@ -3,6 +3,7 @@ import {
   Phone, PhoneCall, PhoneOff, Search,
   MessageSquare, PhoneMissed, CheckCircle,
   Edit2, X, Save, Trash2, Filter,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Call, CallResult, CALL_RESULT_LABELS } from '../types';
@@ -14,6 +15,8 @@ export default function CallsPage() {
   const [filterResult, setFilterResult] = useState<CallResult | ''>('');
   const [editingCall, setEditingCall] = useState<Call | null>(null);
   const [editForm, setEditForm] = useState({ resultat: '' as CallResult, notes: '', duree: 0 });
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   const allCalls = useMemo(() => {
     return [...state.calls].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -33,6 +36,11 @@ export default function CallsPage() {
     }
     return list;
   }, [allCalls, searchTerm, filterResult, state.prospects]);
+
+  // Reset page quand les filtres changent
+  const totalPages = Math.max(1, Math.ceil(filteredCalls.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedCalls = filteredCalls.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const weekCalls = getCallsThisWeek(state.calls);
   const todayCalls = getCallsToday(state.calls).length;
@@ -129,7 +137,7 @@ export default function CallsPage() {
                 placeholder="Rechercher..."
                 className="w-full pl-9 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm"
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               />
             </div>
           </div>
@@ -137,7 +145,7 @@ export default function CallsPage() {
           <div className="flex gap-1.5 flex-wrap">
             <button
               className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-colors ${!filterResult ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              onClick={() => setFilterResult('')}
+              onClick={() => { setFilterResult(''); setCurrentPage(1); }}
             >
               Tous
             </button>
@@ -145,7 +153,7 @@ export default function CallsPage() {
               <button
                 key={r}
                 className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-colors ${filterResult === r ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                onClick={() => setFilterResult(filterResult === r ? '' : r)}
+                onClick={() => { setFilterResult(filterResult === r ? '' : r); setCurrentPage(1); }}
               >
                 {CALL_RESULT_LABELS[r]}
               </button>
@@ -153,7 +161,7 @@ export default function CallsPage() {
           </div>
         </div>
         <div className="divide-y divide-gray-100">
-          {filteredCalls.map(call => {
+          {paginatedCalls.map(call => {
             const prospect = state.prospects.find(p => p.id === call.prospect_id);
             const commercial = state.commerciaux.find(c => c.id === call.commercial_id);
             const Icon = resultIcons[call.resultat];
@@ -198,6 +206,55 @@ export default function CallsPage() {
             <div className="p-8 text-center text-sm text-gray-400">Aucun appel enregistre</div>
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="p-3 sm:p-4 border-t border-gray-200 flex items-center justify-between">
+            <p className="text-xs text-gray-500">
+              {(safePage - 1) * PAGE_SIZE + 1}-{Math.min(safePage * PAGE_SIZE, filteredCalls.length)} sur {filteredCalls.length} appels
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .reduce<(number | 'dots')[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('dots');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === 'dots' ? (
+                    <span key={`dots-${idx}`} className="px-1 text-xs text-gray-400">...</span>
+                  ) : (
+                    <button
+                      key={item}
+                      className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                        safePage === item
+                          ? 'bg-brewery-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      onClick={() => setCurrentPage(item)}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              <button
+                className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Edit call modal */}
