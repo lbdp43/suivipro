@@ -1,19 +1,25 @@
 import { useState, useMemo } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, Download, Trash2, Edit2, Check,
+  AlertTriangle, Users, Filter,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS } from '../types';
-import { generateId, formatDate, downloadICS } from '../utils/helpers';
+import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 export default function AppointmentsPage() {
   const { state, dispatch, getProspect } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
-  const [filterStatus, setFilterStatus] = useState<AppointmentStatus | ''>('');
+
+  // Filtres persistants
+  const [filterStatus, setFilterStatus] = usePersistedState<AppointmentStatus | ''>('rdv_status', '');
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
 
   const [formData, setFormData] = useState({
     prospect_id: '',
+    commercial_id: '',
     date: '',
     heure_debut: '',
     heure_fin: '',
@@ -25,14 +31,37 @@ export default function AppointmentsPage() {
   const appointments = useMemo(() => {
     let list = [...state.appointments];
     if (filterStatus) list = list.filter(a => a.statut === filterStatus);
+    if (filterCommercial) list = list.filter(a => a.commercial_id === filterCommercial);
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.appointments, filterStatus]);
+  }, [state.appointments, filterStatus, filterCommercial]);
 
   const upcoming = appointments.filter(a => a.date >= new Date().toISOString().split('T')[0] && a.statut !== 'annule' && a.statut !== 'termine');
   const past = appointments.filter(a => a.date < new Date().toISOString().split('T')[0] || a.statut === 'termine' || a.statut === 'annule');
 
+  // Detection conflits dans le formulaire
+  const formConflicts = useMemo(() => {
+    if (!formData.commercial_id || !formData.date || !formData.heure_debut || !formData.heure_fin) return [];
+    return detectConflicts(
+      state.appointments,
+      formData.commercial_id,
+      formData.date,
+      formData.heure_debut,
+      formData.heure_fin,
+      editing?.id,
+    );
+  }, [state.appointments, formData.commercial_id, formData.date, formData.heure_debut, formData.heure_fin, editing]);
+
   const openNewForm = () => {
-    setFormData({ prospect_id: '', date: '', heure_debut: '', heure_fin: '', lieu: '', notes: '', statut: 'planifie' });
+    setFormData({
+      prospect_id: '',
+      commercial_id: state.currentUser?.id || 'com-1',
+      date: '',
+      heure_debut: '',
+      heure_fin: '',
+      lieu: '',
+      notes: '',
+      statut: 'planifie',
+    });
     setEditing(null);
     setShowForm(true);
   };
@@ -40,6 +69,7 @@ export default function AppointmentsPage() {
   const openEditForm = (rdv: Appointment) => {
     setFormData({
       prospect_id: rdv.prospect_id,
+      commercial_id: rdv.commercial_id,
       date: rdv.date,
       heure_debut: rdv.heure_debut,
       heure_fin: rdv.heure_fin,
@@ -64,7 +94,7 @@ export default function AppointmentsPage() {
         payload: {
           ...formData,
           id: generateId('rdv'),
-          commercial_id: state.currentUser?.id || 'com-1',
+          commercial_id: formData.commercial_id || state.currentUser?.id || 'com-1',
         } as Appointment,
       });
 
@@ -86,12 +116,32 @@ export default function AppointmentsPage() {
     }
   };
 
+  // Export ICS de la selection filtree (uniquement les a venir)
+  const exportFilteredICS = () => {
+    const toExport = upcoming.filter(a => a.statut !== 'annule');
+    if (toExport.length === 0) return;
+    const commercial = filterCommercial
+      ? state.commerciaux.find(c => c.id === filterCommercial)
+      : undefined;
+    downloadICSBatch(toExport, getProspect, commercial ? `${commercial.prenom}-${commercial.nom}` : undefined);
+  };
+
   const statusColors: Record<AppointmentStatus, string> = {
     planifie: 'bg-blue-100 text-blue-700',
     confirme: 'bg-green-100 text-green-700',
     termine: 'bg-gray-100 text-gray-600',
     annule: 'bg-red-100 text-red-700',
   };
+
+  // Agenda vue rapide pour le commercial filtre
+  const commercialAgenda = useMemo(() => {
+    if (!filterCommercial) return [];
+    const today = new Date().toISOString().split('T')[0];
+    return state.appointments
+      .filter(a => a.commercial_id === filterCommercial && a.date >= today && a.statut !== 'annule')
+      .sort((a, b) => a.date === b.date ? a.heure_debut.localeCompare(b.heure_debut) : a.date.localeCompare(b.date))
+      .slice(0, 8);
+  }, [filterCommercial, state.appointments]);
 
   const renderRdvCard = (rdv: Appointment) => {
     const prospect = getProspect(rdv.prospect_id);
@@ -114,12 +164,14 @@ export default function AppointmentsPage() {
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 text-gray-400" />
-            {rdv.lieu}
+            {rdv.lieu || 'Non defini'}
           </div>
           {rdv.notes && (
             <p className="text-gray-500 bg-gray-50 p-2 rounded">{rdv.notes}</p>
           )}
-          <p className="text-[10px] text-gray-400">Commercial: {commercial?.prenom}</p>
+          <p className="text-[10px] text-gray-400 flex items-center gap-1">
+            <Users className="w-3 h-3" /> {commercial?.prenom} {commercial?.nom}
+          </p>
         </div>
         <div className="flex items-center gap-2 mt-3">
           <button
@@ -157,6 +209,8 @@ export default function AppointmentsPage() {
     );
   };
 
+  const activeFilterCount = (filterStatus ? 1 : 0) + (filterCommercial ? 1 : 0);
+
   return (
     <div className="p-6 space-y-6 fade-in">
       <div className="flex items-center justify-between">
@@ -164,32 +218,112 @@ export default function AppointmentsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Rendez-vous</h1>
           <p className="text-sm text-gray-500 mt-0.5">Gestion des RDV et export calendrier</p>
         </div>
-        <button
-          className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
-          onClick={openNewForm}
-        >
-          <Plus className="w-4 h-4" /> Nouveau RDV
-        </button>
+        <div className="flex items-center gap-2">
+          {upcoming.length > 0 && (
+            <button
+              className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 flex items-center gap-2 text-sm font-medium"
+              onClick={exportFilteredICS}
+              title="Exporter tous les RDV a venir en .ics"
+            >
+              <Download className="w-4 h-4" />
+              Exporter ICS ({upcoming.length})
+            </button>
+          )}
+          <button
+            className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
+            onClick={openNewForm}
+          >
+            <Plus className="w-4 h-4" /> Nouveau RDV
+          </button>
+        </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        <button
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!filterStatus ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-          onClick={() => setFilterStatus('')}
-        >
-          Tous ({state.appointments.length})
-        </button>
-        {(Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]).map(status => (
+      {/* Filtres */}
+      <div className="space-y-3">
+        {/* Filtre par statut */}
+        <div className="flex gap-2 flex-wrap items-center">
           <button
-            key={status}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            onClick={() => setFilterStatus(status)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!filterStatus ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            onClick={() => setFilterStatus('')}
           >
-            {APPOINTMENT_STATUS_LABELS[status]}
+            Tous ({state.appointments.length})
           </button>
-        ))}
+          {(Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]).map(status => (
+            <button
+              key={status}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              onClick={() => setFilterStatus(filterStatus === status ? '' : status)}
+            >
+              {APPOINTMENT_STATUS_LABELS[status]}
+            </button>
+          ))}
+        </div>
+
+        {/* Filtre par commercial */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+            <Users className="w-3.5 h-3.5" /> Commercial :
+          </span>
+          <button
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!filterCommercial ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            onClick={() => setFilterCommercial('')}
+          >
+            Tous
+          </button>
+          {state.commerciaux.map(c => {
+            const count = state.appointments.filter(a => a.commercial_id === c.id).length;
+            return (
+              <button
+                key={c.id}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                  filterCommercial === c.id ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => setFilterCommercial(filterCommercial === c.id ? '' : c.id)}
+              >
+                {c.prenom} {c.nom}
+                <span className={`text-[10px] rounded-full w-4 h-4 flex items-center justify-center ${
+                  filterCommercial === c.id ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+          {activeFilterCount > 0 && (
+            <button
+              className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
+              onClick={() => { setFilterStatus(''); setFilterCommercial(''); }}
+            >
+              Reinitialiser
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Agenda rapide du commercial selectionne */}
+      {filterCommercial && commercialAgenda.length > 0 && (
+        <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+          <h3 className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" />
+            Agenda de {state.commerciaux.find(c => c.id === filterCommercial)?.prenom} (prochains RDV)
+          </h3>
+          <div className="space-y-1">
+            {commercialAgenda.map(rdv => {
+              const prospect = getProspect(rdv.prospect_id);
+              return (
+                <div key={rdv.id} className="flex items-center gap-3 text-xs py-1 border-b border-blue-100 last:border-0">
+                  <span className="text-blue-600 font-mono w-20 flex-shrink-0">{formatDate(rdv.date)}</span>
+                  <span className="text-blue-500 font-mono w-24 flex-shrink-0">{rdv.heure_debut}-{rdv.heure_fin}</span>
+                  <span className="text-gray-700 font-medium truncate">{prospect?.nom_etablissement || 'Inconnu'}</span>
+                  <span className={`badge text-[9px] ml-auto ${statusColors[rdv.statut]}`}>
+                    {APPOINTMENT_STATUS_LABELS[rdv.statut]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Upcoming */}
       {upcoming.length > 0 && (
@@ -236,6 +370,21 @@ export default function AppointmentsPage() {
                   {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
                 </select>
               </div>
+              {/* Selecteur commercial */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" /> Commercial assigne *
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={formData.commercial_id}
+                  onChange={e => setFormData(prev => ({ ...prev, commercial_id: e.target.value }))}
+                >
+                  {state.commerciaux.map(c => (
+                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
@@ -250,6 +399,25 @@ export default function AppointmentsPage() {
                   <input type="time" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.heure_fin} onChange={e => setFormData(prev => ({ ...prev, heure_fin: e.target.value }))} />
                 </div>
               </div>
+              {/* Alerte conflit */}
+              {formConflicts.length > 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs text-red-700 font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-4 h-4" /> Conflit horaire pour ce commercial !
+                  </p>
+                  {formConflicts.map(c => {
+                    const cp = getProspect(c.prospect_id);
+                    return (
+                      <p key={c.id} className="text-[11px] text-red-600 mt-1">
+                        {formatDate(c.date)} {c.heure_debut}-{c.heure_fin} : {cp?.nom_etablissement || 'RDV'}
+                      </p>
+                    );
+                  })}
+                  <p className="text-[10px] text-red-500 mt-1 italic">
+                    Ce commercial a deja un RDV sur ce creneau.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Lieu</label>
                 <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.lieu} onChange={e => setFormData(prev => ({ ...prev, lieu: e.target.value }))} />

@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
-import { generateId, formatDurationTimer } from '../utils/helpers';
+import { generateId, formatDurationTimer, detectConflicts } from '../utils/helpers';
 
 // ============================================
 // Context for triggering calls from anywhere
@@ -49,6 +49,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [rdvHeureFin, setRdvHeureFin] = useState('11:00');
   const [rdvLieu, setRdvLieu] = useState('');
   const [rdvNotes, setRdvNotes] = useState('');
+  const [rdvCommercialId, setRdvCommercialId] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -89,6 +90,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setRdvHeureFin('11:00');
     setRdvLieu(prospect.adresse ? `${prospect.adresse}, ${prospect.ville}` : '');
     setRdvNotes('');
+    setRdvCommercialId(state.currentUser?.id || 'com-1');
     setShowModal(true);
 
     // Trigger native phone dialer
@@ -190,7 +192,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         payload: {
           id: generateId('rdv'),
           prospect_id: prospectId,
-          commercial_id: state.currentUser?.id || 'com-1',
+          commercial_id: rdvCommercialId || state.currentUser?.id || 'com-1',
           date: rdvDate,
           heure_debut: rdvHeureDebut,
           heure_fin: rdvHeureFin,
@@ -232,6 +234,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   // Tags non-selectionnes (pour le menu d'ajout)
   const availableTags = state.tags.filter(t => !selectedTags.includes(t.id));
+
+  // Detection conflits RDV
+  const rdvConflicts = showRdv && rdvCommercialId && rdvDate && rdvHeureDebut && rdvHeureFin
+    ? detectConflicts(state.appointments, rdvCommercialId, rdvDate, rdvHeureDebut, rdvHeureFin)
+    : [];
 
   return (
     <CallModalContext.Provider value={{ startCall }}>
@@ -417,6 +424,21 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           <X className="w-4 h-4" />
                         </button>
                       </div>
+                      {/* Selecteur commercial */}
+                      <div>
+                        <label className="block text-[10px] text-blue-600 mb-0.5 flex items-center gap-1">
+                          <Users className="w-3 h-3" /> Commercial assigne
+                        </label>
+                        <select
+                          className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
+                          value={rdvCommercialId}
+                          onChange={e => setRdvCommercialId(e.target.value)}
+                        >
+                          {state.commerciaux.map(c => (
+                            <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
                           <label className="block text-[10px] text-blue-600 mb-0.5">Date *</label>
@@ -446,6 +468,22 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           />
                         </div>
                       </div>
+                      {/* Alerte conflit horaire */}
+                      {rdvConflicts.length > 0 && (
+                        <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
+                          </p>
+                          {rdvConflicts.map(c => {
+                            const cp = state.prospects.find(p => p.id === c.prospect_id);
+                            return (
+                              <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
+                                {c.heure_debut}-{c.heure_fin} : {cp?.nom_etablissement || 'RDV'}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
                       <input
                         type="text"
                         className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white"

@@ -122,6 +122,72 @@ export function downloadICS(appointment: Appointment, prospect: Prospect) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Export ICS avec plusieurs RDV (un seul fichier .ics contenant tous les evenements).
+ */
+export function downloadICSBatch(
+  appointments: Appointment[],
+  getProspect: (id: string) => Prospect | undefined,
+  commercialName?: string,
+) {
+  if (appointments.length === 0) return;
+
+  const events = appointments.map(rdv => {
+    const prospect = getProspect(rdv.prospect_id);
+    const dtStart = `${rdv.date.replace(/-/g, '')}T${rdv.heure_debut.replace(':', '')}00`;
+    const dtEnd = `${rdv.date.replace(/-/g, '')}T${rdv.heure_fin.replace(':', '')}00`;
+    return `BEGIN:VEVENT
+DTSTART:${dtStart}
+DTEND:${dtEnd}
+SUMMARY:RDV ${prospect?.nom_etablissement || 'Inconnu'}
+DESCRIPTION:${rdv.notes}\\nContact: ${prospect?.nom_contact || ''}\\nTel: ${prospect?.telephone || ''}
+LOCATION:${rdv.lieu}
+END:VEVENT`;
+  }).join('\n');
+
+  const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SuiviPro//La Brasserie des Plantes//FR
+${events}
+END:VCALENDAR`;
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const suffix = commercialName ? `-${commercialName.toLowerCase().replace(/\s+/g, '-')}` : '';
+  link.download = `rdv${suffix}-${format(new Date(), 'yyyy-MM-dd')}.ics`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================
+// Conflict Detection
+// ============================================
+
+/**
+ * Verifie s'il y a un conflit horaire pour un commercial a une date/heure donnee.
+ * Retourne la liste des RDV en conflit.
+ */
+export function detectConflicts(
+  allAppointments: Appointment[],
+  commercialId: string,
+  date: string,
+  heureDebut: string,
+  heureFin: string,
+  excludeId?: string,
+): Appointment[] {
+  if (!date || !heureDebut || !heureFin) return [];
+  return allAppointments.filter(rdv => {
+    if (rdv.commercial_id !== commercialId) return false;
+    if (rdv.date !== date) return false;
+    if (rdv.statut === 'annule') return false;
+    if (excludeId && rdv.id === excludeId) return false;
+    // Chevauchement : debut1 < fin2 && debut2 < fin1
+    return heureDebut < rdv.heure_fin && rdv.heure_debut < heureFin;
+  });
+}
+
 // ============================================
 // Geocoding (Nominatim / OpenStreetMap)
 // ============================================

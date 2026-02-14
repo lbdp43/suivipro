@@ -6,6 +6,7 @@ import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage } from '../types';
 import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 // Custom marker icon factory
 function createMarkerIcon(color: string): L.DivIcon {
@@ -21,10 +22,10 @@ function createMarkerIcon(color: string): L.DivIcon {
 export default function MapPage() {
   const { state } = useApp();
   const { startCall } = useCallModal();
-  const [selectedTypes, setSelectedTypes] = useState<EstablishmentType[]>([]);
-  const [selectedStages, setSelectedStages] = useState<PipelineStage[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedSecteurs, setSelectedSecteurs] = useState<string[]>([]);
+  const [selectedTypes, setSelectedTypes] = usePersistedState<EstablishmentType[]>('map_types', []);
+  const [selectedStages, setSelectedStages] = usePersistedState<PipelineStage[]>('map_stages', []);
+  const [selectedTags, setSelectedTags] = usePersistedState<string[]>('map_tags', []);
+  const [selectedSecteurs, setSelectedSecteurs] = usePersistedState<string[]>('map_secteurs', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
