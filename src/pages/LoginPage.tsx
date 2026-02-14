@@ -109,6 +109,8 @@ export default function LoginPage() {
           <p>Guillaume (admin) : guillaume@labrasseriedesplantes.fr / admin123</p>
           <p>Louis : louis@labrasseriedesplantes.fr / louis123</p>
           <p>Lucas : lucas@labrasseriedesplantes.fr / lucas123</p>
+          <p>Alban : alban@labrasseriedesplantes.fr / alban123</p>
+          <p>Loic : loic@labrasseriedesplantes.fr / loic123</p>
         </div>
       </div>
     </div>

@@ -12,7 +12,7 @@ export function getSeedData() {
     {
       id: 'com-1',
       prenom: 'Guillaume',
-      nom: 'Directeur',
+      nom: 'Commercial',
       email: 'guillaume@labrasseriedesplantes.fr',
       telephone: '06 84 44 40 44',
       role: 'admin',
@@ -22,7 +22,7 @@ export function getSeedData() {
     {
       id: 'com-2',
       prenom: 'Louis',
-      nom: 'Alternant',
+      nom: 'Prospection',
       email: 'louis@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 01',
       role: 'commercial',
@@ -32,12 +32,32 @@ export function getSeedData() {
     {
       id: 'com-3',
       prenom: 'Lucas',
-      nom: 'Alternant',
+      nom: 'Prospection',
       email: 'lucas@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 02',
       role: 'commercial',
       password: 'lucas123',
       objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+    },
+    {
+      id: 'com-4',
+      prenom: 'Alban',
+      nom: 'Commercial',
+      email: 'alban@labrasseriedesplantes.fr',
+      telephone: '06 00 00 00 03',
+      role: 'commercial',
+      password: 'alban123',
+      objectifs: { appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 },
+    },
+    {
+      id: 'com-5',
+      prenom: 'Loic',
+      nom: 'Commercial',
+      email: 'loic@labrasseriedesplantes.fr',
+      telephone: '06 00 00 00 04',
+      role: 'commercial',
+      password: 'loic123',
+      objectifs: { appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 },
     },
   ];
 

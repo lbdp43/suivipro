@@ -180,14 +180,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const savedState = loadState();
   const seedData = getSeedData();
 
-  // Migrate older state: add password field if missing, force re-login, merge rdv_pris into gagne
+  // Migrate older state: add password field if missing, force re-login, merge rdv_pris into gagne, merge new commercials
   const migrateState = (s: AppState): AppState => {
+    // Update existing commercials: password + nom/role sync from seed
+    const mergedCommerciaux = seedData.commerciaux.map(seed => {
+      const existing = s.commerciaux.find(c => c.id === seed.id);
+      if (existing) {
+        return {
+          ...existing,
+          nom: seed.nom,
+          password: existing.password || seed.password,
+        };
+      }
+      return seed;
+    });
     const updated = {
       ...s,
-      commerciaux: s.commerciaux.map(c => ({
-        ...c,
-        password: c.password || (c.role === 'admin' ? 'admin123' : c.prenom.toLowerCase() + '123'),
-      })),
+      commerciaux: mergedCommerciaux,
       pipelineColumns: (s.pipelineColumns || defaultPipelineColumns)
         .filter(c => (c.id as string) !== 'rdv_pris'),
       // Migrate prospects from rdv_pris → gagne (old stage removed)
