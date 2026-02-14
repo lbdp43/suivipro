@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Calendar, MapPin, AlertTriangle, Download } from 'lucide-react';
+import { Calendar, MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial } from '../types';
 import { formatDate, downloadICS } from '../utils/helpers';
 
@@ -260,9 +260,9 @@ export default function CommercialAgenda({
                       <button
                         className="absolute top-0.5 right-0.5 p-0.5 rounded bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={e => { e.stopPropagation(); downloadICS(rdv, prospect); }}
-                        title="Exporter .ics"
+                        title="Ajouter a l'agenda"
                       >
-                        <Download className="w-3 h-3 text-blue-600" />
+                        <CalendarPlus className="w-3 h-3 text-blue-600" />
                       </button>
                     )}
                   </div>

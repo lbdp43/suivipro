@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, Download, MapPin } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
@@ -663,7 +663,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         className="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
                         onClick={() => downloadICS(createdRdv, rdvProspect)}
                       >
-                        <Download className="w-4 h-4" /> Exporter .ics
+                        <CalendarPlus className="w-4 h-4" /> Ajouter a l'agenda
                       </button>
                     )}
                     <button

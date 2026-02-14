@@ -115,11 +115,9 @@ export function downloadICS(appointment: Appointment, prospect: Prospect) {
   const ics = generateICS(appointment, prospect);
   const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `rdv-${prospect.nom_etablissement.replace(/\s+/g, '-').toLowerCase()}.ics`;
-  link.click();
-  URL.revokeObjectURL(url);
+  // Open directly so the OS calendar app handles it
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 /**
@@ -153,12 +151,8 @@ END:VCALENDAR`;
 
   const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  const suffix = commercialName ? `-${commercialName.toLowerCase().replace(/\s+/g, '-')}` : '';
-  link.download = `rdv${suffix}-${format(new Date(), 'yyyy-MM-dd')}.ics`;
-  link.click();
-  URL.revokeObjectURL(url);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // ============================================

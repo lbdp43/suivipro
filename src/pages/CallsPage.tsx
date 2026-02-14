@@ -5,13 +5,11 @@ import {
   Edit2, X, Save, Trash2, Filter,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { useCallModal } from '../components/CallModal';
 import { Call, CallResult, CALL_RESULT_LABELS } from '../types';
 import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 
 export default function CallsPage() {
   const { state, dispatch } = useApp();
-  const { startCall } = useCallModal();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterResult, setFilterResult] = useState<CallResult | ''>('');
   const [editingCall, setEditingCall] = useState<Call | null>(null);
@@ -114,31 +112,6 @@ export default function CallsPage() {
             <p className="text-[10px] sm:text-sm text-gray-500">Taux semaine</p>
             <p className="text-lg sm:text-2xl font-bold text-gray-900">{weekResponseRate}%</p>
           </div>
-        </div>
-      </div>
-
-      {/* Quick call buttons */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-3">Appel rapide</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {state.prospects
-            .filter(p => !['gagne', 'perdu'].includes(p.etape_pipeline) && p.telephone)
-            .slice(0, 6)
-            .map(prospect => (
-              <button
-                key={prospect.id}
-                className="flex items-center gap-3 p-2.5 sm:p-3 rounded-lg border border-gray-200 hover:bg-green-50 hover:border-green-300 transition-colors text-left"
-                onClick={() => startCall(prospect.id)}
-              >
-                <div className="bg-green-500 p-1.5 sm:p-2 rounded-full">
-                  <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{prospect.nom_etablissement}</p>
-                  <p className="text-[10px] text-gray-500">{prospect.telephone}</p>
-                </div>
-              </button>
-            ))}
         </div>
       </div>
 

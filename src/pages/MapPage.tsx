@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
-  Filter, MapPin, Phone, Mail, ExternalLink, Route, Calendar, Download,
+  Filter, MapPin, Phone, Mail, ExternalLink, Route, Calendar, CalendarPlus,
   ChevronLeft, ChevronRight, Users, X, Check,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -518,9 +518,9 @@ export default function MapPage() {
                                     <button
                                       className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
                                       onClick={() => downloadICS(rdv, prospect)}
-                                      title="Exporter .ics"
+                                      title="Ajouter a l'agenda"
                                     >
-                                      <Download className="w-3 h-3" />
+                                      <CalendarPlus className="w-3 h-3" />
                                     </button>
                                   )}
                                 </div>

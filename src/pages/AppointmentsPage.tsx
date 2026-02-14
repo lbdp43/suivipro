@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  Calendar, Plus, X, Save, MapPin, Clock, Download, Trash2, Edit2, Check,
+  Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check,
   AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -192,9 +192,9 @@ export default function AppointmentsPage() {
             <button
               className="p-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600"
               onClick={() => downloadICS(rdv, prospect)}
-              title="Exporter .ics"
+              title="Ajouter a l'agenda"
             >
-              <Download className="w-3.5 h-3.5" />
+              <CalendarPlus className="w-3.5 h-3.5" />
             </button>
           )}
           {rdv.statut !== 'termine' && (
@@ -246,10 +246,10 @@ export default function AppointmentsPage() {
             <button
               className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
               onClick={exportFilteredICS}
-              title="Exporter tous les RDV a venir en .ics"
+              title="Ajouter a l'agenda"
             >
-              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Exporter</span> ICS ({upcoming.length})
+              <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Agenda</span> ({upcoming.length})
             </button>
           )}
           <button

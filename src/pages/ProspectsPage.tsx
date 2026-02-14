@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X,
-  Edit2, Trash2, Save, Clock, Calendar, MessageSquare,
+  Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -24,6 +24,7 @@ export default function ProspectsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [filterSecteur, setFilterSecteur] = useState('');
+  const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
 
@@ -49,7 +50,7 @@ export default function ProspectsPage() {
   const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
 
   const filteredProspects = useMemo(() => {
-    return state.prospects.filter(p => {
+    const list = state.prospects.filter(p => {
       if (filterType && p.type_etablissement !== filterType) return false;
       if (filterStage && p.etape_pipeline !== filterStage) return false;
       if (filterSecteur && p.secteur !== filterSecteur) return false;
@@ -64,8 +65,11 @@ export default function ProspectsPage() {
         );
       }
       return true;
-    }).sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm]);
+    });
+    if (sortScore === 'desc') return list.sort((a, b) => b.score - a.score);
+    if (sortScore === 'asc') return list.sort((a, b) => a.score - b.score);
+    return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
+  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm, sortScore]);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
@@ -144,9 +148,9 @@ export default function ProspectsPage() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <select
-              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
+              className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
               value={filterType}
               onChange={e => setFilterType(e.target.value as EstablishmentType | '')}
             >
@@ -156,7 +160,7 @@ export default function ProspectsPage() {
               ))}
             </select>
             <select
-              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
+              className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
               value={filterStage}
               onChange={e => setFilterStage(e.target.value as PipelineStage | '')}
             >
@@ -167,7 +171,7 @@ export default function ProspectsPage() {
             </select>
             {allSecteurs.length > 0 && (
               <select
-                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
+                className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
                 value={filterSecteur}
                 onChange={e => setFilterSecteur(e.target.value)}
               >
@@ -178,7 +182,19 @@ export default function ProspectsPage() {
               </select>
             )}
           </div>
-          <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+            <button
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                sortScore !== 'none' ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => setSortScore(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none')}
+              title={sortScore === 'none' ? 'Trier par score' : sortScore === 'desc' ? 'Score decroissant' : 'Score croissant'}
+            >
+              <ArrowUpDown className="w-3 h-3" />
+              Score {sortScore === 'desc' ? '↓' : sortScore === 'asc' ? '↑' : ''}
+            </button>
+          </div>
         </div>
 
         {/* List */}
@@ -207,6 +223,9 @@ export default function ProspectsPage() {
                       style={{ backgroundColor: PIPELINE_COLORS[p.etape_pipeline] }}
                     >
                       {PIPELINE_LABELS[p.etape_pipeline]}
+                    </span>
+                    <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                      {p.score}pts
                     </span>
                     {p.tags.slice(0, 2).map(tagId => {
                       const tag = state.tags.find(t => t.id === tagId);
