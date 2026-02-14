@@ -118,12 +118,20 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       },
     });
 
-    // 2. Update prospect tags
+    // 2. Update prospect tags + auto-transition pipeline
     const prospect = state.prospects.find(p => p.id === prospectId);
     if (prospect) {
+      const hasMemo = showMemo && memoMessage.trim() && memoDate;
+      // Rule: "A contacter" → "Contacte" if call answered with memo
+      const shouldAdvance = hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline);
       dispatch({
         type: 'UPDATE_PROSPECT',
-        payload: { ...prospect, tags: selectedTags, date_modification: new Date().toISOString() },
+        payload: {
+          ...prospect,
+          tags: selectedTags,
+          etape_pipeline: shouldAdvance ? 'contacte' : prospect.etape_pipeline,
+          date_modification: new Date().toISOString(),
+        },
       });
     }
 

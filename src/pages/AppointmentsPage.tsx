@@ -67,6 +67,15 @@ export default function AppointmentsPage() {
           commercial_id: state.currentUser?.id || 'com-1',
         } as Appointment,
       });
+
+      // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
+      const prospect = state.prospects.find(p => p.id === formData.prospect_id);
+      if (prospect && !['gagne', 'perdu'].includes(prospect.etape_pipeline)) {
+        dispatch({
+          type: 'MOVE_PROSPECT',
+          payload: { id: prospect.id, stage: 'gagne' },
+        });
+      }
     }
     setShowForm(false);
   };

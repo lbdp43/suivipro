@@ -39,7 +39,6 @@ export type PipelineStage =
   | 'nouveau'
   | 'a_contacter'
   | 'contacte'
-  | 'rdv_pris'
   | 'proposition'
   | 'negociation'
   | 'gagne'
@@ -49,10 +48,9 @@ export const PIPELINE_LABELS: Record<PipelineStage, string> = {
   nouveau: 'Nouveau',
   a_contacter: 'A contacter',
   contacte: 'Contacte',
-  rdv_pris: 'RDV pris',
   proposition: 'Proposition',
   negociation: 'Negociation',
-  gagne: 'Gagne',
+  gagne: 'RDV / Gagne',
   perdu: 'Perdu',
 };
 
@@ -60,7 +58,6 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   nouveau: '#6b7280',
   a_contacter: '#3b82f6',
   contacte: '#8b5cf6',
-  rdv_pris: '#f59e0b',
   proposition: '#f97316',
   negociation: '#ef4444',
   gagne: '#22c55e',

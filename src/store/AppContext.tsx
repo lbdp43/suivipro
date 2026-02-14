@@ -174,7 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const savedState = loadState();
   const seedData = getSeedData();
 
-  // Migrate older state: add password field if missing, force re-login
+  // Migrate older state: add password field if missing, force re-login, merge rdv_pris into gagne
   const migrateState = (s: AppState): AppState => {
     const updated = {
       ...s,
@@ -182,8 +182,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...c,
         password: c.password || (c.prenom.toLowerCase() + '123'),
       })),
-      pipelineColumns: s.pipelineColumns || defaultPipelineColumns,
+      pipelineColumns: (s.pipelineColumns || defaultPipelineColumns)
+        .filter(c => (c.id as string) !== 'rdv_pris'),
+      // Migrate prospects from rdv_pris → gagne (old stage removed)
+      prospects: s.prospects.map(p => {
+        const stage = p.etape_pipeline as string;
+        return stage === 'rdv_pris' ? { ...p, etape_pipeline: 'gagne' as PipelineStage } : p;
+      }),
     };
+    // Update gagne label if still old
+    updated.pipelineColumns = updated.pipelineColumns.map(c =>
+      c.id === 'gagne' ? { ...c, label: 'RDV / Gagne' } : c
+    );
     if (updated.currentUser && !updated.currentUser.password) {
       updated.currentUser = null;
     }

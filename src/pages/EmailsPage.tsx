@@ -64,6 +64,15 @@ export default function EmailsPage() {
     const preview = getPreviewContent();
     const prospect = state.prospects.find(p => p.id === selectedProspectId);
     if (!prospect) return;
+
+    // Auto-transition: "A contacter" / "Nouveau" → "Contacte" when email is sent
+    if (['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
+      dispatch({
+        type: 'MOVE_PROSPECT',
+        payload: { id: prospect.id, stage: 'contacte' },
+      });
+    }
+
     // Open mailto link
     const mailto = `mailto:${prospect.email}?subject=${encodeURIComponent(preview.sujet)}&body=${encodeURIComponent(preview.corps)}`;
     window.location.href = mailto;
