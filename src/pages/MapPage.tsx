@@ -1,0 +1,246 @@
+import { useState, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import { Filter, MapPin, Phone, Mail, ExternalLink } from 'lucide-react';
+import { useApp } from '../store/AppContext';
+import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage } from '../types';
+import { Link } from 'react-router-dom';
+
+// Custom marker icon factory
+function createMarkerIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
+  });
+}
+
+export default function MapPage() {
+  const { state } = useApp();
+  const [selectedTypes, setSelectedTypes] = useState<EstablishmentType[]>([]);
+  const [selectedStages, setSelectedStages] = useState<PipelineStage[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
+  const filteredProspects = useMemo(() => {
+    return state.prospects.filter(p => {
+      if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
+      if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
+      if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        return (
+          p.nom_etablissement.toLowerCase().includes(term) ||
+          p.ville.toLowerCase().includes(term) ||
+          p.departement.toLowerCase().includes(term) ||
+          p.nom_contact.toLowerCase().includes(term)
+        );
+      }
+      return true;
+    });
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, searchTerm]);
+
+  const toggleType = (type: EstablishmentType) => {
+    setSelectedTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  const toggleStage = (stage: PipelineStage) => {
+    setSelectedStages(prev =>
+      prev.includes(stage) ? prev.filter(s => s !== stage) : [...prev, stage]
+    );
+  };
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
+    );
+  };
+
+  // Center map on Saint-Didier-en-Velay area
+  const center: [number, number] = [45.37, 4.27];
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header bar */}
+      <div className="p-4 bg-white border-b border-gray-200 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="Rechercher un prospect, une ville..."
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showFilters ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="w-4 h-4" />
+            Filtres
+            {(selectedTypes.length + selectedStages.length + selectedTags.length) > 0 && (
+              <span className="bg-white text-brewery-600 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {selectedTypes.length + selectedStages.length + selectedTags.length}
+              </span>
+            )}
+          </button>
+          <div className="text-sm text-gray-500">
+            {filteredProspects.length} prospect{filteredProspects.length > 1 ? 's' : ''}
+          </div>
+        </div>
+
+        {/* Filter panels */}
+        {showFilters && (
+          <div className="space-y-3 pt-2 border-t border-gray-100 fade-in">
+            {/* Type filters */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Type d'etablissement</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(type => (
+                  <button
+                    key={type}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      selectedTypes.includes(type)
+                        ? 'bg-brewery-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    onClick={() => toggleType(type)}
+                  >
+                    {ESTABLISHMENT_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Pipeline stage filters */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Etape pipeline</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
+                  <button
+                    key={stage}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      selectedStages.includes(stage)
+                        ? 'text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    style={selectedStages.includes(stage) ? { backgroundColor: PIPELINE_COLORS[stage] } : {}}
+                    onClick={() => toggleStage(stage)}
+                  >
+                    {PIPELINE_LABELS[stage]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tag filters */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Tags</p>
+              <div className="flex flex-wrap gap-1.5">
+                {state.tags.map(tag => (
+                  <button
+                    key={tag.id}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      selectedTags.includes(tag.id)
+                        ? 'text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    style={selectedTags.includes(tag.id) ? { backgroundColor: tag.couleur } : {}}
+                    onClick={() => toggleTag(tag.id)}
+                  >
+                    {tag.nom}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {(selectedTypes.length + selectedStages.length + selectedTags.length) > 0 && (
+              <button
+                className="text-xs text-red-500 hover:text-red-700 font-medium"
+                onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); }}
+              >
+                Reinitialiser les filtres
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Map */}
+      <div className="flex-1">
+        <MapContainer center={center} zoom={9} style={{ height: '100%', width: '100%' }}>
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {filteredProspects.map(prospect => {
+            const stageColor = PIPELINE_COLORS[prospect.etape_pipeline];
+            // If prospect has a tag with color, use the first tag's color for the marker
+            const tagColor = prospect.tags.length > 0
+              ? state.tags.find(t => t.id === prospect.tags[0])?.couleur
+              : undefined;
+            const markerColor = tagColor || stageColor;
+
+            return (
+              <Marker
+                key={prospect.id}
+                position={[prospect.latitude, prospect.longitude]}
+                icon={createMarkerIcon(markerColor)}
+              >
+                <Popup>
+                  <div className="min-w-[200px]">
+                    <h3 className="font-bold text-gray-900 text-sm">{prospect.nom_etablissement}</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">{ESTABLISHMENT_LABELS[prospect.type_etablissement]}</p>
+                    <div className="mt-2 space-y-1 text-xs text-gray-600">
+                      <p className="flex items-center gap-1"><MapPin className="w-3 h-3" />{prospect.adresse}, {prospect.ville}</p>
+                      <p className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.telephone}</p>
+                      {prospect.email && <p className="flex items-center gap-1"><Mail className="w-3 h-3" />{prospect.email}</p>}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className="badge text-white text-[10px]"
+                        style={{ backgroundColor: PIPELINE_COLORS[prospect.etape_pipeline] }}
+                      >
+                        {PIPELINE_LABELS[prospect.etape_pipeline]}
+                      </span>
+                      {prospect.tags.map(tagId => {
+                        const tag = state.tags.find(t => t.id === tagId);
+                        return tag ? (
+                          <span key={tagId} className="badge text-white text-[10px]" style={{ backgroundColor: tag.couleur }}>
+                            {tag.nom}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <a
+                        href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
+                        className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] font-medium hover:bg-green-600"
+                      >
+                        <Phone className="w-3 h-3" /> Appeler
+                      </a>
+                      <Link
+                        to={`/prospects?id=${prospect.id}`}
+                        className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white rounded text-[10px] font-medium hover:bg-blue-600"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Voir
+                      </Link>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
+        </MapContainer>
+      </div>
+    </div>
+  );
+}
