@@ -179,25 +179,25 @@ export default function MapPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Header bar */}
-      <div className="p-4 bg-white border-b border-gray-200 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
+      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 space-y-2 sm:space-y-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex-1 min-w-0">
             <input
               type="text"
-              placeholder="Rechercher un prospect, une ville, un secteur..."
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+              placeholder="Rechercher..."
+              className="w-full px-3 sm:px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
           <button
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
               showFilters ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => { setShowFilters(!showFilters); if (!showFilters) setShowRdvPanel(false); }}
           >
             <Filter className="w-4 h-4" />
-            Filtres
+            <span className="hidden sm:inline">Filtres</span>
             {activeFilterCount > 0 && (
               <span className="bg-white text-brewery-600 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
                 {activeFilterCount}
@@ -206,10 +206,10 @@ export default function MapPage() {
           </button>
           {/* Bouton RDV */}
           <button
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
               showRdvPanel ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
             }`}
-            onClick={() => setShowRdvPanel(!showRdvPanel)}
+            onClick={() => { setShowRdvPanel(!showRdvPanel); if (!showRdvPanel) setShowFilters(false); }}
           >
             <Calendar className="w-4 h-4" />
             RDV
@@ -221,18 +221,18 @@ export default function MapPage() {
               </span>
             )}
           </button>
-          <div className="text-sm text-gray-500">
+          <div className="text-xs sm:text-sm text-gray-500 flex-shrink-0">
             {showRdvPanel ? (
               <span className="text-blue-600 font-medium">{filteredProspects.length} RDV</span>
             ) : (
-              <>{filteredProspects.length} prospect{filteredProspects.length > 1 ? 's' : ''}</>
+              <>{filteredProspects.length}<span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span></>
             )}
           </div>
         </div>
 
         {/* Raccourcis tournees */}
         {tournees.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
             <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
               <Route className="w-3.5 h-3.5" /> Tournees :
             </span>
@@ -268,8 +268,8 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Legende couleurs pipeline */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Legende couleurs pipeline - cachee sur mobile */}
+        <div className="hidden sm:flex items-center gap-2 flex-wrap">
           <span className="text-[10px] text-gray-400">Legende :</span>
           {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
             <span key={stage} className="flex items-center gap-1 text-[10px] text-gray-500">
@@ -411,12 +411,12 @@ export default function MapPage() {
             </div>
 
             {/* Filtre par commercial */}
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:flex-wrap sm:pb-0 mb-3">
+              <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1 flex-shrink-0">
                 <Users className="w-3 h-3" /> Commercial :
               </span>
               <button
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${!rdvFilterCommercial ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex-shrink-0 ${!rdvFilterCommercial ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 onClick={() => setRdvFilterCommercial('')}
               >
                 Tous
@@ -426,7 +426,7 @@ export default function MapPage() {
                 return (
                   <button
                     key={c.id}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 ${
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
                       rdvFilterCommercial === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                     onClick={() => setRdvFilterCommercial(rdvFilterCommercial === c.id ? '' : c.id)}
@@ -469,59 +469,61 @@ export default function MapPage() {
                           const prospect = getProspect(rdv.prospect_id);
                           const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                           return (
-                            <div key={rdv.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${isToday ? 'bg-brewery-50/50' : 'bg-gray-50'} hover:bg-gray-100 transition-colors`}>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[11px] font-mono text-gray-500 w-20 flex-shrink-0">
-                                    {rdv.heure_debut}-{rdv.heure_fin}
-                                  </span>
-                                  <span className="text-xs font-semibold text-gray-900 truncate">
-                                    {prospect?.nom_etablissement || 'Inconnu'}
-                                  </span>
-                                  <span className={`badge text-[8px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
-                                    {APPOINTMENT_STATUS_LABELS[rdv.statut]}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-3 mt-0.5 ml-20">
-                                  <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                                    <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
-                                  </span>
-                                  {rdv.lieu && (
-                                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
-                                      <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
+                            <div key={rdv.id} className={`px-2 sm:px-3 py-2 rounded-lg ${isToday ? 'bg-brewery-50/50' : 'bg-gray-50'} hover:bg-gray-100 transition-colors`}>
+                              <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                    <span className="text-[10px] sm:text-[11px] font-mono text-gray-500 flex-shrink-0">
+                                      {rdv.heure_debut}-{rdv.heure_fin}
                                     </span>
+                                    <span className="text-[11px] sm:text-xs font-semibold text-gray-900 truncate">
+                                      {prospect?.nom_etablissement || 'Inconnu'}
+                                    </span>
+                                    <span className={`badge text-[8px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
+                                      {APPOINTMENT_STATUS_LABELS[rdv.statut]}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 sm:gap-3 mt-0.5">
+                                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                      <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
+                                    </span>
+                                    {rdv.lieu && (
+                                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
+                                        <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Actions rapides */}
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  {prospect?.telephone && (
+                                    <button
+                                      className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100"
+                                      onClick={() => startCall(prospect.id)}
+                                      title="Appeler"
+                                    >
+                                      <Phone className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  {rdv.statut === 'planifie' && (
+                                    <button
+                                      className="p-1.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+                                      onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
+                                      title="Confirmer"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  {prospect && (
+                                    <button
+                                      className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                      onClick={() => downloadICS(rdv, prospect)}
+                                      title="Exporter .ics"
+                                    >
+                                      <Download className="w-3 h-3" />
+                                    </button>
                                   )}
                                 </div>
-                              </div>
-                              {/* Actions rapides */}
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {prospect?.telephone && (
-                                  <button
-                                    className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100"
-                                    onClick={() => startCall(prospect.id)}
-                                    title="Appeler"
-                                  >
-                                    <Phone className="w-3 h-3" />
-                                  </button>
-                                )}
-                                {rdv.statut === 'planifie' && (
-                                  <button
-                                    className="p-1.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
-                                    onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
-                                    title="Confirmer"
-                                  >
-                                    <Check className="w-3 h-3" />
-                                  </button>
-                                )}
-                                {prospect && (
-                                  <button
-                                    className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                    onClick={() => downloadICS(rdv, prospect)}
-                                    title="Exporter .ics"
-                                  >
-                                    <Download className="w-3 h-3" />
-                                  </button>
-                                )}
                               </div>
                             </div>
                           );
