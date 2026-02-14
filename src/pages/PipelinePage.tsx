@@ -1,7 +1,8 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
+import EmailTemplateModal from '../components/EmailTemplateModal';
 import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
@@ -19,6 +20,7 @@ export default function PipelinePage() {
   const [newColor, setNewColor] = useState('#6b7280');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
+  const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -342,6 +344,15 @@ export default function PipelinePage() {
                               <Phone className="w-3 h-3" />
                             </button>
                           )}
+                          {prospect.email && (
+                            <button
+                              className="p-1 rounded bg-purple-50 text-purple-600 hover:bg-purple-100"
+                              onClick={e => { e.stopPropagation(); setEmailProspect(prospect); }}
+                              title="Envoyer un e-mail"
+                            >
+                              <Mail className="w-3 h-3" />
+                            </button>
+                          )}
                           <button
                             className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100"
                             onClick={e => openQuickNote(prospect, e)}
@@ -376,6 +387,11 @@ export default function PipelinePage() {
           ))}
         </div>
       </div>
+
+      {/* Email template modal */}
+      {emailProspect && (
+        <EmailTemplateModal prospect={emailProspect} onClose={() => setEmailProspect(null)} />
+      )}
 
       {/* Quick notes modal */}
       {quickNoteId && (

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
+import EmailTemplateModal from '../components/EmailTemplateModal';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
   EstablishmentType, PipelineStage, Prospect,
@@ -27,6 +28,7 @@ export default function ProspectsPage() {
   const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
+  const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -248,6 +250,15 @@ export default function ProspectsPage() {
                       <Phone className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  {p.email && (
+                    <button
+                      className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                      onClick={e => { e.stopPropagation(); setEmailProspect(p); }}
+                      title="Envoyer un e-mail"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
                     onClick={e => openQuickNote(p, e)}
@@ -425,6 +436,11 @@ export default function ProspectsPage() {
             <p className="text-sm">Selectionnez un prospect pour voir ses details</p>
           </div>
         </div>
+      )}
+
+      {/* Email template modal */}
+      {emailProspect && (
+        <EmailTemplateModal prospect={emailProspect} onClose={() => setEmailProspect(null)} />
       )}
 
       {/* Quick notes modal */}
