@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2,
-  AlertCircle, BellRing,
+  AlertCircle, BellRing, CalendarClock, MessageSquare,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Reminder, ReminderStatus } from '../types';
@@ -16,6 +16,11 @@ export default function RemindersPage() {
     heure: '09:00',
     message: '',
   });
+
+  // Modale reporter
+  const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
+  const [snoozeDate, setSnoozeDate] = useState('');
+  const [snoozeNote, setSnoozeNote] = useState('');
 
   const reminders = useMemo(() => {
     return [...state.reminders].sort((a, b) => a.date.localeCompare(b.date));
@@ -50,16 +55,42 @@ export default function RemindersPage() {
     if (rem) dispatch({ type: 'UPDATE_REMINDER', payload: { ...rem, statut: 'termine' } });
   };
 
-  const snooze = (id: string, days: number) => {
-    const rem = state.reminders.find(r => r.id === id);
-    if (rem) {
-      const newDate = new Date(rem.date);
-      newDate.setDate(newDate.getDate() + days);
-      dispatch({
-        type: 'UPDATE_REMINDER',
-        payload: { ...rem, date: newDate.toISOString().split('T')[0], statut: 'actif' },
-      });
-    }
+  const openSnoozeModal = (rem: Reminder) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 2);
+    setSnoozeTarget(rem);
+    setSnoozeDate(tomorrow.toISOString().split('T')[0]);
+    setSnoozeNote('');
+  };
+
+  const executeSnooze = () => {
+    if (!snoozeTarget || !snoozeDate) return;
+    const newMessage = snoozeNote
+      ? `${snoozeTarget.message}\n[Reporte] ${snoozeNote}`
+      : snoozeTarget.message;
+    dispatch({
+      type: 'UPDATE_REMINDER',
+      payload: {
+        ...snoozeTarget,
+        date: snoozeDate,
+        message: newMessage,
+        statut: 'actif' as ReminderStatus,
+      },
+    });
+    setSnoozeTarget(null);
+  };
+
+  const snoozeQuickOptions = [
+    { label: 'Demain', days: 1 },
+    { label: 'Dans 2 jours', days: 2 },
+    { label: '1 semaine', days: 7 },
+    { label: '2 semaines', days: 14 },
+  ];
+
+  const setSnoozeQuickDate = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    setSnoozeDate(date.toISOString().split('T')[0]);
   };
 
   const deleteReminder = (id: string) => {
@@ -87,7 +118,7 @@ export default function RemindersPage() {
     return (
       <div
         key={rem.id}
-        className={`p-4 rounded-lg border transition-colors ${
+        className={`p-4 rounded-xl border transition-colors ${
           isOverdue ? 'border-red-200 bg-red-50' :
           isTodayRem ? 'border-amber-200 bg-amber-50' :
           rem.statut === 'termine' ? 'border-gray-200 bg-gray-50 opacity-60' :
@@ -107,8 +138,8 @@ export default function RemindersPage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900">{rem.message}</p>
-            <div className="flex items-center gap-3 mt-1">
+            <p className="text-sm font-medium text-gray-900 whitespace-pre-line">{rem.message}</p>
+            <div className="flex items-center gap-3 mt-1.5">
               <span className="text-xs text-gray-500 flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> {formatDate(rem.date)}
               </span>
@@ -119,31 +150,31 @@ export default function RemindersPage() {
                 <span className="text-xs text-brewery-600 font-medium">{prospect.nom_etablissement}</span>
               )}
             </div>
+
+            {/* Boutons d'action - visibles et clairs */}
+            {showActions && rem.statut === 'actif' && (
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                  onClick={() => markComplete(rem.id)}
+                >
+                  <Check className="w-3.5 h-3.5" /> Terminer
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                  onClick={() => openSnoozeModal(rem)}
+                >
+                  <CalendarClock className="w-3.5 h-3.5" /> Reporter
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                  onClick={() => deleteReminder(rem.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                </button>
+              </div>
+            )}
           </div>
-          {showActions && rem.statut === 'actif' && (
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                className="p-1.5 rounded bg-green-50 hover:bg-green-100 text-green-600"
-                onClick={() => markComplete(rem.id)}
-                title="Terminer"
-              >
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button
-                className="p-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600"
-                onClick={() => snooze(rem.id, 2)}
-                title="Reporter +2j"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
-              <button
-                className="p-1.5 rounded bg-red-50 hover:bg-red-100 text-red-500"
-                onClick={() => deleteReminder(rem.id)}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -171,7 +202,7 @@ export default function RemindersPage() {
             <BellRing className="w-5 h-5" />
             Aujourd'hui ({todayReminders.length} rappel{todayReminders.length > 1 ? 's' : ''})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {todayReminders.map(r => renderReminder(r))}
           </div>
         </div>
@@ -183,7 +214,7 @@ export default function RemindersPage() {
           <h3 className="font-semibold text-red-600 mb-3 flex items-center gap-2">
             <AlertCircle className="w-4 h-4" /> En retard ({pastReminders.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {pastReminders.map(r => renderReminder(r))}
           </div>
         </div>
@@ -193,7 +224,7 @@ export default function RemindersPage() {
       {upcomingReminders.length > 0 && (
         <div>
           <h3 className="font-semibold text-gray-900 mb-3">A venir ({upcomingReminders.length})</h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {upcomingReminders.map(r => renderReminder(r))}
           </div>
         </div>
@@ -203,7 +234,7 @@ export default function RemindersPage() {
       {completedReminders.length > 0 && (
         <div>
           <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {completedReminders.map(r => renderReminder(r, false))}
           </div>
         </div>
@@ -213,6 +244,96 @@ export default function RemindersPage() {
         <div className="text-center py-12 text-gray-400">
           <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm">Aucun rappel programme</p>
+        </div>
+      )}
+
+      {/* Modale Reporter */}
+      {snoozeTarget && (
+        <div className="modal-backdrop" onClick={() => setSnoozeTarget(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-blue-600" /> Reporter le rappel
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setSnoozeTarget(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Rappel concerne */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-gray-800">{snoozeTarget.message}</p>
+                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Actuellement prevu le {formatDate(snoozeTarget.date)} a {snoozeTarget.heure}
+                </p>
+              </div>
+
+              {/* Options rapides */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Reporter a</label>
+                <div className="flex flex-wrap gap-2">
+                  {snoozeQuickOptions.map(opt => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + opt.days);
+                    const dateStr = d.toISOString().split('T')[0];
+                    return (
+                      <button
+                        key={opt.days}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          snoozeDate === dateStr
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        }`}
+                        onClick={() => setSnoozeQuickDate(opt.days)}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date personnalisee */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ou choisir une date</label>
+                <input
+                  type="date"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={snoozeDate}
+                  onChange={e => setSnoozeDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              {/* Note optionnelle */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <MessageSquare className="w-3.5 h-3.5" /> Ajouter une note (optionnel)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none"
+                  placeholder="Raison du report, informations complementaires..."
+                  value={snoozeNote}
+                  onChange={e => setSnoozeNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setSnoozeTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={executeSnooze}
+                disabled={!snoozeDate}
+              >
+                <CalendarClock className="w-4 h-4" /> Reporter au {snoozeDate ? formatDate(snoozeDate) : '...'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
