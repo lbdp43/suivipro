@@ -150,14 +150,14 @@ export default function RemindersPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 fade-in">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rappels</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rappels</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
         </div>
         <button
-          className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
+          className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium self-start sm:self-auto"
           onClick={() => setShowForm(true)}
         >
           <Plus className="w-4 h-4" /> Nouveau rappel
@@ -166,7 +166,7 @@ export default function RemindersPage() {
 
       {/* Today's reminders - highlighted */}
       {todayReminders.length > 0 && (
-        <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 sm:p-5">
           <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
             <BellRing className="w-5 h-5" />
             Aujourd'hui ({todayReminders.length} rappel{todayReminders.length > 1 ? 's' : ''})

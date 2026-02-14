@@ -138,19 +138,20 @@ export default function PipelinePage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 bg-white border-b border-gray-200 flex items-center gap-3">
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">Pipeline commercial</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Glissez-deposez les prospects entre les etapes</p>
+      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex items-center gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline commercial</h1>
+          <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les etapes</p>
         </div>
         <button
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
             showSettings ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
           onClick={() => setShowSettings(!showSettings)}
         >
           <Settings className="w-4 h-4" />
-          Gerer les etapes
+          <span className="hidden sm:inline">Gerer les etapes</span>
+          <span className="sm:hidden">Etapes</span>
         </button>
       </div>
 
@@ -264,12 +265,12 @@ export default function PipelinePage() {
       )}
 
       {/* Kanban board */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <div className="flex gap-4 h-full min-w-max">
+      <div className="flex-1 overflow-x-auto p-2 sm:p-4">
+        <div className="flex gap-2 sm:gap-4 h-full min-w-max">
           {columns.map(col => (
             <div
               key={col.id}
-              className={`kanban-column w-72 flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
+              className={`kanban-column w-60 sm:w-72 flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
                 dragOverColumn === col.id ? 'border-brewery-500 bg-brewery-50' : 'border-gray-200 bg-gray-50'
               }`}
               onDragOver={e => handleDragOver(e, col.id)}

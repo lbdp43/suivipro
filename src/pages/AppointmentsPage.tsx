@@ -220,23 +220,23 @@ export default function AppointmentsPage() {
   const activeFilterCount = (filterStatus ? 1 : 0) + (filterCommercial ? 1 : 0);
 
   return (
-    <div className="p-6 space-y-6 fade-in">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rendez-vous</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Gestion des RDV et export calendrier</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rendez-vous</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des RDV et export calendrier</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Toggle Liste / Agenda */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
             <button
-              className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setViewMode('list')}
             >
               <List className="w-3.5 h-3.5" /> Liste
             </button>
             <button
-              className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${viewMode === 'agenda' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'agenda' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setViewMode('agenda')}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Agenda
@@ -244,19 +244,19 @@ export default function AppointmentsPage() {
           </div>
           {upcoming.length > 0 && (
             <button
-              className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 flex items-center gap-2 text-sm font-medium"
+              className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
               onClick={exportFilteredICS}
               title="Exporter tous les RDV a venir en .ics"
             >
-              <Download className="w-4 h-4" />
-              Exporter ICS ({upcoming.length})
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Exporter</span> ICS ({upcoming.length})
             </button>
           )}
           <button
-            className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
+            className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
             onClick={openNewForm}
           >
-            <Plus className="w-4 h-4" /> Nouveau RDV
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> RDV
           </button>
         </div>
       </div>
@@ -354,6 +354,8 @@ export default function AppointmentsPage() {
           </div>
 
           {/* Agenda grid */}
+          <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+          <div className="min-w-[700px]">
           <CommercialAgenda
             appointments={state.appointments}
             commerciaux={state.commerciaux}
@@ -362,6 +364,8 @@ export default function AppointmentsPage() {
             weekOffset={weekOffset}
             onEditRdv={openEditForm}
           />
+          </div>
+          </div>
         </div>
       )}
 

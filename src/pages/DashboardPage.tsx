@@ -181,25 +181,25 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6 fade-in">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Vue d'ensemble de l'activite commerciale</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-1">Vue d'ensemble de l'activite commerciale</p>
       </div>
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((kpi, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-200 p-5">
+          <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-500">{kpi.label}</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{kpi.value}</p>
-                <p className="text-xs text-gray-400 mt-1">{kpi.sub}</p>
+                <p className="text-[10px] sm:text-sm text-gray-500">{kpi.label}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">{kpi.value}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{kpi.sub}</p>
               </div>
-              <div className={`${kpi.color} p-2.5 rounded-lg`}>
-                <kpi.icon className="w-5 h-5 text-white" />
+              <div className={`${kpi.color} p-2 sm:p-2.5 rounded-lg`}>
+                <kpi.icon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
             </div>
           </div>
@@ -207,32 +207,32 @@ export default function DashboardPage() {
       </div>
 
       {/* Secondary stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-          <div className="bg-green-50 p-3 rounded-lg">
-            <Phone className="w-5 h-5 text-green-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+          <div className="bg-green-50 p-2.5 sm:p-3 rounded-lg">
+            <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">Taux de reponse</p>
-            <p className="text-xl font-bold text-gray-900">{stats.responseRate}%</p>
+            <p className="text-[10px] sm:text-sm text-gray-500">Taux de reponse</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.responseRate}%</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <Clock className="w-5 h-5 text-blue-600" />
+        <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+          <div className="bg-blue-50 p-2.5 sm:p-3 rounded-lg">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">Duree moy. appels</p>
-            <p className="text-xl font-bold text-gray-900">{formatDuration(stats.avgDuration)}</p>
+            <p className="text-[10px] sm:text-sm text-gray-500">Duree moy. appels</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{formatDuration(stats.avgDuration)}</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-          <div className="bg-amber-50 p-3 rounded-lg">
-            <BarChart3 className="w-5 h-5 text-amber-600" />
+        <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+          <div className="bg-amber-50 p-2.5 sm:p-3 rounded-lg">
+            <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">Appels ce mois</p>
-            <p className="text-xl font-bold text-gray-900">{stats.callsMonth}</p>
+            <p className="text-[10px] sm:text-sm text-gray-500">Appels ce mois</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.callsMonth}</p>
           </div>
         </div>
       </div>
@@ -240,16 +240,16 @@ export default function DashboardPage() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pipeline distribution */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="font-semibold text-gray-900 mb-4">Repartition du pipeline</h3>
-          <div className="h-64 flex items-center justify-center">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Repartition du pipeline</h3>
+          <div className="h-52 sm:h-64 flex items-center justify-center">
             <Doughnut
               data={pipelineChartData}
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                  legend: { position: 'right', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+                  legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 10 } } },
                 },
               }}
             />
@@ -257,9 +257,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Activity by commercial (admins excluded) */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="font-semibold text-gray-900 mb-4">Activite par commercial</h3>
-          <div className="h-64">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Activite par commercial</h3>
+          <div className="h-52 sm:h-64">
             {commerciaux.length > 0 ? (
               <Bar
                 data={commercialCallsData}
@@ -278,9 +278,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Pipeline breakdown - only active columns */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-900 mb-4">Prospects par etape</h3>
-        <div className={`grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-${Math.min(activeColumns.length, 8)} gap-3`}>
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Prospects par etape</h3>
+        <div className={`grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-${Math.min(activeColumns.length, 8)} gap-2 sm:gap-3`}>
           {stats.prospectsByStage.map(s => (
             <div key={s.stage} className="text-center p-3 rounded-lg bg-gray-50">
               <div className="pipeline-dot mx-auto mb-2" style={{ backgroundColor: s.color }} />
@@ -292,9 +292,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Monthly History with week-by-week breakdown */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900">Historique mensuel</h3>
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Historique mensuel</h3>
           <div className="flex items-center gap-2">
             <button
               className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
@@ -382,8 +382,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Commercial performance table (admins excluded) */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-900 mb-4">Performance des commerciaux</h3>
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Performance des commerciaux</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

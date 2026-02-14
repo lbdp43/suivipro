@@ -205,19 +205,19 @@ export default function ImportPage() {
   const existingSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))];
 
   return (
-    <div className="p-6 space-y-6 fade-in">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Import / Export</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Gestion des donnees prospects</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Import / Export</h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des donnees prospects</p>
       </div>
 
       {/* Export section */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-900 mb-1">Exporter les prospects</h3>
-        <p className="text-sm text-gray-500 mb-4">Exportez vos {state.prospects.length} prospects</p>
-        <div className="flex gap-3">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-1">Exporter les prospects</h3>
+        <p className="text-xs sm:text-sm text-gray-500 mb-4">Exportez vos {state.prospects.length} prospects</p>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <button
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs sm:text-sm font-medium"
             onClick={handleExportXLSX}
           >
             <FileSpreadsheet className="w-4 h-4" /> Export Excel (.xlsx)

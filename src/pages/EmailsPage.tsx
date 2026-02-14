@@ -97,14 +97,14 @@ export default function EmailsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6 fade-in">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Templates d'emails</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Modeles d'emails personnalisables</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates d'emails</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Modeles d'emails personnalisables</p>
         </div>
         <button
-          className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
+          className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium self-start sm:self-auto"
           onClick={openNewForm}
         >
           <Plus className="w-4 h-4" /> Nouveau template
@@ -112,7 +112,7 @@ export default function EmailsPage() {
       </div>
 
       {/* Variables reference */}
-      <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+      <div className="bg-blue-50 rounded-xl border border-blue-200 p-3 sm:p-4">
         <h3 className="font-semibold text-blue-900 text-sm mb-2">Variables dynamiques disponibles</h3>
         <div className="flex flex-wrap gap-2">
           {variables.map(v => (

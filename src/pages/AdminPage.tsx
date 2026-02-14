@@ -214,14 +214,14 @@ export default function AdminPage() {
     pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
-    <div className="p-6 space-y-6 fade-in">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Administration</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Gestion de l'equipe, objectifs, tags et statistiques</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Administration</h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion de l'equipe, objectifs, tags et statistiques</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap overflow-x-auto">
         {tabs.map(tab => (
           <button
             key={tab.id}

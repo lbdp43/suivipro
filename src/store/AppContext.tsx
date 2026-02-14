@@ -16,6 +16,8 @@ type Action =
   | { type: 'DELETE_PROSPECT'; payload: string }
   | { type: 'MOVE_PROSPECT'; payload: { id: string; stage: PipelineStage } }
   | { type: 'ADD_CALL'; payload: Call }
+  | { type: 'UPDATE_CALL'; payload: Call }
+  | { type: 'DELETE_CALL'; payload: string }
   | { type: 'ADD_APPOINTMENT'; payload: Appointment }
   | { type: 'UPDATE_APPOINTMENT'; payload: Appointment }
   | { type: 'DELETE_APPOINTMENT'; payload: string }
@@ -58,6 +60,10 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case 'ADD_CALL':
       return { ...state, calls: [...state.calls, action.payload] };
+    case 'UPDATE_CALL':
+      return { ...state, calls: state.calls.map(c => c.id === action.payload.id ? action.payload : c) };
+    case 'DELETE_CALL':
+      return { ...state, calls: state.calls.filter(c => c.id !== action.payload) };
     case 'ADD_APPOINTMENT':
       return { ...state, appointments: [...state.appointments, action.payload] };
     case 'UPDATE_APPOINTMENT':
@@ -180,7 +186,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...s,
       commerciaux: s.commerciaux.map(c => ({
         ...c,
-        password: c.password || (c.prenom.toLowerCase() + '123'),
+        password: c.password || (c.role === 'admin' ? 'admin123' : c.prenom.toLowerCase() + '123'),
       })),
       pipelineColumns: (s.pipelineColumns || defaultPipelineColumns)
         .filter(c => (c.id as string) !== 'rdv_pris'),
