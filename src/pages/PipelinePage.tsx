@@ -1,11 +1,13 @@
 import { useState, useMemo, DragEvent } from 'react';
 import { Phone, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useCallModal } from '../components/CallModal';
 import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
   const { state, dispatch } = useApp();
+  const { startCall } = useCallModal();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -308,13 +310,12 @@ export default function PipelinePage() {
                         {/* Actions */}
                         <div className="flex items-center gap-1.5 mt-2">
                           {prospect.telephone && (
-                            <a
-                              href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
+                            <button
                               className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"
-                              onClick={e => e.stopPropagation()}
+                              onClick={e => { e.stopPropagation(); startCall(prospect.id); }}
                             >
                               <Phone className="w-3 h-3" />
-                            </a>
+                            </button>
                           )}
                           <Link
                             to={`/prospects?id=${prospect.id}`}

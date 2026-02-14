@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { Filter, MapPin, Phone, Mail, ExternalLink } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useCallModal } from '../components/CallModal';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage } from '../types';
 import { Link } from 'react-router-dom';
 
@@ -19,6 +20,7 @@ function createMarkerIcon(color: string): L.DivIcon {
 
 export default function MapPage() {
   const { state } = useApp();
+  const { startCall } = useCallModal();
   const [selectedTypes, setSelectedTypes] = useState<EstablishmentType[]>([]);
   const [selectedStages, setSelectedStages] = useState<PipelineStage[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -268,12 +270,12 @@ export default function MapPage() {
                     </div>
                     <div className="mt-2 flex gap-2">
                       {prospect.telephone && (
-                        <a
-                          href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
+                        <button
+                          onClick={() => startCall(prospect.id)}
                           className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] font-medium hover:bg-green-600"
                         >
                           <Phone className="w-3 h-3" /> Appeler
-                        </a>
+                        </button>
                       )}
                       <Link
                         to={`/prospects?id=${prospect.id}`}

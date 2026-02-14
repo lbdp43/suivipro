@@ -5,6 +5,7 @@ import {
   Edit2, Trash2, Save, Clock, Calendar,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useCallModal } from '../components/CallModal';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
   EstablishmentType, PipelineStage, Prospect,
@@ -13,6 +14,7 @@ import { generateId, formatDate, formatTimeAgo, formatDuration } from '../utils/
 
 export default function ProspectsPage() {
   const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { startCall } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -250,9 +252,9 @@ export default function ProspectsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="w-4 h-4 text-gray-400" />
-                  <a href={`tel:${selectedProspect.telephone.replace(/\s/g, '')}`} className="text-brewery-600 font-medium hover:underline">
+                  <button onClick={() => startCall(selectedProspect.id)} className="text-brewery-600 font-medium hover:underline">
                     {selectedProspect.telephone}
-                  </a>
+                  </button>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="w-4 h-4 text-gray-400" />

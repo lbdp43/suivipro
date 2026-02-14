@@ -1,68 +1,17 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Phone, PhoneCall, PhoneOff, Clock, Search, Plus, X, Save,
-  MessageSquare, PhoneMissed, VoicemailIcon, CheckCircle,
+  Phone, PhoneCall, PhoneOff, Search,
+  MessageSquare, PhoneMissed, CheckCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useCallModal } from '../components/CallModal';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
-import { generateId, formatDateTime, formatDuration, formatDurationTimer, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
+import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 
 export default function CallsPage() {
-  const { state, dispatch } = useApp();
-  const [showCallModal, setShowCallModal] = useState(false);
-  const [selectedProspectId, setSelectedProspectId] = useState('');
-  const [callActive, setCallActive] = useState(false);
-  const [callTimer, setCallTimer] = useState(0);
-  const [callResult, setCallResult] = useState<CallResult>('repondu');
-  const [callNotes, setCallNotes] = useState('');
+  const { state } = useApp();
+  const { startCall } = useCallModal();
   const [searchTerm, setSearchTerm] = useState('');
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Start/stop timer
-  useEffect(() => {
-    if (callActive) {
-      timerRef.current = setInterval(() => setCallTimer(prev => prev + 1), 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [callActive]);
-
-  const startCall = (prospectId: string) => {
-    const prospect = state.prospects.find(p => p.id === prospectId);
-    if (!prospect) return;
-    setSelectedProspectId(prospectId);
-    setCallActive(true);
-    setCallTimer(0);
-    setCallResult('repondu');
-    setCallNotes('');
-    setShowCallModal(true);
-
-    // Trigger native phone on mobile
-    window.location.href = `tel:${prospect.telephone.replace(/\s/g, '')}`;
-  };
-
-  const endCall = () => {
-    setCallActive(false);
-  };
-
-  const saveCall = () => {
-    dispatch({
-      type: 'ADD_CALL',
-      payload: {
-        id: generateId('call'),
-        prospect_id: selectedProspectId,
-        commercial_id: state.currentUser?.id || 'com-1',
-        date: new Date().toISOString(),
-        duree: callTimer,
-        resultat: callResult,
-        notes: callNotes,
-      },
-    });
-    setShowCallModal(false);
-    setCallActive(false);
-    setCallTimer(0);
-  };
 
   const allCalls = useMemo(() => {
     return [...state.calls].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -104,12 +53,6 @@ export default function CallsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Appels</h1>
           <p className="text-sm text-gray-500 mt-0.5">Gestion des appels telephoniques</p>
         </div>
-        <button
-          className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
-          onClick={() => { setSelectedProspectId(''); setShowCallModal(true); setCallActive(false); setCallTimer(0); }}
-        >
-          <Plus className="w-4 h-4" /> Nouvel appel
-        </button>
       </div>
 
       {/* Stats */}
@@ -142,7 +85,7 @@ export default function CallsPage() {
         <h3 className="font-semibold text-gray-900 mb-3">Appel rapide (Click-to-Call)</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {state.prospects
-            .filter(p => !['gagne', 'perdu'].includes(p.etape_pipeline))
+            .filter(p => !['gagne', 'perdu'].includes(p.etape_pipeline) && p.telephone)
             .slice(0, 6)
             .map(prospect => (
               <button
@@ -204,111 +147,6 @@ export default function CallsPage() {
           )}
         </div>
       </div>
-
-      {/* Call Modal */}
-      {showCallModal && (
-        <div className="modal-backdrop" onClick={() => { if (!callActive) setShowCallModal(false); }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">
-                {callActive ? 'Appel en cours' : 'Enregistrer un appel'}
-              </h3>
-              {!callActive && (
-                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCallModal(false)}>
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              )}
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Timer */}
-              {callActive && (
-                <div className="text-center py-4">
-                  <div className="text-4xl font-mono font-bold text-brewery-600">
-                    {formatDurationTimer(callTimer)}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">
-                    {state.prospects.find(p => p.id === selectedProspectId)?.nom_etablissement}
-                  </p>
-                  <button
-                    className="mt-4 bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 flex items-center gap-2 mx-auto"
-                    onClick={endCall}
-                  >
-                    <PhoneOff className="w-4 h-4" /> Raccrocher
-                  </button>
-                </div>
-              )}
-
-              {!callActive && !selectedProspectId && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Prospect</label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={selectedProspectId}
-                    onChange={e => setSelectedProspectId(e.target.value)}
-                  >
-                    <option value="">Selectionnez un prospect</option>
-                    {state.prospects.map(p => (
-                      <option key={p.id} value={p.id}>{p.nom_etablissement} - {p.telephone}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {!callActive && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Resultat</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(Object.keys(CALL_RESULT_LABELS) as CallResult[]).map(result => (
-                        <button
-                          key={result}
-                          className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                            callResult === result
-                              ? 'border-brewery-500 bg-brewery-50 text-brewery-700'
-                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                          }`}
-                          onClick={() => setCallResult(result)}
-                        >
-                          {CALL_RESULT_LABELS[result]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-                    <textarea
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-24 resize-none"
-                      placeholder="Notes de l'appel..."
-                      value={callNotes}
-                      onChange={e => setCallNotes(e.target.value)}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-            {!callActive && (
-              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
-                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCallModal(false)}>Annuler</button>
-                {selectedProspectId && (
-                  <button
-                    className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-2"
-                    onClick={() => startCall(selectedProspectId)}
-                  >
-                    <Phone className="w-4 h-4" /> Appeler
-                  </button>
-                )}
-                <button
-                  className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
-                  onClick={saveCall}
-                  disabled={!selectedProspectId}
-                >
-                  <Save className="w-4 h-4" /> Enregistrer
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
