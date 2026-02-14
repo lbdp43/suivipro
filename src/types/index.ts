@@ -104,6 +104,7 @@ export interface Prospect {
   ville: string;
   code_postal: string;
   departement: string;
+  secteur: string;
   latitude: number;
   longitude: number;
   etape_pipeline: PipelineStage;

@@ -123,6 +123,68 @@ export function downloadICS(appointment: Appointment, prospect: Prospect) {
 }
 
 // ============================================
+// Geocoding (Nominatim / OpenStreetMap)
+// ============================================
+
+export interface GeocodingResult {
+  latitude: number;
+  longitude: number;
+  ville: string;
+  code_postal: string;
+  departement: string;
+}
+
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export async function geocodeAddress(adresse: string): Promise<GeocodingResult | null> {
+  try {
+    const params = new URLSearchParams({
+      q: adresse,
+      format: 'json',
+      addressdetails: '1',
+      limit: '1',
+      countrycodes: 'fr',
+    });
+    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
+      headers: { 'User-Agent': 'SuiviPro-BrasseriePlantes/1.0' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || data.length === 0) return null;
+    const result = data[0];
+    const addr = result.address || {};
+    return {
+      latitude: parseFloat(result.lat),
+      longitude: parseFloat(result.lon),
+      ville: addr.city || addr.town || addr.village || addr.municipality || '',
+      code_postal: addr.postcode || '',
+      departement: addr.county || addr.state || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function geocodeBatch(
+  addresses: string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<(GeocodingResult | null)[]> {
+  const results: (GeocodingResult | null)[] = [];
+  for (let i = 0; i < addresses.length; i++) {
+    const result = await geocodeAddress(addresses[i]);
+    results.push(result);
+    onProgress?.(i + 1, addresses.length);
+    // Nominatim rate limit: 1 request/second
+    if (i < addresses.length - 1) await delay(1100);
+  }
+  return results;
+}
+
+// ============================================
 // Email Template Processing
 // ============================================
 
@@ -160,14 +222,14 @@ export function processEmailTemplate(
 export function exportProspectsCSV(prospects: Prospect[]): void {
   const headers = [
     'Etablissement', 'Type', 'Contact', 'Telephone', 'Email',
-    'Adresse', 'Ville', 'Code Postal', 'Departement',
+    'Adresse', 'Ville', 'Code Postal', 'Departement', 'Secteur',
     'Etape Pipeline', 'Score', 'Notes', 'Date Creation',
   ];
 
   const rows = prospects.map(p => [
     p.nom_etablissement, p.type_etablissement, p.nom_contact,
     p.telephone, p.email, p.adresse, p.ville, p.code_postal,
-    p.departement, p.etape_pipeline, p.score.toString(), p.notes,
+    p.departement, p.secteur || '', p.etape_pipeline, p.score.toString(), p.notes,
     formatDate(p.date_creation),
   ]);
 

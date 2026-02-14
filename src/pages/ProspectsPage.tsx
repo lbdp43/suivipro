@@ -21,23 +21,29 @@ export default function ProspectsPage() {
   const [filterStage, setFilterStage] = useState<PipelineStage | ''>('');
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
+  const [filterSecteur, setFilterSecteur] = useState('');
+
+  // Get unique sectors for filter
+  const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
 
   const filteredProspects = useMemo(() => {
     return state.prospects.filter(p => {
       if (filterType && p.type_etablissement !== filterType) return false;
       if (filterStage && p.etape_pipeline !== filterStage) return false;
+      if (filterSecteur && p.secteur !== filterSecteur) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
           p.nom_etablissement.toLowerCase().includes(term) ||
           p.nom_contact.toLowerCase().includes(term) ||
           p.ville.toLowerCase().includes(term) ||
-          p.telephone.includes(term)
+          p.telephone.includes(term) ||
+          (p.secteur || '').toLowerCase().includes(term)
         );
       }
       return true;
     }).sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterType, filterStage, searchTerm]);
+  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm]);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
@@ -50,7 +56,7 @@ export default function ProspectsPage() {
     setFormData({
       nom_etablissement: '', type_etablissement: 'bar_restaurant', nom_contact: '',
       telephone: '', email: '', adresse: '', ville: '', code_postal: '', departement: '',
-      latitude: 45.3, longitude: 4.27, etape_pipeline: 'nouveau', tags: [],
+      secteur: '', latitude: 45.3, longitude: 4.27, etape_pipeline: 'nouveau', tags: [],
       commercial_id: state.currentUser?.id || 'com-1', notes: '', score: 50,
     });
     setEditingProspect(null);
@@ -137,6 +143,18 @@ export default function ProspectsPage() {
                 <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>
               ))}
             </select>
+            {allSecteurs.length > 0 && (
+              <select
+                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
+                value={filterSecteur}
+                onChange={e => setFilterSecteur(e.target.value)}
+              >
+                <option value="">Tous secteurs</option>
+                {allSecteurs.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            )}
           </div>
           <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
         </div>
@@ -156,7 +174,7 @@ export default function ProspectsPage() {
                   <h3 className="font-medium text-sm text-gray-900 truncate">{p.nom_etablissement}</h3>
                   <p className="text-[10px] text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
                   <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
-                    <MapPin className="w-3 h-3" /> {p.ville}
+                    <MapPin className="w-3 h-3" /> {p.ville || p.adresse}{p.secteur ? ` - ${p.secteur}` : ''}
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
@@ -248,7 +266,9 @@ export default function ProspectsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Tag className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-600">{selectedProspect.departement}</span>
+                  <span className="text-gray-600">
+                    {selectedProspect.secteur ? `Secteur: ${selectedProspect.secteur}` : selectedProspect.departement}
+                  </span>
                 </div>
               </div>
 
@@ -409,6 +429,23 @@ export default function ProspectsPage() {
                   <label className="block text-xs font-medium text-gray-600 mb-1">Departement</label>
                   <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.departement || ''} onChange={e => setFormData(prev => ({ ...prev, departement: e.target.value }))} />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Secteur</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={formData.secteur || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, secteur: e.target.value }))}
+                  placeholder="Ex: Loire, Haute-Loire..."
+                  list="form-secteurs-list"
+                />
+                {allSecteurs.length > 0 && (
+                  <datalist id="form-secteurs-list">
+                    {allSecteurs.map(s => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Tags</label>

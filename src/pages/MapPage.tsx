@@ -22,26 +22,36 @@ export default function MapPage() {
   const [selectedTypes, setSelectedTypes] = useState<EstablishmentType[]>([]);
   const [selectedStages, setSelectedStages] = useState<PipelineStage[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedSecteurs, setSelectedSecteurs] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Extract unique sectors
+  const allSecteurs = useMemo(() => {
+    return [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
+  }, [state.prospects]);
+
   const filteredProspects = useMemo(() => {
     return state.prospects.filter(p => {
+      // Only show prospects with valid coordinates
+      if (!p.latitude || !p.longitude) return false;
       if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
+      if (selectedSecteurs.length > 0 && !selectedSecteurs.includes(p.secteur)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
           p.nom_etablissement.toLowerCase().includes(term) ||
           p.ville.toLowerCase().includes(term) ||
           p.departement.toLowerCase().includes(term) ||
-          p.nom_contact.toLowerCase().includes(term)
+          p.nom_contact.toLowerCase().includes(term) ||
+          (p.secteur || '').toLowerCase().includes(term)
         );
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, searchTerm]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, searchTerm]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -61,6 +71,14 @@ export default function MapPage() {
     );
   };
 
+  const toggleSecteur = (secteur: string) => {
+    setSelectedSecteurs(prev =>
+      prev.includes(secteur) ? prev.filter(s => s !== secteur) : [...prev, secteur]
+    );
+  };
+
+  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length;
+
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
 
@@ -72,7 +90,7 @@ export default function MapPage() {
           <div className="flex-1">
             <input
               type="text"
-              placeholder="Rechercher un prospect, une ville..."
+              placeholder="Rechercher un prospect, une ville, un secteur..."
               className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -86,9 +104,9 @@ export default function MapPage() {
           >
             <Filter className="w-4 h-4" />
             Filtres
-            {(selectedTypes.length + selectedStages.length + selectedTags.length) > 0 && (
+            {activeFilterCount > 0 && (
               <span className="bg-white text-brewery-600 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {selectedTypes.length + selectedStages.length + selectedTags.length}
+                {activeFilterCount}
               </span>
             )}
           </button>
@@ -100,6 +118,28 @@ export default function MapPage() {
         {/* Filter panels */}
         {showFilters && (
           <div className="space-y-3 pt-2 border-t border-gray-100 fade-in">
+            {/* Sector filters */}
+            {allSecteurs.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Secteur</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {allSecteurs.map(secteur => (
+                    <button
+                      key={secteur}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        selectedSecteurs.includes(secteur)
+                          ? 'bg-brewery-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      onClick={() => toggleSecteur(secteur)}
+                    >
+                      {secteur}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Type filters */}
             <div>
               <p className="text-xs font-medium text-gray-500 mb-1.5">Type d'etablissement</p>
@@ -162,10 +202,10 @@ export default function MapPage() {
               </div>
             </div>
 
-            {(selectedTypes.length + selectedStages.length + selectedTags.length) > 0 && (
+            {activeFilterCount > 0 && (
               <button
                 className="text-xs text-red-500 hover:text-red-700 font-medium"
-                onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); }}
+                onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); }}
               >
                 Reinitialiser les filtres
               </button>
@@ -198,13 +238,19 @@ export default function MapPage() {
                 <Popup>
                   <div className="min-w-[200px]">
                     <h3 className="font-bold text-gray-900 text-sm">{prospect.nom_etablissement}</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">{ESTABLISHMENT_LABELS[prospect.type_etablissement]}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {ESTABLISHMENT_LABELS[prospect.type_etablissement]}
+                      {prospect.secteur && <span> - Secteur: {prospect.secteur}</span>}
+                    </p>
                     <div className="mt-2 space-y-1 text-xs text-gray-600">
-                      <p className="flex items-center gap-1"><MapPin className="w-3 h-3" />{prospect.adresse}, {prospect.ville}</p>
-                      <p className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.telephone}</p>
+                      <p className="flex items-center gap-1"><MapPin className="w-3 h-3" />{prospect.adresse}{prospect.ville ? `, ${prospect.ville}` : ''}</p>
+                      {prospect.telephone && <p className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.telephone}</p>}
                       {prospect.email && <p className="flex items-center gap-1"><Mail className="w-3 h-3" />{prospect.email}</p>}
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
+                    {prospect.nom_contact && (
+                      <p className="mt-1 text-xs text-gray-500">Contact: {prospect.nom_contact}</p>
+                    )}
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <span
                         className="badge text-white text-[10px]"
                         style={{ backgroundColor: PIPELINE_COLORS[prospect.etape_pipeline] }}
@@ -221,12 +267,14 @@ export default function MapPage() {
                       })}
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <a
-                        href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
-                        className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] font-medium hover:bg-green-600"
-                      >
-                        <Phone className="w-3 h-3" /> Appeler
-                      </a>
+                      {prospect.telephone && (
+                        <a
+                          href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
+                          className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] font-medium hover:bg-green-600"
+                        >
+                          <Phone className="w-3 h-3" /> Appeler
+                        </a>
+                      )}
                       <Link
                         to={`/prospects?id=${prospect.id}`}
                         className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white rounded text-[10px] font-medium hover:bg-blue-600"

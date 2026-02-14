@@ -1,15 +1,18 @@
 import { useState, useRef } from 'react';
 import {
-  Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X,
+  Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, Loader2, MapPin,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Prospect, EstablishmentType, PipelineStage } from '../types';
-import { generateId, exportProspectsCSV } from '../utils/helpers';
+import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 
 export default function ImportPage() {
   const { state, dispatch } = useApp();
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; geocoded: number } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeProgress, setGeocodeProgress] = useState({ done: 0, total: 0 });
+  const [importSecteur, setImportSecteur] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportCSV = () => {
@@ -29,6 +32,7 @@ export default function ImportPage() {
         'Ville': p.ville,
         'Code Postal': p.code_postal,
         'Departement': p.departement,
+        'Secteur': p.secteur || '',
         'Latitude': p.latitude,
         'Longitude': p.longitude,
         'Etape': p.etape_pipeline,
@@ -49,8 +53,10 @@ export default function ImportPage() {
     if (!file) return;
 
     setImporting(true);
+    setImportResults(null);
     const errors: string[] = [];
     let success = 0;
+    let geocoded = 0;
 
     try {
       const XLSX = await import('xlsx');
@@ -59,48 +65,103 @@ export default function ImportPage() {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
 
-      const validTypes: EstablishmentType[] = ['bar_restaurant', 'cave', 'epicerie', 'supermarche', 'marche', 'distributeur', 'hotel', 'autre'];
-      const validStages: PipelineStage[] = ['nouveau', 'a_contacter', 'contacte', 'rdv_pris', 'proposition', 'negociation', 'gagne', 'perdu'];
+      if (rows.length === 0) {
+        errors.push('Le fichier est vide');
+        setImportResults({ success: 0, errors, geocoded: 0 });
+        setImporting(false);
+        return;
+      }
 
-      const newProspects: Prospect[] = [];
-      const now = new Date().toISOString();
+      // Parse rows with flexible column names
+      const parsed: { nom: string; contact: string; telephone: string; adresse: string; notes: string; index: number }[] = [];
 
       rows.forEach((row, index) => {
-        const nom = row['Etablissement'] || row['nom_etablissement'] || row['Nom'];
-        if (!nom) {
+        const nom = row['Etablissement'] || row['etablissement'] || row['Nom'] || row['nom'] || row['nom_etablissement'] || '';
+        if (!String(nom).trim()) {
           errors.push(`Ligne ${index + 2}: Nom d'etablissement manquant`);
           return;
         }
+        const nomStr = String(nom).trim();
 
-        // Check for duplicates
-        if (state.prospects.some(p => p.nom_etablissement.toLowerCase() === String(nom).toLowerCase())) {
-          errors.push(`Ligne ${index + 2}: "${nom}" existe deja`);
+        if (state.prospects.some(p => p.nom_etablissement.toLowerCase() === nomStr.toLowerCase())) {
+          errors.push(`Ligne ${index + 2}: "${nomStr}" existe deja`);
           return;
         }
 
-        const type = (row['Type'] || row['type_etablissement'] || 'autre') as string;
-        const etape = (row['Etape'] || row['etape_pipeline'] || 'nouveau') as string;
+        const contact = String(
+          row['Nom/Prenom'] || row['Nom/prenom'] || row['nom/prenom'] ||
+          row['Nom Prenom'] || row['nom prenom'] ||
+          row['Contact'] || row['contact'] ||
+          row['Nom Contact'] || row['nom_contact'] || ''
+        ).trim();
+
+        const telephone = String(
+          row['Telephone'] || row['telephone'] || row['Tel'] || row['tel'] ||
+          row['Numero'] || row['numero'] || row['Numero de telephone'] || ''
+        ).trim();
+
+        const adresse = String(
+          row['Adresse'] || row['adresse'] || row['Adresse complete'] || ''
+        ).trim();
+
+        const notes = String(
+          row['Notes'] || row['notes'] || row['Notes/qualite'] || row['notes/qualite'] ||
+          row['Qualite'] || row['qualite'] || row['Notes/Qualite'] || ''
+        ).trim();
+
+        parsed.push({ nom: nomStr, contact, telephone, adresse, notes, index });
+      });
+
+      if (parsed.length === 0) {
+        setImportResults({ success: 0, errors, geocoded: 0 });
+        setImporting(false);
+        return;
+      }
+
+      // Geocode all addresses
+      const addresses = parsed.map(p => p.adresse).filter(a => a.length > 0);
+      let geoResults: (Awaited<ReturnType<typeof geocodeBatch>>[number])[] = [];
+
+      if (addresses.length > 0) {
+        setGeocoding(true);
+        setGeocodeProgress({ done: 0, total: parsed.length });
+
+        const allAddresses = parsed.map(p => p.adresse);
+        geoResults = await geocodeBatch(allAddresses, (done, total) => {
+          setGeocodeProgress({ done, total });
+        });
+        setGeocoding(false);
+      }
+
+      // Build prospects
+      const now = new Date().toISOString();
+      const newProspects: Prospect[] = [];
+
+      parsed.forEach((row, i) => {
+        const geo = geoResults[i];
+        if (geo) geocoded++;
 
         newProspects.push({
           id: generateId('p'),
-          nom_etablissement: String(nom),
-          type_etablissement: validTypes.includes(type as EstablishmentType) ? type as EstablishmentType : 'autre',
-          nom_contact: String(row['Contact'] || row['nom_contact'] || ''),
-          telephone: String(row['Telephone'] || row['telephone'] || ''),
-          email: String(row['Email'] || row['email'] || ''),
-          adresse: String(row['Adresse'] || row['adresse'] || ''),
-          ville: String(row['Ville'] || row['ville'] || ''),
-          code_postal: String(row['Code Postal'] || row['code_postal'] || ''),
-          departement: String(row['Departement'] || row['departement'] || ''),
-          latitude: parseFloat(row['Latitude'] || row['latitude']) || 45.3,
-          longitude: parseFloat(row['Longitude'] || row['longitude']) || 4.27,
-          etape_pipeline: validStages.includes(etape as PipelineStage) ? etape as PipelineStage : 'nouveau',
+          nom_etablissement: row.nom,
+          type_etablissement: 'autre' as EstablishmentType,
+          nom_contact: row.contact,
+          telephone: row.telephone,
+          email: '',
+          adresse: row.adresse,
+          ville: geo?.ville || '',
+          code_postal: geo?.code_postal || '',
+          departement: geo?.departement || '',
+          secteur: importSecteur,
+          latitude: geo?.latitude || 0,
+          longitude: geo?.longitude || 0,
+          etape_pipeline: 'nouveau' as PipelineStage,
           tags: [],
           commercial_id: state.currentUser?.id || 'com-1',
-          notes: String(row['Notes'] || row['notes'] || ''),
+          notes: row.notes,
           date_creation: now,
           date_modification: now,
-          score: parseInt(row['Score'] || row['score']) || 50,
+          score: 50,
         });
         success++;
       });
@@ -112,10 +173,10 @@ export default function ImportPage() {
       errors.push('Erreur de lecture du fichier. Verifiez le format (Excel .xlsx ou .csv).');
     }
 
-    setImportResults({ success, errors });
+    setImportResults({ success, errors, geocoded });
     setImporting(false);
+    setGeocoding(false);
 
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -124,19 +185,10 @@ export default function ImportPage() {
       const XLSX = await import('xlsx');
       const template = [{
         'Etablissement': 'Exemple Cafe',
-        'Type': 'bar_restaurant',
-        'Contact': 'Jean Dupont',
+        'Nom/Prenom': 'Jean Dupont',
         'Telephone': '04 71 00 00 00',
-        'Email': 'contact@exemple.fr',
-        'Adresse': '1 Rue Exemple',
-        'Ville': 'Saint-Etienne',
-        'Code Postal': '42000',
-        'Departement': 'Loire',
-        'Latitude': 45.44,
-        'Longitude': 4.39,
-        'Etape': 'nouveau',
-        'Score': 50,
-        'Notes': 'Notes ici',
+        'Adresse': '1 Rue Exemple, 42000 Saint-Etienne',
+        'Notes/qualite': 'Notes ici',
       }];
       const ws = XLSX.utils.json_to_sheet(template);
       const wb = XLSX.utils.book_new();
@@ -146,6 +198,9 @@ export default function ImportPage() {
       alert('Erreur lors de la creation du template');
     }
   };
+
+  // Get unique sectors for suggestions
+  const existingSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))];
 
   return (
     <div className="p-6 space-y-6 fade-in">
@@ -179,25 +234,65 @@ export default function ImportPage() {
         <h3 className="font-semibold text-gray-900 mb-1">Importer des prospects</h3>
         <p className="text-sm text-gray-500 mb-4">Importez depuis un fichier Excel ou CSV</p>
 
-        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-brewery-500 transition-colors">
-          <Upload className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-gray-600 mb-3">
-            Glissez un fichier ou cliquez pour selectionner
-          </p>
+        {/* Sector selection before import */}
+        <div className="mb-4 p-4 bg-brewery-50 rounded-lg border border-brewery-200">
+          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-brewery-600" />
+            Secteur pour cet import
+          </label>
           <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleImport}
+            type="text"
+            placeholder="Ex: Loire, Haute-Loire, Rhone..."
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+            value={importSecteur}
+            onChange={e => setImportSecteur(e.target.value)}
+            list="secteurs-list"
           />
-          <button
-            className="px-4 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm font-medium"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-          >
-            {importing ? 'Import en cours...' : 'Choisir un fichier'}
-          </button>
+          {existingSecteurs.length > 0 && (
+            <datalist id="secteurs-list">
+              {existingSecteurs.map(s => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          )}
+          <p className="text-xs text-gray-500 mt-1">Tous les prospects importes seront assignes a ce secteur</p>
+        </div>
+
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-brewery-500 transition-colors">
+          {geocoding ? (
+            <div className="space-y-3">
+              <Loader2 className="w-10 h-10 text-brewery-500 mx-auto animate-spin" />
+              <p className="text-sm font-medium text-gray-700">Geocodage des adresses en cours...</p>
+              <div className="w-64 mx-auto bg-gray-200 rounded-full h-2.5">
+                <div
+                  className="bg-brewery-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${geocodeProgress.total > 0 ? (geocodeProgress.done / geocodeProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">{geocodeProgress.done} / {geocodeProgress.total} adresses traitees</p>
+            </div>
+          ) : (
+            <>
+              <Upload className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-600 mb-3">
+                Glissez un fichier ou cliquez pour selectionner
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImport}
+              />
+              <button
+                className="px-4 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm font-medium"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+              >
+                {importing ? 'Import en cours...' : 'Choisir un fichier'}
+              </button>
+            </>
+          )}
         </div>
 
         <div className="mt-4">
@@ -212,11 +307,9 @@ export default function ImportPage() {
         {/* Validation info */}
         <div className="mt-4 bg-gray-50 rounded-lg p-4 text-xs text-gray-600 space-y-1">
           <p className="font-medium text-gray-700">Colonnes attendues:</p>
-          <p>Etablissement, Type, Contact, Telephone, Email, Adresse, Ville, Code Postal, Departement, Latitude, Longitude, Etape, Score, Notes</p>
-          <p className="mt-2 font-medium text-gray-700">Types valides:</p>
-          <p>bar_restaurant, cave, epicerie, supermarche, marche, distributeur, hotel, autre</p>
-          <p className="mt-2 font-medium text-gray-700">Etapes valides:</p>
-          <p>nouveau, a_contacter, contacte, rdv_pris, proposition, negociation, gagne, perdu</p>
+          <p>Etablissement, Nom/Prenom, Telephone, Adresse, Notes/qualite</p>
+          <p className="mt-2 text-gray-500">Les adresses seront automatiquement geocodees pour la carte (via OpenStreetMap).</p>
+          <p className="text-gray-500">La ville, le code postal et le departement seront remplis automatiquement.</p>
         </div>
       </div>
 
@@ -233,6 +326,18 @@ export default function ImportPage() {
             <div className="flex items-center gap-2 text-green-600 mb-2">
               <CheckCircle className="w-4 h-4" />
               <span className="text-sm font-medium">{importResults.success} prospect(s) importe(s) avec succes</span>
+            </div>
+          )}
+          {importResults.geocoded > 0 && (
+            <div className="flex items-center gap-2 text-blue-600 mb-2">
+              <MapPin className="w-4 h-4" />
+              <span className="text-sm font-medium">{importResults.geocoded} adresse(s) geocodee(s) sur la carte</span>
+            </div>
+          )}
+          {importResults.success > 0 && importResults.geocoded < importResults.success && (
+            <div className="flex items-center gap-2 text-amber-600 mb-2">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm font-medium">{importResults.success - importResults.geocoded} adresse(s) non trouvee(s) - verifiez les adresses</span>
             </div>
           )}
           {importResults.errors.length > 0 && (
