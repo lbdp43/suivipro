@@ -2,27 +2,34 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
-  Bell, Mail, Upload, Settings, Menu, X, Beer, ChevronDown,
+  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/carte', icon: Map, label: 'Carte' },
-  { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
-  { to: '/prospects', icon: Users, label: 'Prospects' },
-  { to: '/appels', icon: Phone, label: 'Appels' },
-  { to: '/rdv', icon: Calendar, label: 'Rendez-vous' },
-  { to: '/rappels', icon: Bell, label: 'Rappels' },
-  { to: '/emails', icon: Mail, label: 'Emails' },
-  { to: '/import', icon: Upload, label: 'Import/Export' },
-  { to: '/admin', icon: Settings, label: 'Administration' },
-];
-
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const activeReminders = state.reminders.filter(r => r.statut === 'actif').length;
+  const isAdmin = state.currentUser?.role === 'admin';
+
+  const navItems = [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: false },
+    { to: '/carte', icon: Map, label: 'Carte', adminOnly: false },
+    { to: '/pipeline', icon: Kanban, label: 'Pipeline', adminOnly: false },
+    { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false },
+    { to: '/appels', icon: Phone, label: 'Appels', adminOnly: false },
+    { to: '/rdv', icon: Calendar, label: 'Rendez-vous', adminOnly: false },
+    { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
+    { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
+    { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: true },
+    { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
+  ];
+
+  const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
+
+  const handleLogout = () => {
+    dispatch({ type: 'SET_CURRENT_USER', payload: null });
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -53,7 +60,7 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {navItems.map(item => (
+          {visibleNavItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -77,22 +84,33 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* User info */}
+        {/* User info + logout */}
         <div className="p-3 border-t border-gray-200">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-brewery-100 flex items-center justify-center">
-              <span className="text-sm font-bold text-brewery-700">
-                {state.currentUser?.prenom?.[0] || 'G'}
-              </span>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+              isAdmin ? 'bg-amber-100' : 'bg-brewery-100'
+            }`}>
+              {isAdmin ? (
+                <Shield className="w-4 h-4 text-amber-700" />
+              ) : (
+                <User className="w-4 h-4 text-brewery-700" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
-                {state.currentUser?.prenom || 'Guillaume'}
+                {state.currentUser?.prenom} {state.currentUser?.nom}
               </p>
               <p className="text-[10px] text-gray-500">
-                {state.currentUser?.role === 'admin' ? 'Administrateur' : 'Commercial'}
+                {isAdmin ? 'Administrateur' : 'Commercial'}
               </p>
             </div>
+            <button
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              onClick={handleLogout}
+              title="Se deconnecter"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -108,24 +126,13 @@ export default function Layout() {
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1" />
-          {/* User selector */}
-          <div className="flex items-center gap-2">
-            <select
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
-              value={state.currentUser?.id || ''}
-              onChange={(e) => {
-                const user = state.commerciaux.find(c => c.id === e.target.value);
-                if (user) {
-                  // dispatch set current user
-                }
-              }}
-            >
-              {state.commerciaux.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.prenom} {c.nom} {c.role === 'admin' ? '(Admin)' : ''}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+              isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+            }`}>
+              {isAdmin ? 'Admin' : 'Commercial'}
+            </div>
+            <span className="font-medium">{state.currentUser?.prenom}</span>
           </div>
         </header>
 

@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import {
   Settings, Users, Target, TrendingUp, Tag, Plus, X, Save, Edit2,
-  Trash2, BarChart3, Phone, Calendar, Award,
+  Trash2, BarChart3, Phone, Calendar, Award, Shield, User, Eye, EyeOff, Key,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Commercial, Tag as TagType } from '../types';
+import { Commercial, Tag as TagType, UserRole } from '../types';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -15,21 +15,105 @@ import { PIPELINE_LABELS, PipelineStage } from '../types';
 
 export default function AdminPage() {
   const { state, dispatch } = useApp();
-  const [activeTab, setActiveTab] = useState<'objectives' | 'tags' | 'commercials'>('objectives');
+  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials'>('team');
+
+  // Tag state
   const [showTagForm, setShowTagForm] = useState(false);
   const [editingTag, setEditingTag] = useState<TagType | null>(null);
   const [tagForm, setTagForm] = useState({ nom: '', couleur: '#22c55e' });
+
+  // Objectives state
   const [editingObjectives, setEditingObjectives] = useState<string | null>(null);
   const [objectivesForm, setObjectivesForm] = useState({ appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 });
 
+  // Team management state
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<Commercial | null>(null);
+  const [userForm, setUserForm] = useState({
+    prenom: '', nom: '', email: '', telephone: '', role: 'commercial' as UserRole, password: '',
+  });
+  const [showPassword, setShowPassword] = useState(false);
+
   const tabs = [
-    { id: 'objectives' as const, label: 'Objectifs & Quotas', icon: Target },
+    { id: 'team' as const, label: 'Equipe', icon: Users },
+    { id: 'objectives' as const, label: 'Objectifs', icon: Target },
     { id: 'tags' as const, label: 'Tags', icon: Tag },
     { id: 'commercials' as const, label: 'Statistiques', icon: BarChart3 },
   ];
 
   // ============================================
-  // Objectives & Quotas tab
+  // Team management
+  // ============================================
+
+  const openNewUser = () => {
+    setUserForm({ prenom: '', nom: '', email: '', telephone: '', role: 'commercial', password: '' });
+    setEditingUser(null);
+    setShowUserForm(true);
+    setShowPassword(false);
+  };
+
+  const openEditUser = (user: Commercial) => {
+    setUserForm({
+      prenom: user.prenom,
+      nom: user.nom,
+      email: user.email,
+      telephone: user.telephone,
+      role: user.role,
+      password: '',
+    });
+    setEditingUser(user);
+    setShowUserForm(true);
+    setShowPassword(false);
+  };
+
+  const saveUser = () => {
+    if (!userForm.prenom || !userForm.email) return;
+
+    if (editingUser) {
+      const updated: Commercial = {
+        ...editingUser,
+        prenom: userForm.prenom,
+        nom: userForm.nom,
+        email: userForm.email,
+        telephone: userForm.telephone,
+        role: userForm.role,
+        password: userForm.password || editingUser.password,
+      };
+      dispatch({ type: 'UPDATE_COMMERCIAL', payload: updated });
+    } else {
+      if (!userForm.password) return;
+      const newUser: Commercial = {
+        id: generateId('com'),
+        prenom: userForm.prenom,
+        nom: userForm.nom,
+        email: userForm.email,
+        telephone: userForm.telephone,
+        role: userForm.role,
+        password: userForm.password,
+        objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+      };
+      dispatch({ type: 'ADD_COMMERCIAL', payload: newUser });
+    }
+    setShowUserForm(false);
+  };
+
+  const deleteUser = (user: Commercial) => {
+    if (user.id === state.currentUser?.id) {
+      alert('Vous ne pouvez pas supprimer votre propre compte.');
+      return;
+    }
+    const adminCount = state.commerciaux.filter(c => c.role === 'admin').length;
+    if (user.role === 'admin' && adminCount <= 1) {
+      alert('Impossible de supprimer le dernier administrateur.');
+      return;
+    }
+    if (confirm(`Supprimer ${user.prenom} ${user.nom} ? Cette action est irreversible.`)) {
+      dispatch({ type: 'DELETE_COMMERCIAL', payload: user.id });
+    }
+  };
+
+  // ============================================
+  // Objectives
   // ============================================
 
   const startEditObjectives = (commercial: Commercial) => {
@@ -103,12 +187,6 @@ export default function AdminPage() {
       const callsProgress = commercial.objectifs.appels_semaine > 0 ? Math.round((weekCalls / commercial.objectifs.appels_semaine) * 100) : 0;
       const rdvProgress = commercial.objectifs.rdv_mois > 0 ? Math.round((monthRdv / commercial.objectifs.rdv_mois) * 100) : 0;
 
-      // Prospects by stage
-      const prospectsByStage = (Object.keys(PIPELINE_LABELS) as PipelineStage[]).reduce((acc, stage) => {
-        acc[stage] = comProspects.filter(p => p.etape_pipeline === stage).length;
-        return acc;
-      }, {} as Record<PipelineStage, number>);
-
       return {
         commercial,
         weekCalls,
@@ -122,7 +200,6 @@ export default function AdminPage() {
         callsProgress,
         rdvProgress,
         totalProspects: comProspects.length,
-        prospectsByStage,
       };
     });
   }, [state]);
@@ -140,11 +217,11 @@ export default function AdminPage() {
     <div className="p-6 space-y-6 fade-in">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Administration</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Gestion des objectifs, tags et statistiques</p>
+        <p className="text-sm text-gray-500 mt-0.5">Gestion de l'equipe, objectifs, tags et statistiques</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -158,7 +235,197 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {/* Objectives & Quotas */}
+      {/* ============================================ */}
+      {/* TEAM TAB */}
+      {/* ============================================ */}
+      {activeTab === 'team' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900">Membres de l'equipe</h3>
+              <p className="text-xs text-gray-500">{state.commerciaux.length} utilisateur(s)</p>
+            </div>
+            <button
+              className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
+              onClick={openNewUser}
+            >
+              <Plus className="w-4 h-4" /> Ajouter un membre
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {state.commerciaux.map(user => (
+              <div key={user.id} className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-start gap-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
+                    user.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {user.prenom[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-gray-900">{user.prenom} {user.nom}</h4>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {user.role === 'admin' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                          <Shield className="w-3 h-3" /> Administrateur
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
+                          <User className="w-3 h-3" /> Commercial
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">{user.email}</p>
+                    <p className="text-xs text-gray-500">{user.telephone}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+                  <button
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    onClick={() => openEditUser(user)}
+                  >
+                    <Edit2 className="w-3 h-3" /> Modifier
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                    onClick={() => deleteUser(user)}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* User form modal */}
+          {showUserForm && (
+            <div className="modal-backdrop" onClick={() => setShowUserForm(false)}>
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+                <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900">
+                    {editingUser ? `Modifier ${editingUser.prenom}` : 'Nouveau membre'}
+                  </h3>
+                  <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowUserForm(false)}>
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Prenom *</label>
+                      <input
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        value={userForm.prenom}
+                        onChange={e => setUserForm(prev => ({ ...prev, prenom: e.target.value }))}
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Nom</label>
+                      <input
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        value={userForm.nom}
+                        onChange={e => setUserForm(prev => ({ ...prev, nom: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      placeholder="prenom@labrasseriedesplantes.fr"
+                      value={userForm.email}
+                      onChange={e => setUserForm(prev => ({ ...prev, email: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
+                    <input
+                      type="tel"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      placeholder="06 00 00 00 00"
+                      value={userForm.telephone}
+                      onChange={e => setUserForm(prev => ({ ...prev, telephone: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
+                          userForm.role === 'admin'
+                            ? 'border-amber-500 bg-amber-50 text-amber-700'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                        onClick={() => setUserForm(prev => ({ ...prev, role: 'admin' }))}
+                      >
+                        <Shield className="w-4 h-4" /> Administrateur
+                      </button>
+                      <button
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
+                          userForm.role === 'commercial'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                        onClick={() => setUserForm(prev => ({ ...prev, role: 'commercial' }))}
+                      >
+                        <User className="w-4 h-4" /> Commercial
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <Key className="w-3 h-3" />
+                      {editingUser ? 'Nouveau mot de passe (laisser vide pour ne pas changer)' : 'Mot de passe *'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm pr-10"
+                        placeholder={editingUser ? 'Nouveau mot de passe...' : 'Mot de passe...'}
+                        value={userForm.password}
+                        onChange={e => setUserForm(prev => ({ ...prev, password: e.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+                  <button
+                    className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                    onClick={() => setShowUserForm(false)}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
+                    onClick={saveUser}
+                  >
+                    <Save className="w-4 h-4" /> {editingUser ? 'Modifier' : 'Creer'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============================================ */}
+      {/* OBJECTIVES TAB */}
+      {/* ============================================ */}
       {activeTab === 'objectives' && (
         <div className="space-y-4">
           {state.commerciaux.map(commercial => {
@@ -168,7 +435,9 @@ export default function AdminPage() {
               <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-brewery-100 flex items-center justify-center text-lg font-bold text-brewery-700">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
+                      commercial.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
                       {commercial.prenom[0]}
                     </div>
                     <div>
@@ -191,7 +460,6 @@ export default function AdminPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Appels / semaine */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">Appels / semaine</span>
@@ -210,7 +478,6 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {/* RDV / mois */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">RDV / mois</span>
@@ -229,7 +496,6 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {/* Prospects / mois */}
                   <div className="space-y-2">
                     <span className="text-xs text-gray-500">Prospects</span>
                     {isEditing ? (
@@ -239,7 +505,6 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {/* Taux conversion */}
                   <div className="space-y-2">
                     <span className="text-xs text-gray-500">Objectif conversion</span>
                     {isEditing ? (
@@ -258,7 +523,9 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Tags management */}
+      {/* ============================================ */}
+      {/* TAGS TAB */}
+      {/* ============================================ */}
       {activeTab === 'tags' && (
         <div className="space-y-4">
           <div className="flex justify-end">
@@ -293,7 +560,6 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Tag form modal */}
           {showTagForm && (
             <div className="modal-backdrop" onClick={() => setShowTagForm(false)}>
               <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
@@ -339,13 +605,17 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Commercial statistics */}
+      {/* ============================================ */}
+      {/* STATISTICS TAB */}
+      {/* ============================================ */}
       {activeTab === 'commercials' && (
         <div className="space-y-6">
           {commercialStats.map(stats => (
             <div key={stats.commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-brewery-100 flex items-center justify-center text-xl font-bold text-brewery-700">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${
+                  stats.commercial.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                }`}>
                   {stats.commercial.prenom[0]}
                 </div>
                 <div>

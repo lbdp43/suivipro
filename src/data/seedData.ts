@@ -16,6 +16,7 @@ export function getSeedData() {
       email: 'guillaume@labrasseriedesplantes.fr',
       telephone: '06 84 44 40 44',
       role: 'admin',
+      password: 'admin123',
       objectifs: { appels_semaine: 30, rdv_mois: 15, prospects_mois: 40, taux_conversion: 25 },
     },
     {
@@ -25,6 +26,7 @@ export function getSeedData() {
       email: 'louis@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 01',
       role: 'commercial',
+      password: 'louis123',
       objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
     },
     {
@@ -34,6 +36,7 @@ export function getSeedData() {
       email: 'lucas@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 02',
       role: 'commercial',
+      password: 'lucas123',
       objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
     },
   ];

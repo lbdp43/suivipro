@@ -155,6 +155,7 @@ export interface Commercial {
   email: string;
   telephone: string;
   role: UserRole;
+  password: string;
   objectifs: {
     appels_semaine: number;
     rdv_mois: number;

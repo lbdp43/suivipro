@@ -1,5 +1,7 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useApp } from './store/AppContext';
 import Layout from './components/Layout';
+import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MapPage from './pages/MapPage';
 import PipelinePage from './pages/PipelinePage';
@@ -11,7 +13,21 @@ import EmailsPage from './pages/EmailsPage';
 import ImportPage from './pages/ImportPage';
 import AdminPage from './pages/AdminPage';
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { state } = useApp();
+  if (state.currentUser?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
+  const { state } = useApp();
+
+  if (!state.currentUser) {
+    return <LoginPage />;
+  }
+
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -23,8 +39,8 @@ export default function App() {
         <Route path="/rdv" element={<AppointmentsPage />} />
         <Route path="/rappels" element={<RemindersPage />} />
         <Route path="/emails" element={<EmailsPage />} />
-        <Route path="/import" element={<ImportPage />} />
-        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/import" element={<AdminRoute><ImportPage /></AdminRoute>} />
+        <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
       </Route>
     </Routes>
   );

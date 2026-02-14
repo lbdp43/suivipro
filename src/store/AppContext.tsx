@@ -29,7 +29,9 @@ type Action =
   | { type: 'UPDATE_EMAIL_TEMPLATE'; payload: EmailTemplate }
   | { type: 'DELETE_EMAIL_TEMPLATE'; payload: string }
   | { type: 'UPDATE_COMMERCIAL'; payload: Commercial }
-  | { type: 'SET_CURRENT_USER'; payload: Commercial }
+  | { type: 'ADD_COMMERCIAL'; payload: Commercial }
+  | { type: 'DELETE_COMMERCIAL'; payload: string }
+  | { type: 'SET_CURRENT_USER'; payload: Commercial | null }
   | { type: 'IMPORT_PROSPECTS'; payload: Prospect[] }
   | { type: 'UPDATE_PIPELINE_COLUMN'; payload: PipelineColumn }
   | { type: 'DELETE_PIPELINE_COLUMN'; payload: string }
@@ -82,6 +84,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, emailTemplates: state.emailTemplates.filter(e => e.id !== action.payload) };
     case 'UPDATE_COMMERCIAL':
       return { ...state, commerciaux: state.commerciaux.map(c => c.id === action.payload.id ? action.payload : c) };
+    case 'ADD_COMMERCIAL':
+      return { ...state, commerciaux: [...state.commerciaux, action.payload] };
+    case 'DELETE_COMMERCIAL':
+      return { ...state, commerciaux: state.commerciaux.filter(c => c.id !== action.payload) };
     case 'SET_CURRENT_USER':
       return { ...state, currentUser: action.payload };
     case 'IMPORT_PROSPECTS':
@@ -168,11 +174,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const savedState = loadState();
   const seedData = getSeedData();
 
-  const initialState: AppState = savedState || {
-    ...seedData,
-    pipelineColumns: defaultPipelineColumns,
-    currentUser: seedData.commerciaux[0], // Guillaume as default admin
+  // Migrate older state: add password field if missing, force re-login
+  const migrateState = (s: AppState): AppState => {
+    const updated = {
+      ...s,
+      commerciaux: s.commerciaux.map(c => ({
+        ...c,
+        password: c.password || (c.prenom.toLowerCase() + '123'),
+      })),
+      pipelineColumns: s.pipelineColumns || defaultPipelineColumns,
+    };
+    if (updated.currentUser && !updated.currentUser.password) {
+      updated.currentUser = null;
+    }
+    return updated;
   };
+
+  const initialState: AppState = savedState
+    ? migrateState(savedState)
+    : {
+        ...seedData,
+        pipelineColumns: defaultPipelineColumns,
+        currentUser: null,
+      };
 
   const [state, dispatch] = useReducer(reducer, initialState);
 
