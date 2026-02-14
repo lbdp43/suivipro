@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check,
-  AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid,
+  AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS } from '../types';
@@ -19,6 +19,10 @@ export default function AppointmentsPage() {
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
   const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda'>('rdv_view', 'list');
   const [weekOffset, setWeekOffset] = useState(0);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDateFrom, setExportDateFrom] = useState('');
+  const [exportDateTo, setExportDateTo] = useState('');
+  const [exportCommercial, setExportCommercial] = useState('');
 
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -119,14 +123,31 @@ export default function AppointmentsPage() {
     }
   };
 
-  // Export ICS de la selection filtree (uniquement les a venir)
-  const exportFilteredICS = () => {
-    const toExport = upcoming.filter(a => a.statut !== 'annule');
-    if (toExport.length === 0) return;
-    const commercial = filterCommercial
-      ? state.commerciaux.find(c => c.id === filterCommercial)
+  // Ouvrir la modale d'export avec les filtres pre-remplis
+  const openExportModal = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setExportDateFrom(today);
+    setExportDateTo('');
+    setExportCommercial(filterCommercial || '');
+    setShowExportModal(true);
+  };
+
+  // RDV correspondant aux criteres d'export
+  const exportPreview = useMemo(() => {
+    let list = state.appointments.filter(a => a.statut !== 'annule');
+    if (exportCommercial) list = list.filter(a => a.commercial_id === exportCommercial);
+    if (exportDateFrom) list = list.filter(a => a.date >= exportDateFrom);
+    if (exportDateTo) list = list.filter(a => a.date <= exportDateTo);
+    return list.sort((a, b) => a.date.localeCompare(b.date));
+  }, [state.appointments, exportCommercial, exportDateFrom, exportDateTo]);
+
+  const executeExportICS = () => {
+    if (exportPreview.length === 0) return;
+    const commercial = exportCommercial
+      ? state.commerciaux.find(c => c.id === exportCommercial)
       : undefined;
-    downloadICSBatch(toExport, getProspect, commercial ? `${commercial.prenom}-${commercial.nom}` : undefined);
+    downloadICSBatch(exportPreview, getProspect, commercial ? `${commercial.prenom}-${commercial.nom}` : undefined);
+    setShowExportModal(false);
   };
 
   const statusColors: Record<AppointmentStatus, string> = {
@@ -242,16 +263,14 @@ export default function AppointmentsPage() {
               <LayoutGrid className="w-3.5 h-3.5" /> Agenda
             </button>
           </div>
-          {upcoming.length > 0 && (
-            <button
-              className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
-              onClick={exportFilteredICS}
-              title="Ajouter a l'agenda"
-            >
-              <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Agenda</span> ({upcoming.length})
-            </button>
-          )}
+          <button
+            className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
+            onClick={openExportModal}
+            title="Exporter vers Google Agenda"
+          >
+            <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Export Agenda</span>
+          </button>
           <button
             className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
             onClick={openNewForm}
@@ -399,6 +418,108 @@ export default function AppointmentsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Export modal */}
+      {showExportModal && (
+        <div className="modal-backdrop" onClick={() => setShowExportModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <CalendarPlus className="w-5 h-5 text-blue-600" /> Export Google Agenda
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowExportModal(false)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Periode */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Periode</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-gray-400 mb-1">Du</label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      value={exportDateFrom}
+                      onChange={e => setExportDateFrom(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-400 mb-1">Au</label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      value={exportDateTo}
+                      onChange={e => setExportDateTo(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Commercial */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" /> Commercial
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={exportCommercial}
+                  onChange={e => setExportCommercial(e.target.value)}
+                >
+                  <option value="">Tous les commerciaux</option>
+                  {state.commerciaux.map(c => (
+                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Apercu */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-medium text-gray-700 mb-2">
+                  {exportPreview.length} rendez-vous a exporter
+                </p>
+                {exportPreview.length > 0 ? (
+                  <div className="max-h-40 overflow-y-auto space-y-1.5">
+                    {exportPreview.map(rdv => {
+                      const prospect = getProspect(rdv.prospect_id);
+                      const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
+                      return (
+                        <div key={rdv.id} className="flex items-center justify-between text-[11px] text-gray-600 bg-white rounded px-2 py-1.5">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium">{prospect?.nom_etablissement || 'Inconnu'}</span>
+                            <span className="text-gray-400 ml-1.5">{commercial?.prenom}</span>
+                          </div>
+                          <span className="text-gray-400 whitespace-nowrap ml-2">
+                            {formatDate(rdv.date)} {rdv.heure_debut}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-gray-400 italic">Aucun RDV sur cette periode</p>
+                )}
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setShowExportModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={executeExportICS}
+                disabled={exportPreview.length === 0}
+              >
+                <Download className="w-4 h-4" /> Exporter ({exportPreview.length})
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Form modal */}
