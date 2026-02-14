@@ -30,7 +30,10 @@ type Action =
   | { type: 'DELETE_EMAIL_TEMPLATE'; payload: string }
   | { type: 'UPDATE_COMMERCIAL'; payload: Commercial }
   | { type: 'SET_CURRENT_USER'; payload: Commercial }
-  | { type: 'IMPORT_PROSPECTS'; payload: Prospect[] };
+  | { type: 'IMPORT_PROSPECTS'; payload: Prospect[] }
+  | { type: 'UPDATE_PIPELINE_COLUMN'; payload: PipelineColumn }
+  | { type: 'DELETE_PIPELINE_COLUMN'; payload: string }
+  | { type: 'ADD_PIPELINE_COLUMN'; payload: PipelineColumn };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -83,6 +86,12 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentUser: action.payload };
     case 'IMPORT_PROSPECTS':
       return { ...state, prospects: [...state.prospects, ...action.payload] };
+    case 'UPDATE_PIPELINE_COLUMN':
+      return { ...state, pipelineColumns: state.pipelineColumns.map(c => c.id === action.payload.id ? action.payload : c) };
+    case 'DELETE_PIPELINE_COLUMN':
+      return { ...state, pipelineColumns: state.pipelineColumns.filter(c => c.id !== action.payload) };
+    case 'ADD_PIPELINE_COLUMN':
+      return { ...state, pipelineColumns: [...state.pipelineColumns, action.payload] };
     default:
       return state;
   }

@@ -1,23 +1,36 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, MapPin, GripVertical, Eye } from 'lucide-react';
+import { Phone, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, Prospect } from '../types';
+import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
   const { state, dispatch } = useApp();
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverColumn, setDragOverColumn] = useState<PipelineStage | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [editingColumn, setEditingColumn] = useState<PipelineColumn | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newColor, setNewColor] = useState('#6b7280');
 
-  const stages = Object.keys(PIPELINE_LABELS) as PipelineStage[];
+  const columns = state.pipelineColumns;
 
   const prospectsByStage = useMemo(() => {
-    const map: Record<PipelineStage, Prospect[]> = {} as any;
-    for (const stage of stages) {
-      map[stage] = state.prospects.filter(p => p.etape_pipeline === stage);
+    const map: Record<string, Prospect[]> = {};
+    for (const col of columns) {
+      map[col.id] = state.prospects.filter(p => p.etape_pipeline === col.id);
+    }
+    // Also count prospects in stages not in columns (orphaned)
+    const columnIds = new Set(columns.map(c => c.id));
+    const orphaned = state.prospects.filter(p => !columnIds.has(p.etape_pipeline));
+    if (orphaned.length > 0) {
+      map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects]);
+  }, [state.prospects, columns]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -25,21 +38,21 @@ export default function PipelinePage() {
     e.dataTransfer.setData('text/plain', prospectId);
   };
 
-  const handleDragOver = (e: DragEvent, stage: PipelineStage) => {
+  const handleDragOver = (e: DragEvent, stageId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverColumn(stage);
+    setDragOverColumn(stageId);
   };
 
   const handleDragLeave = () => {
     setDragOverColumn(null);
   };
 
-  const handleDrop = (e: DragEvent, stage: PipelineStage) => {
+  const handleDrop = (e: DragEvent, stageId: string) => {
     e.preventDefault();
     const prospectId = e.dataTransfer.getData('text/plain');
     if (prospectId) {
-      dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage } });
+      dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
     }
     setDraggedId(null);
     setDragOverColumn(null);
@@ -50,37 +63,206 @@ export default function PipelinePage() {
     setDragOverColumn(null);
   };
 
+  const startEditColumn = (col: PipelineColumn) => {
+    setEditingColumn(col);
+    setEditLabel(col.label);
+    setEditColor(col.color);
+  };
+
+  const saveEditColumn = () => {
+    if (!editingColumn || !editLabel.trim()) return;
+    dispatch({
+      type: 'UPDATE_PIPELINE_COLUMN',
+      payload: { ...editingColumn, label: editLabel.trim(), color: editColor },
+    });
+    setEditingColumn(null);
+  };
+
+  const deleteColumn = (col: PipelineColumn) => {
+    const count = (prospectsByStage[col.id] || []).length;
+    if (count > 0) {
+      alert(`Impossible de supprimer "${col.label}" : ${count} prospect(s) sont encore dans cette etape. Deplacez-les d'abord.`);
+      return;
+    }
+    if (confirm(`Supprimer l'etape "${col.label}" ?`)) {
+      dispatch({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });
+    }
+  };
+
+  const addColumn = () => {
+    if (!newLabel.trim()) return;
+    const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (columns.some(c => c.id === id)) {
+      alert('Une etape avec cet identifiant existe deja');
+      return;
+    }
+    dispatch({
+      type: 'ADD_PIPELINE_COLUMN',
+      payload: { id: id as PipelineStage, label: newLabel.trim(), color: newColor },
+    });
+    setNewLabel('');
+    setNewColor('#6b7280');
+    setShowAddForm(false);
+  };
+
+  const presetColors = [
+    '#6b7280', '#3b82f6', '#8b5cf6', '#f59e0b', '#f97316', '#ef4444', '#22c55e', '#dc2626',
+    '#ec4899', '#14b8a6', '#06b6d4', '#84cc16',
+  ];
+
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 bg-white border-b border-gray-200">
-        <h1 className="text-xl font-bold text-gray-900">Pipeline commercial</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Glissez-deposez les prospects entre les etapes</p>
+      <div className="p-4 bg-white border-b border-gray-200 flex items-center gap-3">
+        <div className="flex-1">
+          <h1 className="text-xl font-bold text-gray-900">Pipeline commercial</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Glissez-deposez les prospects entre les etapes</p>
+        </div>
+        <button
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            showSettings ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+          onClick={() => setShowSettings(!showSettings)}
+        >
+          <Settings className="w-4 h-4" />
+          Gerer les etapes
+        </button>
       </div>
 
+      {/* Settings panel */}
+      {showSettings && (
+        <div className="bg-white border-b border-gray-200 p-4 fade-in">
+          <div className="max-w-3xl mx-auto space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900 text-sm">Etapes du pipeline</h3>
+              <button
+                className="flex items-center gap-1 px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium hover:bg-brewery-700"
+                onClick={() => setShowAddForm(true)}
+              >
+                <Plus className="w-3 h-3" /> Ajouter une etape
+              </button>
+            </div>
+
+            {/* Add form */}
+            {showAddForm && (
+              <div className="flex items-center gap-3 p-3 bg-brewery-50 rounded-lg border border-brewery-200">
+                <input
+                  type="text"
+                  placeholder="Nom de l'etape..."
+                  className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                  value={newLabel}
+                  onChange={e => setNewLabel(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-1">
+                  {presetColors.slice(0, 6).map(c => (
+                    <button
+                      key={c}
+                      className={`w-6 h-6 rounded-full border-2 ${newColor === c ? 'border-gray-900' : 'border-transparent'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setNewColor(c)}
+                    />
+                  ))}
+                </div>
+                <button className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium" onClick={addColumn}>
+                  <Save className="w-3 h-3" />
+                </button>
+                <button className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Existing columns */}
+            <div className="space-y-2">
+              {columns.map(col => {
+                const count = (prospectsByStage[col.id] || []).length;
+                const isEditing = editingColumn?.id === col.id;
+
+                return (
+                  <div key={col.id} className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 bg-white">
+                    <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: col.color }} />
+
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="text"
+                          className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm"
+                          value={editLabel}
+                          onChange={e => setEditLabel(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="flex gap-1">
+                          {presetColors.map(c => (
+                            <button
+                              key={c}
+                              className={`w-5 h-5 rounded-full border-2 ${editColor === c ? 'border-gray-900' : 'border-transparent'}`}
+                              style={{ backgroundColor: c }}
+                              onClick={() => setEditColor(c)}
+                            />
+                          ))}
+                        </div>
+                        <button className="p-1 text-green-600 hover:text-green-700" onClick={saveEditColumn}>
+                          <Save className="w-4 h-4" />
+                        </button>
+                        <button className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-medium text-gray-900">{col.label}</span>
+                        <span className="text-xs text-gray-400">{count} prospect{count > 1 ? 's' : ''}</span>
+                        <button className="p-1 text-gray-400 hover:text-blue-600" onClick={() => startEditColumn(col)}>
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          className={`p-1 ${count > 0 ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
+                          onClick={() => deleteColumn(col)}
+                          disabled={count > 0}
+                          title={count > 0 ? `${count} prospect(s) dans cette etape` : 'Supprimer'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-gray-400 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Une etape ne peut etre supprimee que si aucun prospect ne s'y trouve
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Kanban board */}
       <div className="flex-1 overflow-x-auto p-4">
         <div className="flex gap-4 h-full min-w-max">
-          {stages.map(stage => (
+          {columns.map(col => (
             <div
-              key={stage}
+              key={col.id}
               className={`kanban-column w-72 flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
-                dragOverColumn === stage ? 'border-brewery-500 bg-brewery-50' : 'border-gray-200 bg-gray-50'
+                dragOverColumn === col.id ? 'border-brewery-500 bg-brewery-50' : 'border-gray-200 bg-gray-50'
               }`}
-              onDragOver={e => handleDragOver(e, stage)}
+              onDragOver={e => handleDragOver(e, col.id)}
               onDragLeave={handleDragLeave}
-              onDrop={e => handleDrop(e, stage)}
+              onDrop={e => handleDrop(e, col.id)}
             >
               {/* Column header */}
               <div className="p-3 border-b border-gray-200 flex items-center gap-2">
-                <div className="pipeline-dot" style={{ backgroundColor: PIPELINE_COLORS[stage] }} />
-                <h3 className="font-semibold text-sm text-gray-900 flex-1">{PIPELINE_LABELS[stage]}</h3>
+                <div className="pipeline-dot" style={{ backgroundColor: col.color }} />
+                <h3 className="font-semibold text-sm text-gray-900 flex-1">{col.label}</h3>
                 <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200">
-                  {prospectsByStage[stage].length}
+                  {(prospectsByStage[col.id] || []).length}
                 </span>
               </div>
 
               {/* Cards */}
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {prospectsByStage[stage].map(prospect => (
+                {(prospectsByStage[col.id] || []).map(prospect => (
                   <div
                     key={prospect.id}
                     draggable
@@ -98,10 +280,11 @@ export default function PipelinePage() {
                         </h4>
                         <p className="text-[10px] text-gray-500 mt-0.5">
                           {ESTABLISHMENT_LABELS[prospect.type_etablissement]}
+                          {prospect.secteur && <span> - {prospect.secteur}</span>}
                         </p>
                         <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
                           <MapPin className="w-3 h-3" />
-                          {prospect.ville}
+                          {prospect.ville || prospect.adresse}
                         </div>
 
                         {/* Tags */}
@@ -124,13 +307,15 @@ export default function PipelinePage() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-1.5 mt-2">
-                          <a
-                            href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
-                            className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            <Phone className="w-3 h-3" />
-                          </a>
+                          {prospect.telephone && (
+                            <a
+                              href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
+                              className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <Phone className="w-3 h-3" />
+                            </a>
+                          )}
                           <Link
                             to={`/prospects?id=${prospect.id}`}
                             className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
@@ -148,7 +333,7 @@ export default function PipelinePage() {
                   </div>
                 ))}
 
-                {prospectsByStage[stage].length === 0 && (
+                {(prospectsByStage[col.id] || []).length === 0 && (
                   <div className="text-center py-8 text-xs text-gray-400">
                     Aucun prospect
                   </div>

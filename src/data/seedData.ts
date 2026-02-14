@@ -11,21 +11,30 @@ export function getSeedData() {
   const commerciaux: Commercial[] = [
     {
       id: 'com-1',
-      prenom: 'Louis',
-      nom: 'Admin',
-      email: 'louis@labrasseriedesplantes.fr',
-      telephone: '06 00 00 00 01',
+      prenom: 'Guillaume',
+      nom: 'Directeur',
+      email: 'guillaume@labrasseriedesplantes.fr',
+      telephone: '06 84 44 40 44',
       role: 'admin',
       objectifs: { appels_semaine: 30, rdv_mois: 15, prospects_mois: 40, taux_conversion: 25 },
     },
     {
       id: 'com-2',
+      prenom: 'Louis',
+      nom: 'Alternant',
+      email: 'louis@labrasseriedesplantes.fr',
+      telephone: '06 00 00 00 01',
+      role: 'commercial',
+      objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+    },
+    {
+      id: 'com-3',
       prenom: 'Lucas',
-      nom: 'Admin',
+      nom: 'Alternant',
       email: 'lucas@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 02',
-      role: 'admin',
-      objectifs: { appels_semaine: 30, rdv_mois: 15, prospects_mois: 40, taux_conversion: 25 },
+      role: 'commercial',
+      objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
     },
   ];
 
