@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
 import { generateId, formatDurationTimer } from '../utils/helpers';
@@ -42,6 +42,14 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [memoHeure, setMemoHeure] = useState('09:00');
   const [newTagName, setNewTagName] = useState('');
   const [showNewTag, setShowNewTag] = useState(false);
+  // RDV state
+  const [showRdv, setShowRdv] = useState(false);
+  const [rdvDate, setRdvDate] = useState('');
+  const [rdvHeureDebut, setRdvHeureDebut] = useState('10:00');
+  const [rdvHeureFin, setRdvHeureFin] = useState('11:00');
+  const [rdvLieu, setRdvLieu] = useState('');
+  const [rdvNotes, setRdvNotes] = useState('');
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Timer logic
@@ -72,6 +80,15 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setMemoHeure('09:00');
     setShowNewTag(false);
     setNewTagName('');
+    // Reset RDV
+    setShowRdv(false);
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 3);
+    setRdvDate(nextWeek.toISOString().split('T')[0]);
+    setRdvHeureDebut('10:00');
+    setRdvHeureFin('11:00');
+    setRdvLieu(prospect.adresse ? `${prospect.adresse}, ${prospect.ville}` : '');
+    setRdvNotes('');
     setShowModal(true);
 
     // Trigger native phone dialer
@@ -88,6 +105,10 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setSelectedTags(prev =>
       prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
     );
+  };
+
+  const removeTag = (tagId: string) => {
+    setSelectedTags(prev => prev.filter(t => t !== tagId));
   };
 
   const createAndAddTag = () => {
@@ -122,14 +143,25 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     const prospect = state.prospects.find(p => p.id === prospectId);
     if (prospect) {
       const hasMemo = showMemo && memoMessage.trim() && memoDate;
-      // Rule: "A contacter" → "Contacte" if call answered with memo
-      const shouldAdvance = hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline);
+      const hasRdv = showRdv && rdvDate;
+
+      let newStage = prospect.etape_pipeline;
+
+      // Regle : RDV pris → "Gagne" (prioritaire)
+      if (hasRdv && !['gagne', 'perdu'].includes(prospect.etape_pipeline)) {
+        newStage = 'gagne';
+      }
+      // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
+      else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
+        newStage = 'contacte';
+      }
+
       dispatch({
         type: 'UPDATE_PROSPECT',
         payload: {
           ...prospect,
           tags: selectedTags,
-          etape_pipeline: shouldAdvance ? 'contacte' : prospect.etape_pipeline,
+          etape_pipeline: newStage,
           date_modification: new Date().toISOString(),
         },
       });
@@ -147,6 +179,24 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           heure: memoHeure,
           message: memoMessage.trim(),
           statut: 'actif',
+        },
+      });
+    }
+
+    // 4. Create RDV if filled
+    if (showRdv && rdvDate) {
+      dispatch({
+        type: 'ADD_APPOINTMENT',
+        payload: {
+          id: generateId('rdv'),
+          prospect_id: prospectId,
+          commercial_id: state.currentUser?.id || 'com-1',
+          date: rdvDate,
+          heure_debut: rdvHeureDebut,
+          heure_fin: rdvHeureFin,
+          lieu: rdvLieu,
+          notes: rdvNotes,
+          statut: 'planifie',
         },
       });
     }
@@ -179,6 +229,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     messagerie: 'border-amber-500 bg-amber-50 text-amber-700',
     injoignable: 'border-gray-500 bg-gray-100 text-gray-700',
   };
+
+  // Tags non-selectionnes (pour le menu d'ajout)
+  const availableTags = state.tags.filter(t => !selectedTags.includes(t.id));
 
   return (
     <CallModalContext.Provider value={{ startCall }}>
@@ -226,7 +279,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                 </div>
               )}
 
-              {/* After call: result + tags + notes + memo */}
+              {/* After call: result + tags + notes + rdv + memo */}
               {!callActive && (
                 <>
                   {callTimer > 0 && (
@@ -259,24 +312,45 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     </div>
                   </div>
 
-                  {/* Tags */}
+                  {/* Tags - tags actifs avec X + tags disponibles a ajouter */}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
                       <Tag className="w-3 h-3" /> Tags du prospect
                     </label>
+                    {/* Tags actuellement selectionnes (avec bouton X) */}
+                    {selectedTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {selectedTags.map(tagId => {
+                          const tag = state.tags.find(t => t.id === tagId);
+                          if (!tag) return null;
+                          return (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-white shadow-sm"
+                              style={{ backgroundColor: tag.couleur }}
+                            >
+                              {tag.nom}
+                              <button
+                                className="ml-0.5 hover:bg-white/30 rounded-full p-0.5"
+                                onClick={() => removeTag(tag.id)}
+                                title="Retirer ce tag"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Tags disponibles a ajouter */}
                     <div className="flex flex-wrap gap-1.5">
-                      {state.tags.map(tag => (
+                      {availableTags.map(tag => (
                         <button
                           key={tag.id}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
-                            selectedTags.includes(tag.id)
-                              ? 'text-white shadow-sm'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                          style={selectedTags.includes(tag.id) ? { backgroundColor: tag.couleur } : {}}
+                          className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center gap-1"
                           onClick={() => toggleTag(tag.id)}
                         >
-                          {tag.nom}
+                          <Plus className="w-3 h-3" /> {tag.nom}
                         </button>
                       ))}
                       {!showNewTag ? (
@@ -324,6 +398,73 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       onChange={e => setCallNotes(e.target.value)}
                     />
                   </div>
+
+                  {/* RDV */}
+                  {!showRdv ? (
+                    <button
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-blue-300 text-blue-500 hover:border-blue-500 hover:text-blue-700 hover:bg-blue-50 text-sm font-medium transition-colors"
+                      onClick={() => setShowRdv(true)}
+                    >
+                      <Calendar className="w-4 h-4" /> Prendre un rendez-vous
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-blue-700 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" /> Rendez-vous
+                        </label>
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowRdv(false)}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="block text-[10px] text-blue-600 mb-0.5">Date *</label>
+                          <input
+                            type="date"
+                            className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
+                            value={rdvDate}
+                            onChange={e => setRdvDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="w-20">
+                          <label className="block text-[10px] text-blue-600 mb-0.5">Debut</label>
+                          <input
+                            type="time"
+                            className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
+                            value={rdvHeureDebut}
+                            onChange={e => setRdvHeureDebut(e.target.value)}
+                          />
+                        </div>
+                        <div className="w-20">
+                          <label className="block text-[10px] text-blue-600 mb-0.5">Fin</label>
+                          <input
+                            type="time"
+                            className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
+                            value={rdvHeureFin}
+                            onChange={e => setRdvHeureFin(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white"
+                        placeholder="Lieu du RDV..."
+                        value={rdvLieu}
+                        onChange={e => setRdvLieu(e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white"
+                        placeholder="Notes (optionnel)..."
+                        value={rdvNotes}
+                        onChange={e => setRdvNotes(e.target.value)}
+                      />
+                      <p className="text-[10px] text-blue-500 italic">
+                        Le prospect sera automatiquement deplace dans "RDV / Gagne"
+                      </p>
+                    </div>
+                  )}
 
                   {/* Memo / Rappel */}
                   {!showMemo ? (

@@ -5,11 +5,14 @@ import {
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { isToday } from '../utils/helpers';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { state, dispatch } = useApp();
-  const activeReminders = state.reminders.filter(r => r.statut === 'actif').length;
+  const today = new Date().toISOString().split('T')[0];
+  // Badge = seulement les rappels du jour + en retard (pas les "a venir")
+  const urgentReminders = state.reminders.filter(r => r.statut === 'actif' && r.date <= today).length;
   const isAdmin = state.currentUser?.role === 'admin';
 
   const navItems = [
@@ -75,9 +78,9 @@ export default function Layout() {
             >
               <item.icon className="w-5 h-5 flex-shrink-0" />
               <span>{item.label}</span>
-              {item.to === '/rappels' && activeReminders > 0 && (
+              {item.to === '/rappels' && urgentReminders > 0 && (
                 <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {activeReminders}
+                  {urgentReminders}
                 </span>
               )}
             </NavLink>
