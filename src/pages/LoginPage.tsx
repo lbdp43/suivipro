@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Beer, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Beer, LogIn, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { getSeedData } from '../data/seedData';
 
 export default function LoginPage() {
   const { state, dispatch } = useApp();
@@ -27,6 +28,13 @@ export default function LoginPage() {
       }
       setLoading(false);
     }, 300);
+  };
+
+  const handleReset = () => {
+    if (confirm('Reinitialiser toutes les donnees ? Les prospects, appels et parametres seront remis a zero.')) {
+      localStorage.removeItem('suivipro_state');
+      window.location.reload();
+    }
   };
 
   return (
@@ -111,6 +119,13 @@ export default function LoginPage() {
           <p>Lucas : lucas@labrasseriedesplantes.fr / lucas123</p>
           <p>Alban : alban@labrasseriedesplantes.fr / alban123</p>
           <p>Loic : loic@labrasseriedesplantes.fr / loic123</p>
+          <button
+            className="mt-3 flex items-center gap-1.5 mx-auto px-3 py-1.5 text-xs text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors font-medium"
+            onClick={handleReset}
+          >
+            <RotateCcw className="w-3 h-3" />
+            Reinitialiser les donnees
+          </button>
         </div>
       </div>
     </div>
