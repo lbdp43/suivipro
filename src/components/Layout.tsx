@@ -18,12 +18,12 @@ export default function Layout() {
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: false },
-    { to: '/carte', icon: Map, label: 'Carte', adminOnly: false },
     { to: '/pipeline', icon: Kanban, label: 'Pipeline', adminOnly: false },
     { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false },
     { to: '/appels', icon: Phone, label: 'Appels', adminOnly: false },
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
+    { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: true },
     { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
   ];
@@ -131,12 +131,12 @@ export default function Layout() {
           <div className="flex-1" />
           <div className="flex items-center gap-3 text-sm text-gray-600">
             <Link
-              to="/emails"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-              title="Templates d'emails"
+              to="/carte"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"
+              title="Carte des prospects"
             >
-              <Mail className="w-4 h-4" />
-              <span className="hidden sm:inline">Emails</span>
+              <Map className="w-4 h-4" />
+              <span className="hidden sm:inline">Carte</span>
             </Link>
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
