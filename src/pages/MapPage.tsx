@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { Filter, MapPin, Phone, Mail, ExternalLink } from 'lucide-react';
+import { Filter, MapPin, Phone, Mail, ExternalLink, Route } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage } from '../types';
@@ -28,10 +28,32 @@ export default function MapPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Extract unique sectors
+  // Extract unique sectors with prospect counts
   const allSecteurs = useMemo(() => {
     return [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
   }, [state.prospects]);
+
+  // Tournees = secteurs qui ont des prospects avec coordonnees
+  const tournees = useMemo(() => {
+    const map = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.secteur && p.latitude && p.longitude) {
+        map.set(p.secteur, (map.get(p.secteur) || 0) + 1);
+      }
+    });
+    return [...map.entries()]
+      .map(([nom, count]) => ({ nom, count }))
+      .sort((a, b) => a.nom.localeCompare(b.nom));
+  }, [state.prospects]);
+
+  const selectTournee = (secteur: string) => {
+    // Toggle : si deja selectionne seul, on deselectionne
+    if (selectedSecteurs.length === 1 && selectedSecteurs[0] === secteur) {
+      setSelectedSecteurs([]);
+    } else {
+      setSelectedSecteurs([secteur]);
+    }
+  };
 
   const filteredProspects = useMemo(() => {
     return state.prospects.filter(p => {
@@ -115,6 +137,58 @@ export default function MapPage() {
           <div className="text-sm text-gray-500">
             {filteredProspects.length} prospect{filteredProspects.length > 1 ? 's' : ''}
           </div>
+        </div>
+
+        {/* Raccourcis tournees */}
+        {tournees.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+              <Route className="w-3.5 h-3.5" /> Tournees :
+            </span>
+            {tournees.map(t => (
+              <button
+                key={t.nom}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  selectedSecteurs.length === 1 && selectedSecteurs[0] === t.nom
+                    ? 'bg-brewery-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-brewery-50 hover:text-brewery-700'
+                }`}
+                onClick={() => selectTournee(t.nom)}
+              >
+                <MapPin className="w-3 h-3" />
+                {t.nom}
+                <span className={`text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+                  selectedSecteurs.length === 1 && selectedSecteurs[0] === t.nom
+                    ? 'bg-white/20 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {t.count}
+                </span>
+              </button>
+            ))}
+            {selectedSecteurs.length > 0 && (
+              <button
+                className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
+                onClick={() => setSelectedSecteurs([])}
+              >
+                Tout afficher
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Legende couleurs pipeline */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] text-gray-400">Legende :</span>
+          {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
+            <span key={stage} className="flex items-center gap-1 text-[10px] text-gray-500">
+              <span
+                className="w-3 h-3 rounded-full inline-block border border-white shadow-sm"
+                style={{ backgroundColor: PIPELINE_COLORS[stage] }}
+              />
+              {PIPELINE_LABELS[stage]}
+            </span>
+          ))}
         </div>
 
         {/* Filter panels */}
@@ -224,12 +298,8 @@ export default function MapPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           {filteredProspects.map(prospect => {
-            const stageColor = PIPELINE_COLORS[prospect.etape_pipeline];
-            // If prospect has a tag with color, use the first tag's color for the marker
-            const tagColor = prospect.tags.length > 0
-              ? state.tags.find(t => t.id === prospect.tags[0])?.couleur
-              : undefined;
-            const markerColor = tagColor || stageColor;
+            // Couleur du marqueur = couleur de l'etape pipeline
+            const markerColor = PIPELINE_COLORS[prospect.etape_pipeline];
 
             return (
               <Marker
