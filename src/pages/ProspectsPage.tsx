@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X, Navigation,
+  Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
   CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter,
 } from 'lucide-react';
@@ -115,6 +115,8 @@ export default function ProspectsPage() {
   const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(0);
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
 
   // Tag management in form
@@ -289,6 +291,14 @@ export default function ProspectsPage() {
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
   }, [state.prospects, filterTypes, filterStages, filterSecteurs, searchTerm, sortScore, sortDate]);
+
+  // Reset to page 0 when filters/search change
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, sortScore, sortDate, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
+  const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
@@ -470,7 +480,18 @@ export default function ProspectsPage() {
             </div>
           )}
           <div className="flex items-center justify-between">
-            <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+              <select
+                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+              >
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={200}>200 / page</option>
+              </select>
+            </div>
             <div className="flex items-center gap-1.5">
               <button
                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
@@ -526,7 +547,7 @@ export default function ProspectsPage() {
 
         {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {filteredProspects.map(p => (
+          {paginatedProspects.map(p => (
             <div
               key={p.id}
               className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
@@ -605,6 +626,29 @@ export default function ProspectsPage() {
             </div>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-4 py-2 border-t border-gray-200 bg-white flex items-center justify-between">
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage(p => p - 1)}
+              disabled={currentPage === 0}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Prec.
+            </button>
+            <p className="text-[10px] text-gray-500">
+              {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, filteredProspects.length)} sur {filteredProspects.length}
+            </p>
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={currentPage >= totalPages - 1}
+            >
+              Suiv. <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Bulk action bar */}
         {selectionMode && selectedIds.size > 0 && (
