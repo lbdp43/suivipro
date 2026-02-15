@@ -9,7 +9,7 @@ import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts 
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
-import { getAllGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
   const { state, dispatch, getProspect } = useApp();
@@ -99,6 +99,32 @@ export default function AppointmentsPage() {
       editing?.id,
     );
   }, [state.appointments, formData.commercial_id, formData.date, formData.heure_debut, formData.heure_fin, editing]);
+
+  // Google Calendar conflict detection for the form
+  const [formGoogleEvents, setFormGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
+
+  useEffect(() => {
+    if (!showForm || !formData.commercial_id || !formData.date) {
+      setFormGoogleEvents([]);
+      return;
+    }
+    const dayStart = new Date(formData.date + 'T00:00:00').toISOString();
+    const dayEnd = new Date(formData.date + 'T23:59:59').toISOString();
+    getGoogleCalendarEvents(formData.commercial_id, dayStart, dayEnd)
+      .then(res => setFormGoogleEvents(res.connected ? res.events : []))
+      .catch(() => setFormGoogleEvents([]));
+  }, [showForm, formData.commercial_id, formData.date]);
+
+  const formGoogleConflicts = useMemo(() => {
+    if (!formData.heure_debut || !formData.heure_fin || formGoogleEvents.length === 0) return [];
+    return formGoogleEvents.filter(evt => {
+      if (evt.allDay) return true;
+      const evtStart = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
+      const evtEnd = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
+      if (!evtStart || !evtEnd) return false;
+      return formData.heure_debut < evtEnd && evtStart < formData.heure_fin;
+    });
+  }, [formGoogleEvents, formData.heure_debut, formData.heure_fin]);
 
   const openNewForm = () => {
     setFormData({
@@ -960,6 +986,25 @@ export default function AppointmentsPage() {
                   })}
                   <p className="text-[10px] text-red-500 mt-1 italic">
                     Ce commercial a deja un RDV sur ce creneau.
+                  </p>
+                </div>
+              )}
+              {formGoogleConflicts.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-4 h-4" /> Attention — evenement(s) Google Agenda sur ce creneau
+                  </p>
+                  {formGoogleConflicts.map(evt => {
+                    const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
+                    const end = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
+                    return (
+                      <p key={evt.id} className="text-[11px] text-amber-600 mt-1">
+                        {evt.allDay ? 'Journee entiere' : `${start}-${end}`} : {evt.summary}
+                      </p>
+                    );
+                  })}
+                  <p className="text-[10px] text-amber-500 mt-1 italic">
+                    Ce commercial a un evenement Google Agenda sur ce creneau.
                   </p>
                 </div>
               )}

@@ -3,6 +3,7 @@ import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag,
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
+import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 // ============================================
 // Context for triggering calls from anywhere
@@ -55,6 +56,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   // Post-RDV confirmation
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [createdRdvId, setCreatedRdvId] = useState('');
+  // Google Calendar conflict detection
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -256,6 +259,30 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   // Tags non-selectionnes (pour le menu d'ajout)
   const availableTags = state.tags.filter(t => !selectedTags.includes(t.id));
+
+  // Fetch Google Calendar events when RDV date/commercial changes
+  useEffect(() => {
+    if (!showRdv || !rdvCommercialId || !rdvDate) {
+      setGoogleEvents([]);
+      return;
+    }
+    const dayStart = new Date(rdvDate + 'T00:00:00').toISOString();
+    const dayEnd = new Date(rdvDate + 'T23:59:59').toISOString();
+    getGoogleCalendarEvents(rdvCommercialId, dayStart, dayEnd)
+      .then(res => setGoogleEvents(res.connected ? res.events : []))
+      .catch(() => setGoogleEvents([]));
+  }, [showRdv, rdvCommercialId, rdvDate]);
+
+  // Google Calendar conflicts for the chosen time slot
+  const googleConflicts = showRdv && rdvDate && rdvHeureDebut && rdvHeureFin
+    ? googleEvents.filter(evt => {
+        if (evt.allDay) return true;
+        const evtStart = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
+        const evtEnd = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
+        if (!evtStart || !evtEnd) return false;
+        return rdvHeureDebut < evtEnd && evtStart < rdvHeureFin;
+      })
+    : [];
 
   // Detection conflits RDV
   const rdvConflicts = showRdv && rdvCommercialId && rdvDate && rdvHeureDebut && rdvHeureFin
@@ -534,7 +561,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           />
                         </div>
                       </div>
-                      {/* Alerte conflit horaire */}
+                      {/* Alerte conflit horaire RDV internes */}
                       {rdvConflicts.length > 0 && (
                         <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
                           <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
@@ -545,6 +572,23 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                             return (
                               <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
                                 {c.heure_debut}-{c.heure_fin} : {cp?.nom_etablissement || 'RDV'}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Alerte conflit Google Calendar */}
+                      {googleConflicts.length > 0 && (
+                        <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — evenement(s) Google Agenda sur ce creneau
+                          </p>
+                          {googleConflicts.map(evt => {
+                            const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
+                            const end = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
+                            return (
+                              <p key={evt.id} className="text-[10px] text-amber-600 mt-0.5">
+                                {evt.allDay ? 'Journee entiere' : `${start}-${end}`} : {evt.summary}
                               </p>
                             );
                           })}
