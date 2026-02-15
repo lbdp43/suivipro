@@ -199,6 +199,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           id: rdvId,
           prospect_id: prospectId,
           commercial_id: rdvCommercialId || state.currentUser?.id || 'com-1',
+          prospecteur_id: state.currentUser?.id || 'com-1',
           date: rdvDate,
           heure_debut: rdvHeureDebut,
           heure_fin: rdvHeureFin,
@@ -438,10 +439,17 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           <X className="w-4 h-4" />
                         </button>
                       </div>
-                      {/* Selecteur commercial */}
+                      {/* Prospecteur (celui qui prend le RDV) */}
+                      <div className="bg-white/60 rounded-lg px-2 py-1.5">
+                        <p className="text-[10px] text-blue-500 mb-0.5">Pris par (prospecteur)</p>
+                        <p className="text-xs font-medium text-blue-800">
+                          {state.currentUser?.prenom} {state.currentUser?.nom}
+                        </p>
+                      </div>
+                      {/* Selecteur commercial assigne */}
                       <div>
                         <label className="block text-[10px] text-blue-600 mb-0.5 flex items-center gap-1">
-                          <Users className="w-3 h-3" /> Commercial assigne
+                          <Users className="w-3 h-3" /> Commercial assigne au RDV
                         </label>
                         <select
                           className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
@@ -626,7 +634,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       )}
                       <div className="flex items-center gap-2 text-xs text-blue-600">
                         <Users className="w-3.5 h-3.5" />
-                        {rdvCommercial?.prenom} {rdvCommercial?.nom}
+                        Commercial : {rdvCommercial?.prenom} {rdvCommercial?.nom}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-blue-500">
+                        <Phone className="w-3.5 h-3.5" />
+                        Pris par : {state.currentUser?.prenom} {state.currentUser?.nom}
                       </div>
                     </div>
                   )}
