@@ -12,7 +12,7 @@ import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
   EstablishmentType, PipelineStage, Prospect,
 } from '../types';
-import { generateId, formatDate, formatTimeAgo, formatDuration } from '../utils/helpers';
+import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
 
 export default function ProspectsPage() {
   const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
@@ -182,25 +182,54 @@ export default function ProspectsPage() {
     setShowForm(true);
   };
 
-  const saveProspect = () => {
+  const [saving, setSaving] = useState(false);
+
+  const saveProspect = async () => {
     if (!formData.nom_etablissement) return;
+    setSaving(true);
     const now = new Date().toISOString();
+
+    // Geocode address if provided
+    let geoData = {
+      latitude: formData.latitude || 0,
+      longitude: formData.longitude || 0,
+      ville: formData.ville || '',
+      code_postal: formData.code_postal || '',
+      departement: formData.departement || '',
+    };
+
+    const fullAddress = [formData.adresse, formData.code_postal, formData.ville].filter(Boolean).join(' ');
+    if (fullAddress.trim()) {
+      const geo = await geocodeAddress(fullAddress);
+      if (geo) {
+        geoData = {
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+          ville: geo.ville || formData.ville || '',
+          code_postal: geo.code_postal || formData.code_postal || '',
+          departement: geo.departement || formData.departement || '',
+        };
+      }
+    }
+
     if (editingProspect) {
       dispatch({
         type: 'UPDATE_PROSPECT',
-        payload: { ...editingProspect, ...formData, date_modification: now } as Prospect,
+        payload: { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect,
       });
     } else {
       dispatch({
         type: 'ADD_PROSPECT',
         payload: {
           ...formData,
+          ...geoData,
           id: generateId('p'),
           date_creation: now,
           date_modification: now,
         } as Prospect,
       });
     }
+    setSaving(false);
     setShowForm(false);
   };
 
@@ -889,8 +918,12 @@ export default function ProspectsPage() {
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
-              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveProspect}>
-                <Save className="w-4 h-4" /> {editingProspect ? 'Modifier' : 'Creer'}
+              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving}>
+                {saving ? (
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Geocodage...</>
+                ) : (
+                  <><Save className="w-4 h-4" /> {editingProspect ? 'Modifier' : 'Creer'}</>
+                )}
               </button>
             </div>
           </div>
