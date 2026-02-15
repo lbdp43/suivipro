@@ -39,7 +39,7 @@ export default function App() {
         <Route path="/rdv" element={<AppointmentsPage />} />
         <Route path="/rappels" element={<RemindersPage />} />
         <Route path="/emails" element={<EmailsPage />} />
-        <Route path="/import" element={<AdminRoute><ImportPage /></AdminRoute>} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
       </Route>
     </Routes>

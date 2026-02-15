@@ -24,7 +24,7 @@ export default function Layout() {
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
     { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
-    { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: true },
+    { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
     { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
   ];
 
