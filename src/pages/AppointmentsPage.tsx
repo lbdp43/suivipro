@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation,
-  AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download,
+  AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS } from '../types';
@@ -17,7 +17,7 @@ export default function AppointmentsPage() {
   // Filtres persistants
   const [filterStatus, setFilterStatus] = usePersistedState<AppointmentStatus | ''>('rdv_status', '');
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
-  const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda'>('rdv_view', 'list');
+  const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda' | 'planning'>('rdv_view', 'planning');
   const [weekOffset, setWeekOffset] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDateFrom, setExportDateFrom] = useState('');
@@ -259,13 +259,19 @@ export default function AppointmentsPage() {
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des RDV et export calendrier</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Toggle Liste / Agenda */}
+          {/* Toggle Liste / Planning / Agenda */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
             <button
               className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setViewMode('list')}
             >
               <List className="w-3.5 h-3.5" /> Liste
+            </button>
+            <button
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'planning' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              onClick={() => setViewMode('planning')}
+            >
+              <CalendarDays className="w-3.5 h-3.5" /> Planning
             </button>
             <button
               className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'agenda' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
@@ -352,6 +358,186 @@ export default function AppointmentsPage() {
           )}
         </div>
       </div>
+
+      {/* ===================== PLANNING VIEW ===================== */}
+      {viewMode === 'planning' && (() => {
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + weekOffset * 7);
+
+        const days: { label: string; shortLabel: string; date: string; isToday: boolean }[] = [];
+        const joursSemaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+        const joursShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(monday);
+          d.setDate(monday.getDate() + i);
+          const dateStr = d.toISOString().split('T')[0];
+          const todayStr = new Date().toISOString().split('T')[0];
+          days.push({
+            label: `${joursSemaine[i]} ${d.getDate()}/${d.getMonth() + 1}`,
+            shortLabel: `${joursShort[i]} ${d.getDate()}/${d.getMonth() + 1}`,
+            date: dateStr,
+            isToday: dateStr === todayStr,
+          });
+        }
+
+        // Filter appointments for this week
+        const weekStart = days[0].date;
+        const weekEnd = days[6].date;
+        let planningRdvs = state.appointments.filter(
+          a => a.date >= weekStart && a.date <= weekEnd && a.statut !== 'annule'
+        );
+        if (filterCommercial) planningRdvs = planningRdvs.filter(a => a.commercial_id === filterCommercial);
+        if (filterStatus) planningRdvs = planningRdvs.filter(a => a.statut === filterStatus);
+
+        return (
+          <div className="space-y-3">
+            {/* Week navigation */}
+            <div className="flex items-center justify-between">
+              <button
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+                onClick={() => setWeekOffset(w => w - 1)}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="text-center">
+                <p className="text-sm font-semibold text-gray-900">{getWeekLabel()}</p>
+                {weekOffset !== 0 && (
+                  <button
+                    className="text-[10px] text-brewery-600 hover:underline mt-0.5"
+                    onClick={() => setWeekOffset(0)}
+                  >
+                    Revenir a cette semaine
+                  </button>
+                )}
+              </div>
+              <button
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
+                onClick={() => setWeekOffset(w => w + 1)}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Planning par jour */}
+            <div className="space-y-2">
+              {days.map(day => {
+                const dayRdvs = planningRdvs
+                  .filter(a => a.date === day.date)
+                  .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut));
+
+                return (
+                  <div key={day.date} className={`rounded-xl border ${day.isToday ? 'border-brewery-300 bg-brewery-50/50' : 'border-gray-200 bg-white'}`}>
+                    {/* En-tete du jour */}
+                    <div className={`px-4 py-2.5 border-b flex items-center justify-between ${day.isToday ? 'border-brewery-200 bg-brewery-100/50' : 'border-gray-100 bg-gray-50'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-semibold ${day.isToday ? 'text-brewery-700' : 'text-gray-900'}`}>
+                          <span className="hidden sm:inline">{day.label}</span>
+                          <span className="sm:hidden">{day.shortLabel}</span>
+                        </span>
+                        {day.isToday && (
+                          <span className="text-[9px] bg-brewery-600 text-white px-1.5 py-0.5 rounded-full font-medium">Aujourd'hui</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-400">{dayRdvs.length} RDV</span>
+                    </div>
+
+                    {/* Evenements du jour */}
+                    <div className="p-2">
+                      {dayRdvs.length > 0 ? (
+                        <div className="space-y-2">
+                          {dayRdvs.map(rdv => {
+                            const prospect = getProspect(rdv.prospect_id);
+                            const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
+                            const statusColor = rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
+
+                            return (
+                              <div key={rdv.id} className={`rounded-lg border border-gray-200 border-l-4 ${statusColor} p-3`}>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="font-semibold text-sm text-gray-900 truncate">{prospect?.nom_etablissement || 'Inconnu'}</h4>
+                                      <span className={`badge text-[9px] ${statusColors[rdv.statut]}`}>
+                                        {APPOINTMENT_STATUS_LABELS[rdv.statut]}
+                                      </span>
+                                    </div>
+                                    {prospect?.nom_contact && (
+                                      <p className="text-[11px] text-gray-500 mt-0.5">{prospect.nom_contact}</p>
+                                    )}
+                                    <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-gray-600">
+                                      <span className="flex items-center gap-1 font-medium">
+                                        <Clock className="w-3 h-3 text-gray-400" />
+                                        {rdv.heure_debut} - {rdv.heure_fin}
+                                      </span>
+                                      {rdv.lieu && (
+                                        <a
+                                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rdv.lieu)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-1 text-blue-600 hover:underline"
+                                        >
+                                          <MapPin className="w-3 h-3" />
+                                          <span className="truncate max-w-[150px] sm:max-w-none">{rdv.lieu}</span>
+                                          <Navigation className="w-2.5 h-2.5 flex-shrink-0" />
+                                        </a>
+                                      )}
+                                      <span className="flex items-center gap-1 text-gray-400">
+                                        <Users className="w-3 h-3" />
+                                        {commercial?.prenom}
+                                      </span>
+                                    </div>
+                                    {rdv.notes && (
+                                      <p className="text-[11px] text-gray-500 mt-1.5 italic bg-white/60 rounded px-2 py-1">{rdv.notes}</p>
+                                    )}
+                                  </div>
+
+                                  {/* Actions */}
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button
+                                      className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                                      onClick={() => openEditForm(rdv)}
+                                      title="Modifier"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    {prospect && (
+                                      <button
+                                        className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"
+                                        onClick={() => downloadICS(rdv, prospect)}
+                                        title="Exporter vers agenda"
+                                      >
+                                        <CalendarPlus className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {rdv.lieu && (
+                                      <a
+                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rdv.lieu)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+                                        title="Google Maps"
+                                      >
+                                        <Navigation className="w-3.5 h-3.5" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-center text-[11px] text-gray-400 py-2">Aucun rendez-vous</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ===================== AGENDA VIEW ===================== */}
       {viewMode === 'agenda' && (
