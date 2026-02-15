@@ -227,16 +227,29 @@ export async function geocodeAddress(adresse: string): Promise<GeocodingResult |
 
 /**
  * Geocode par lot via l'API CSV de api-adresse.data.gouv.fr.
- * Envoie les adresses en lots de 5000 (limite API) via un fichier CSV.
- * Beaucoup plus rapide que le geocodage un par un.
+ * Envoie les adresses en lots de 2000 via un fichier CSV.
+ * Si l'API est injoignable, retourne des resultats vides sans bloquer.
  */
 export async function geocodeBatch(
   addresses: string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<(GeocodingResult | null)[]> {
   const results: (GeocodingResult | null)[] = new Array(addresses.length).fill(null);
-  const BATCH_SIZE = 5000;
+  const BATCH_SIZE = 2000;
   let totalDone = 0;
+
+  // Quick connectivity check before processing thousands of addresses
+  try {
+    const probe = await fetchWithTimeout(`${ADRESSE_API_URL}/search/?q=test&limit=1`, {}, 8000);
+    if (!probe.ok) {
+      onProgress?.(addresses.length, addresses.length);
+      return results;
+    }
+  } catch {
+    // API unreachable — return empty results immediately
+    onProgress?.(addresses.length, addresses.length);
+    return results;
+  }
 
   for (let batchStart = 0; batchStart < addresses.length; batchStart += BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BATCH_SIZE, addresses.length);
@@ -313,14 +326,10 @@ export async function geocodeBatch(
         }
       }
     } catch {
-      // If batch fails, try individual geocoding as fallback for this batch
-      for (let i = 0; i < batchAddresses.length; i++) {
-        if (batchAddresses[i] && batchAddresses[i].trim().length >= 3) {
-          results[batchStart + i] = await geocodeAddress(batchAddresses[i]);
-        }
-        totalDone++;
-        onProgress?.(totalDone, addresses.length);
-      }
+      // Batch API failed (network/CORS/timeout) — skip geocoding for this batch
+      // Don't fall back to individual requests for large sets (would take forever)
+      totalDone += batchAddresses.length;
+      onProgress?.(totalDone, addresses.length);
       continue;
     }
 

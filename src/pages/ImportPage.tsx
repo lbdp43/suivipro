@@ -13,6 +13,7 @@ export default function ImportPage() {
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeProgress, setGeocodeProgress] = useState({ done: 0, total: 0 });
   const [importSecteur, setImportSecteur] = useState('');
+  const [skipGeocoding, setSkipGeocoding] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportCSV = () => {
@@ -277,18 +278,22 @@ export default function ImportPage() {
         return;
       }
 
-      // Geocode all addresses via batch API
+      // Geocode all addresses via batch API (skippable)
       const allAddresses = parsed.map(p => p.adresse);
       const hasAddresses = allAddresses.some(a => a && a.trim().length >= 3);
       let geoResults: (Awaited<ReturnType<typeof geocodeBatch>>[number])[] = [];
 
-      if (hasAddresses) {
+      if (hasAddresses && !skipGeocoding) {
         setGeocoding(true);
         setGeocodeProgress({ done: 0, total: parsed.length });
 
-        geoResults = await geocodeBatch(allAddresses, (done, total) => {
-          setGeocodeProgress({ done, total });
-        });
+        try {
+          geoResults = await geocodeBatch(allAddresses, (done, total) => {
+            setGeocodeProgress({ done, total });
+          });
+        } catch {
+          // Geocoding failed entirely — continue without coordinates
+        }
         setGeocoding(false);
       }
 
@@ -437,6 +442,20 @@ export default function ImportPage() {
             </datalist>
           )}
           <p className="text-xs text-gray-500 mt-1">Tous les prospects importes seront assignes a ce secteur</p>
+        </div>
+
+        {/* Skip geocoding option */}
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="skip-geocoding"
+            checked={skipGeocoding}
+            onChange={e => setSkipGeocoding(e.target.checked)}
+            className="rounded border-gray-300 text-brewery-600 focus:ring-brewery-500"
+          />
+          <label htmlFor="skip-geocoding" className="text-sm text-gray-600">
+            Passer le geocodage des adresses (import plus rapide, sans coordonnees GPS)
+          </label>
         </div>
 
         <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-brewery-500 transition-colors">
