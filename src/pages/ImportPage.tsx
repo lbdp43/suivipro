@@ -8,7 +8,7 @@ import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 
 export default function ImportPage() {
   const { state, dispatch } = useApp();
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; geocoded: number } | null>(null);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; geocoded: number; duplicates: number } | null>(null);
   const [importing, setImporting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeProgress, setGeocodeProgress] = useState({ done: 0, total: 0 });
@@ -65,7 +65,7 @@ export default function ImportPage() {
 
       if (rows.length === 0) {
         errors.push('Le fichier est vide');
-        setImportResults({ success: 0, errors, geocoded: 0 });
+        setImportResults({ success: 0, errors, geocoded: 0, duplicates: 0 });
         setImporting(false);
         return;
       }
@@ -73,22 +73,43 @@ export default function ImportPage() {
       // Helper: detect establishment type from string
       const detectType = (val: string): EstablishmentType => {
         const v = val.toLowerCase().trim();
-        if (v.includes('bar') || v.includes('restaurant') || v.includes('brasserie') || v.includes('bistrot')) return 'bar_restaurant';
+        if (v.includes('bar') || v.includes('restaurant') || v.includes('brasserie') || v.includes('bistrot') || v.includes('resto')) return 'bar_restaurant';
         if (v.includes('cave') || v.includes('caviste')) return 'cave';
-        if (v.includes('epicerie') || v.includes('épicerie')) return 'epicerie';
-        if (v.includes('supermarche') || v.includes('supermarché') || v.includes('gms') || v.includes('grande surface')) return 'supermarche';
+        if (v.includes('epicerie') || v.includes('épicerie') || v.includes('primeur')) return 'epicerie';
+        if (v.includes('supermarche') || v.includes('supermarché') || v.includes('gms') || v.includes('grande surface') || v.includes('hyper')) return 'supermarche';
         if (v.includes('marche') || v.includes('marché')) return 'marche';
-        if (v.includes('distribut')) return 'distributeur';
-        if (v.includes('hotel') || v.includes('hôtel')) return 'hotel';
+        if (v.includes('distribut') || v.includes('grossiste')) return 'distributeur';
+        if (v.includes('hotel') || v.includes('hôtel') || v.includes('gite') || v.includes('gîte') || v.includes('chambre d')) return 'hotel';
+        if (v.includes('camping') || v.includes('camp')) return 'camping';
+        if (v.includes('traiteur')) return 'traiteur';
+        if (v.includes('association') || v.includes('asso')) return 'association';
+        if (v.includes('comite') || v.includes('comité') || v.includes('ce ') || v.includes('cse')) return 'comite_entreprise';
+        if (v.includes('collectivite') || v.includes('collectivité') || v.includes('mairie') || v.includes('commune')) return 'collectivite';
         return 'autre';
       };
 
       // Helper: detect pipeline stage from string
       const detectStage = (val: string): PipelineStage => {
         const v = val.toLowerCase().trim();
+        // Ne pas contacter
+        if (v.includes('ne pas contact') || v.includes('do not contact') || v.includes('blacklist')) return 'ne_pas_contacter';
+        // Perdu: echec, non qualifie, besoin non identifie
+        if (v.includes('echec') || v.includes('échec')) return 'perdu';
+        if (v.includes('non qualifi') || v.includes('non qualifié')) return 'perdu';
+        if (v.includes('besoin non identifi') || v.includes('besoin non identifié')) return 'perdu';
+        // Gagne: valide
+        if (v.includes('validé') || v.includes('valide') && !v.includes('validation')) return 'gagne';
+        // Proposition: validation en cours
+        if (v.includes('validation en cours') || v.includes('validation')) return 'proposition';
+        // Contacte: qualification, contacte, contact en cours
+        if (v.includes('qualification')) return 'contacte';
+        if (v.includes('contacté') || v.includes('contacte') || v.includes('contact en cours')) return 'contacte';
+        // A contacter: non contacte, tentative
+        if (v.includes('non contacté') || v.includes('non contacte')) return 'a_contacter';
+        if (v.includes('tentative')) return 'a_contacter';
+        if (v.includes('a contacter') || v.includes('à contacter')) return 'a_contacter';
+        // Autres
         if (v.includes('nouveau') || v.includes('new')) return 'nouveau';
-        if (v.includes('contacter') || v.includes('à contacter')) return 'a_contacter';
-        if (v.includes('contacte') || v.includes('contacté')) return 'contacte';
         if (v.includes('proposition') || v.includes('offre')) return 'proposition';
         if (v.includes('negociation') || v.includes('négociation')) return 'negociation';
         if (v.includes('gagne') || v.includes('gagné') || v.includes('rdv') || v.includes('client')) return 'gagne';
@@ -116,6 +137,17 @@ export default function ImportPage() {
         dateCreation: string; index: number;
       }
       const parsed: ParsedRow[] = [];
+      const importedNames = new Set<string>();
+      const importedPhones = new Set<string>();
+
+      // Normalize phone for comparison (remove spaces, dots, dashes)
+      const normalizePhone = (tel: string) => tel.replace(/[\s.\-()]/g, '');
+
+      // Build lookup sets from existing prospects
+      const existingNames = new Set(state.prospects.map(p => p.nom_etablissement.toLowerCase().trim()));
+      const existingPhones = new Set(
+        state.prospects.map(p => normalizePhone(p.telephone)).filter(t => t.length >= 6)
+      );
 
       rows.forEach((row, index) => {
         // Denomination / Etablissement
@@ -128,8 +160,17 @@ export default function ImportPage() {
           return;
         }
 
-        if (state.prospects.some(p => p.nom_etablissement.toLowerCase() === nom.toLowerCase())) {
-          errors.push(`Ligne ${index + 2}: "${nom}" existe deja`);
+        const nomLower = nom.toLowerCase().trim();
+
+        // Check duplicate against existing prospects
+        if (existingNames.has(nomLower)) {
+          errors.push(`Ligne ${index + 2}: "${nom}" existe deja (doublon nom)`);
+          return;
+        }
+
+        // Check duplicate within current import file
+        if (importedNames.has(nomLower)) {
+          errors.push(`Ligne ${index + 2}: "${nom}" en double dans le fichier`);
           return;
         }
 
@@ -158,6 +199,19 @@ export default function ImportPage() {
           'Mobile', 'mobile', 'Portable', 'portable'
         );
         const telephone = telMobile || telFixe;
+
+        // Check phone duplicate (if phone exists and is long enough)
+        const normPhone = normalizePhone(telephone);
+        if (normPhone.length >= 6) {
+          if (existingPhones.has(normPhone)) {
+            errors.push(`Ligne ${index + 2}: "${nom}" - telephone ${telephone} deja existant (doublon tel)`);
+            return;
+          }
+          if (importedPhones.has(normPhone)) {
+            errors.push(`Ligne ${index + 2}: "${nom}" - telephone ${telephone} en double dans le fichier`);
+            return;
+          }
+        }
 
         // Email
         const email = getVal(row,
@@ -207,6 +261,10 @@ export default function ImportPage() {
           'Date creation', 'Date'
         );
 
+        // Register in dedup sets
+        importedNames.add(nomLower);
+        if (normPhone.length >= 6) importedPhones.add(normPhone);
+
         parsed.push({
           nom, contact, telephone, email, adresse, score,
           type, etape, secteur, notes, dateCreation, index,
@@ -214,7 +272,7 @@ export default function ImportPage() {
       });
 
       if (parsed.length === 0) {
-        setImportResults({ success: 0, errors, geocoded: 0 });
+        setImportResults({ success: 0, errors, geocoded: 0, duplicates: 0 });
         setImporting(false);
         return;
       }
@@ -281,7 +339,8 @@ export default function ImportPage() {
       errors.push('Erreur de lecture du fichier. Verifiez le format (Excel .xlsx ou .csv).');
     }
 
-    setImportResults({ success, errors, geocoded });
+    const duplicates = errors.filter(e => e.includes('doublon') || e.includes('en double')).length;
+    setImportResults({ success, errors, geocoded, duplicates });
     setImporting(false);
     setGeocoding(false);
 
@@ -463,6 +522,12 @@ export default function ImportPage() {
             <div className="flex items-center gap-2 text-green-600 mb-2">
               <CheckCircle className="w-4 h-4" />
               <span className="text-sm font-medium">{importResults.success} prospect(s) importe(s) avec succes</span>
+            </div>
+          )}
+          {importResults.duplicates > 0 && (
+            <div className="flex items-center gap-2 text-amber-600 mb-2">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm font-medium">{importResults.duplicates} doublon(s) ignore(s)</span>
             </div>
           )}
           {importResults.geocoded > 0 && (

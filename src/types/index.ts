@@ -11,6 +11,11 @@ export type EstablishmentType =
   | 'marche'
   | 'distributeur'
   | 'hotel'
+  | 'camping'
+  | 'traiteur'
+  | 'association'
+  | 'comite_entreprise'
+  | 'collectivite'
   | 'autre';
 
 export const ESTABLISHMENT_LABELS: Record<EstablishmentType, string> = {
@@ -21,6 +26,11 @@ export const ESTABLISHMENT_LABELS: Record<EstablishmentType, string> = {
   marche: 'Marche',
   distributeur: 'Distributeur',
   hotel: 'Hotel',
+  camping: 'Camping',
+  traiteur: 'Traiteur',
+  association: 'Association',
+  comite_entreprise: 'Comite d\'entreprise',
+  collectivite: 'Collectivite',
   autre: 'Autre',
 };
 
@@ -32,6 +42,11 @@ export const ESTABLISHMENT_ICONS: Record<EstablishmentType, string> = {
   marche: 'Tent',
   distributeur: 'Package',
   hotel: 'Hotel',
+  camping: 'Tent',
+  traiteur: 'UtensilsCrossed',
+  association: 'Users',
+  comite_entreprise: 'Building',
+  collectivite: 'Building',
   autre: 'MapPin',
 };
 
@@ -42,7 +57,8 @@ export type PipelineStage =
   | 'proposition'
   | 'negociation'
   | 'gagne'
-  | 'perdu';
+  | 'perdu'
+  | 'ne_pas_contacter';
 
 export const PIPELINE_LABELS: Record<PipelineStage, string> = {
   nouveau: 'Nouveau',
@@ -52,6 +68,7 @@ export const PIPELINE_LABELS: Record<PipelineStage, string> = {
   negociation: 'Negociation',
   gagne: 'RDV / Gagne',
   perdu: 'Perdu',
+  ne_pas_contacter: 'Ne pas contacter',
 };
 
 export const PIPELINE_COLORS: Record<PipelineStage, string> = {
@@ -62,6 +79,7 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   negociation: '#ef4444',
   gagne: '#22c55e',
   perdu: '#dc2626',
+  ne_pas_contacter: '#991b1b',
 };
 
 export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoignable';

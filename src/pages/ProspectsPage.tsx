@@ -26,6 +26,7 @@ export default function ProspectsPage() {
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [filterSecteur, setFilterSecteur] = useState('');
   const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
@@ -70,8 +71,10 @@ export default function ProspectsPage() {
     });
     if (sortScore === 'desc') return list.sort((a, b) => b.score - a.score);
     if (sortScore === 'asc') return list.sort((a, b) => a.score - b.score);
+    if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
+    if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm, sortScore]);
+  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm, sortScore, sortDate]);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
@@ -186,16 +189,34 @@ export default function ProspectsPage() {
           </div>
           <div className="flex items-center justify-between">
             <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
-            <button
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
-                sortScore !== 'none' ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-              onClick={() => setSortScore(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none')}
-              title={sortScore === 'none' ? 'Trier par score' : sortScore === 'desc' ? 'Score decroissant' : 'Score croissant'}
-            >
-              <ArrowUpDown className="w-3 h-3" />
-              Score {sortScore === 'desc' ? '↓' : sortScore === 'asc' ? '↑' : ''}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                  sortDate !== 'none' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => {
+                  setSortDate(prev => prev === 'none' ? 'recent' : prev === 'recent' ? 'ancien' : 'none');
+                  if (sortDate === 'none') setSortScore('none');
+                }}
+                title={sortDate === 'none' ? 'Trier par date' : sortDate === 'recent' ? 'Plus recent d\'abord' : 'Plus ancien d\'abord'}
+              >
+                <Calendar className="w-3 h-3" />
+                Date {sortDate === 'recent' ? '↓' : sortDate === 'ancien' ? '↑' : ''}
+              </button>
+              <button
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                  sortScore !== 'none' ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => {
+                  setSortScore(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none');
+                  if (sortScore === 'none') setSortDate('none');
+                }}
+                title={sortScore === 'none' ? 'Trier par score' : sortScore === 'desc' ? 'Score decroissant' : 'Score croissant'}
+              >
+                <ArrowUpDown className="w-3 h-3" />
+                Score {sortScore === 'desc' ? '↓' : sortScore === 'asc' ? '↑' : ''}
+              </button>
+            </div>
           </div>
         </div>
 

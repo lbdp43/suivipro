@@ -209,6 +209,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updated.pipelineColumns = updated.pipelineColumns.map(c =>
       c.id === 'gagne' ? { ...c, label: 'RDV / Gagne' } : c
     );
+    // Add ne_pas_contacter column if missing
+    if (!updated.pipelineColumns.find(c => c.id === 'ne_pas_contacter')) {
+      updated.pipelineColumns.push({
+        id: 'ne_pas_contacter' as PipelineStage,
+        label: PIPELINE_LABELS['ne_pas_contacter'],
+        color: PIPELINE_COLORS['ne_pas_contacter'],
+      });
+    }
     if (updated.currentUser && !updated.currentUser.password) {
       updated.currentUser = null;
     }
