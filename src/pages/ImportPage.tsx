@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import {
   Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, Loader2, MapPin,
+  Search, Trash2, Trophy, CheckSquare, Square,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS } from '../types';
@@ -388,6 +389,178 @@ export default function ImportPage() {
   // Get unique sectors for suggestions
   const existingSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))];
 
+  // ============================================
+  // Croisement base clients
+  // ============================================
+  interface ClientMatch {
+    clientRow: { denomination: string; telFixe: string; telMobile: string; adresse: string; rowIndex: number };
+    prospect: Prospect;
+    matchType: string; // "nom", "tel", "adresse", "nom+tel", etc.
+  }
+  const [crossRefFile, setCrossRefFile] = useState<File | null>(null);
+  const [crossMatches, setCrossMatches] = useState<ClientMatch[]>([]);
+  const [crossSearching, setCrossSearching] = useState(false);
+  const [crossDone, setCrossDone] = useState(false);
+  const [crossTotalRows, setCrossTotalRows] = useState(0);
+  const [crossSelected, setCrossSelected] = useState<Set<string>>(new Set());
+  const crossFileRef = useRef<HTMLInputElement>(null);
+
+  const normalizeStr = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const normalizePhone = (tel: string) => tel.replace(/[\s.\-()\/+]/g, '').replace(/^0033/, '0').replace(/^33/, '0');
+
+  const handleCrossRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCrossRefFile(file);
+    setCrossSearching(true);
+    setCrossMatches([]);
+    setCrossSelected(new Set());
+    setCrossDone(false);
+
+    try {
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
+      setCrossTotalRows(rows.length);
+
+      // Helper: get cell value flexibly
+      const getVal = (row: Record<string, any>, ...keys: string[]): string => {
+        for (const key of keys) {
+          for (const rowKey of Object.keys(row)) {
+            if (rowKey.toLowerCase().trim() === key.toLowerCase().trim()) {
+              return String(row[rowKey] ?? '').trim();
+            }
+          }
+        }
+        return '';
+      };
+
+      // Build lookup maps from existing prospects
+      const prospectsByNorm = new Map<string, Prospect[]>();
+      const prospectsByPhone = new Map<string, Prospect[]>();
+      for (const p of state.prospects) {
+        const normName = normalizeStr(p.nom_etablissement);
+        if (normName.length >= 3) {
+          if (!prospectsByNorm.has(normName)) prospectsByNorm.set(normName, []);
+          prospectsByNorm.get(normName)!.push(p);
+        }
+        const normTel = normalizePhone(p.telephone);
+        if (normTel.length >= 6) {
+          if (!prospectsByPhone.has(normTel)) prospectsByPhone.set(normTel, []);
+          prospectsByPhone.get(normTel)!.push(p);
+        }
+      }
+
+      const matches: ClientMatch[] = [];
+      const matchedProspectIds = new Set<string>();
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const denomination = getVal(row,
+          'Dénomination', 'Denomination', 'Raison sociale', 'Nom', 'Etablissement',
+          'nom', 'denomination', 'raison sociale', 'Société', 'Societe'
+        );
+        const telFixe = getVal(row,
+          'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Telephone fixe', 'Telephone',
+          'telephone', 'Tel', 'tel', 'Numero', 'Phone'
+        );
+        const telMobile = getVal(row,
+          'Tél. mobile', 'Tel. mobile', 'Tel mobile', 'Telephone mobile',
+          'Mobile', 'mobile', 'Portable', 'portable', 'Gsm', 'GSM'
+        );
+        const adresse = getVal(row,
+          'Adresse', 'adresse', 'Adresse complete', 'Adresse postale', 'Address'
+        );
+
+        const clientRow = { denomination, telFixe, telMobile, adresse, rowIndex: i + 2 };
+        const normName = normalizeStr(denomination);
+        const normTelFixe = normalizePhone(telFixe);
+        const normTelMobile = normalizePhone(telMobile);
+
+        // Match by name
+        const nameMatches = normName.length >= 3 ? (prospectsByNorm.get(normName) || []) : [];
+        // Match by phone (fixe or mobile)
+        const phoneMatches: Prospect[] = [];
+        if (normTelFixe.length >= 6) phoneMatches.push(...(prospectsByPhone.get(normTelFixe) || []));
+        if (normTelMobile.length >= 6) phoneMatches.push(...(prospectsByPhone.get(normTelMobile) || []));
+
+        // Combine and deduplicate
+        const allMatched = new Map<string, { prospect: Prospect; reasons: string[] }>();
+        for (const p of nameMatches) {
+          if (!allMatched.has(p.id)) allMatched.set(p.id, { prospect: p, reasons: [] });
+          allMatched.get(p.id)!.reasons.push('nom');
+        }
+        for (const p of phoneMatches) {
+          if (!allMatched.has(p.id)) allMatched.set(p.id, { prospect: p, reasons: [] });
+          allMatched.get(p.id)!.reasons.push('tel');
+        }
+
+        for (const [pid, { prospect, reasons }] of allMatched) {
+          if (matchedProspectIds.has(pid)) continue;
+          matchedProspectIds.add(pid);
+          matches.push({
+            clientRow,
+            prospect,
+            matchType: reasons.join('+'),
+          });
+        }
+      }
+
+      setCrossMatches(matches);
+      // Select all by default
+      setCrossSelected(new Set(matches.map(m => m.prospect.id)));
+    } catch {
+      alert('Erreur de lecture du fichier. Verifiez le format.');
+    }
+    setCrossSearching(false);
+    setCrossDone(true);
+    if (crossFileRef.current) crossFileRef.current.value = '';
+  };
+
+  const toggleCrossSelect = (id: string) => {
+    setCrossSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCrossAll = () => {
+    if (crossSelected.size === crossMatches.length) {
+      setCrossSelected(new Set());
+    } else {
+      setCrossSelected(new Set(crossMatches.map(m => m.prospect.id)));
+    }
+  };
+
+  const handleCrossAction = (action: 'delete' | 'gagne') => {
+    if (crossSelected.size === 0) return;
+    const selectedIds = [...crossSelected];
+    const label = action === 'delete' ? 'SUPPRIMER' : 'passer en "RDV / Gagne"';
+    const count = selectedIds.length;
+    if (!confirm(`${label} ${count} prospect(s) selectionne(s) ?`)) return;
+
+    for (const id of selectedIds) {
+      if (action === 'delete') {
+        dispatch({ type: 'DELETE_PROSPECT', payload: id });
+      } else {
+        const prospect = state.prospects.find(p => p.id === id);
+        if (prospect) {
+          dispatch({
+            type: 'UPDATE_PROSPECT',
+            payload: { ...prospect, etape_pipeline: 'gagne' as PipelineStage, date_modification: new Date().toISOString() },
+          });
+        }
+      }
+    }
+    // Remove processed from matches
+    setCrossMatches(prev => prev.filter(m => !crossSelected.has(m.prospect.id)));
+    setCrossSelected(new Set());
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
@@ -531,6 +704,149 @@ export default function ImportPage() {
           <p className="text-gray-500">Les adresses seront geocodees automatiquement pour la carte (via OpenStreetMap).</p>
           <p className="text-gray-500">Si le secteur est renseigne dans le fichier, il sera prioritaire sur le champ ci-dessus.</p>
         </div>
+      </div>
+
+      {/* ========== Croisement base clients ========== */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-1 flex items-center gap-2">
+          <Search className="w-4 h-4 text-brewery-600" />
+          Croisement base clients (detection doublons)
+        </h3>
+        <p className="text-xs sm:text-sm text-gray-500 mb-4">
+          Importez votre fichier clients pour detecter les prospects qui sont deja clients.
+          Colonnes utilisees : <strong>Denomination</strong>, <strong>Tel. fixe</strong>, <strong>Tel. mobile</strong>, <strong>Adresse</strong>.
+        </p>
+
+        <div className="border-2 border-dashed border-amber-300 rounded-xl p-6 sm:p-8 text-center hover:border-amber-500 transition-colors bg-amber-50/30">
+          {crossSearching ? (
+            <div className="space-y-2">
+              <Loader2 className="w-8 h-8 text-amber-500 mx-auto animate-spin" />
+              <p className="text-sm font-medium text-gray-700">Analyse en cours...</p>
+            </div>
+          ) : (
+            <>
+              <Search className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                Glissez votre fichier clients (.xlsx, .csv)
+              </p>
+              <input
+                ref={crossFileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleCrossRef}
+              />
+              <button
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-xs sm:text-sm font-medium"
+                onClick={() => crossFileRef.current?.click()}
+              >
+                Choisir un fichier clients
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Results */}
+        {crossDone && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {crossMatches.length} doublon(s) trouve(s) sur {crossTotalRows} clients analyses
+                </p>
+                {crossMatches.length === 0 && (
+                  <p className="text-xs text-green-600 mt-1">Aucun doublon detecte — votre base est propre !</p>
+                )}
+              </div>
+              {crossMatches.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-medium disabled:opacity-40"
+                    onClick={() => handleCrossAction('gagne')}
+                    disabled={crossSelected.size === 0}
+                  >
+                    <Trophy className="w-3.5 h-3.5" />
+                    Passer en Gagne ({crossSelected.size})
+                  </button>
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs font-medium disabled:opacity-40"
+                    onClick={() => handleCrossAction('delete')}
+                    disabled={crossSelected.size === 0}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Supprimer ({crossSelected.size})
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {crossMatches.length > 0 && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                {/* Header */}
+                <div className="bg-gray-50 px-3 py-2 flex items-center gap-3 border-b border-gray-200 text-[10px] sm:text-xs font-medium text-gray-500">
+                  <button onClick={toggleCrossAll} className="flex-shrink-0">
+                    {crossSelected.size === crossMatches.length
+                      ? <CheckSquare className="w-4 h-4 text-brewery-600" />
+                      : <Square className="w-4 h-4 text-gray-400" />
+                    }
+                  </button>
+                  <span className="w-1/4 min-w-0">Client (fichier)</span>
+                  <span className="w-1/4 min-w-0">Prospect (existant)</span>
+                  <span className="w-1/6 min-w-0">Tel prospect</span>
+                  <span className="w-1/6 min-w-0">Etape actuelle</span>
+                  <span className="w-1/6 min-w-0">Match</span>
+                </div>
+                {/* Rows */}
+                <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                  {crossMatches.map(m => {
+                    const isSelected = crossSelected.has(m.prospect.id);
+                    const stageLabel = state.pipelineColumns.find(c => c.id === m.prospect.etape_pipeline)?.label
+                      || PIPELINE_LABELS[m.prospect.etape_pipeline] || m.prospect.etape_pipeline;
+                    return (
+                      <div
+                        key={m.prospect.id}
+                        className={`px-3 py-2 flex items-center gap-3 text-[10px] sm:text-xs cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-brewery-50' : ''}`}
+                        onClick={() => toggleCrossSelect(m.prospect.id)}
+                      >
+                        <div className="flex-shrink-0">
+                          {isSelected
+                            ? <CheckSquare className="w-4 h-4 text-brewery-600" />
+                            : <Square className="w-4 h-4 text-gray-300" />
+                          }
+                        </div>
+                        <div className="w-1/4 min-w-0 truncate text-gray-700" title={m.clientRow.denomination}>
+                          <p className="font-medium truncate">{m.clientRow.denomination}</p>
+                          <p className="text-gray-400 truncate">{m.clientRow.telFixe || m.clientRow.telMobile}</p>
+                        </div>
+                        <div className="w-1/4 min-w-0 truncate" title={m.prospect.nom_etablissement}>
+                          <p className="font-medium text-gray-900 truncate">{m.prospect.nom_etablissement}</p>
+                          <p className="text-gray-400 truncate">{m.prospect.ville || m.prospect.adresse}</p>
+                        </div>
+                        <div className="w-1/6 min-w-0 truncate text-gray-600">
+                          {m.prospect.telephone}
+                        </div>
+                        <div className="w-1/6 min-w-0">
+                          <span className="badge text-white text-[9px]" style={{ backgroundColor: PIPELINE_LABELS[m.prospect.etape_pipeline] ? '#6b7280' : '#6b7280' }}>
+                            {stageLabel}
+                          </span>
+                        </div>
+                        <div className="w-1/6 min-w-0">
+                          {m.matchType.includes('nom') && m.matchType.includes('tel') ? (
+                            <span className="badge bg-red-100 text-red-700 text-[9px]">Nom + Tel</span>
+                          ) : m.matchType.includes('nom') ? (
+                            <span className="badge bg-amber-100 text-amber-700 text-[9px]">Nom</span>
+                          ) : (
+                            <span className="badge bg-blue-100 text-blue-700 text-[9px]">Telephone</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Import results */}
