@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
@@ -42,6 +42,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [memoHeure, setMemoHeure] = useState('09:00');
   const [newTagName, setNewTagName] = useState('');
   const [showNewTag, setShowNewTag] = useState(false);
+  // Negative outcome: pas_interesse → perdu, ne_pas_contacter → ne_pas_contacter
+  const [negativeOutcome, setNegativeOutcome] = useState<'none' | 'pas_interesse' | 'ne_pas_contacter'>('none');
   // RDV state
   const [showRdv, setShowRdv] = useState(false);
   const [rdvDate, setRdvDate] = useState('');
@@ -84,7 +86,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setMemoHeure('09:00');
     setShowNewTag(false);
     setNewTagName('');
-    // Reset RDV
+    // Reset negative outcome + RDV
+    setNegativeOutcome('none');
     setShowRdv(false);
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 3);
@@ -154,8 +157,14 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
       let newStage = prospect.etape_pipeline;
 
+      // Regle : Negative outcome → perdu ou ne_pas_contacter (priorite max)
+      if (negativeOutcome === 'pas_interesse') {
+        newStage = 'perdu';
+      } else if (negativeOutcome === 'ne_pas_contacter') {
+        newStage = 'ne_pas_contacter';
+      }
       // Regle : RDV pris → "Gagne" (prioritaire)
-      if (hasRdv && !['gagne', 'perdu'].includes(prospect.etape_pipeline)) {
+      else if (hasRdv && !['gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
         newStage = 'gagne';
       }
       // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
@@ -332,6 +341,41 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         );
                       })}
                     </div>
+                  </div>
+
+                  {/* Negative outcomes: pas interesse / ne pas contacter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-2">Issue negative</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                          negativeOutcome === 'pas_interesse'
+                            ? 'border-red-500 bg-red-50 text-red-700'
+                            : 'border-gray-200 text-gray-600 hover:bg-red-50 hover:border-red-300 hover:text-red-600'
+                        }`}
+                        onClick={() => setNegativeOutcome(prev => prev === 'pas_interesse' ? 'none' : 'pas_interesse')}
+                      >
+                        <ThumbsDown className="w-4 h-4" />
+                        Pas interesse
+                      </button>
+                      <button
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                          negativeOutcome === 'ne_pas_contacter'
+                            ? 'border-red-700 bg-red-100 text-red-800'
+                            : 'border-gray-200 text-gray-600 hover:bg-red-50 hover:border-red-300 hover:text-red-600'
+                        }`}
+                        onClick={() => setNegativeOutcome(prev => prev === 'ne_pas_contacter' ? 'none' : 'ne_pas_contacter')}
+                      >
+                        <Ban className="w-4 h-4" />
+                        Ne pas contacter
+                      </button>
+                    </div>
+                    {negativeOutcome === 'pas_interesse' && (
+                      <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
+                    )}
+                    {negativeOutcome === 'ne_pas_contacter' && (
+                      <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera deplace dans "Ne pas contacter"</p>
+                    )}
                   </div>
 
                   {/* Tags - tags actifs avec X + tags disponibles a ajouter */}
