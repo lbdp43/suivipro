@@ -3,6 +3,7 @@ import cors from 'cors';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { dbReady } from './server/db.js';
 import apiRoutes from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 
@@ -34,6 +35,9 @@ if (existsSync(DIST)) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`SuiviPro API + Frontend running on port ${PORT}`);
+// Wait for database to be ready before starting server
+dbReady.then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`SuiviPro API + Frontend running on port ${PORT}`);
+  });
 });

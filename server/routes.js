@@ -26,11 +26,12 @@ function authMiddleware(req, res, next) {
 // Auth routes
 // ============================================
 
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
 
-  const user = db.prepare('SELECT * FROM commerciaux WHERE email = ?').get(email);
+  const result = await db.query('SELECT * FROM commerciaux WHERE email = $1', [email]);
+  const user = result.rows[0];
   if (!user) return res.status(401).json({ error: 'Identifiants incorrects' });
 
   // Support both hashed and legacy plaintext passwords
@@ -41,7 +42,7 @@ router.post('/auth/login', (req, res) => {
     valid = user.password === password;
     // Upgrade to hash
     if (valid) {
-      db.prepare('UPDATE commerciaux SET password = ? WHERE id = ?').run(bcrypt.hashSync(password, 10), user.id);
+      await db.query('UPDATE commerciaux SET password = $1 WHERE id = $2', [bcrypt.hashSync(password, 10), user.id]);
     }
   }
   if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -52,8 +53,9 @@ router.post('/auth/login', (req, res) => {
   res.json({ token, user: userWithoutPwd });
 });
 
-router.get('/auth/me', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT * FROM commerciaux WHERE id = ?').get(req.user.id);
+router.get('/auth/me', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM commerciaux WHERE id = $1', [req.user.id]);
+  const user = result.rows[0];
   if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
   const { password: _, ...u } = user;
   u.objectifs = JSON.parse(u.objectifs || '{}');
@@ -78,58 +80,84 @@ function parseCommercial(c) {
 // Full state load (for initial sync)
 // ============================================
 
-router.get('/state', authMiddleware, (req, res) => {
-  const prospects = db.prepare('SELECT * FROM prospects').all().map(parseProspect);
-  const calls = db.prepare('SELECT * FROM calls').all();
-  const appointments = db.prepare('SELECT * FROM appointments').all();
-  const reminders = db.prepare('SELECT * FROM reminders').all();
-  const commerciaux = db.prepare('SELECT * FROM commerciaux').all().map(parseCommercial);
-  const tags = db.prepare('SELECT * FROM tags').all();
-  const emailTemplates = db.prepare('SELECT * FROM email_templates').all();
-  const pipelineColumns = db.prepare('SELECT * FROM pipeline_columns ORDER BY sort_order').all();
+router.get('/state', authMiddleware, async (req, res) => {
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns] = await Promise.all([
+    db.query('SELECT * FROM prospects'),
+    db.query('SELECT * FROM calls'),
+    db.query('SELECT * FROM appointments'),
+    db.query('SELECT * FROM reminders'),
+    db.query('SELECT * FROM commerciaux'),
+    db.query('SELECT * FROM tags'),
+    db.query('SELECT * FROM email_templates'),
+    db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
+  ]);
 
-  res.json({ prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns });
+  res.json({
+    prospects: prospects.rows.map(parseProspect),
+    calls: calls.rows,
+    appointments: appointments.rows,
+    reminders: reminders.rows,
+    commerciaux: commerciaux.rows.map(parseCommercial),
+    tags: tags.rows,
+    emailTemplates: emailTemplates.rows,
+    pipelineColumns: pipelineColumns.rows,
+  });
 });
 
 // ============================================
 // Prospects CRUD
 // ============================================
 
-router.get('/prospects', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM prospects').all().map(parseProspect));
+router.get('/prospects', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM prospects');
+  res.json(result.rows.map(parseProspect));
 });
 
-router.post('/prospects', authMiddleware, (req, res) => {
+router.post('/prospects', authMiddleware, async (req, res) => {
   const p = req.body;
-  db.prepare(`INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50);
+  await db.query(
+    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
+  );
   res.json({ ok: true });
 });
 
-router.put('/prospects/:id', authMiddleware, (req, res) => {
+router.put('/prospects/:id', authMiddleware, async (req, res) => {
   const p = req.body;
-  db.prepare(`UPDATE prospects SET nom_etablissement=?, type_etablissement=?, nom_contact=?, telephone=?, email=?, adresse=?, ville=?, code_postal=?, departement=?, secteur=?, latitude=?, longitude=?, etape_pipeline=?, tags=?, commercial_id=?, notes=?, date_modification=?, score=? WHERE id=?`)
-    .run(p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_modification, p.score || 50, req.params.id);
+  await db.query(
+    `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
+  );
   res.json({ ok: true });
 });
 
-router.delete('/prospects/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM prospects WHERE id = ?').run(req.params.id);
+router.delete('/prospects/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // Bulk import
-router.post('/prospects/import', authMiddleware, (req, res) => {
+router.post('/prospects/import', authMiddleware, async (req, res) => {
   const prospects = req.body;
-  const insert = db.prepare(`INSERT OR REPLACE INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const tx = db.transaction(() => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
     for (const p of prospects) {
-      insert.run(p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50);
+      await client.query(
+        `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        ON CONFLICT (id) DO UPDATE SET nom_etablissement=$2, type_etablissement=$3, nom_contact=$4, telephone=$5, email=$6, adresse=$7, ville=$8, code_postal=$9, departement=$10, secteur=$11, latitude=$12, longitude=$13, etape_pipeline=$14, tags=$15, commercial_id=$16, notes=$17, date_creation=$18, date_modification=$19, score=$20`,
+        [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
+      );
     }
-  });
-  tx();
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   res.json({ ok: true, count: prospects.length });
 });
 
@@ -137,26 +165,31 @@ router.post('/prospects/import', authMiddleware, (req, res) => {
 // Calls CRUD
 // ============================================
 
-router.get('/calls', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM calls').all());
+router.get('/calls', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM calls');
+  res.json(result.rows);
 });
 
-router.post('/calls', authMiddleware, (req, res) => {
+router.post('/calls', authMiddleware, async (req, res) => {
   const c = req.body;
-  db.prepare('INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES (?,?,?,?,?,?,?)')
-    .run(c.id, c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '');
+  await db.query(
+    'INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [c.id, c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '']
+  );
   res.json({ ok: true });
 });
 
-router.put('/calls/:id', authMiddleware, (req, res) => {
+router.put('/calls/:id', authMiddleware, async (req, res) => {
   const c = req.body;
-  db.prepare('UPDATE calls SET prospect_id=?, commercial_id=?, date=?, duree=?, resultat=?, notes=? WHERE id=?')
-    .run(c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id);
+  await db.query(
+    'UPDATE calls SET prospect_id=$1, commercial_id=$2, date=$3, duree=$4, resultat=$5, notes=$6 WHERE id=$7',
+    [c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id]
+  );
   res.json({ ok: true });
 });
 
-router.delete('/calls/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM calls WHERE id = ?').run(req.params.id);
+router.delete('/calls/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM calls WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -164,26 +197,31 @@ router.delete('/calls/:id', authMiddleware, (req, res) => {
 // Appointments CRUD
 // ============================================
 
-router.get('/appointments', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM appointments').all());
+router.get('/appointments', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM appointments');
+  res.json(result.rows);
 });
 
-router.post('/appointments', authMiddleware, (req, res) => {
+router.post('/appointments', authMiddleware, async (req, res) => {
   const a = req.body;
-  db.prepare('INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run(a.id, a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie');
+  await db.query(
+    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+    [a.id, a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie']
+  );
   res.json({ ok: true });
 });
 
-router.put('/appointments/:id', authMiddleware, (req, res) => {
+router.put('/appointments/:id', authMiddleware, async (req, res) => {
   const a = req.body;
-  db.prepare('UPDATE appointments SET prospect_id=?, commercial_id=?, prospecteur_id=?, date=?, heure_debut=?, heure_fin=?, lieu=?, notes=?, statut=? WHERE id=?')
-    .run(a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, req.params.id);
+  await db.query(
+    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9 WHERE id=$10',
+    [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, req.params.id]
+  );
   res.json({ ok: true });
 });
 
-router.delete('/appointments/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM appointments WHERE id = ?').run(req.params.id);
+router.delete('/appointments/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -191,26 +229,31 @@ router.delete('/appointments/:id', authMiddleware, (req, res) => {
 // Reminders CRUD
 // ============================================
 
-router.get('/reminders', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM reminders').all());
+router.get('/reminders', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM reminders');
+  res.json(result.rows);
 });
 
-router.post('/reminders', authMiddleware, (req, res) => {
+router.post('/reminders', authMiddleware, async (req, res) => {
   const r = req.body;
-  db.prepare('INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut) VALUES (?,?,?,?,?,?,?)')
-    .run(r.id, r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut || 'actif');
+  await db.query(
+    'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [r.id, r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut || 'actif']
+  );
   res.json({ ok: true });
 });
 
-router.put('/reminders/:id', authMiddleware, (req, res) => {
+router.put('/reminders/:id', authMiddleware, async (req, res) => {
   const r = req.body;
-  db.prepare('UPDATE reminders SET prospect_id=?, commercial_id=?, date=?, heure=?, message=?, statut=? WHERE id=?')
-    .run(r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id);
+  await db.query(
+    'UPDATE reminders SET prospect_id=$1, commercial_id=$2, date=$3, heure=$4, message=$5, statut=$6 WHERE id=$7',
+    [r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id]
+  );
   res.json({ ok: true });
 });
 
-router.delete('/reminders/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM reminders WHERE id = ?').run(req.params.id);
+router.delete('/reminders/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM reminders WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -218,24 +261,25 @@ router.delete('/reminders/:id', authMiddleware, (req, res) => {
 // Tags CRUD
 // ============================================
 
-router.get('/tags', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM tags').all());
+router.get('/tags', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM tags');
+  res.json(result.rows);
 });
 
-router.post('/tags', authMiddleware, (req, res) => {
+router.post('/tags', authMiddleware, async (req, res) => {
   const t = req.body;
-  db.prepare('INSERT INTO tags (id, nom, couleur) VALUES (?,?,?)').run(t.id, t.nom, t.couleur);
+  await db.query('INSERT INTO tags (id, nom, couleur) VALUES ($1,$2,$3)', [t.id, t.nom, t.couleur]);
   res.json({ ok: true });
 });
 
-router.put('/tags/:id', authMiddleware, (req, res) => {
+router.put('/tags/:id', authMiddleware, async (req, res) => {
   const t = req.body;
-  db.prepare('UPDATE tags SET nom=?, couleur=? WHERE id=?').run(t.nom, t.couleur, req.params.id);
+  await db.query('UPDATE tags SET nom=$1, couleur=$2 WHERE id=$3', [t.nom, t.couleur, req.params.id]);
   res.json({ ok: true });
 });
 
-router.delete('/tags/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM tags WHERE id = ?').run(req.params.id);
+router.delete('/tags/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM tags WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -243,24 +287,31 @@ router.delete('/tags/:id', authMiddleware, (req, res) => {
 // Email templates CRUD
 // ============================================
 
-router.get('/email-templates', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM email_templates').all());
+router.get('/email-templates', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM email_templates');
+  res.json(result.rows);
 });
 
-router.post('/email-templates', authMiddleware, (req, res) => {
+router.post('/email-templates', authMiddleware, async (req, res) => {
   const e = req.body;
-  db.prepare('INSERT INTO email_templates (id, nom, sujet, corps, type) VALUES (?,?,?,?,?)').run(e.id, e.nom, e.sujet || '', e.corps || '', e.type || '');
+  await db.query(
+    'INSERT INTO email_templates (id, nom, sujet, corps, type) VALUES ($1,$2,$3,$4,$5)',
+    [e.id, e.nom, e.sujet || '', e.corps || '', e.type || '']
+  );
   res.json({ ok: true });
 });
 
-router.put('/email-templates/:id', authMiddleware, (req, res) => {
+router.put('/email-templates/:id', authMiddleware, async (req, res) => {
   const e = req.body;
-  db.prepare('UPDATE email_templates SET nom=?, sujet=?, corps=?, type=? WHERE id=?').run(e.nom, e.sujet || '', e.corps || '', e.type || '', req.params.id);
+  await db.query(
+    'UPDATE email_templates SET nom=$1, sujet=$2, corps=$3, type=$4 WHERE id=$5',
+    [e.nom, e.sujet || '', e.corps || '', e.type || '', req.params.id]
+  );
   res.json({ ok: true });
 });
 
-router.delete('/email-templates/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
+router.delete('/email-templates/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM email_templates WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -268,26 +319,29 @@ router.delete('/email-templates/:id', authMiddleware, (req, res) => {
 // Pipeline columns CRUD
 // ============================================
 
-router.get('/pipeline-columns', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM pipeline_columns ORDER BY sort_order').all());
+router.get('/pipeline-columns', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM pipeline_columns ORDER BY sort_order');
+  res.json(result.rows);
 });
 
-router.post('/pipeline-columns', authMiddleware, (req, res) => {
+router.post('/pipeline-columns', authMiddleware, async (req, res) => {
   const c = req.body;
-  const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM pipeline_columns').get();
-  db.prepare('INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES (?,?,?,?)')
-    .run(c.id, c.label, c.color, (maxOrder?.m || 0) + 1);
+  const maxOrder = await db.query('SELECT MAX(sort_order) as m FROM pipeline_columns');
+  await db.query(
+    'INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ($1,$2,$3,$4)',
+    [c.id, c.label, c.color, (maxOrder.rows[0]?.m || 0) + 1]
+  );
   res.json({ ok: true });
 });
 
-router.put('/pipeline-columns/:id', authMiddleware, (req, res) => {
+router.put('/pipeline-columns/:id', authMiddleware, async (req, res) => {
   const c = req.body;
-  db.prepare('UPDATE pipeline_columns SET label=?, color=? WHERE id=?').run(c.label, c.color, req.params.id);
+  await db.query('UPDATE pipeline_columns SET label=$1, color=$2 WHERE id=$3', [c.label, c.color, req.params.id]);
   res.json({ ok: true });
 });
 
-router.delete('/pipeline-columns/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM pipeline_columns WHERE id = ?').run(req.params.id);
+router.delete('/pipeline-columns/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM pipeline_columns WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
@@ -295,34 +349,41 @@ router.delete('/pipeline-columns/:id', authMiddleware, (req, res) => {
 // Commerciaux CRUD
 // ============================================
 
-router.get('/commerciaux', authMiddleware, (req, res) => {
-  res.json(db.prepare('SELECT * FROM commerciaux').all().map(parseCommercial));
+router.get('/commerciaux', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT * FROM commerciaux');
+  res.json(result.rows.map(parseCommercial));
 });
 
-router.post('/commerciaux', authMiddleware, (req, res) => {
+router.post('/commerciaux', authMiddleware, async (req, res) => {
   const c = req.body;
   const hashedPwd = bcrypt.hashSync(c.password, 10);
-  db.prepare('INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES (?,?,?,?,?,?,?,?)')
-    .run(c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}));
+  await db.query(
+    'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+    [c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {})]
+  );
   res.json({ ok: true });
 });
 
-router.put('/commerciaux/:id', authMiddleware, (req, res) => {
+router.put('/commerciaux/:id', authMiddleware, async (req, res) => {
   const c = req.body;
   // Only update password if provided and non-empty
   if (c.password && c.password.length > 0) {
     const hashedPwd = bcrypt.hashSync(c.password, 10);
-    db.prepare('UPDATE commerciaux SET prenom=?, nom=?, email=?, telephone=?, role=?, password=?, objectifs=? WHERE id=?')
-      .run(c.prenom, c.nom, c.email, c.telephone || '', c.role, hashedPwd, JSON.stringify(c.objectifs || {}), req.params.id);
+    await db.query(
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7 WHERE id=$8',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role, hashedPwd, JSON.stringify(c.objectifs || {}), req.params.id]
+    );
   } else {
-    db.prepare('UPDATE commerciaux SET prenom=?, nom=?, email=?, telephone=?, role=?, objectifs=? WHERE id=?')
-      .run(c.prenom, c.nom, c.email, c.telephone || '', c.role, JSON.stringify(c.objectifs || {}), req.params.id);
+    await db.query(
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6 WHERE id=$7',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role, JSON.stringify(c.objectifs || {}), req.params.id]
+    );
   }
   res.json({ ok: true });
 });
 
-router.delete('/commerciaux/:id', authMiddleware, (req, res) => {
-  db.prepare('DELETE FROM commerciaux WHERE id = ?').run(req.params.id);
+router.delete('/commerciaux/:id', authMiddleware, async (req, res) => {
+  await db.query('DELETE FROM commerciaux WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 

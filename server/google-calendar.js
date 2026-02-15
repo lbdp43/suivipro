@@ -41,10 +41,10 @@ router.get('/google-calendar/config-status', authMiddleware, (req, res) => {
 // Get Google Calendar connection status for all commerciaux
 // ============================================
 
-router.get('/google-calendar/status', authMiddleware, (req, res) => {
-  const tokens = db.prepare('SELECT commercial_id, calendar_email, connected_at FROM google_calendar_tokens').all();
+router.get('/google-calendar/status', authMiddleware, async (req, res) => {
+  const result = await db.query('SELECT commercial_id, calendar_email, connected_at FROM google_calendar_tokens');
   const statusMap = {};
-  for (const t of tokens) {
+  for (const t of result.rows) {
     statusMap[t.commercial_id] = {
       connected: true,
       calendar_email: t.calendar_email,
@@ -99,8 +99,8 @@ router.get('/google-calendar/callback', async (req, res) => {
   }
 
   // Verify user exists
-  const user = db.prepare('SELECT id FROM commerciaux WHERE id = ?').get(userId);
-  if (!user) {
+  const userResult = await db.query('SELECT id FROM commerciaux WHERE id = $1', [userId]);
+  if (userResult.rows.length === 0) {
     return res.status(404).send('Utilisateur introuvable.');
   }
 
@@ -119,17 +119,12 @@ router.get('/google-calendar/callback', async (req, res) => {
       // Not critical
     }
 
-    // Store tokens in database
-    db.prepare(`
-      INSERT OR REPLACE INTO google_calendar_tokens (commercial_id, access_token, refresh_token, expiry_date, calendar_email, connected_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      userId,
-      tokens.access_token || '',
-      tokens.refresh_token || '',
-      tokens.expiry_date || 0,
-      calendarEmail,
-      new Date().toISOString(),
+    // Store tokens in database (upsert)
+    await db.query(
+      `INSERT INTO google_calendar_tokens (commercial_id, access_token, refresh_token, expiry_date, calendar_email, connected_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (commercial_id) DO UPDATE SET access_token=$2, refresh_token=$3, expiry_date=$4, calendar_email=$5, connected_at=$6`,
+      [userId, tokens.access_token || '', tokens.refresh_token || '', tokens.expiry_date || 0, calendarEmail, new Date().toISOString()]
     );
 
     // Return a page that closes itself and notifies the opener
@@ -174,7 +169,7 @@ router.get('/google-calendar/callback', async (req, res) => {
 // Disconnect Google Calendar
 // ============================================
 
-router.post('/google-calendar/disconnect', authMiddleware, (req, res) => {
+router.post('/google-calendar/disconnect', authMiddleware, async (req, res) => {
   const commercialId = req.body.commercial_id || req.user.id;
 
   // Only allow disconnecting own account or admin can disconnect anyone
@@ -183,17 +178,17 @@ router.post('/google-calendar/disconnect', authMiddleware, (req, res) => {
   }
 
   // Revoke token if possible
-  const tokenRow = db.prepare('SELECT access_token FROM google_calendar_tokens WHERE commercial_id = ?').get(commercialId);
-  if (tokenRow) {
+  const tokenResult = await db.query('SELECT access_token FROM google_calendar_tokens WHERE commercial_id = $1', [commercialId]);
+  if (tokenResult.rows.length > 0) {
     try {
       const oauth2Client = getOAuth2Client();
-      oauth2Client.revokeToken(tokenRow.access_token).catch(() => {});
+      oauth2Client.revokeToken(tokenResult.rows[0].access_token).catch(() => {});
     } catch {
       // Non-critical
     }
   }
 
-  db.prepare('DELETE FROM google_calendar_tokens WHERE commercial_id = ?').run(commercialId);
+  await db.query('DELETE FROM google_calendar_tokens WHERE commercial_id = $1', [commercialId]);
   res.json({ ok: true });
 });
 
@@ -205,7 +200,8 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, 
   const { commercialId } = req.params;
   const { timeMin, timeMax } = req.query;
 
-  const tokenRow = db.prepare('SELECT * FROM google_calendar_tokens WHERE commercial_id = ?').get(commercialId);
+  const tokenResult = await db.query('SELECT * FROM google_calendar_tokens WHERE commercial_id = $1', [commercialId]);
+  const tokenRow = tokenResult.rows[0];
   if (!tokenRow) {
     return res.json({ connected: false, events: [] });
   }
@@ -215,13 +211,13 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, 
     oauth2Client.setCredentials({
       access_token: tokenRow.access_token,
       refresh_token: tokenRow.refresh_token,
-      expiry_date: tokenRow.expiry_date,
+      expiry_date: Number(tokenRow.expiry_date),
     });
 
     // Refresh token if expired
     oauth2Client.on('tokens', (tokens) => {
-      db.prepare('UPDATE google_calendar_tokens SET access_token = ?, expiry_date = ? WHERE commercial_id = ?')
-        .run(tokens.access_token, tokens.expiry_date, commercialId);
+      db.query('UPDATE google_calendar_tokens SET access_token = $1, expiry_date = $2 WHERE commercial_id = $3',
+        [tokens.access_token, tokens.expiry_date, commercialId]).catch(() => {});
     });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
@@ -251,7 +247,7 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, 
 
     // If token is revoked/expired and can't be refreshed
     if (err.code === 401 || err.message?.includes('invalid_grant')) {
-      db.prepare('DELETE FROM google_calendar_tokens WHERE commercial_id = ?').run(commercialId);
+      await db.query('DELETE FROM google_calendar_tokens WHERE commercial_id = $1', [commercialId]);
       return res.json({ connected: false, events: [], error: 'Token expire, reconnectez Google Agenda.' });
     }
 
@@ -266,7 +262,8 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, 
 router.get('/google-calendar/events-all', authMiddleware, async (req, res) => {
   const { timeMin, timeMax } = req.query;
 
-  const allTokens = db.prepare('SELECT * FROM google_calendar_tokens').all();
+  const allTokensResult = await db.query('SELECT * FROM google_calendar_tokens');
+  const allTokens = allTokensResult.rows;
   if (allTokens.length === 0) {
     return res.json({});
   }
@@ -281,12 +278,12 @@ router.get('/google-calendar/events-all', authMiddleware, async (req, res) => {
         oauth2Client.setCredentials({
           access_token: tokenRow.access_token,
           refresh_token: tokenRow.refresh_token,
-          expiry_date: tokenRow.expiry_date,
+          expiry_date: Number(tokenRow.expiry_date),
         });
 
         oauth2Client.on('tokens', (tokens) => {
-          db.prepare('UPDATE google_calendar_tokens SET access_token = ?, expiry_date = ? WHERE commercial_id = ?')
-            .run(tokens.access_token, tokens.expiry_date, tokenRow.commercial_id);
+          db.query('UPDATE google_calendar_tokens SET access_token = $1, expiry_date = $2 WHERE commercial_id = $3',
+            [tokens.access_token, tokens.expiry_date, tokenRow.commercial_id]).catch(() => {});
         });
 
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
@@ -314,7 +311,7 @@ router.get('/google-calendar/events-all', authMiddleware, async (req, res) => {
         };
       } catch (err) {
         if (err.code === 401 || err.message?.includes('invalid_grant')) {
-          db.prepare('DELETE FROM google_calendar_tokens WHERE commercial_id = ?').run(tokenRow.commercial_id);
+          await db.query('DELETE FROM google_calendar_tokens WHERE commercial_id = $1', [tokenRow.commercial_id]);
         }
         result[tokenRow.commercial_id] = { connected: false, events: [] };
       }
