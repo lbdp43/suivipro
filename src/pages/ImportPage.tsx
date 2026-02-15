@@ -3,7 +3,7 @@ import {
   Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, Loader2, MapPin,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Prospect, EstablishmentType, PipelineStage } from '../types';
+import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS } from '../types';
 import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 
 export default function ImportPage() {
@@ -23,21 +23,19 @@ export default function ImportPage() {
     try {
       const XLSX = await import('xlsx');
       const data = state.prospects.map(p => ({
-        'Etablissement': p.nom_etablissement,
-        'Type': p.type_etablissement,
-        'Contact': p.nom_contact,
-        'Telephone': p.telephone,
-        'Email': p.email,
-        'Adresse': p.adresse,
-        'Ville': p.ville,
-        'Code Postal': p.code_postal,
-        'Departement': p.departement,
-        'Secteur': p.secteur || '',
-        'Latitude': p.latitude,
-        'Longitude': p.longitude,
-        'Etape': p.etape_pipeline,
-        'Score': p.score,
+        'Date de création': p.date_creation?.split('T')[0] || '',
+        'Dénomination': p.nom_etablissement,
+        'Etat du contact/ Etapes': PIPELINE_LABELS[p.etape_pipeline] || p.etape_pipeline,
+        'Type de prospect': ESTABLISHMENT_LABELS[p.type_etablissement] || p.type_etablissement,
+        'Tournée / Secteur': p.secteur || '',
+        'Nom': p.nom_contact?.split(' ').slice(1).join(' ') || p.nom_contact,
+        'Prénom': p.nom_contact?.split(' ')[0] || '',
+        'E-mail': p.email,
+        'Tél. fixe': '',
+        'Tél. mobile': p.telephone,
+        'Adresse': `${p.adresse}${p.ville ? `, ${p.code_postal} ${p.ville}` : ''}`,
         'Notes': p.notes,
+        'Score': p.score,
       }));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -72,46 +70,147 @@ export default function ImportPage() {
         return;
       }
 
+      // Helper: detect establishment type from string
+      const detectType = (val: string): EstablishmentType => {
+        const v = val.toLowerCase().trim();
+        if (v.includes('bar') || v.includes('restaurant') || v.includes('brasserie') || v.includes('bistrot')) return 'bar_restaurant';
+        if (v.includes('cave') || v.includes('caviste')) return 'cave';
+        if (v.includes('epicerie') || v.includes('épicerie')) return 'epicerie';
+        if (v.includes('supermarche') || v.includes('supermarché') || v.includes('gms') || v.includes('grande surface')) return 'supermarche';
+        if (v.includes('marche') || v.includes('marché')) return 'marche';
+        if (v.includes('distribut')) return 'distributeur';
+        if (v.includes('hotel') || v.includes('hôtel')) return 'hotel';
+        return 'autre';
+      };
+
+      // Helper: detect pipeline stage from string
+      const detectStage = (val: string): PipelineStage => {
+        const v = val.toLowerCase().trim();
+        if (v.includes('nouveau') || v.includes('new')) return 'nouveau';
+        if (v.includes('contacter') || v.includes('à contacter')) return 'a_contacter';
+        if (v.includes('contacte') || v.includes('contacté')) return 'contacte';
+        if (v.includes('proposition') || v.includes('offre')) return 'proposition';
+        if (v.includes('negociation') || v.includes('négociation')) return 'negociation';
+        if (v.includes('gagne') || v.includes('gagné') || v.includes('rdv') || v.includes('client')) return 'gagne';
+        if (v.includes('perdu') || v.includes('refuse') || v.includes('refusé')) return 'perdu';
+        return 'nouveau';
+      };
+
+      // Helper: get cell value flexibly
+      const getVal = (row: Record<string, any>, ...keys: string[]): string => {
+        for (const key of keys) {
+          for (const rowKey of Object.keys(row)) {
+            if (rowKey.toLowerCase().trim() === key.toLowerCase().trim()) {
+              return String(row[rowKey] ?? '').trim();
+            }
+          }
+        }
+        return '';
+      };
+
       // Parse rows with flexible column names
-      const parsed: { nom: string; contact: string; telephone: string; adresse: string; score: number; index: number }[] = [];
+      interface ParsedRow {
+        nom: string; contact: string; telephone: string; email: string;
+        adresse: string; score: number; type: EstablishmentType;
+        etape: PipelineStage; secteur: string; notes: string;
+        dateCreation: string; index: number;
+      }
+      const parsed: ParsedRow[] = [];
 
       rows.forEach((row, index) => {
-        const nom = row['Etablissement'] || row['etablissement'] || row['Nom'] || row['nom'] || row['nom_etablissement'] || '';
-        if (!String(nom).trim()) {
+        // Denomination / Etablissement
+        const nom = getVal(row,
+          'Dénomination', 'Denomination', 'Etablissement', 'etablissement',
+          'Nom', 'nom', 'nom_etablissement', 'Raison sociale'
+        );
+        if (!nom) {
           errors.push(`Ligne ${index + 2}: Nom d'etablissement manquant`);
           return;
         }
-        const nomStr = String(nom).trim();
 
-        if (state.prospects.some(p => p.nom_etablissement.toLowerCase() === nomStr.toLowerCase())) {
-          errors.push(`Ligne ${index + 2}: "${nomStr}" existe deja`);
+        if (state.prospects.some(p => p.nom_etablissement.toLowerCase() === nom.toLowerCase())) {
+          errors.push(`Ligne ${index + 2}: "${nom}" existe deja`);
           return;
         }
 
-        const contact = String(
-          row['Nom/Prenom'] || row['Nom/prenom'] || row['nom/prenom'] ||
-          row['Nom Prenom'] || row['nom prenom'] ||
-          row['Contact'] || row['contact'] ||
-          row['Nom Contact'] || row['nom_contact'] || ''
-        ).trim();
+        // Contact: Nom + Prenom or combined
+        const contactNom = getVal(row, 'Nom', 'nom');
+        const contactPrenom = getVal(row, 'Prénom', 'Prenom', 'prenom');
+        let contact = '';
+        if (contactPrenom || (contactNom && contactNom !== nom)) {
+          contact = `${contactPrenom} ${contactNom}`.trim();
+        }
+        if (!contact) {
+          contact = getVal(row,
+            'Nom/Prenom', 'Nom/prenom', 'nom/prenom', 'Nom Prenom',
+            'Contact', 'contact', 'Nom Contact', 'nom_contact'
+          );
+        }
 
-        const telephone = String(
-          row['Telephone'] || row['telephone'] || row['Tel'] || row['tel'] ||
-          row['Numero'] || row['numero'] || row['Numero de telephone'] || ''
-        ).trim();
+        // Telephone: tel fixe + tel mobile
+        const telFixe = getVal(row,
+          'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Telephone fixe',
+          'Telephone', 'telephone', 'Tel', 'tel',
+          'Numero', 'numero'
+        );
+        const telMobile = getVal(row,
+          'Tél. mobile', 'Tel. mobile', 'Tel mobile', 'Telephone mobile',
+          'Mobile', 'mobile', 'Portable', 'portable'
+        );
+        const telephone = telMobile || telFixe;
 
-        const adresse = String(
-          row['Adresse'] || row['adresse'] || row['Adresse complete'] || ''
-        ).trim();
+        // Email
+        const email = getVal(row,
+          'E-mail', 'Email', 'email', 'e-mail', 'Mail', 'mail',
+          'Adresse email', 'Adresse e-mail'
+        );
 
-        const rawScore =
-          row['Notes/qualite'] || row['notes/qualite'] || row['Notes/Qualite'] ||
-          row['Qualite'] || row['qualite'] || row['Score'] || row['score'] ||
-          row['Note'] || row['note'] || '';
-        const scoreNum = parseInt(String(rawScore), 10);
+        // Adresse
+        const adresse = getVal(row,
+          'Adresse', 'adresse', 'Adresse complete', 'Adresse Notes'
+        );
+
+        // Type de prospect
+        const typeStr = getVal(row,
+          'Type de prospect', 'Type', 'type', 'type_etablissement',
+          'Type d\'établissement', 'Type etablissement'
+        );
+        const type = typeStr ? detectType(typeStr) : 'autre';
+
+        // Etape / Etat du contact
+        const etapeStr = getVal(row,
+          'Etat du contact/ Etapes', 'Etat du contact/Etapes',
+          'Etat du contact', 'Etapes', 'Etape', 'etape',
+          'etape_pipeline', 'Pipeline', 'Statut'
+        );
+        const etape = etapeStr ? detectStage(etapeStr) : 'nouveau';
+
+        // Secteur / Tournee
+        const secteur = getVal(row,
+          'Tournée / Secteur', 'Tournee / Secteur', 'Tournée/Secteur',
+          'Tournee/Secteur', 'Secteur', 'secteur', 'Tournée', 'Tournee'
+        ) || importSecteur;
+
+        // Notes
+        const notes = getVal(row, 'Notes', 'notes', 'Commentaire', 'commentaire');
+
+        // Score
+        const rawScore = getVal(row,
+          'Score', 'score', 'Notes/qualite', 'Qualite', 'qualite', 'Note'
+        );
+        const scoreNum = parseInt(rawScore, 10);
         const score = !isNaN(scoreNum) && scoreNum >= 0 && scoreNum <= 100 ? scoreNum : 50;
 
-        parsed.push({ nom: nomStr, contact, telephone, adresse, score, index });
+        // Date de creation
+        const dateCreation = getVal(row,
+          'Date de création', 'Date de creation', 'date_creation',
+          'Date creation', 'Date'
+        );
+
+        parsed.push({
+          nom, contact, telephone, email, adresse, score,
+          type, etape, secteur, notes, dateCreation, index,
+        });
       });
 
       if (parsed.length === 0) {
@@ -143,25 +242,32 @@ export default function ImportPage() {
         const geo = geoResults[i];
         if (geo) geocoded++;
 
+        // Parse date de creation from file or use now
+        let dateCreation = now;
+        if (row.dateCreation) {
+          const d = new Date(row.dateCreation);
+          if (!isNaN(d.getTime())) dateCreation = d.toISOString();
+        }
+
         newProspects.push({
           id: generateId('p'),
           nom_etablissement: row.nom,
-          type_etablissement: 'autre' as EstablishmentType,
+          type_etablissement: row.type,
           nom_contact: row.contact,
           telephone: row.telephone,
-          email: '',
+          email: row.email,
           adresse: row.adresse,
           ville: geo?.ville || '',
           code_postal: geo?.code_postal || '',
           departement: geo?.departement || '',
-          secteur: importSecteur,
+          secteur: row.secteur,
           latitude: geo?.latitude || 0,
           longitude: geo?.longitude || 0,
-          etape_pipeline: 'nouveau' as PipelineStage,
+          etape_pipeline: row.etape,
           tags: [],
           commercial_id: state.currentUser?.id || 'com-1',
-          notes: '',
-          date_creation: now,
+          notes: row.notes,
+          date_creation: dateCreation,
           date_modification: now,
           score: row.score,
         });
@@ -186,13 +292,27 @@ export default function ImportPage() {
     try {
       const XLSX = await import('xlsx');
       const template = [{
-        'Etablissement': 'Exemple Cafe',
-        'Nom/Prenom': 'Jean Dupont',
-        'Telephone': '04 71 00 00 00',
+        'Date de création': '2025-01-15',
+        'Dénomination': 'Exemple Cafe',
+        'Etat du contact/ Etapes': 'Nouveau',
+        'Type de prospect': 'Bar / Restaurant',
+        'Tournée / Secteur': 'Loire',
+        'Nom': 'Dupont',
+        'Prénom': 'Jean',
+        'E-mail': 'contact@exemple.fr',
+        'Tél. fixe': '04 71 00 00 00',
+        'Tél. mobile': '06 12 34 56 78',
         'Adresse': '1 Rue Exemple, 42000 Saint-Etienne',
-        'Notes/qualite': '75',
+        'Notes': 'Premier contact au marche',
+        'Score': '75',
       }];
       const ws = XLSX.utils.json_to_sheet(template);
+      // Ajuster la largeur des colonnes
+      ws['!cols'] = [
+        { wch: 15 }, { wch: 25 }, { wch: 22 }, { wch: 18 },
+        { wch: 18 }, { wch: 15 }, { wch: 12 }, { wch: 25 },
+        { wch: 16 }, { wch: 16 }, { wch: 35 }, { wch: 30 }, { wch: 6 },
+      ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Template');
       XLSX.writeFile(wb, 'template-import-prospects.xlsx');
@@ -307,11 +427,26 @@ export default function ImportPage() {
         </div>
 
         {/* Validation info */}
-        <div className="mt-4 bg-gray-50 rounded-lg p-4 text-xs text-gray-600 space-y-1">
-          <p className="font-medium text-gray-700">Colonnes attendues:</p>
-          <p>Etablissement, Nom/Prenom, Telephone, Adresse, Notes/qualite (score de 0 a 100)</p>
-          <p className="mt-2 text-gray-500">Les adresses seront automatiquement geocodees pour la carte (via OpenStreetMap).</p>
-          <p className="text-gray-500">La ville, le code postal et le departement seront remplis automatiquement.</p>
+        <div className="mt-4 bg-gray-50 rounded-lg p-4 text-xs text-gray-600 space-y-2">
+          <p className="font-medium text-gray-700">Colonnes attendues :</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+            <p><span className="font-medium text-gray-700">Date de creation</span> - date (optionnel)</p>
+            <p><span className="font-medium text-gray-700">Denomination</span> - nom de l'etablissement *</p>
+            <p><span className="font-medium text-gray-700">Etat du contact/ Etapes</span> - etape pipeline</p>
+            <p><span className="font-medium text-gray-700">Type de prospect</span> - type d'etablissement</p>
+            <p><span className="font-medium text-gray-700">Tournee / Secteur</span> - secteur geographique</p>
+            <p><span className="font-medium text-gray-700">Nom</span> - nom du contact</p>
+            <p><span className="font-medium text-gray-700">Prenom</span> - prenom du contact</p>
+            <p><span className="font-medium text-gray-700">E-mail</span> - adresse email</p>
+            <p><span className="font-medium text-gray-700">Tel. fixe</span> - telephone fixe</p>
+            <p><span className="font-medium text-gray-700">Tel. mobile</span> - telephone mobile (prioritaire)</p>
+            <p><span className="font-medium text-gray-700">Adresse</span> - adresse complete</p>
+            <p><span className="font-medium text-gray-700">Notes</span> - notes / commentaires</p>
+            <p><span className="font-medium text-gray-700">Score</span> - score de 0 a 100</p>
+          </div>
+          <p className="mt-2 text-gray-500">* Seule la denomination est obligatoire. Les types de prospect et etapes sont detectes automatiquement.</p>
+          <p className="text-gray-500">Les adresses seront geocodees automatiquement pour la carte (via OpenStreetMap).</p>
+          <p className="text-gray-500">Si le secteur est renseigne dans le fichier, il sera prioritaire sur le champ ci-dessus.</p>
         </div>
       </div>
 
