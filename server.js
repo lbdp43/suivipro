@@ -27,7 +27,7 @@ if (existsSync(DIST)) {
   }));
 
   // SPA fallback: all non-API routes serve index.html
-  app.get('*', (req, res) => {
+  app.get('{*path}', (req, res) => {
     res.sendFile(join(DIST, 'index.html'));
   });
 }
