@@ -3,11 +3,16 @@ import bcrypt from 'bcryptjs';
 
 const { Pool } = pg;
 
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is required.');
+  console.error('On Railway: add a PostgreSQL service and link it to your app,');
+  console.error('or set DATABASE_URL manually in your service variables.');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('railway.app') || process.env.DATABASE_URL?.includes('neon.tech')
-    ? { rejectUnauthorized: false }
-    : false,
+  ssl: { rejectUnauthorized: false },
 });
 
 // ============================================
