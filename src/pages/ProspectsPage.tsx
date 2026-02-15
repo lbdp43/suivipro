@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
+  CheckSquare, Square, XCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -30,6 +31,87 @@ export default function ProspectsPage() {
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
+
+  // Multi-selection mode
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkAction, setShowBulkAction] = useState<'none' | 'etape' | 'secteur' | 'tags'>('none');
+  const [bulkSecteur, setBulkSecteur] = useState('');
+
+  const toggleSelection = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(filteredProspects.map(p => p.id)));
+  };
+
+  const deselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setShowBulkAction('none');
+  };
+
+  const bulkChangeStage = (stage: PipelineStage) => {
+    const now = new Date().toISOString();
+    selectedIds.forEach(id => {
+      const prospect = state.prospects.find(p => p.id === id);
+      if (prospect) {
+        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, etape_pipeline: stage, date_modification: now } });
+      }
+    });
+    setShowBulkAction('none');
+    exitSelectionMode();
+  };
+
+  const bulkChangeSecteur = () => {
+    if (!bulkSecteur.trim()) return;
+    const now = new Date().toISOString();
+    selectedIds.forEach(id => {
+      const prospect = state.prospects.find(p => p.id === id);
+      if (prospect) {
+        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, secteur: bulkSecteur.trim(), date_modification: now } });
+      }
+    });
+    setBulkSecteur('');
+    setShowBulkAction('none');
+    exitSelectionMode();
+  };
+
+  const bulkToggleTag = (tagId: string) => {
+    const now = new Date().toISOString();
+    // If all selected prospects have this tag, remove it. Otherwise, add it.
+    const allHaveTag = [...selectedIds].every(id => {
+      const p = state.prospects.find(pr => pr.id === id);
+      return p?.tags.includes(tagId);
+    });
+    selectedIds.forEach(id => {
+      const prospect = state.prospects.find(p => p.id === id);
+      if (prospect) {
+        const newTags = allHaveTag
+          ? prospect.tags.filter(t => t !== tagId)
+          : prospect.tags.includes(tagId) ? prospect.tags : [...prospect.tags, tagId];
+        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, tags: newTags, date_modification: now } });
+      }
+    });
+  };
+
+  const bulkDelete = () => {
+    if (!confirm(`Supprimer ${selectedIds.size} prospect(s) ?`)) return;
+    selectedIds.forEach(id => {
+      dispatch({ type: 'DELETE_PROSPECT', payload: id });
+    });
+    exitSelectionMode();
+  };
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -147,6 +229,17 @@ export default function ProspectsPage() {
               />
             </div>
             <button
+              className={`p-2 rounded-lg transition-colors ${
+                selectionMode
+                  ? 'bg-brewery-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+              title={selectionMode ? 'Quitter la selection' : 'Selection multiple'}
+            >
+              <CheckSquare className="w-5 h-5" />
+            </button>
+            <button
               className="bg-brewery-600 text-white p-2 rounded-lg hover:bg-brewery-700"
               onClick={openNewForm}
             >
@@ -220,17 +313,48 @@ export default function ProspectsPage() {
           </div>
         </div>
 
+        {/* Selection mode toolbar */}
+        {selectionMode && (
+          <div className="px-4 py-2 bg-brewery-50 border-b border-brewery-200 flex items-center gap-2">
+            <button
+              className="text-[10px] font-medium text-brewery-700 hover:text-brewery-900 underline"
+              onClick={selectedIds.size === filteredProspects.length ? deselectAll : selectAll}
+            >
+              {selectedIds.size === filteredProspects.length ? 'Tout deselectionner' : 'Tout selectionner'}
+            </button>
+            <span className="text-[10px] text-brewery-600 ml-auto">
+              {selectedIds.size} selectionne(s)
+            </span>
+            <button
+              className="p-1 text-gray-400 hover:text-gray-600"
+              onClick={exitSelectionMode}
+              title="Quitter la selection"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {filteredProspects.map(p => (
             <div
               key={p.id}
               className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
-                selectedId === p.id ? 'bg-brewery-50 border-l-4 border-l-brewery-500' : ''
-              }`}
-              onClick={() => setSearchParams({ id: p.id })}
+                selectedId === p.id && !selectionMode ? 'bg-brewery-50 border-l-4 border-l-brewery-500' : ''
+              } ${selectionMode && selectedIds.has(p.id) ? 'bg-brewery-50' : ''}`}
+              onClick={selectionMode ? (e) => toggleSelection(p.id, e) : () => setSearchParams({ id: p.id })}
             >
               <div className="flex items-start gap-3">
+                {selectionMode && (
+                  <div className="flex-shrink-0 mt-0.5">
+                    {selectedIds.has(p.id) ? (
+                      <CheckSquare className="w-5 h-5 text-brewery-600" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-300" />
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-sm text-gray-900 truncate">{p.nom_etablissement}</h3>
                   <p className="text-[10px] text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
@@ -292,6 +416,146 @@ export default function ProspectsPage() {
             </div>
           ))}
         </div>
+
+        {/* Bulk action bar */}
+        {selectionMode && selectedIds.size > 0 && (
+          <div className="border-t border-gray-200 bg-white p-3 space-y-2">
+            {showBulkAction === 'none' && (
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
+                  onClick={() => setShowBulkAction('etape')}
+                >
+                  Changer etape
+                </button>
+                <button
+                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+                  onClick={() => setShowBulkAction('secteur')}
+                >
+                  Changer secteur
+                </button>
+                <button
+                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+                  onClick={() => setShowBulkAction('tags')}
+                >
+                  Gerer tags
+                </button>
+                <button
+                  className="px-3 py-2 text-[11px] font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                  onClick={bulkDelete}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Change stage */}
+            {showBulkAction === 'etape' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-gray-700">Changer etape ({selectedIds.size} prospects)</p>
+                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
+                    <button
+                      key={stage}
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white transition-opacity hover:opacity-80"
+                      style={{ backgroundColor: PIPELINE_COLORS[stage] }}
+                      onClick={() => bulkChangeStage(stage)}
+                    >
+                      {PIPELINE_LABELS[stage]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Change sector */}
+            {showBulkAction === 'secteur' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-gray-700">Changer secteur ({selectedIds.size} prospects)</p>
+                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-brewery-500"
+                    placeholder="Nouveau secteur..."
+                    value={bulkSecteur}
+                    onChange={e => setBulkSecteur(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') bulkChangeSecteur(); }}
+                    list="bulk-secteurs-list"
+                    autoFocus
+                  />
+                  {allSecteurs.length > 0 && (
+                    <datalist id="bulk-secteurs-list">
+                      {allSecteurs.map(s => <option key={s} value={s} />)}
+                    </datalist>
+                  )}
+                  <button
+                    className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium hover:bg-brewery-700"
+                    onClick={bulkChangeSecteur}
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Manage tags */}
+            {showBulkAction === 'tags' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-gray-700">Gerer tags ({selectedIds.size} prospects)</p>
+                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {state.tags.map(tag => {
+                    const allHave = [...selectedIds].every(id => {
+                      const p = state.prospects.find(pr => pr.id === id);
+                      return p?.tags.includes(tag.id);
+                    });
+                    const someHave = [...selectedIds].some(id => {
+                      const p = state.prospects.find(pr => pr.id === id);
+                      return p?.tags.includes(tag.id);
+                    });
+                    return (
+                      <button
+                        key={tag.id}
+                        className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium transition-colors border-2 ${
+                          allHave
+                            ? 'text-white border-transparent'
+                            : someHave
+                            ? 'border-current opacity-70'
+                            : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200'
+                        }`}
+                        style={allHave ? { backgroundColor: tag.couleur } : someHave ? { color: tag.couleur } : {}}
+                        onClick={() => bulkToggleTag(tag.id)}
+                        title={allHave ? `Retirer "${tag.nom}" de tous` : `Ajouter "${tag.nom}" a tous`}
+                      >
+                        {allHave ? '✓ ' : someHave ? '~ ' : '+ '}{tag.nom}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  className="w-full px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  onClick={() => setShowBulkAction('none')}
+                >
+                  Termine
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Detail panel */}
