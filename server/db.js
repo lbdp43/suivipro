@@ -31,6 +31,16 @@ db.exec(`
     objectifs TEXT NOT NULL DEFAULT '{}'
   );
 
+  CREATE TABLE IF NOT EXISTS google_calendar_tokens (
+    commercial_id TEXT PRIMARY KEY,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    expiry_date INTEGER NOT NULL,
+    calendar_email TEXT DEFAULT '',
+    connected_at TEXT NOT NULL,
+    FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS prospects (
     id TEXT PRIMARY KEY,
     nom_etablissement TEXT NOT NULL,

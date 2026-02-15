@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation, Phone,
   AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
@@ -8,6 +8,8 @@ import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS } from '../ty
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
+import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
+import { getAllGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
   const { state, dispatch, getProspect } = useApp();
@@ -24,6 +26,8 @@ export default function AppointmentsPage() {
   const [exportDateFrom, setExportDateFrom] = useState('');
   const [exportDateTo, setExportDateTo] = useState('');
   const [exportCommercial, setExportCommercial] = useState('');
+  const [showGoogleEvents, setShowGoogleEvents] = usePersistedState<boolean>('rdv_show_google', true);
+  const [googleEventsMap, setGoogleEventsMap] = useState<Record<string, { events: GoogleCalendarEvent[]; calendar_email?: string }>>({});
 
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -44,6 +48,41 @@ export default function AppointmentsPage() {
     if (filterProspecteur) list = list.filter(a => a.prospecteur_id === filterProspecteur);
     return list.sort((a, b) => a.date.localeCompare(b.date));
   }, [state.appointments, filterStatus, filterCommercial, filterProspecteur]);
+
+  // Fetch Google Calendar events for current week range
+  const fetchGoogleEvents = useCallback(async () => {
+    if (!showGoogleEvents) return;
+    try {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + weekOffset * 7);
+      monday.setHours(0, 0, 0, 0);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+
+      const data = await getAllGoogleCalendarEvents(monday.toISOString(), sunday.toISOString());
+      setGoogleEventsMap(data);
+    } catch {
+      // silently fail
+    }
+  }, [weekOffset, showGoogleEvents]);
+
+  useEffect(() => {
+    fetchGoogleEvents();
+  }, [fetchGoogleEvents]);
+
+  // Listen for connection changes from popup
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'GOOGLE_CALENDAR_CONNECTED') {
+        fetchGoogleEvents();
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [fetchGoogleEvents]);
 
   const upcoming = appointments.filter(a => a.date >= new Date().toISOString().split('T')[0] && a.statut !== 'annule' && a.statut !== 'termine');
   const past = appointments.filter(a => a.date < new Date().toISOString().split('T')[0] || a.statut === 'termine' || a.statut === 'annule');
@@ -293,6 +332,16 @@ export default function AppointmentsPage() {
             </button>
           </div>
           <button
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium transition-colors ${
+              showGoogleEvents ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+            onClick={() => setShowGoogleEvents(!showGoogleEvents)}
+            title={showGoogleEvents ? 'Masquer Google Agenda' : 'Afficher Google Agenda'}
+          >
+            <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Google</span>
+          </button>
+          <button
             className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
             onClick={openExportModal}
             title="Exporter vers Google Agenda"
@@ -308,6 +357,9 @@ export default function AppointmentsPage() {
           </button>
         </div>
       </div>
+
+      {/* Google Calendar Panel */}
+      <GoogleCalendarPanel />
 
       {/* Filtres */}
       <div className="space-y-3">
@@ -491,6 +543,63 @@ export default function AppointmentsPage() {
 
                     {/* Evenements du jour */}
                     <div className="p-2">
+                      {/* Google Calendar events for this day */}
+                      {showGoogleEvents && (() => {
+                        const googleEvents: { event: GoogleCalendarEvent; commercialId: string; email: string }[] = [];
+                        for (const [cId, data] of Object.entries(googleEventsMap)) {
+                          if (!data?.events) continue;
+                          for (const evt of data.events) {
+                            const evtDate = evt.start.split('T')[0];
+                            if (evtDate === day.date) {
+                              googleEvents.push({ event: evt, commercialId: cId, email: data.calendar_email || '' });
+                            }
+                          }
+                        }
+                        if (googleEvents.length === 0) return null;
+                        return (
+                          <div className="space-y-1.5 mb-2">
+                            {googleEvents.map(({ event: evt, commercialId }) => {
+                              const commercial = state.commerciaux.find(c => c.id === commercialId);
+                              const startTime = evt.start.includes('T') ? evt.start.split('T')[1]?.substring(0, 5) : '';
+                              const endTime = evt.end.includes('T') ? evt.end.split('T')[1]?.substring(0, 5) : '';
+                              return (
+                                <div key={`g-${evt.id}`} className="rounded-lg border border-dashed border-purple-200 border-l-4 border-l-purple-400 bg-purple-50/40 p-2.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-medium text-xs text-purple-900 truncate">{evt.summary}</h4>
+                                        <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">Google</span>
+                                      </div>
+                                      <div className="flex items-center gap-3 mt-1 flex-wrap text-[11px] text-purple-700">
+                                        {startTime && (
+                                          <span className="flex items-center gap-1">
+                                            <Clock className="w-3 h-3 text-purple-400" />
+                                            {startTime}{endTime ? ` - ${endTime}` : ''}
+                                          </span>
+                                        )}
+                                        {evt.allDay && <span className="text-purple-500 italic">Toute la journee</span>}
+                                        {evt.location && (
+                                          <span className="flex items-center gap-1 truncate">
+                                            <MapPin className="w-3 h-3 text-purple-400" />
+                                            <span className="truncate max-w-[120px] sm:max-w-none">{evt.location}</span>
+                                          </span>
+                                        )}
+                                        {commercial && (
+                                          <span className="flex items-center gap-1 text-purple-500">
+                                            <Users className="w-3 h-3" />
+                                            {commercial.prenom}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
                       {dayRdvs.length > 0 ? (
                         <div className="space-y-2">
                           {dayRdvs.map(rdv => {

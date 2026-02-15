@@ -90,6 +90,53 @@ function del(path: string) {
 }
 
 // ============================================
+// Google Calendar
+// ============================================
+
+export async function getGoogleCalendarConfigStatus(): Promise<{ configured: boolean }> {
+  return request('/google-calendar/config-status');
+}
+
+export async function getGoogleCalendarStatus(): Promise<Record<string, { connected: boolean; calendar_email: string; connected_at: string }>> {
+  return request('/google-calendar/status');
+}
+
+export async function getGoogleCalendarAuthUrl(): Promise<{ url: string }> {
+  return request('/google-calendar/authorize');
+}
+
+export async function disconnectGoogleCalendar(commercialId: string): Promise<{ ok: boolean }> {
+  return request('/google-calendar/disconnect', {
+    method: 'POST',
+    body: JSON.stringify({ commercial_id: commercialId }),
+  });
+}
+
+export async function getGoogleCalendarEvents(
+  commercialId: string,
+  timeMin: string,
+  timeMax: string,
+): Promise<{ connected: boolean; events: GoogleCalendarEvent[]; calendar_email?: string; error?: string }> {
+  return request(`/google-calendar/events/${commercialId}?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`);
+}
+
+export async function getAllGoogleCalendarEvents(
+  timeMin: string,
+  timeMax: string,
+): Promise<Record<string, { connected: boolean; calendar_email?: string; events: GoogleCalendarEvent[] }>> {
+  return request(`/google-calendar/events-all?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`);
+}
+
+export interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  start: string;
+  end: string;
+  location: string;
+  allDay: boolean;
+}
+
+// ============================================
 // Sync actions to API (called after dispatch)
 // ============================================
 
