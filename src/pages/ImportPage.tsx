@@ -277,15 +277,15 @@ export default function ImportPage() {
         return;
       }
 
-      // Geocode all addresses
-      const addresses = parsed.map(p => p.adresse).filter(a => a.length > 0);
+      // Geocode all addresses via batch API
+      const allAddresses = parsed.map(p => p.adresse);
+      const hasAddresses = allAddresses.some(a => a && a.trim().length >= 3);
       let geoResults: (Awaited<ReturnType<typeof geocodeBatch>>[number])[] = [];
 
-      if (addresses.length > 0) {
+      if (hasAddresses) {
         setGeocoding(true);
         setGeocodeProgress({ done: 0, total: parsed.length });
 
-        const allAddresses = parsed.map(p => p.adresse);
         geoResults = await geocodeBatch(allAddresses, (done, total) => {
           setGeocodeProgress({ done, total });
         });
@@ -450,7 +450,12 @@ export default function ImportPage() {
                   style={{ width: `${geocodeProgress.total > 0 ? (geocodeProgress.done / geocodeProgress.total) * 100 : 0}%` }}
                 />
               </div>
-              <p className="text-xs text-gray-500">{geocodeProgress.done} / {geocodeProgress.total} adresses traitees</p>
+              <p className="text-xs text-gray-500">
+                {geocodeProgress.done === 0
+                  ? `Envoi de ${geocodeProgress.total} adresses au service de geocodage...`
+                  : `${geocodeProgress.done} / ${geocodeProgress.total} adresses traitees`
+                }
+              </p>
             </div>
           ) : (
             <>

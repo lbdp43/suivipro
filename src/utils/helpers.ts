@@ -183,7 +183,7 @@ export function detectConflicts(
 }
 
 // ============================================
-// Geocoding (Nominatim / OpenStreetMap)
+// Geocoding (api-adresse.data.gouv.fr)
 // ============================================
 
 export interface GeocodingResult {
@@ -194,54 +194,174 @@ export interface GeocodingResult {
   departement: string;
 }
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const ADRESSE_API_URL = 'https://api-adresse.data.gouv.fr';
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 export async function geocodeAddress(adresse: string): Promise<GeocodingResult | null> {
+  if (!adresse || adresse.trim().length < 3) return null;
   try {
-    const params = new URLSearchParams({
-      q: adresse,
-      format: 'json',
-      addressdetails: '1',
-      limit: '1',
-      countrycodes: 'fr',
-    });
-    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-      headers: { 'User-Agent': 'SuiviPro-BrasseriePlantes/1.0' },
-    });
+    const params = new URLSearchParams({ q: adresse, limit: '1' });
+    const res = await fetchWithTimeout(`${ADRESSE_API_URL}/search/?${params}`);
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data || data.length === 0) return null;
-    const result = data[0];
-    const addr = result.address || {};
+    if (!data?.features?.length) return null;
+    const feature = data.features[0];
+    const props = feature.properties || {};
+    const [lon, lat] = feature.geometry?.coordinates || [0, 0];
     return {
-      latitude: parseFloat(result.lat),
-      longitude: parseFloat(result.lon),
-      ville: addr.city || addr.town || addr.village || addr.municipality || '',
-      code_postal: addr.postcode || '',
-      departement: addr.county || addr.state || '',
+      latitude: lat,
+      longitude: lon,
+      ville: props.city || '',
+      code_postal: props.postcode || '',
+      departement: props.context?.split(',')[0]?.trim() || '',
     };
   } catch {
     return null;
   }
 }
 
+/**
+ * Geocode par lot via l'API CSV de api-adresse.data.gouv.fr.
+ * Envoie les adresses en lots de 5000 (limite API) via un fichier CSV.
+ * Beaucoup plus rapide que le geocodage un par un.
+ */
 export async function geocodeBatch(
   addresses: string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<(GeocodingResult | null)[]> {
-  const results: (GeocodingResult | null)[] = [];
-  for (let i = 0; i < addresses.length; i++) {
-    const result = await geocodeAddress(addresses[i]);
-    results.push(result);
-    onProgress?.(i + 1, addresses.length);
-    // Nominatim rate limit: 1 request/second
-    if (i < addresses.length - 1) await delay(1100);
+  const results: (GeocodingResult | null)[] = new Array(addresses.length).fill(null);
+  const BATCH_SIZE = 5000;
+  let totalDone = 0;
+
+  for (let batchStart = 0; batchStart < addresses.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, addresses.length);
+    const batchAddresses = addresses.slice(batchStart, batchEnd);
+
+    // Build CSV content: index,adresse
+    const csvLines = ['index,adresse'];
+    const indexMap: number[] = [];
+    batchAddresses.forEach((addr, i) => {
+      const globalIndex = batchStart + i;
+      if (addr && addr.trim().length >= 3) {
+        // Escape CSV: wrap in quotes if contains comma/quote/newline
+        const escaped = addr.includes(',') || addr.includes('"') || addr.includes('\n')
+          ? `"${addr.replace(/"/g, '""')}"`
+          : addr;
+        csvLines.push(`${globalIndex},${escaped}`);
+        indexMap.push(globalIndex);
+      }
+    });
+
+    // If no valid addresses in this batch, skip
+    if (indexMap.length === 0) {
+      totalDone += batchAddresses.length;
+      onProgress?.(totalDone, addresses.length);
+      continue;
+    }
+
+    try {
+      const csvContent = csvLines.join('\n');
+      const formData = new FormData();
+      formData.append('data', new Blob([csvContent], { type: 'text/csv' }), 'addresses.csv');
+      formData.append('columns', 'adresse');
+
+      const res = await fetchWithTimeout(
+        `${ADRESSE_API_URL}/search/csv/`,
+        { method: 'POST', body: formData },
+        120000, // 2 min timeout for large batches
+      );
+
+      if (res.ok) {
+        const responseText = await res.text();
+        const lines = responseText.split('\n');
+        if (lines.length > 1) {
+          // Parse CSV header to find column indices
+          const header = lines[0].split(',');
+          const colIdx = (name: string) => header.indexOf(name);
+          const iIdx = colIdx('index');
+          const latIdx = colIdx('latitude');
+          const lonIdx = colIdx('longitude');
+          const cityIdx = colIdx('result_city');
+          const pcIdx = colIdx('result_postcode');
+          const ctxIdx = colIdx('result_context');
+          const scoreIdx = colIdx('result_score');
+
+          for (let l = 1; l < lines.length; l++) {
+            if (!lines[l].trim()) continue;
+            const cols = parseCSVLine(lines[l]);
+            const score = scoreIdx >= 0 ? parseFloat(cols[scoreIdx]) : 0;
+            // Only accept results with a decent confidence score
+            if (score < 0.3) continue;
+            const globalIndex = iIdx >= 0 ? parseInt(cols[iIdx], 10) : -1;
+            if (globalIndex < 0 || globalIndex >= addresses.length) continue;
+            const lat = latIdx >= 0 ? parseFloat(cols[latIdx]) : 0;
+            const lon = lonIdx >= 0 ? parseFloat(cols[lonIdx]) : 0;
+            if (lat === 0 && lon === 0) continue;
+            results[globalIndex] = {
+              latitude: lat,
+              longitude: lon,
+              ville: cityIdx >= 0 ? cols[cityIdx] || '' : '',
+              code_postal: pcIdx >= 0 ? cols[pcIdx] || '' : '',
+              departement: ctxIdx >= 0 ? (cols[ctxIdx]?.split(',')[0]?.trim() || '') : '',
+            };
+          }
+        }
+      }
+    } catch {
+      // If batch fails, try individual geocoding as fallback for this batch
+      for (let i = 0; i < batchAddresses.length; i++) {
+        if (batchAddresses[i] && batchAddresses[i].trim().length >= 3) {
+          results[batchStart + i] = await geocodeAddress(batchAddresses[i]);
+        }
+        totalDone++;
+        onProgress?.(totalDone, addresses.length);
+      }
+      continue;
+    }
+
+    totalDone += batchAddresses.length;
+    onProgress?.(totalDone, addresses.length);
   }
+
   return results;
+}
+
+/** Parse a single CSV line handling quoted fields */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        result.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  result.push(current);
+  return result;
 }
 
 // ============================================
