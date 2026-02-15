@@ -3,14 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle,
+  CheckSquare, Square, XCircle, Settings,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
-  EstablishmentType, PipelineStage, Prospect,
+  EstablishmentType, PipelineStage, Prospect, Tag as TagType,
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
 
@@ -21,16 +21,50 @@ export default function ProspectsPage() {
   const selectedId = searchParams.get('id');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<EstablishmentType | ''>('');
-  const [filterStage, setFilterStage] = useState<PipelineStage | ''>('');
+  const [filterTypes, setFilterTypes] = useState<Set<EstablishmentType>>(new Set());
+  const [filterStages, setFilterStages] = useState<Set<PipelineStage>>(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
-  const [filterSecteur, setFilterSecteur] = useState('');
+  const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
   const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
   const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
+
+  // Tag management in form
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#6366f1');
+  const [editingTag, setEditingTag] = useState<TagType | null>(null);
+
+  const TAG_COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
+
+  const saveNewTag = () => {
+    if (!newTagName.trim()) return;
+    if (editingTag) {
+      dispatch({ type: 'UPDATE_TAG', payload: { ...editingTag, nom: newTagName.trim(), couleur: newTagColor } });
+      setEditingTag(null);
+    } else {
+      dispatch({ type: 'ADD_TAG', payload: { id: generateId('tag'), nom: newTagName.trim(), couleur: newTagColor } });
+    }
+    setNewTagName('');
+    setNewTagColor('#6366f1');
+  };
+
+  const deleteTag = (tagId: string) => {
+    if (!confirm('Supprimer ce tag ? Il sera retire de tous les prospects.')) return;
+    dispatch({ type: 'DELETE_TAG', payload: tagId });
+    // Remove tag from current form data if selected
+    setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagId) }));
+  };
+
+  const startEditTag = (tag: TagType) => {
+    setEditingTag(tag);
+    setNewTagName(tag.nom);
+    setNewTagColor(tag.couleur);
+    setShowTagManager(true);
+  };
 
   // Multi-selection mode
   const [selectionMode, setSelectionMode] = useState(false);
@@ -134,11 +168,24 @@ export default function ProspectsPage() {
   // Get unique sectors for filter
   const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
 
+  const toggleFilter = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    setter(next);
+  };
+
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0;
+  const clearAllFilters = () => {
+    setFilterTypes(new Set());
+    setFilterStages(new Set());
+    setFilterSecteurs(new Set());
+  };
+
   const filteredProspects = useMemo(() => {
     const list = state.prospects.filter(p => {
-      if (filterType && p.type_etablissement !== filterType) return false;
-      if (filterStage && p.etape_pipeline !== filterStage) return false;
-      if (filterSecteur && p.secteur !== filterSecteur) return false;
+      if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
+      if (filterStages.size > 0 && !filterStages.has(p.etape_pipeline)) return false;
+      if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -156,7 +203,7 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, searchTerm, sortScore, sortDate]);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
@@ -275,38 +322,101 @@ export default function ProspectsPage() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <select
-              className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-              value={filterType}
-              onChange={e => setFilterType(e.target.value as EstablishmentType | '')}
-            >
-              <option value="">Tous types</option>
-              {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => (
-                <option key={t} value={t}>{ESTABLISHMENT_LABELS[t]}</option>
-              ))}
-            </select>
-            <select
-              className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-              value={filterStage}
-              onChange={e => setFilterStage(e.target.value as PipelineStage | '')}
-            >
-              <option value="">Toutes etapes</option>
-              {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(s => (
-                <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>
-              ))}
-            </select>
-            {allSecteurs.length > 0 && (
-              <select
-                className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-                value={filterSecteur}
-                onChange={e => setFilterSecteur(e.target.value)}
-              >
-                <option value="">Tous secteurs</option>
-                {allSecteurs.map(s => (
-                  <option key={s} value={s}>{s}</option>
+          {/* Multi-select filters */}
+          <div className="space-y-2">
+            {/* Filter row: Type */}
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1">Type d'etablissement</p>
+              <div className="flex gap-1 flex-wrap">
+                {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => (
+                  <button
+                    key={t}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                      filterTypes.has(t)
+                        ? 'bg-brewery-600 text-white border-brewery-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-brewery-300 hover:text-brewery-600'
+                    }`}
+                    onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}
+                  >
+                    {ESTABLISHMENT_LABELS[t]}
+                  </button>
                 ))}
-              </select>
+              </div>
+            </div>
+
+            {/* Filter row: Etape pipeline */}
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1">Etape pipeline</p>
+              <div className="flex gap-1 flex-wrap">
+                {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(s => (
+                  <button
+                    key={s}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                      filterStages.has(s)
+                        ? 'text-white border-transparent'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                    }`}
+                    style={filterStages.has(s) ? { backgroundColor: PIPELINE_COLORS[s] } : undefined}
+                    onClick={() => toggleFilter(filterStages, s, setFilterStages)}
+                  >
+                    {PIPELINE_LABELS[s]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter row: Secteur */}
+            {allSecteurs.length > 0 && (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">Secteur</p>
+                <div className="flex gap-1 flex-wrap">
+                  {allSecteurs.map(s => (
+                    <button
+                      key={s}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                        filterSecteurs.has(s)
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-600'
+                      }`}
+                      onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Active filters summary + clear */}
+            {hasActiveFilters && (
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1 flex-wrap flex-1">
+                  {[...filterTypes].map(t => (
+                    <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-brewery-100 text-brewery-700">
+                      {ESTABLISHMENT_LABELS[t]}
+                      <button className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
+                    </span>
+                  ))}
+                  {[...filterStages].map(s => (
+                    <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] }}>
+                      {PIPELINE_LABELS[s]}
+                      <button className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
+                    </span>
+                  ))}
+                  {[...filterSecteurs].map(s => (
+                    <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                      {s}
+                      <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
+                    </span>
+                  ))}
+                </div>
+                <button
+                  className="text-[10px] text-red-500 hover:text-red-700 font-medium whitespace-nowrap"
+                  onClick={clearAllFilters}
+                >
+                  Tout effacer
+                </button>
+              </div>
             )}
           </div>
           <div className="flex items-center justify-between">
@@ -885,11 +995,23 @@ export default function ProspectsPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Tags</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-600">Tags</label>
+                  <button
+                    type="button"
+                    className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium flex items-center gap-0.5"
+                    onClick={() => { setShowTagManager(!showTagManager); setEditingTag(null); setNewTagName(''); }}
+                  >
+                    <Settings className="w-3 h-3" /> Gerer les tags
+                  </button>
+                </div>
+
+                {/* Tag selection */}
                 <div className="flex flex-wrap gap-1.5">
                   {state.tags.map(tag => (
                     <button
                       key={tag.id}
+                      type="button"
                       className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${
                         (formData.tags || []).includes(tag.id) ? 'text-white' : 'bg-gray-100 text-gray-600'
                       }`}
@@ -905,7 +1027,97 @@ export default function ProspectsPage() {
                       {tag.nom}
                     </button>
                   ))}
+                  {state.tags.length === 0 && (
+                    <p className="text-[10px] text-gray-400">Aucun tag. Cliquez "Gerer les tags" pour en creer.</p>
+                  )}
                 </div>
+
+                {/* Tag manager panel */}
+                {showTagManager && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                    <p className="text-[11px] font-semibold text-gray-700">{editingTag ? 'Modifier le tag' : 'Creer un nouveau tag'}</p>
+
+                    {/* New/Edit tag form */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nom du tag..."
+                        className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs"
+                        value={newTagName}
+                        onChange={e => setNewTagName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && saveNewTag()}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 py-1.5 bg-brewery-600 text-white text-xs rounded-lg hover:bg-brewery-700 disabled:opacity-50"
+                        onClick={saveNewTag}
+                        disabled={!newTagName.trim()}
+                      >
+                        {editingTag ? 'Modifier' : 'Creer'}
+                      </button>
+                      {editingTag && (
+                        <button
+                          type="button"
+                          className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+                          onClick={() => { setEditingTag(null); setNewTagName(''); setNewTagColor('#6366f1'); }}
+                        >
+                          Annuler
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Color picker */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-500">Couleur:</span>
+                      {TAG_COLORS.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`w-5 h-5 rounded-full border-2 transition-transform ${
+                            newTagColor === color ? 'border-gray-800 scale-125' : 'border-transparent hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setNewTagColor(color)}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Existing tags list with edit/delete */}
+                    {state.tags.length > 0 && (
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1.5">Tags existants :</p>
+                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                          {state.tags.map(tag => (
+                            <div key={tag.id} className="flex items-center justify-between py-1 px-2 rounded bg-white">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.couleur }} />
+                                <span className="text-xs text-gray-700">{tag.nom}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                  onClick={() => startEditTag(tag)}
+                                  title="Modifier"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                  onClick={() => deleteTag(tag.id)}
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
