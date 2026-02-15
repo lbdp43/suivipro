@@ -237,7 +237,7 @@ export default function ImportPage() {
           'Etat du contact', 'Etapes', 'Etape', 'etape',
           'etape_pipeline', 'Pipeline', 'Statut'
         );
-        const etape = etapeStr ? detectStage(etapeStr) : 'nouveau';
+        const etape = etapeStr ? detectStage(etapeStr) : 'a_contacter';
 
         // Secteur / Tournee
         const secteur = getVal(row,
