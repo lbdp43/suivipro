@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
-  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User,
+  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -86,6 +86,20 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* External CRM link */}
+        <div className="px-3 pb-2">
+          <a
+            href="https://crm-lbdp-production.up.railway.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+          >
+            <ExternalLink className="w-5 h-5 flex-shrink-0" />
+            <span>CRM LBDP</span>
+            <span className="ml-auto text-[10px] text-blue-400">Ouvrir</span>
+          </a>
+        </div>
 
         {/* User info + logout */}
         <div className="p-3 border-t border-gray-200">
