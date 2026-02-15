@@ -140,17 +140,44 @@ router.delete('/prospects/:id', authMiddleware, async (req, res) => {
 // Bulk import
 router.post('/prospects/import', authMiddleware, async (req, res) => {
   const prospects = req.body;
+  if (!prospects || prospects.length === 0) return res.json({ ok: true, count: 0 });
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    for (const p of prospects) {
+
+    // Batch insert: build multi-row VALUES for chunks of 50
+    const CHUNK_SIZE = 50;
+    const COLS = 20;
+    for (let i = 0; i < prospects.length; i += CHUNK_SIZE) {
+      const chunk = prospects.slice(i, i + CHUNK_SIZE);
+      const values = [];
+      const params = [];
+      chunk.forEach((p, idx) => {
+        const offset = idx * COLS;
+        values.push(`(${Array.from({ length: COLS }, (_, j) => `$${offset + j + 1}`).join(',')})`);
+        params.push(
+          p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '',
+          p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '',
+          p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []),
+          p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50
+        );
+      });
       await client.query(
         `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-        ON CONFLICT (id) DO UPDATE SET nom_etablissement=$2, type_etablissement=$3, nom_contact=$4, telephone=$5, email=$6, adresse=$7, ville=$8, code_postal=$9, departement=$10, secteur=$11, latitude=$12, longitude=$13, etape_pipeline=$14, tags=$15, commercial_id=$16, notes=$17, date_creation=$18, date_modification=$19, score=$20`,
-        [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
+        VALUES ${values.join(',')}
+        ON CONFLICT (id) DO UPDATE SET
+          nom_etablissement=EXCLUDED.nom_etablissement, type_etablissement=EXCLUDED.type_etablissement,
+          nom_contact=EXCLUDED.nom_contact, telephone=EXCLUDED.telephone, email=EXCLUDED.email,
+          adresse=EXCLUDED.adresse, ville=EXCLUDED.ville, code_postal=EXCLUDED.code_postal,
+          departement=EXCLUDED.departement, secteur=EXCLUDED.secteur, latitude=EXCLUDED.latitude,
+          longitude=EXCLUDED.longitude, etape_pipeline=EXCLUDED.etape_pipeline, tags=EXCLUDED.tags,
+          commercial_id=EXCLUDED.commercial_id, notes=EXCLUDED.notes, date_creation=EXCLUDED.date_creation,
+          date_modification=EXCLUDED.date_modification, score=EXCLUDED.score`,
+        params
       );
     }
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
