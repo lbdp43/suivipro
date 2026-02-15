@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState } from 'react';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS,
 } from '../types';
-import { getSeedData } from '../data/seedData';
+import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
 
 // ============================================
 // Actions
@@ -139,6 +139,10 @@ const defaultPipelineColumns: PipelineColumn[] = (
 interface AppContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+  loading: boolean;
+  authError: string | null;
   // Helper functions
   getProspect: (id: string) => Prospect | undefined;
   getCallsForProspect: (prospectId: string) => Call[];
@@ -154,88 +158,88 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'suivipro_state';
-
-function loadState(): AppState | null {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function saveState(state: AppState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // ignore
-  }
-}
+const emptyState: AppState = {
+  prospects: [],
+  calls: [],
+  appointments: [],
+  reminders: [],
+  commerciaux: [],
+  tags: [],
+  emailTemplates: [],
+  currentUser: null,
+  pipelineColumns: defaultPipelineColumns,
+};
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const savedState = loadState();
-  const seedData = getSeedData();
+  const [state, rawDispatch] = useReducer(reducer, emptyState);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  // Migrate older state: add password field if missing, force re-login, merge rdv_pris into gagne, merge new commercials
-  const migrateState = (s: AppState): AppState => {
-    // Update existing commercials: password + nom/role sync from seed
-    const mergedCommerciaux = seedData.commerciaux.map(seed => {
-      const existing = s.commerciaux.find(c => c.id === seed.id);
-      if (existing) {
-        return {
-          ...existing,
-          nom: seed.nom,
-          password: existing.password || seed.password,
-        };
-      }
-      return seed;
-    });
-    const updated = {
-      ...s,
-      commerciaux: mergedCommerciaux,
-      pipelineColumns: (s.pipelineColumns || defaultPipelineColumns)
-        .filter(c => (c.id as string) !== 'rdv_pris'),
-      // Migrate prospects from rdv_pris → gagne (old stage removed)
-      prospects: s.prospects.map(p => {
-        const stage = p.etape_pipeline as string;
-        return stage === 'rdv_pris' ? { ...p, etape_pipeline: 'gagne' as PipelineStage } : p;
-      }),
-    };
-    // Update gagne label if still old
-    updated.pipelineColumns = updated.pipelineColumns.map(c =>
-      c.id === 'gagne' ? { ...c, label: 'RDV / Gagne' } : c
-    );
-    // Add ne_pas_contacter column if missing
-    if (!updated.pipelineColumns.find(c => c.id === 'ne_pas_contacter')) {
-      updated.pipelineColumns.push({
-        id: 'ne_pas_contacter' as PipelineStage,
-        label: PIPELINE_LABELS['ne_pas_contacter'],
-        color: PIPELINE_COLORS['ne_pas_contacter'],
+  // Wrapped dispatch that also syncs to API
+  const dispatch: React.Dispatch<Action> = useCallback((action: Action) => {
+    rawDispatch(action);
+    // Sync to API (fire-and-forget, optimistic)
+    if (action.type !== 'SET_STATE' && action.type !== 'SET_CURRENT_USER') {
+      syncAction(action.type, action.payload);
+    }
+  }, []);
+
+  // Login
+  const login = useCallback(async (email: string, password: string) => {
+    setAuthError(null);
+    try {
+      const user = await apiLogin(email, password);
+      // Load full state from API
+      const data = await loadFullState();
+      rawDispatch({
+        type: 'SET_STATE',
+        payload: {
+          ...data,
+          currentUser: user,
+          pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
+        },
       });
+    } catch (err: any) {
+      setAuthError(err.message || 'Erreur de connexion');
+      throw err;
     }
-    if (updated.currentUser && !updated.currentUser.password) {
-      updated.currentUser = null;
-    }
-    return updated;
-  };
+  }, []);
 
-  const initialState: AppState = savedState
-    ? migrateState(savedState)
-    : {
-        ...seedData,
-        pipelineColumns: defaultPipelineColumns,
-        currentUser: null,
-      };
+  // Logout
+  const logout = useCallback(() => {
+    setToken(null);
+    rawDispatch({ type: 'SET_STATE', payload: emptyState });
+  }, []);
 
-  const [state, dispatch] = useReducer(reducer, initialState);
-
+  // On mount: check for existing token and restore session
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    const token = getToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    // Try to restore session
+    (async () => {
+      try {
+        const user = await getMe();
+        const data = await loadFullState();
+        rawDispatch({
+          type: 'SET_STATE',
+          payload: {
+            ...data,
+            currentUser: user,
+            pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
+          },
+        });
+      } catch {
+        // Token invalid, clear it
+        setToken(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const getProspect = (id: string) => state.prospects.find(p => p.id === id);
   const getCallsForProspect = (pid: string) => state.calls.filter(c => c.prospect_id === pid);
@@ -253,6 +257,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         state,
         dispatch,
+        login,
+        logout,
+        loading,
+        authError,
         getProspect,
         getCallsForProspect,
         getAppointmentsForProspect,

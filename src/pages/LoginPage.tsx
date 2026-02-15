@@ -1,41 +1,30 @@
 import { useState } from 'react';
-import { Beer, LogIn, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Beer, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { getSeedData } from '../data/seedData';
 
 export default function LoginPage() {
-  const { state, dispatch } = useApp();
+  const { login, authError } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const user = state.commerciaux.find(
-        c => c.email.toLowerCase() === email.toLowerCase() && c.password === password
-      );
-
-      if (user) {
-        dispatch({ type: 'SET_CURRENT_USER', payload: user });
-      } else {
-        setError('Email ou mot de passe incorrect');
-      }
+    try {
+      await login(email, password);
+    } catch (err: any) {
+      setError(err.message || 'Email ou mot de passe incorrect');
+    } finally {
       setLoading(false);
-    }, 300);
-  };
-
-  const handleReset = () => {
-    if (confirm('Reinitialiser toutes les donnees ? Les prospects, appels et parametres seront remis a zero.')) {
-      localStorage.removeItem('suivipro_state');
-      window.location.reload();
     }
   };
+
+  const displayError = error || authError;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brewery-50 via-white to-green-50 flex items-center justify-center p-4">
@@ -89,10 +78,10 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && (
+            {displayError && (
               <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg text-sm">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {error}
+                {displayError}
               </div>
             )}
 
@@ -119,13 +108,6 @@ export default function LoginPage() {
           <p>Lucas : lucas@labrasseriedesplantes.fr / lucas123</p>
           <p>Alban : alban@labrasseriedesplantes.fr / alban123</p>
           <p>Loic : loic@labrasseriedesplantes.fr / loic123</p>
-          <button
-            className="mt-3 flex items-center gap-1.5 mx-auto px-3 py-1.5 text-xs text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors font-medium"
-            onClick={handleReset}
-          >
-            <RotateCcw className="w-3 h-3" />
-            Reinitialiser les donnees
-          </button>
         </div>
       </div>
     </div>

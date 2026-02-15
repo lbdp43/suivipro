@@ -10,7 +10,7 @@ import { Link } from 'react-router-dom';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { state, dispatch } = useApp();
+  const { state, logout } = useApp();
   const today = new Date().toISOString().split('T')[0];
   // Badge = seulement les rappels du jour + en retard (pas les "a venir")
   const urgentReminders = state.reminders.filter(r => r.statut === 'actif' && r.date <= today).length;
@@ -31,7 +31,7 @@ export default function Layout() {
   const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   const handleLogout = () => {
-    dispatch({ type: 'SET_CURRENT_USER', payload: null });
+    logout();
   };
 
   return (
