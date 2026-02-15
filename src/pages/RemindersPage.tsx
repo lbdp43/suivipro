@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2,
+  Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
   AlertCircle, BellRing, CalendarClock, MessageSquare,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -21,6 +21,10 @@ export default function RemindersPage() {
   const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
   const [snoozeDate, setSnoozeDate] = useState('');
   const [snoozeNote, setSnoozeNote] = useState('');
+
+  // Modale editer
+  const [editTarget, setEditTarget] = useState<Reminder | null>(null);
+  const [editForm, setEditForm] = useState({ date: '', heure: '', message: '' });
 
   const reminders = useMemo(() => {
     return [...state.reminders].sort((a, b) => a.date.localeCompare(b.date));
@@ -97,6 +101,27 @@ export default function RemindersPage() {
     dispatch({ type: 'DELETE_REMINDER', payload: id });
   };
 
+  const openEditModal = (rem: Reminder) => {
+    setEditTarget(rem);
+    setEditForm({ date: rem.date, heure: rem.heure, message: rem.message });
+  };
+
+  const saveEdit = () => {
+    if (!editTarget || !editForm.date) return;
+    dispatch({
+      type: 'UPDATE_REMINDER',
+      payload: { ...editTarget, date: editForm.date, heure: editForm.heure, message: editForm.message },
+    });
+    setEditTarget(null);
+  };
+
+  const reactivateReminder = (rem: Reminder) => {
+    dispatch({
+      type: 'UPDATE_REMINDER',
+      payload: { ...rem, statut: 'actif' as ReminderStatus },
+    });
+  };
+
   // Quick reminder options
   const quickOptions = [
     { label: 'Dans 2 jours', days: 2 },
@@ -151,7 +176,7 @@ export default function RemindersPage() {
               )}
             </div>
 
-            {/* Boutons d'action - visibles et clairs */}
+            {/* Boutons d'action - actif */}
             {showActions && rem.statut === 'actif' && (
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <button
@@ -165,6 +190,35 @@ export default function RemindersPage() {
                   onClick={() => openSnoozeModal(rem)}
                 >
                   <CalendarClock className="w-3.5 h-3.5" /> Reporter
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  onClick={() => openEditModal(rem)}
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Modifier
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                  onClick={() => deleteReminder(rem.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                </button>
+              </div>
+            )}
+            {/* Boutons d'action - termine */}
+            {rem.statut === 'termine' && (
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                  onClick={() => reactivateReminder(rem)}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Reactiver
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  onClick={() => openEditModal(rem)}
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Modifier
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
@@ -235,7 +289,7 @@ export default function RemindersPage() {
         <div>
           <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
           <div className="space-y-3">
-            {completedReminders.map(r => renderReminder(r, false))}
+            {completedReminders.map(r => renderReminder(r))}
           </div>
         </div>
       )}
@@ -331,6 +385,67 @@ export default function RemindersPage() {
                 disabled={!snoozeDate}
               >
                 <CalendarClock className="w-4 h-4" /> Reporter au {snoozeDate ? formatDate(snoozeDate) : '...'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Modifier */}
+      {editTarget && (
+        <div className="modal-backdrop" onClick={() => setEditTarget(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-gray-600" /> Modifier le rappel
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setEditTarget(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500">Prospect</p>
+                <p className="text-sm font-medium text-gray-900">{getProspect(editTarget.prospect_id)?.nom_etablissement}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editForm.date}
+                    onChange={e => setEditForm(prev => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Heure</label>
+                  <input
+                    type="time"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editForm.heure}
+                    onChange={e => setEditForm(prev => ({ ...prev, heure: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Message</label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-24 resize-none"
+                  value={editForm.message}
+                  onChange={e => setEditForm(prev => ({ ...prev, message: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setEditTarget(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
+                onClick={saveEdit}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X,
+  Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -335,7 +335,15 @@ export default function ProspectsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-600">{selectedProspect.adresse}, {selectedProspect.code_postal} {selectedProspect.ville}</span>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedProspect.adresse} ${selectedProspect.code_postal} ${selectedProspect.ville}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brewery-600 hover:underline flex items-center gap-1"
+                  >
+                    {selectedProspect.adresse}, {selectedProspect.code_postal} {selectedProspect.ville}
+                    <Navigation className="w-3 h-3" />
+                  </a>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Tag className="w-4 h-4 text-gray-400" />

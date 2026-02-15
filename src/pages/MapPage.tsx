@@ -604,6 +604,15 @@ export default function MapPage() {
                       );
                     })()}
                     <div className="mt-2 flex gap-2">
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prospect.adresse} ${prospect.code_postal} ${prospect.ville}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded text-[10px] font-medium hover:bg-indigo-600"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <MapPin className="w-3 h-3" /> Maps
+                      </a>
                       {prospect.telephone && (
                         <button
                           onClick={() => startCall(prospect.id)}

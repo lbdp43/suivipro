@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check,
+  Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation,
   AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -193,7 +193,18 @@ export default function AppointmentsPage() {
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 text-gray-400" />
-            {rdv.lieu || 'Non defini'}
+            {rdv.lieu ? (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rdv.lieu)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline flex items-center gap-1"
+                onClick={e => e.stopPropagation()}
+              >
+                {rdv.lieu}
+                <Navigation className="w-3 h-3" />
+              </a>
+            ) : 'Non defini'}
           </div>
           {rdv.notes && (
             <p className="text-gray-500 bg-gray-50 p-2 rounded">{rdv.notes}</p>
