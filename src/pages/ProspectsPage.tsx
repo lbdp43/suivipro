@@ -13,6 +13,7 @@ import {
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
+import FilterPresets from '../components/FilterPresets';
 
 // Multi-select dropdown component
 function MultiSelectDropdown({ label, options, selected, onToggle, color }: {
@@ -454,6 +455,19 @@ export default function ProspectsPage() {
                 <X className="w-3 h-3" /> Effacer filtres
               </button>
             )}
+            <FilterPresets
+              page="prospects"
+              getCurrentFilters={() => ({
+                types: [...filterTypes],
+                stages: [...filterStages],
+                secteurs: [...filterSecteurs],
+              })}
+              applyFilters={(f) => {
+                setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
+                setFilterStages(new Set((f.stages as PipelineStage[]) || []));
+                setFilterSecteurs(new Set((f.secteurs as string[]) || []));
+              }}
+            />
           </div>
 
           {/* Active filter chips */}

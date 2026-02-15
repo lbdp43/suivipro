@@ -11,6 +11,7 @@ import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentTy
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { formatDate, downloadICS } from '../utils/helpers';
+import FilterPresets from '../components/FilterPresets';
 
 // Custom marker icon factory
 function createMarkerIcon(color: string): L.DivIcon {
@@ -57,6 +58,7 @@ export default function MapPage() {
   const [showRdvPanel, setShowRdvPanel] = useState(false);
   const [rdvWeekOffset, setRdvWeekOffset] = usePersistedState<number>('map_rdv_week', 0);
   const [rdvFilterCommercial, setRdvFilterCommercial] = usePersistedState<string>('map_rdv_commercial', '');
+  const [maxMarkers, setMaxMarkers] = usePersistedState<number>('map_max_markers', 200);
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
   const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
@@ -221,11 +223,23 @@ export default function MapPage() {
               </span>
             )}
           </button>
+          <select
+            className="text-[10px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white flex-shrink-0"
+            value={maxMarkers}
+            onChange={e => setMaxMarkers(Number(e.target.value))}
+          >
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+          </select>
           <div className="text-xs sm:text-sm text-gray-500 flex-shrink-0">
             {showRdvPanel ? (
               <span className="text-blue-600 font-medium">{filteredProspects.length} RDV</span>
             ) : (
-              <>{filteredProspects.length}<span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span></>
+              <>
+                {Math.min(filteredProspects.length, maxMarkers)}{filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
+                <span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
+              </>
             )}
           </div>
         </div>
@@ -369,14 +383,31 @@ export default function MapPage() {
               </div>
             </div>
 
-            {activeFilterCount > 0 && (
-              <button
-                className="text-xs text-red-500 hover:text-red-700 font-medium"
-                onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); }}
-              >
-                Reinitialiser les filtres
-              </button>
-            )}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              {activeFilterCount > 0 && (
+                <button
+                  className="text-xs text-red-500 hover:text-red-700 font-medium"
+                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); }}
+                >
+                  Reinitialiser les filtres
+                </button>
+              )}
+              <FilterPresets
+                page="map"
+                getCurrentFilters={() => ({
+                  types: selectedTypes,
+                  stages: selectedStages,
+                  tags: selectedTags,
+                  secteurs: selectedSecteurs,
+                })}
+                applyFilters={(f) => {
+                  setSelectedTypes((f.types as EstablishmentType[]) || []);
+                  setSelectedStages((f.stages as PipelineStage[]) || []);
+                  setSelectedTags((f.tags as string[]) || []);
+                  setSelectedSecteurs((f.secteurs as string[]) || []);
+                }}
+              />
+            </div>
           </div>
         )}
 
@@ -545,7 +576,7 @@ export default function MapPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {filteredProspects.map(prospect => {
+          {filteredProspects.slice(0, maxMarkers).map(prospect => {
             const markerColor = showRdvPanel ? '#2563eb' : PIPELINE_COLORS[prospect.etape_pipeline];
             return (
               <Marker

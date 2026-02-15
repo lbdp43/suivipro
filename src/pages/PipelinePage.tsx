@@ -1,5 +1,5 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
@@ -21,6 +21,8 @@ export default function PipelinePage() {
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
+  const [maxPerColumn, setMaxPerColumn] = useState(50);
+  const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -145,6 +147,15 @@ export default function PipelinePage() {
           <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline commercial</h1>
           <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les etapes</p>
         </div>
+        <select
+          className="text-[10px] sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
+          value={maxPerColumn}
+          onChange={e => { setMaxPerColumn(Number(e.target.value)); setExpandedColumns(new Set()); }}
+        >
+          <option value={50}>50 / col.</option>
+          <option value={100}>100 / col.</option>
+          <option value={200}>200 / col.</option>
+        </select>
         <button
           className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
             showSettings ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -290,7 +301,10 @@ export default function PipelinePage() {
 
               {/* Cards */}
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {(prospectsByStage[col.id] || []).map(prospect => (
+                {(expandedColumns.has(col.id)
+                  ? (prospectsByStage[col.id] || [])
+                  : (prospectsByStage[col.id] || []).slice(0, maxPerColumn)
+                ).map(prospect => (
                   <div
                     key={prospect.id}
                     draggable
@@ -377,6 +391,15 @@ export default function PipelinePage() {
                   </div>
                 ))}
 
+                {!expandedColumns.has(col.id) && (prospectsByStage[col.id] || []).length > maxPerColumn && (
+                  <button
+                    className="w-full py-2 text-[11px] font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center justify-center gap-1"
+                    onClick={() => setExpandedColumns(prev => { const s = new Set(prev); s.add(col.id); return s; })}
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Voir les {(prospectsByStage[col.id] || []).length - maxPerColumn} restants
+                  </button>
+                )}
                 {(prospectsByStage[col.id] || []).length === 0 && (
                   <div className="text-center py-8 text-xs text-gray-400">
                     Aucun prospect
