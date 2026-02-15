@@ -267,8 +267,8 @@ export default function AppointmentsPage() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rendez-vous</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des RDV et export calendrier</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Prospects & Rendez-vous</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Prospection, RDV et export calendrier</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Toggle Liste / Planning / Agenda */}

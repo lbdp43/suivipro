@@ -107,16 +107,29 @@ export default function DashboardPage() {
   const monthlyHistory = useMemo(() => {
     const monthCalls = getCallsInRange(state.calls, monthStart, monthEnd);
     const monthRdv = getCallsInRange(state.appointments, monthStart, monthEnd);
+    const monthProspects = state.prospects.filter(p => {
+      try {
+        const d = parseISO(p.date_creation);
+        return isWithinInterval(d, { start: monthStart, end: monthEnd });
+      } catch { return false; }
+    });
     const weeks = getWeeksInMonth(selectedMonth);
 
     const weeklyBreakdown = weeks.map(week => {
       const weekCalls = getCallsInRange(state.calls, week.start, week.end);
       const weekRdv = getCallsInRange(state.appointments, week.start, week.end);
+      const weekProspects = state.prospects.filter(p => {
+        try {
+          const d = parseISO(p.date_creation);
+          return isWithinInterval(d, { start: week.start, end: week.end });
+        } catch { return false; }
+      });
       const weekAnswered = weekCalls.filter((c: any) => c.resultat === 'repondu').length;
       return {
         label: week.label,
         calls: weekCalls.length,
         rdv: weekRdv.length,
+        prospects: weekProspects.length,
         answered: weekAnswered,
         responseRate: weekCalls.length > 0 ? Math.round((weekAnswered / weekCalls.length) * 100) : 0,
       };
@@ -125,13 +138,14 @@ export default function DashboardPage() {
     return {
       totalCalls: monthCalls.length,
       totalRdv: monthRdv.length,
+      totalProspects: monthProspects.length,
       answered: monthCalls.filter((c: any) => c.resultat === 'repondu').length,
       responseRate: monthCalls.length > 0
         ? Math.round((monthCalls.filter((c: any) => c.resultat === 'repondu').length / monthCalls.length) * 100)
         : 0,
       weeklyBreakdown,
     };
-  }, [state.calls, state.appointments, monthStart, monthEnd, selectedMonth]);
+  }, [state.calls, state.appointments, state.prospects, monthStart, monthEnd, selectedMonth]);
 
   // Per-user activity stats (ALL users)
   const userActivities = useMemo(() => {
@@ -153,6 +167,17 @@ export default function DashboardPage() {
       const avgDuration = getAverageCallDuration(userCalls);
       const wonProspects = userProspects.filter(p => p.etape_pipeline === 'gagne').length;
 
+      // Prospects created this month by this user
+      const now = new Date();
+      const mStart = startOfMonth(now);
+      const mEnd = endOfMonth(now);
+      const monthProspectsCreated = userProspects.filter(p => {
+        try {
+          const d = parseISO(p.date_creation);
+          return isWithinInterval(d, { start: mStart, end: mEnd });
+        } catch { return false; }
+      }).length;
+
       const objective = user.objectifs.appels_semaine;
       const progress = objective > 0 ? Math.round((weekCalls.length / objective) * 100) : 0;
 
@@ -164,6 +189,7 @@ export default function DashboardPage() {
         weekRdv: weekRdv.length,
         monthRdv: monthRdv.length,
         monthRdvTaken: monthRdvTaken.length,
+        monthProspectsCreated,
         responseRate,
         avgDuration,
         totalProspects: userProspects.length,
@@ -277,6 +303,17 @@ export default function DashboardPage() {
       backgroundColor: '#22c55e',
       borderRadius: 6,
     }, {
+      label: 'Prospects ce mois',
+      data: allUsers.map(c => {
+        const now = new Date();
+        const mS = startOfMonth(now), mE = endOfMonth(now);
+        return state.prospects.filter(p => p.commercial_id === c.id && (() => {
+          try { return isWithinInterval(parseISO(p.date_creation), { start: mS, end: mE }); } catch { return false; }
+        })()).length;
+      }),
+      backgroundColor: '#f59e0b',
+      borderRadius: 6,
+    }, {
       label: 'RDV ce mois',
       data: allUsers.map(c => getAppointmentsThisMonth(state.appointments.filter(a => a.commercial_id === c.id)).length),
       backgroundColor: '#3b82f6',
@@ -296,6 +333,11 @@ export default function DashboardPage() {
       label: 'Appels',
       data: monthlyHistory.weeklyBreakdown.map(w => w.calls),
       backgroundColor: '#22c55e',
+      borderRadius: 6,
+    }, {
+      label: 'Prospects',
+      data: monthlyHistory.weeklyBreakdown.map(w => w.prospects),
+      backgroundColor: '#f59e0b',
       borderRadius: 6,
     }, {
       label: 'RDV',
@@ -646,10 +688,14 @@ export default function DashboardPage() {
         </div>
 
         {/* Month summary */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
           <div className="bg-green-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-green-700">{monthlyHistory.totalCalls}</p>
             <p className="text-[10px] text-green-600 mt-0.5">Appels total</p>
+          </div>
+          <div className="bg-amber-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-amber-700">{monthlyHistory.totalProspects}</p>
+            <p className="text-[10px] text-amber-600 mt-0.5">Prospects crees</p>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-blue-700">{monthlyHistory.totalRdv}</p>
@@ -659,9 +705,9 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-purple-700">{monthlyHistory.answered}</p>
             <p className="text-[10px] text-purple-600 mt-0.5">Repondus</p>
           </div>
-          <div className="bg-amber-50 rounded-lg p-3 text-center">
-            <p className="text-2xl font-bold text-amber-700">{monthlyHistory.responseRate}%</p>
-            <p className="text-[10px] text-amber-600 mt-0.5">Taux reponse</p>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-gray-700">{monthlyHistory.responseRate}%</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">Taux reponse</p>
           </div>
         </div>
 
@@ -687,6 +733,7 @@ export default function DashboardPage() {
                 <th className="text-center py-2 px-2 font-medium text-gray-500">Appels</th>
                 <th className="text-center py-2 px-2 font-medium text-gray-500">Repondus</th>
                 <th className="text-center py-2 px-2 font-medium text-gray-500">Taux</th>
+                <th className="text-center py-2 px-2 font-medium text-gray-500">Prospects</th>
                 <th className="text-center py-2 px-2 font-medium text-gray-500">RDV</th>
               </tr>
             </thead>
@@ -705,6 +752,7 @@ export default function DashboardPage() {
                       {week.responseRate}%
                     </span>
                   </td>
+                  <td className="text-center py-2 px-2 text-amber-600 font-semibold">{week.prospects}</td>
                   <td className="text-center py-2 px-2 text-blue-600 font-semibold">{week.rdv}</td>
                 </tr>
               ))}

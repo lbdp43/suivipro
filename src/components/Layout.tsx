@@ -21,7 +21,7 @@ export default function Layout() {
     { to: '/pipeline', icon: Kanban, label: 'Pipeline', adminOnly: false },
     { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false },
     { to: '/appels', icon: Phone, label: 'Appels', adminOnly: false },
-    { to: '/rdv', icon: Calendar, label: 'Rendez-vous', adminOnly: false },
+    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
     { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
