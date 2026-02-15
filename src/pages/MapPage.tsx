@@ -231,6 +231,11 @@ export default function MapPage() {
             <option value={50}>50</option>
             <option value={100}>100</option>
             <option value={200}>200</option>
+            <option value={1000}>1000</option>
+            <option value={2000}>2000</option>
+            <option value={3000}>3000</option>
+            <option value={4000}>4000</option>
+            <option value={5000}>5000</option>
           </select>
           <div className="text-xs sm:text-sm text-gray-500 flex-shrink-0">
             {showRdvPanel ? (

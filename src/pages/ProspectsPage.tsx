@@ -504,6 +504,11 @@ export default function ProspectsPage() {
                 <option value={50}>50 / page</option>
                 <option value={100}>100 / page</option>
                 <option value={200}>200 / page</option>
+                <option value={1000}>1000 / page</option>
+                <option value={2000}>2000 / page</option>
+                <option value={3000}>3000 / page</option>
+                <option value={4000}>4000 / page</option>
+                <option value={5000}>5000 / page</option>
               </select>
             </div>
             <div className="flex items-center gap-1.5">

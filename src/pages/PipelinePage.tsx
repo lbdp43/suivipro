@@ -155,6 +155,11 @@ export default function PipelinePage() {
           <option value={50}>50 / col.</option>
           <option value={100}>100 / col.</option>
           <option value={200}>200 / col.</option>
+          <option value={1000}>1000 / col.</option>
+          <option value={2000}>2000 / col.</option>
+          <option value={3000}>3000 / col.</option>
+          <option value={4000}>4000 / col.</option>
+          <option value={5000}>5000 / col.</option>
         </select>
         <button
           className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
