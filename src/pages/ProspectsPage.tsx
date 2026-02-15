@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings,
+  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -13,6 +13,91 @@ import {
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
+
+// Multi-select dropdown component
+function MultiSelectDropdown({ label, options, selected, onToggle, color }: {
+  label: string;
+  options: { value: string; label: string; color?: string }[];
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+  color: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const count = selected.size;
+  const colorMap: Record<string, { btn: string; active: string }> = {
+    brewery: { btn: 'border-brewery-300 text-brewery-700 bg-brewery-50', active: 'bg-brewery-600 text-white border-brewery-600' },
+    blue: { btn: 'border-blue-300 text-blue-700 bg-blue-50', active: 'bg-blue-600 text-white border-blue-600' },
+    amber: { btn: 'border-amber-300 text-amber-700 bg-amber-50', active: 'bg-amber-500 text-white border-amber-500' },
+  };
+  const c = colorMap[color] || colorMap.brewery;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
+          count > 0 ? c.active : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+        }`}
+        onClick={() => setOpen(!open)}
+      >
+        <Filter className="w-3 h-3" />
+        {label}
+        {count > 0 && <span className="bg-white/30 rounded-full px-1 text-[10px]">{count}</span>}
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] max-h-64 overflow-y-auto">
+          {/* Select/Deselect all */}
+          <div className="sticky top-0 bg-white border-b border-gray-100 px-3 py-2 flex items-center justify-between">
+            <span className="text-[10px] text-gray-400">{count}/{options.length} selectionne(s)</span>
+            <button
+              className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium"
+              onClick={() => {
+                if (count === options.length) {
+                  options.forEach(o => { if (selected.has(o.value)) onToggle(o.value); });
+                } else {
+                  options.forEach(o => { if (!selected.has(o.value)) onToggle(o.value); });
+                }
+              }}
+            >
+              {count === options.length ? 'Tout deselect.' : 'Tout select.'}
+            </button>
+          </div>
+
+          {options.map(option => (
+            <button
+              key={option.value}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors ${
+                selected.has(option.value) ? 'bg-gray-50 font-medium' : ''
+              }`}
+              onClick={() => onToggle(option.value)}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                selected.has(option.value) ? 'bg-brewery-600 border-brewery-600' : 'border-gray-300'
+              }`}>
+                {selected.has(option.value) && <Check className="w-3 h-3 text-white" />}
+              </div>
+              {option.color && (
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: option.color }} />
+              )}
+              <span className="truncate text-gray-700">{option.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProspectsPage() {
   const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
@@ -322,103 +407,68 @@ export default function ProspectsPage() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          {/* Multi-select filters */}
-          <div className="space-y-2">
-            {/* Filter row: Type */}
-            <div>
-              <p className="text-[10px] text-gray-400 mb-1">Type d'etablissement</p>
-              <div className="flex gap-1 flex-wrap">
-                {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => (
-                  <button
-                    key={t}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                      filterTypes.has(t)
-                        ? 'bg-brewery-600 text-white border-brewery-600'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-brewery-300 hover:text-brewery-600'
-                    }`}
-                    onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}
-                  >
-                    {ESTABLISHMENT_LABELS[t]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Filter row: Etape pipeline */}
-            <div>
-              <p className="text-[10px] text-gray-400 mb-1">Etape pipeline</p>
-              <div className="flex gap-1 flex-wrap">
-                {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(s => (
-                  <button
-                    key={s}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                      filterStages.has(s)
-                        ? 'text-white border-transparent'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                    }`}
-                    style={filterStages.has(s) ? { backgroundColor: PIPELINE_COLORS[s] } : undefined}
-                    onClick={() => toggleFilter(filterStages, s, setFilterStages)}
-                  >
-                    {PIPELINE_LABELS[s]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Filter row: Secteur */}
+          {/* Multi-select dropdown filters */}
+          <div className="flex gap-2 flex-wrap">
+            <MultiSelectDropdown
+              label="Type"
+              options={(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({
+                value: t, label: ESTABLISHMENT_LABELS[t],
+              }))}
+              selected={filterTypes}
+              onToggle={v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes)}
+              color="brewery"
+            />
+            <MultiSelectDropdown
+              label="Etape"
+              options={state.pipelineColumns.map(col => ({
+                value: col.id, label: col.label, color: col.color,
+              }))}
+              selected={filterStages}
+              onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
+              color="blue"
+            />
             {allSecteurs.length > 0 && (
-              <div>
-                <p className="text-[10px] text-gray-400 mb-1">Secteur</p>
-                <div className="flex gap-1 flex-wrap">
-                  {allSecteurs.map(s => (
-                    <button
-                      key={s}
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                        filterSecteurs.has(s)
-                          ? 'bg-amber-500 text-white border-amber-500'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-600'
-                      }`}
-                      onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <MultiSelectDropdown
+                label="Secteur"
+                options={allSecteurs.map(s => ({ value: s, label: s }))}
+                selected={filterSecteurs}
+                onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+                color="amber"
+              />
             )}
-
-            {/* Active filters summary + clear */}
             {hasActiveFilters && (
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1 flex-wrap flex-1">
-                  {[...filterTypes].map(t => (
-                    <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-brewery-100 text-brewery-700">
-                      {ESTABLISHMENT_LABELS[t]}
-                      <button className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
-                    </span>
-                  ))}
-                  {[...filterStages].map(s => (
-                    <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] }}>
-                      {PIPELINE_LABELS[s]}
-                      <button className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
-                    </span>
-                  ))}
-                  {[...filterSecteurs].map(s => (
-                    <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
-                      {s}
-                      <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
-                    </span>
-                  ))}
-                </div>
-                <button
-                  className="text-[10px] text-red-500 hover:text-red-700 font-medium whitespace-nowrap"
-                  onClick={clearAllFilters}
-                >
-                  Tout effacer
-                </button>
-              </div>
+              <button
+                className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+                onClick={clearAllFilters}
+              >
+                <X className="w-3 h-3" /> Effacer filtres
+              </button>
             )}
           </div>
+
+          {/* Active filter chips */}
+          {hasActiveFilters && (
+            <div className="flex gap-1 flex-wrap">
+              {[...filterTypes].map(t => (
+                <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-brewery-100 text-brewery-700">
+                  {ESTABLISHMENT_LABELS[t]}
+                  <button className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterStages].map(s => (
+                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] || '#6b7280' }}>
+                  {state.pipelineColumns.find(c => c.id === s)?.label || PIPELINE_LABELS[s] || s}
+                  <button className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterSecteurs].map(s => (
+                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                  {s}
+                  <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
             <div className="flex items-center gap-1.5">
