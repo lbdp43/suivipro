@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
-  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink,
+  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -87,17 +87,37 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* External CRM link */}
-        <div className="px-3 pb-2">
+        {/* External links */}
+        <div className="px-3 pb-2 space-y-1">
           <a
             href="https://crm-lbdp-production.up.railway.app/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
           >
-            <ExternalLink className="w-5 h-5 flex-shrink-0" />
+            <ExternalLink className="w-4 h-4 flex-shrink-0" />
             <span>CRM LBDP</span>
             <span className="ml-auto text-[10px] text-blue-400">Ouvrir</span>
+          </a>
+          <a
+            href="https://suivi-horaires-alternants-production.up.railway.app/admin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors"
+          >
+            <Clock className="w-4 h-4 flex-shrink-0" />
+            <span>Suivi Horaires</span>
+            <span className="ml-auto text-[10px] text-purple-400">Ouvrir</span>
+          </a>
+          <a
+            href="https://labrasseriedesplantes.fr/wp-content/utile/guidecommerciale.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+          >
+            <BookOpen className="w-4 h-4 flex-shrink-0" />
+            <span>Guide Commercial</span>
+            <span className="ml-auto text-[10px] text-emerald-400">Ouvrir</span>
           </a>
         </div>
 
