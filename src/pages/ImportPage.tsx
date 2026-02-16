@@ -63,7 +63,22 @@ export default function ImportPage() {
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
+
+      // Auto-detect the real header row (skip title rows, merged cells, etc.)
+      const importHeaderPatterns = ['denom', 'raison', 'societe', 'société', 'enseigne', 'nom', 'client', 'tel', 'adresse', 'address', 'mobile', 'fixe', 'portable', 'mail', 'email', 'ville', 'code postal', 'siret', 'siren', 'secteur', 'tournee', 'tournée', 'etape', 'état', 'etat', 'type', 'score', 'note'];
+      const importRawArrays = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
+      let importHeaderRow = 0;
+      for (let r = 0; r < Math.min(15, importRawArrays.length); r++) {
+        const rowVals = (importRawArrays[r] || []).map(v => String(v ?? '').toLowerCase().trim()).filter(Boolean);
+        if (rowVals.length < 2) continue;
+        const recognizable = rowVals.filter(v => importHeaderPatterns.some(p => v.includes(p)));
+        if (recognizable.length >= 2) {
+          importHeaderRow = r;
+          break;
+        }
+      }
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { range: importHeaderRow });
 
       if (rows.length === 0) {
         errors.push('Le fichier est vide');
