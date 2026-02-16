@@ -32,6 +32,9 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// Wrap async route handlers to catch unhandled errors
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 // ============================================
 // Check if Google Calendar is configured
 // ============================================
@@ -46,7 +49,7 @@ router.get('/google-calendar/config-status', authMiddleware, (req, res) => {
 // Get Google Calendar connection status for all commerciaux
 // ============================================
 
-router.get('/google-calendar/status', authMiddleware, async (req, res) => {
+router.get('/google-calendar/status', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT commercial_id, calendar_email, connected_at FROM google_calendar_tokens');
   const statusMap = {};
   for (const t of result.rows) {
@@ -57,7 +60,7 @@ router.get('/google-calendar/status', authMiddleware, async (req, res) => {
     };
   }
   res.json(statusMap);
-});
+}));
 
 // ============================================
 // Step 1: Generate Google OAuth URL
@@ -87,7 +90,7 @@ router.get('/google-calendar/authorize', authMiddleware, (req, res) => {
 // Step 2: Handle OAuth callback from Google
 // ============================================
 
-router.get('/google-calendar/callback', async (req, res) => {
+router.get('/google-calendar/callback', asyncHandler(async (req, res) => {
   const { code, state } = req.query;
 
   if (!code || !state) {
@@ -168,13 +171,13 @@ router.get('/google-calendar/callback', async (req, res) => {
       </html>
     `);
   }
-});
+}));
 
 // ============================================
 // Disconnect Google Calendar
 // ============================================
 
-router.post('/google-calendar/disconnect', authMiddleware, async (req, res) => {
+router.post('/google-calendar/disconnect', authMiddleware, asyncHandler(async (req, res) => {
   const commercialId = req.body.commercial_id || req.user.id;
 
   // Only allow disconnecting own account or admin can disconnect anyone
@@ -195,13 +198,13 @@ router.post('/google-calendar/disconnect', authMiddleware, async (req, res) => {
 
   await db.query('DELETE FROM google_calendar_tokens WHERE commercial_id = $1', [commercialId]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Get calendar events for a commercial
 // ============================================
 
-router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, res) => {
+router.get('/google-calendar/events/:commercialId', authMiddleware, asyncHandler(async (req, res) => {
   const { commercialId } = req.params;
   const { timeMin, timeMax } = req.query;
 
@@ -258,13 +261,13 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, 
 
     res.status(500).json({ error: 'Erreur lors de la recuperation des evenements' });
   }
-});
+}));
 
 // ============================================
 // Get events for ALL connected commerciaux (batch)
 // ============================================
 
-router.get('/google-calendar/events-all', authMiddleware, async (req, res) => {
+router.get('/google-calendar/events-all', authMiddleware, asyncHandler(async (req, res) => {
   const { timeMin, timeMax } = req.query;
 
   const allTokensResult = await db.query('SELECT * FROM google_calendar_tokens');
@@ -324,6 +327,6 @@ router.get('/google-calendar/events-all', authMiddleware, async (req, res) => {
   );
 
   res.json(result);
-});
+}));
 
 export default router;

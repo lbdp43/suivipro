@@ -37,6 +37,9 @@ function isAdmin(req) {
   return req.user.role === 'admin';
 }
 
+// Wrap async route handlers to catch unhandled errors
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 // ============================================
 // Input validation helpers
 // ============================================
@@ -112,7 +115,7 @@ function parseCommercial(c) {
 // Auth routes
 // ============================================
 
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
 
@@ -128,22 +131,22 @@ router.post('/auth/login', async (req, res) => {
   const { password: _, ...userWithoutPwd } = user;
   userWithoutPwd.objectifs = JSON.parse(userWithoutPwd.objectifs || '{}');
   res.json({ token, user: userWithoutPwd });
-});
+}));
 
-router.get('/auth/me', authMiddleware, async (req, res) => {
+router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM commerciaux WHERE id = $1', [req.user.id]);
   const user = result.rows[0];
   if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
   const { password: _, ...u } = user;
   u.objectifs = JSON.parse(u.objectifs || '{}');
   res.json(u);
-});
+}));
 
 // ============================================
 // Full state load (with RLS filtering)
 // ============================================
 
-router.get('/state', authMiddleware, async (req, res) => {
+router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const admin = isAdmin(req);
 
@@ -184,20 +187,20 @@ router.get('/state', authMiddleware, async (req, res) => {
     emailTemplates: emailTemplates.rows,
     pipelineColumns: pipelineColumns.rows,
   });
-});
+}));
 
 // ============================================
 // Prospects CRUD (with RLS)
 // ============================================
 
-router.get('/prospects', authMiddleware, async (req, res) => {
+router.get('/prospects', authMiddleware, asyncHandler(async (req, res) => {
   const result = isAdmin(req)
     ? await db.query('SELECT * FROM prospects')
     : await db.query('SELECT * FROM prospects WHERE commercial_id = $1', [req.user.id]);
   res.json(result.rows.map(parseProspect));
-});
+}));
 
-router.post('/prospects', authMiddleware, async (req, res) => {
+router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
   const p = req.body;
   const errors = validateProspect(p);
   if (errors.length > 0) return validationError(res, errors);
@@ -211,9 +214,9 @@ router.post('/prospects', authMiddleware, async (req, res) => {
     [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/prospects/:id', authMiddleware, async (req, res) => {
+router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   const p = req.body;
   const errors = validateProspect(p);
   if (errors.length > 0) return validationError(res, errors);
@@ -230,9 +233,9 @@ router.put('/prospects/:id', authMiddleware, async (req, res) => {
     [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), isAdmin(req) ? (p.commercial_id || req.user.id) : req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
   );
   res.json({ ok: true });
-});
+}));
 
-router.delete('/prospects/:id', authMiddleware, async (req, res) => {
+router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (!isAdmin(req)) {
     const check = await db.query('SELECT commercial_id FROM prospects WHERE id = $1', [req.params.id]);
     if (check.rows.length === 0) return res.status(404).json({ error: 'Prospect non trouve' });
@@ -240,10 +243,10 @@ router.delete('/prospects/:id', authMiddleware, async (req, res) => {
   }
   await db.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // Bulk import (with RLS)
-router.post('/prospects/import', authMiddleware, async (req, res) => {
+router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) => {
   const prospects = req.body;
   if (!prospects || prospects.length === 0) return res.json({ ok: true, count: 0 });
 
@@ -293,20 +296,20 @@ router.post('/prospects/import', authMiddleware, async (req, res) => {
     client.release();
   }
   res.json({ ok: true, count: prospects.length });
-});
+}));
 
 // ============================================
 // Calls CRUD (with RLS)
 // ============================================
 
-router.get('/calls', authMiddleware, async (req, res) => {
+router.get('/calls', authMiddleware, asyncHandler(async (req, res) => {
   const result = isAdmin(req)
     ? await db.query('SELECT * FROM calls')
     : await db.query('SELECT * FROM calls WHERE commercial_id = $1', [req.user.id]);
   res.json(result.rows);
-});
+}));
 
-router.post('/calls', authMiddleware, async (req, res) => {
+router.post('/calls', authMiddleware, asyncHandler(async (req, res) => {
   const c = req.body;
   const errors = validateCall(c);
   if (errors.length > 0) return validationError(res, errors);
@@ -317,9 +320,9 @@ router.post('/calls', authMiddleware, async (req, res) => {
     [c.id, c.prospect_id, commercialId, c.date, c.duree || 0, c.resultat, c.notes || '']
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/calls/:id', authMiddleware, async (req, res) => {
+router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
   const c = req.body;
   const errors = validateCall(c);
   if (errors.length > 0) return validationError(res, errors);
@@ -335,9 +338,9 @@ router.put('/calls/:id', authMiddleware, async (req, res) => {
     [c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id]
   );
   res.json({ ok: true });
-});
+}));
 
-router.delete('/calls/:id', authMiddleware, async (req, res) => {
+router.delete('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (!isAdmin(req)) {
     const check = await db.query('SELECT commercial_id FROM calls WHERE id = $1', [req.params.id]);
     if (check.rows.length === 0) return res.status(404).json({ error: 'Appel non trouve' });
@@ -345,20 +348,20 @@ router.delete('/calls/:id', authMiddleware, async (req, res) => {
   }
   await db.query('DELETE FROM calls WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Appointments CRUD (with RLS)
 // ============================================
 
-router.get('/appointments', authMiddleware, async (req, res) => {
+router.get('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   const result = isAdmin(req)
     ? await db.query('SELECT * FROM appointments')
     : await db.query('SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1', [req.user.id]);
   res.json(result.rows);
-});
+}));
 
-router.post('/appointments', authMiddleware, async (req, res) => {
+router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   const a = req.body;
   const errors = validateAppointment(a);
   if (errors.length > 0) return validationError(res, errors);
@@ -369,9 +372,9 @@ router.post('/appointments', authMiddleware, async (req, res) => {
     [a.id, a.prospect_id, commercialId, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie']
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/appointments/:id', authMiddleware, async (req, res) => {
+router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
   const a = req.body;
   const errors = validateAppointment(a);
   if (errors.length > 0) return validationError(res, errors);
@@ -390,9 +393,9 @@ router.put('/appointments/:id', authMiddleware, async (req, res) => {
     [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, req.params.id]
   );
   res.json({ ok: true });
-});
+}));
 
-router.delete('/appointments/:id', authMiddleware, async (req, res) => {
+router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (!isAdmin(req)) {
     const check = await db.query('SELECT commercial_id FROM appointments WHERE id = $1', [req.params.id]);
     if (check.rows.length === 0) return res.status(404).json({ error: 'RDV non trouve' });
@@ -400,20 +403,20 @@ router.delete('/appointments/:id', authMiddleware, async (req, res) => {
   }
   await db.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Reminders CRUD (with RLS)
 // ============================================
 
-router.get('/reminders', authMiddleware, async (req, res) => {
+router.get('/reminders', authMiddleware, asyncHandler(async (req, res) => {
   const result = isAdmin(req)
     ? await db.query('SELECT * FROM reminders')
     : await db.query('SELECT * FROM reminders WHERE commercial_id = $1', [req.user.id]);
   res.json(result.rows);
-});
+}));
 
-router.post('/reminders', authMiddleware, async (req, res) => {
+router.post('/reminders', authMiddleware, asyncHandler(async (req, res) => {
   const r = req.body;
   const errors = validateReminder(r);
   if (errors.length > 0) return validationError(res, errors);
@@ -424,9 +427,9 @@ router.post('/reminders', authMiddleware, async (req, res) => {
     [r.id, r.prospect_id, commercialId, r.date, r.heure || '', r.message || '', r.statut || 'actif']
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/reminders/:id', authMiddleware, async (req, res) => {
+router.put('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
   const r = req.body;
   const errors = validateReminder(r);
   if (errors.length > 0) return validationError(res, errors);
@@ -442,9 +445,9 @@ router.put('/reminders/:id', authMiddleware, async (req, res) => {
     [r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id]
   );
   res.json({ ok: true });
-});
+}));
 
-router.delete('/reminders/:id', authMiddleware, async (req, res) => {
+router.delete('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (!isAdmin(req)) {
     const check = await db.query('SELECT commercial_id FROM reminders WHERE id = $1', [req.params.id]);
     if (check.rows.length === 0) return res.status(404).json({ error: 'Rappel non trouve' });
@@ -452,46 +455,46 @@ router.delete('/reminders/:id', authMiddleware, async (req, res) => {
   }
   await db.query('DELETE FROM reminders WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Tags CRUD
 // ============================================
 
-router.get('/tags', authMiddleware, async (req, res) => {
+router.get('/tags', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM tags');
   res.json(result.rows);
-});
+}));
 
-router.post('/tags', authMiddleware, async (req, res) => {
+router.post('/tags', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
   await db.query('INSERT INTO tags (id, nom, couleur) VALUES ($1,$2,$3)', [t.id, t.nom, t.couleur]);
   res.json({ ok: true });
-});
+}));
 
-router.put('/tags/:id', authMiddleware, async (req, res) => {
+router.put('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
   await db.query('UPDATE tags SET nom=$1, couleur=$2 WHERE id=$3', [t.nom, t.couleur, req.params.id]);
   res.json({ ok: true });
-});
+}));
 
-router.delete('/tags/:id', authMiddleware, async (req, res) => {
+router.delete('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM tags WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Email templates CRUD
 // ============================================
 
-router.get('/email-templates', authMiddleware, async (req, res) => {
+router.get('/email-templates', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM email_templates');
   res.json(result.rows);
-});
+}));
 
-router.post('/email-templates', authMiddleware, async (req, res) => {
+router.post('/email-templates', authMiddleware, asyncHandler(async (req, res) => {
   const e = req.body;
   if (!e.nom) return res.status(400).json({ error: 'nom est requis' });
   await db.query(
@@ -499,9 +502,9 @@ router.post('/email-templates', authMiddleware, async (req, res) => {
     [e.id, e.nom, e.sujet || '', e.corps || '', e.type || '']
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/email-templates/:id', authMiddleware, async (req, res) => {
+router.put('/email-templates/:id', authMiddleware, asyncHandler(async (req, res) => {
   const e = req.body;
   if (!e.nom) return res.status(400).json({ error: 'nom est requis' });
   await db.query(
@@ -509,23 +512,23 @@ router.put('/email-templates/:id', authMiddleware, async (req, res) => {
     [e.nom, e.sujet || '', e.corps || '', e.type || '', req.params.id]
   );
   res.json({ ok: true });
-});
+}));
 
-router.delete('/email-templates/:id', authMiddleware, async (req, res) => {
+router.delete('/email-templates/:id', authMiddleware, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM email_templates WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Pipeline columns CRUD
 // ============================================
 
-router.get('/pipeline-columns', authMiddleware, async (req, res) => {
+router.get('/pipeline-columns', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM pipeline_columns ORDER BY sort_order');
   res.json(result.rows);
-});
+}));
 
-router.post('/pipeline-columns', authMiddleware, adminOnly, async (req, res) => {
+router.post('/pipeline-columns', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const c = req.body;
   if (!c.label) return res.status(400).json({ error: 'label est requis' });
   const maxOrder = await db.query('SELECT MAX(sort_order) as m FROM pipeline_columns');
@@ -534,30 +537,30 @@ router.post('/pipeline-columns', authMiddleware, adminOnly, async (req, res) => 
     [c.id, c.label, c.color, (maxOrder.rows[0]?.m || 0) + 1]
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/pipeline-columns/:id', authMiddleware, adminOnly, async (req, res) => {
+router.put('/pipeline-columns/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const c = req.body;
   if (!c.label) return res.status(400).json({ error: 'label est requis' });
   await db.query('UPDATE pipeline_columns SET label=$1, color=$2 WHERE id=$3', [c.label, c.color, req.params.id]);
   res.json({ ok: true });
-});
+}));
 
-router.delete('/pipeline-columns/:id', authMiddleware, adminOnly, async (req, res) => {
+router.delete('/pipeline-columns/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM pipeline_columns WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================
 // Commerciaux CRUD (admin-restricted for create/delete)
 // ============================================
 
-router.get('/commerciaux', authMiddleware, async (req, res) => {
+router.get('/commerciaux', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM commerciaux');
   res.json(result.rows.map(parseCommercial));
-});
+}));
 
-router.post('/commerciaux', authMiddleware, adminOnly, async (req, res) => {
+router.post('/commerciaux', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const c = req.body;
   if (!c.password || c.password.length < 8) {
     return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caracteres' });
@@ -571,9 +574,9 @@ router.post('/commerciaux', authMiddleware, adminOnly, async (req, res) => {
     [c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {})]
   );
   res.json({ ok: true });
-});
+}));
 
-router.put('/commerciaux/:id', authMiddleware, async (req, res) => {
+router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => {
   const c = req.body;
   const targetId = req.params.id;
 
@@ -603,14 +606,14 @@ router.put('/commerciaux/:id', authMiddleware, async (req, res) => {
     );
   }
   res.json({ ok: true });
-});
+}));
 
-router.delete('/commerciaux/:id', authMiddleware, adminOnly, async (req, res) => {
+router.delete('/commerciaux/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   if (req.params.id === req.user.id) {
     return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
   }
   await db.query('DELETE FROM commerciaux WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
 export default router;

@@ -76,6 +76,13 @@ if (existsSync(DIST)) {
   });
 }
 
+// Global error handler — catches unhandled errors from all routes
+app.use((err, req, res, _next) => {
+  console.error('Unhandled route error:', err.stack || err.message);
+  if (res.headersSent) return;
+  res.status(err.status || 500).json({ error: 'Erreur interne du serveur' });
+});
+
 // Wait for database to be ready before starting server
 dbReady.then(() => {
   app.listen(PORT, '0.0.0.0', () => {
