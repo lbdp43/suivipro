@@ -113,6 +113,7 @@ export default function ProspectsPage() {
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
+  const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
   const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
   const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
@@ -254,9 +255,30 @@ export default function ProspectsPage() {
     setQuickNoteId(null);
   };
 
-  // Get unique sectors and postal codes for filters
+  // Get unique sectors, postal codes, and departments for filters
   const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
   const allPostalCodes = [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort();
+
+  const secteurCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.secteur) map.set(p.secteur, (map.get(p.secteur) || 0) + 1);
+    });
+    return map;
+  }, [state.prospects]);
+
+  const allDepartments = useMemo(() => {
+    const deptCounts = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.code_postal && p.code_postal.length >= 2) {
+        const dept = p.code_postal.substring(0, 2);
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1);
+      }
+    });
+    return [...deptCounts.entries()]
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [state.prospects]);
 
   const toggleFilter = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
     const next = new Set(set);
@@ -264,12 +286,13 @@ export default function ProspectsPage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0;
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0;
   const clearAllFilters = () => {
     setFilterTypes(new Set());
     setFilterStages(new Set());
     setFilterSecteurs(new Set());
     setFilterPostalCodes(new Set());
+    setFilterDepartments(new Set());
   };
 
   const filteredProspects = useMemo(() => {
@@ -278,6 +301,7 @@ export default function ProspectsPage() {
       if (filterStages.size > 0 && !filterStages.has(p.etape_pipeline)) return false;
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
+      if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -295,12 +319,12 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, searchTerm, sortScore, sortDate]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, sortScore, sortDate, pageSize]);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, sortScore, sortDate, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -445,10 +469,19 @@ export default function ProspectsPage() {
             {allSecteurs.length > 0 && (
               <MultiSelectDropdown
                 label="Secteur"
-                options={allSecteurs.map(s => ({ value: s, label: s }))}
+                options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
                 selected={filterSecteurs}
                 onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
                 color="amber"
+              />
+            )}
+            {allDepartments.length > 0 && (
+              <MultiSelectDropdown
+                label="Dept (CP)"
+                options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
+                selected={filterDepartments}
+                onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
+                color="brewery"
               />
             )}
             {allPostalCodes.length > 0 && (
@@ -475,12 +508,14 @@ export default function ProspectsPage() {
                 stages: [...filterStages],
                 secteurs: [...filterSecteurs],
                 postalCodes: [...filterPostalCodes],
+                departments: [...filterDepartments],
               })}
               applyFilters={(f) => {
                 setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
                 setFilterStages(new Set((f.stages as PipelineStage[]) || []));
                 setFilterSecteurs(new Set((f.secteurs as string[]) || []));
                 setFilterPostalCodes(new Set((f.postalCodes as string[]) || []));
+                setFilterDepartments(new Set((f.departments as string[]) || []));
               }}
             />
           </div>
@@ -504,6 +539,12 @@ export default function ProspectsPage() {
                 <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
                   {s}
                   <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterDepartments].map(d => (
+                <span key={d} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                  Dept. {d}
+                  <button className="hover:text-indigo-900" onClick={() => toggleFilter(filterDepartments, d, setFilterDepartments)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterPostalCodes].map(c => (

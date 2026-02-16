@@ -103,14 +103,36 @@ export default function PipelinePage() {
   const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
   const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
+  const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
 
   const allSecteurs = useMemo(() =>
     [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort()
   , [state.prospects]);
 
+  const secteurCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.secteur) map.set(p.secteur, (map.get(p.secteur) || 0) + 1);
+    });
+    return map;
+  }, [state.prospects]);
+
   const allPostalCodes = useMemo(() =>
     [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort()
   , [state.prospects]);
+
+  const allDepartments = useMemo(() => {
+    const deptCounts = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.code_postal && p.code_postal.length >= 2) {
+        const dept = p.code_postal.substring(0, 2);
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1);
+      }
+    });
+    return [...deptCounts.entries()]
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [state.prospects]);
 
   const toggleFilter = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
     const next = new Set(set);
@@ -118,7 +140,7 @@ export default function PipelinePage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0;
+  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0;
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -144,6 +166,7 @@ export default function PipelinePage() {
     const filtered = state.prospects.filter(p => {
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
+      if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       return true;
     });
     const map: Record<string, Prospect[]> = {};
@@ -157,7 +180,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -253,10 +276,19 @@ export default function PipelinePage() {
           {allSecteurs.length > 0 && (
             <PipelineFilterDropdown
               label="Secteur"
-              options={allSecteurs.map(s => ({ value: s, label: s }))}
+              options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
               selected={filterSecteurs}
               onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
               color="amber"
+            />
+          )}
+          {allDepartments.length > 0 && (
+            <PipelineFilterDropdown
+              label="Dept (CP)"
+              options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
+              selected={filterDepartments}
+              onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
+              color="teal"
             />
           )}
           {allPostalCodes.length > 0 && (
@@ -271,7 +303,7 @@ export default function PipelinePage() {
           {hasActiveFilters && (
             <button
               className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); }}
+              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); }}
             >
               <X className="w-3 h-3" />
             </button>

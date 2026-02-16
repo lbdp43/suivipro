@@ -55,6 +55,7 @@ export default function MapPage() {
   const [selectedSecteurs, setSelectedSecteurs] = usePersistedState<string[]>('map_secteurs', []);
   const [selectedRegions, setSelectedRegions] = usePersistedState<string[]>('map_regions', []);
   const [selectedPostalCodes, setSelectedPostalCodes] = usePersistedState<string[]>('map_postal_codes', []);
+  const [selectedDepartments, setSelectedDepartments] = usePersistedState<string[]>('map_departments', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showRdvPanel, setShowRdvPanel] = useState(false);
@@ -109,9 +110,22 @@ export default function MapPage() {
     return REGION_LABELS.filter(r => regionSet.has(r));
   }, [state.prospects]);
 
-  // Extract unique postal codes
+  // Extract unique postal codes and departments (2 first digits)
   const allPostalCodes = useMemo(() => {
     return [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort();
+  }, [state.prospects]);
+
+  const allDepartments = useMemo(() => {
+    const deptCounts = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.code_postal && p.code_postal.length >= 2) {
+        const dept = p.code_postal.substring(0, 2);
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1);
+      }
+    });
+    return [...deptCounts.entries()]
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
   }, [state.prospects]);
 
   // Tournees = secteurs qui ont des prospects avec coordonnees
@@ -147,6 +161,7 @@ export default function MapPage() {
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
       if (selectedSecteurs.length > 0 && !selectedSecteurs.includes(p.secteur)) return false;
       if (selectedPostalCodes.length > 0 && !selectedPostalCodes.includes(p.code_postal)) return false;
+      if (selectedDepartments.length > 0 && !(p.code_postal && selectedDepartments.includes(p.code_postal.substring(0, 2)))) return false;
       if (selectedRegions.length > 0) {
         const region = DEPARTEMENT_TO_REGION[p.departement];
         if (!region || !selectedRegions.includes(region)) return false;
@@ -163,7 +178,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -201,7 +216,13 @@ export default function MapPage() {
     );
   };
 
-  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedRegions.length;
+  const toggleDepartment = (dept: string) => {
+    setSelectedDepartments(prev =>
+      prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
+    );
+  };
+
+  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length;
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
@@ -369,22 +390,50 @@ export default function MapPage() {
               </div>
             )}
 
-            {/* Sector filters */}
-            {allSecteurs.length > 0 && (
+            {/* Sector / Tournee filters */}
+            {tournees.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Secteur</p>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Secteur / Tournee</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {allSecteurs.map(secteur => (
+                  {tournees.map(t => (
                     <button
-                      key={secteur}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        selectedSecteurs.includes(secteur)
+                      key={t.nom}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        selectedSecteurs.includes(t.nom)
                           ? 'bg-brewery-600 text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
-                      onClick={() => toggleSecteur(secteur)}
+                      onClick={() => toggleSecteur(t.nom)}
                     >
-                      {secteur}
+                      {t.nom}
+                      <span className={`text-[10px] rounded-full px-1.5 ${
+                        selectedSecteurs.includes(t.nom) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'
+                      }`}>{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Department filters (2 first digits of postal code) */}
+            {allDepartments.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Departement (CP)</p>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                  {allDepartments.map(d => (
+                    <button
+                      key={d.code}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        selectedDepartments.includes(d.code)
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      onClick={() => toggleDepartment(d.code)}
+                    >
+                      {d.code}
+                      <span className={`text-[10px] rounded-full px-1.5 ${
+                        selectedDepartments.includes(d.code) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'
+                      }`}>{d.count}</span>
                     </button>
                   ))}
                 </div>
@@ -394,7 +443,7 @@ export default function MapPage() {
             {/* Postal code filters */}
             {allPostalCodes.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Code postal</p>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Code postal (exact)</p>
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                   {allPostalCodes.map(code => (
                     <button
@@ -479,7 +528,7 @@ export default function MapPage() {
               {activeFilterCount > 0 && (
                 <button
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedRegions([]); }}
+                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedDepartments([]); setSelectedRegions([]); }}
                 >
                   Reinitialiser les filtres
                 </button>
@@ -492,6 +541,7 @@ export default function MapPage() {
                   tags: selectedTags,
                   secteurs: selectedSecteurs,
                   postalCodes: selectedPostalCodes,
+                  departments: selectedDepartments,
                   regions: selectedRegions,
                 })}
                 applyFilters={(f) => {
@@ -500,6 +550,7 @@ export default function MapPage() {
                   setSelectedTags((f.tags as string[]) || []);
                   setSelectedSecteurs((f.secteurs as string[]) || []);
                   setSelectedPostalCodes((f.postalCodes as string[]) || []);
+                  setSelectedDepartments((f.departments as string[]) || []);
                   setSelectedRegions((f.regions as string[]) || []);
                 }}
               />
