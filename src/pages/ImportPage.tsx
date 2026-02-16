@@ -395,27 +395,27 @@ export default function ImportPage() {
   interface ClientMatch {
     clientRow: { denomination: string; telFixe: string; telMobile: string; adresse: string; rowIndex: number };
     prospect: Prospect;
-    matchType: string; // "nom", "tel", "adresse", "nom+tel", etc.
+    matchType: string;
   }
-  const [crossRefFile, setCrossRefFile] = useState<File | null>(null);
   const [crossMatches, setCrossMatches] = useState<ClientMatch[]>([]);
   const [crossSearching, setCrossSearching] = useState(false);
   const [crossDone, setCrossDone] = useState(false);
   const [crossTotalRows, setCrossTotalRows] = useState(0);
   const [crossSelected, setCrossSelected] = useState<Set<string>>(new Set());
+  const [crossDetectedCols, setCrossDetectedCols] = useState<{ denomination: string; telFixe: string; telMobile: string; adresse: string }>({ denomination: '', telFixe: '', telMobile: '', adresse: '' });
   const crossFileRef = useRef<HTMLInputElement>(null);
 
-  const normalizeStr = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const normalizeStr = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   const normalizePhone = (tel: string) => tel.replace(/[\s.\-()\/+]/g, '').replace(/^0033/, '0').replace(/^33/, '0');
 
   const handleCrossRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setCrossRefFile(file);
     setCrossSearching(true);
     setCrossMatches([]);
     setCrossSelected(new Set());
     setCrossDone(false);
+    setCrossDetectedCols({ denomination: '', telFixe: '', telMobile: '', adresse: '' });
 
     try {
       const XLSX = await import('xlsx');
@@ -424,92 +424,116 @@ export default function ImportPage() {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
       setCrossTotalRows(rows.length);
+      if (rows.length === 0) { setCrossSearching(false); setCrossDone(true); return; }
 
-      // Helper: get cell value flexibly
-      const getVal = (row: Record<string, any>, ...keys: string[]): string => {
-        for (const key of keys) {
-          for (const rowKey of Object.keys(row)) {
-            if (rowKey.toLowerCase().trim() === key.toLowerCase().trim()) {
-              return String(row[rowKey] ?? '').trim();
-            }
-          }
+      // Auto-detect columns from first row headers
+      const headers = Object.keys(rows[0]);
+      const findCol = (patterns: string[]): string => {
+        for (const pat of patterns) {
+          const p = pat.toLowerCase();
+          const found = headers.find(h => h.toLowerCase().includes(p));
+          if (found) return found;
         }
         return '';
       };
 
-      // Build lookup maps from existing prospects
-      const prospectsByNorm = new Map<string, Prospect[]>();
-      const prospectsByPhone = new Map<string, Prospect[]>();
-      for (const p of state.prospects) {
-        const normName = normalizeStr(p.nom_etablissement);
-        if (normName.length >= 3) {
-          if (!prospectsByNorm.has(normName)) prospectsByNorm.set(normName, []);
-          prospectsByNorm.get(normName)!.push(p);
-        }
-        const normTel = normalizePhone(p.telephone);
-        if (normTel.length >= 6) {
-          if (!prospectsByPhone.has(normTel)) prospectsByPhone.set(normTel, []);
-          prospectsByPhone.get(normTel)!.push(p);
-        }
-      }
+      const colDenom = findCol(['dénomination', 'denomination', 'raison sociale', 'etablissement', 'société', 'societe', 'enseigne', 'nom du', 'nom_etablissement', 'client']);
+      // Fallback: use first string-looking column if nothing found
+      const colDenomFinal = colDenom || headers.find(h => {
+        const sample = String(rows[0][h] || '');
+        return sample.length > 2 && !/^\d+$/.test(sample);
+      }) || headers[0];
+
+      const colTelFixe = findCol(['tél. fixe', 'tel. fixe', 'tel fixe', 'telephone fixe', 'fixe', 'tel.', 'téléphone', 'telephone', 'tel']);
+      const colTelMobile = findCol(['tél. mobile', 'tel. mobile', 'tel mobile', 'mobile', 'portable', 'gsm', 'cellulaire']);
+      const colAdresse = findCol(['adresse', 'address', 'adresse postale', 'adresse complete']);
+
+      setCrossDetectedCols({
+        denomination: colDenomFinal,
+        telFixe: colTelFixe,
+        telMobile: colTelMobile,
+        adresse: colAdresse,
+      });
+
+      // Build fuzzy lookup from existing prospects
+      const prospectsList = state.prospects;
+      const prospectNorms = prospectsList.map(p => ({
+        prospect: p,
+        normName: normalizeStr(p.nom_etablissement),
+        normPhone: normalizePhone(p.telephone),
+      }));
 
       const matches: ClientMatch[] = [];
       const matchedProspectIds = new Set<string>();
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const denomination = getVal(row,
-          'Dénomination', 'Denomination', 'Raison sociale', 'Nom', 'Etablissement',
-          'nom', 'denomination', 'raison sociale', 'Société', 'Societe'
-        );
-        const telFixe = getVal(row,
-          'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Telephone fixe', 'Telephone',
-          'telephone', 'Tel', 'tel', 'Numero', 'Phone'
-        );
-        const telMobile = getVal(row,
-          'Tél. mobile', 'Tel. mobile', 'Tel mobile', 'Telephone mobile',
-          'Mobile', 'mobile', 'Portable', 'portable', 'Gsm', 'GSM'
-        );
-        const adresse = getVal(row,
-          'Adresse', 'adresse', 'Adresse complete', 'Adresse postale', 'Address'
-        );
+        const denomination = String(row[colDenomFinal] ?? '').trim();
+        const telFixe = colTelFixe ? String(row[colTelFixe] ?? '').trim() : '';
+        const telMobile = colTelMobile ? String(row[colTelMobile] ?? '').trim() : '';
+        const adresse = colAdresse ? String(row[colAdresse] ?? '').trim() : '';
+
+        if (!denomination) continue;
 
         const clientRow = { denomination, telFixe, telMobile, adresse, rowIndex: i + 2 };
-        const normName = normalizeStr(denomination);
+        const normClientName = normalizeStr(denomination);
         const normTelFixe = normalizePhone(telFixe);
         const normTelMobile = normalizePhone(telMobile);
+        // Use last 8 digits for partial phone match
+        const phoneTail = (ph: string) => ph.length >= 8 ? ph.slice(-8) : ph;
+        const clientPhoneTails = [
+          normTelFixe.length >= 6 ? phoneTail(normTelFixe) : '',
+          normTelMobile.length >= 6 ? phoneTail(normTelMobile) : '',
+        ].filter(Boolean);
 
-        // Match by name
-        const nameMatches = normName.length >= 3 ? (prospectsByNorm.get(normName) || []) : [];
-        // Match by phone (fixe or mobile)
-        const phoneMatches: Prospect[] = [];
-        if (normTelFixe.length >= 6) phoneMatches.push(...(prospectsByPhone.get(normTelFixe) || []));
-        if (normTelMobile.length >= 6) phoneMatches.push(...(prospectsByPhone.get(normTelMobile) || []));
+        for (const { prospect, normName, normPhone } of prospectNorms) {
+          if (matchedProspectIds.has(prospect.id)) continue;
+          const reasons: string[] = [];
 
-        // Combine and deduplicate
-        const allMatched = new Map<string, { prospect: Prospect; reasons: string[] }>();
-        for (const p of nameMatches) {
-          if (!allMatched.has(p.id)) allMatched.set(p.id, { prospect: p, reasons: [] });
-          allMatched.get(p.id)!.reasons.push('nom');
-        }
-        for (const p of phoneMatches) {
-          if (!allMatched.has(p.id)) allMatched.set(p.id, { prospect: p, reasons: [] });
-          allMatched.get(p.id)!.reasons.push('tel');
-        }
+          // Fuzzy name match: exact, contains, or one contains the other
+          if (normClientName.length >= 3 && normName.length >= 3) {
+            if (normClientName === normName) {
+              reasons.push('nom');
+            } else if (normClientName.length >= 5 && normName.length >= 5) {
+              // One contains the other (min 5 chars to avoid false positives)
+              if (normClientName.includes(normName) || normName.includes(normClientName)) {
+                reasons.push('nom');
+              } else {
+                // Check word overlap: if most words match
+                const clientWords = normClientName.split(' ').filter(w => w.length >= 3);
+                const prospectWords = normName.split(' ').filter(w => w.length >= 3);
+                if (clientWords.length >= 2 && prospectWords.length >= 2) {
+                  const common = clientWords.filter(w => prospectWords.includes(w));
+                  if (common.length >= Math.min(clientWords.length, prospectWords.length) * 0.6) {
+                    reasons.push('nom');
+                  }
+                }
+              }
+            }
+          }
 
-        for (const [pid, { prospect, reasons }] of allMatched) {
-          if (matchedProspectIds.has(pid)) continue;
-          matchedProspectIds.add(pid);
-          matches.push({
-            clientRow,
-            prospect,
-            matchType: reasons.join('+'),
-          });
+          // Phone match (partial: last 8 digits)
+          if (normPhone.length >= 6 && clientPhoneTails.length > 0) {
+            const prospectTail = phoneTail(normPhone);
+            if (clientPhoneTails.some(ct => ct === prospectTail)) {
+              reasons.push('tel');
+            }
+          }
+
+          if (reasons.length > 0) {
+            matchedProspectIds.add(prospect.id);
+            matches.push({ clientRow, prospect, matchType: reasons.join('+') });
+          }
         }
       }
 
+      // Sort: nom+tel first, then nom, then tel
+      matches.sort((a, b) => {
+        const score = (m: ClientMatch) => (m.matchType.includes('nom') ? 2 : 0) + (m.matchType.includes('tel') ? 1 : 0);
+        return score(b) - score(a);
+      });
+
       setCrossMatches(matches);
-      // Select all by default
       setCrossSelected(new Set(matches.map(m => m.prospect.id)));
     } catch {
       alert('Erreur de lecture du fichier. Verifiez le format.');
@@ -749,6 +773,16 @@ export default function ImportPage() {
         {/* Results */}
         {crossDone && (
           <div className="mt-4 space-y-3">
+            {/* Detected columns info */}
+            <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-600 space-y-1">
+              <p className="font-medium text-gray-700">Colonnes detectees dans le fichier :</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <p>Denomination : <span className={crossDetectedCols.denomination ? 'font-medium text-green-700' : 'text-red-500'}>{crossDetectedCols.denomination || 'Non trouvee'}</span></p>
+                <p>Tel. fixe : <span className={crossDetectedCols.telFixe ? 'font-medium text-green-700' : 'text-gray-400'}>{crossDetectedCols.telFixe || 'Non trouvee'}</span></p>
+                <p>Tel. mobile : <span className={crossDetectedCols.telMobile ? 'font-medium text-green-700' : 'text-gray-400'}>{crossDetectedCols.telMobile || 'Non trouvee'}</span></p>
+                <p>Adresse : <span className={crossDetectedCols.adresse ? 'font-medium text-green-700' : 'text-gray-400'}>{crossDetectedCols.adresse || 'Non trouvee'}</span></p>
+              </div>
+            </div>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <p className="text-sm font-medium text-gray-900">
