@@ -21,7 +21,6 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
       .replace(/\{\{nom_etablissement\}\}/g, prospect.nom_etablissement)
       .replace(/\{\{commercial\}\}/g, commercial ? `${commercial.prenom} ${commercial.nom}` : '')
       .replace(/\{\{telephone_commercial\}\}/g, commercial?.telephone || '')
-      .replace(/\{\{produit_interesse\}\}/g, '')
       .replace(/\{\{date_rdv\}\}/g, '');
   };
 

@@ -57,7 +57,7 @@ export default function EmailsPage() {
     return processEmailTemplate(selectedTemplate, prospect, {
       prenom: commercial.prenom,
       telephone: commercial.telephone,
-    }, { date_rdv: '18/02/2026', produit_interesse: 'Gamme Bio aux plantes' });
+    }, { date_rdv: 'Mardi 18 fevrier 2026 a 10h30' });
   };
 
   const sendEmail = () => {
@@ -85,15 +85,15 @@ export default function EmailsPage() {
     remerciement: 'bg-purple-100 text-purple-700',
     catalogue: 'bg-indigo-100 text-indigo-700',
     nouveaute: 'bg-pink-100 text-pink-700',
+    promotion: 'bg-emerald-100 text-emerald-700',
   };
 
   const variables = [
-    { var: '{{nom_etablissement}}', desc: 'Nom du prospect' },
-    { var: '{{nom_contact}}', desc: 'Nom du contact' },
-    { var: '{{commercial}}', desc: 'Prenom du commercial' },
-    { var: '{{telephone_commercial}}', desc: 'Telephone du commercial' },
-    { var: '{{date_rdv}}', desc: 'Date du RDV' },
-    { var: '{{produit_interesse}}', desc: 'Produits mentionnes' },
+    { var: '{{nom_etablissement}}', desc: 'Nom du prospect (ex : Cave Martin, Le Suffren)' },
+    { var: '{{nom_contact}}', desc: 'Nom du contact (ex : Nathalie, M. Bauchart)' },
+    { var: '{{commercial}}', desc: 'Prenom du commercial (ex : Guillaume, Alban, Loic)' },
+    { var: '{{telephone_commercial}}', desc: 'Telephone du commercial (ex : 06 84 44 40 44)' },
+    { var: '{{date_rdv}}', desc: 'Date du RDV (ex : Mardi 18 fevrier 2026 a 10h30)' },
   ];
 
   return (
@@ -123,6 +123,60 @@ export default function EmailsPage() {
           ))}
         </div>
       </div>
+
+      {/* Conseils d'utilisation */}
+      <details className="bg-amber-50 rounded-xl border border-amber-200">
+        <summary className="p-3 sm:p-4 cursor-pointer font-semibold text-amber-900 text-sm hover:bg-amber-100/50 rounded-xl transition-colors">
+          Conseils d'utilisation
+        </summary>
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Regles generales</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- Toujours personnaliser avec un element de la conversation telephonique</li>
+                <li>- Proposer 2 creneaux precis, jamais "quand vous voulez"</li>
+                <li>- Toujours proposer une degustation (c'est notre meilleur argument)</li>
+                <li>- Mentionner systematiquement les medailles et le titre mondial</li>
+                <li>- Terminer par "Artisanalement votre"</li>
+              </ul>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Adapter le catalogue joint</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- Cave / Epicerie fine → Catalogue Cave-Epicerie</li>
+                <li>- Bar / Restaurant → Catalogue Bar-Restaurant (tarifs CHR)</li>
+                <li>- Distributeur → Catalogue Distributeur</li>
+              </ul>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Strategie de relance</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- 1ere relance (template 3) : 5 a 7 jours apres le premier envoi</li>
+                <li>- 2eme relance (template 4) : 10 a 15 jours apres la 1ere relance</li>
+                <li>- Apres 2 relances sans reponse : passer en "a recontacter dans 3 mois"</li>
+              </ul>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Timing d'envoi</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- Meilleurs jours : mardi et mercredi matin</li>
+                <li>- Eviter le lundi (surcharge) et le vendredi apres-midi</li>
+                <li>- Ideal entre 9h et 11h pour le taux d'ouverture</li>
+              </ul>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-amber-100">
+            <h4 className="text-xs font-bold text-amber-800 mb-1.5">Apres chaque envoi</h4>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
+              <span>- Creer une tache de relance dans le CRM (5 a 7 jours)</span>
+              <span>- Noter le contenu de l'echange telephonique</span>
+              <span>- Indiquer les produits qui ont interesse le prospect</span>
+              <span>- "Je passe dans le secteur" cree une urgence douce</span>
+            </div>
+          </div>
+        </div>
+      </details>
 
       {/* Template cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
