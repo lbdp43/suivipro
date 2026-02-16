@@ -10,6 +10,14 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// Log connection info (mask password for security)
+try {
+  const dbUrl = new URL(process.env.DATABASE_URL);
+  console.log(`PostgreSQL connection: user=${dbUrl.username} host=${dbUrl.hostname} port=${dbUrl.port} db=${dbUrl.pathname.slice(1)}`);
+} catch {
+  console.log('DATABASE_URL is set but could not be parsed as URL');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -19,8 +27,31 @@ const pool = new Pool({
 // Schema
 // ============================================
 
-async function initDatabase() {
-  const client = await pool.connect();
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [2000, 4000, 8000];
+
+async function initDatabase(attempt = 1) {
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    if (err.code === '28P01') {
+      console.error('=== AUTHENTICATION ERROR ===');
+      console.error('Password authentication failed for PostgreSQL.');
+      console.error('FIX: Go to Railway > your PostgreSQL service > Variables,');
+      console.error('copy DATABASE_URL, and paste it in your app service Variables.');
+      console.error('Or use: DATABASE_URL=${{Postgres.DATABASE_URL}}');
+      console.error('============================');
+      throw err;
+    }
+    if (attempt <= MAX_RETRIES) {
+      const delay = RETRY_DELAYS[attempt - 1];
+      console.log(`Database connection failed (attempt ${attempt}/${MAX_RETRIES}), retrying in ${delay / 1000}s...`);
+      await new Promise(r => setTimeout(r, delay));
+      return initDatabase(attempt + 1);
+    }
+    throw err;
+  }
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS commerciaux (
@@ -199,7 +230,7 @@ async function initDatabase() {
       console.log('Database seeded successfully.');
     }
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
