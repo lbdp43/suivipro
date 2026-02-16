@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -13,9 +15,48 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
+      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr"],
+      fontSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+// CORS restrictif
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+}));
+
+// Rate limiting global
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requetes, reessayez dans une minute' },
+}));
+
+// Rate limiting strict sur le login
+app.use('/api/auth/login', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives de connexion, reessayez dans 15 minutes' },
+}));
+
+// Body parser avec limite réduite
+app.use(express.json({ limit: '2mb' }));
 
 // API routes
 app.use('/api', apiRoutes);

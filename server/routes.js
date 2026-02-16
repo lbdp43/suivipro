@@ -4,10 +4,14 @@ import bcrypt from 'bcryptjs';
 import db from './db.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'suivipro-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required. Set it before starting the server.');
+  process.exit(1);
+}
 
 // ============================================
-// Auth middleware
+// Middlewares
 // ============================================
 
 function authMiddleware(req, res, next) {
@@ -22,6 +26,88 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acces reserve aux administrateurs' });
+  }
+  next();
+}
+
+function isAdmin(req) {
+  return req.user.role === 'admin';
+}
+
+// ============================================
+// Input validation helpers
+// ============================================
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^[\d\s+().-]{0,30}$/;
+
+function validateProspect(body) {
+  const errors = [];
+  if (!body.nom_etablissement || typeof body.nom_etablissement !== 'string' || body.nom_etablissement.trim().length === 0) {
+    errors.push('nom_etablissement est requis');
+  }
+  if (body.email && !EMAIL_RE.test(body.email)) {
+    errors.push('Format email invalide');
+  }
+  if (body.telephone && !PHONE_RE.test(body.telephone)) {
+    errors.push('Format telephone invalide');
+  }
+  if (body.score !== undefined && body.score !== null) {
+    const score = Number(body.score);
+    if (isNaN(score) || score < 0 || score > 100) {
+      errors.push('Le score doit etre entre 0 et 100');
+    }
+  }
+  return errors;
+}
+
+function validateCall(body) {
+  const errors = [];
+  if (!body.prospect_id) errors.push('prospect_id est requis');
+  if (!body.commercial_id) errors.push('commercial_id est requis');
+  if (!body.date) errors.push('date est requise');
+  if (!body.resultat) errors.push('resultat est requis');
+  return errors;
+}
+
+function validateAppointment(body) {
+  const errors = [];
+  if (!body.prospect_id) errors.push('prospect_id est requis');
+  if (!body.commercial_id) errors.push('commercial_id est requis');
+  if (!body.date) errors.push('date est requise');
+  return errors;
+}
+
+function validateReminder(body) {
+  const errors = [];
+  if (!body.prospect_id) errors.push('prospect_id est requis');
+  if (!body.commercial_id) errors.push('commercial_id est requis');
+  if (!body.date) errors.push('date est requise');
+  return errors;
+}
+
+function validationError(res, errors) {
+  return res.status(400).json({ error: errors.join(', ') });
+}
+
+// ============================================
+// Helper: parse JSON fields
+// ============================================
+
+function parseProspect(p) {
+  if (!p) return p;
+  return { ...p, tags: JSON.parse(p.tags || '[]') };
+}
+
+function parseCommercial(c) {
+  if (!c) return c;
+  const { password: _, ...u } = c;
+  return { ...u, objectifs: JSON.parse(u.objectifs || '{}') };
+}
+
 // ============================================
 // Auth routes
 // ============================================
@@ -34,17 +120,8 @@ router.post('/auth/login', async (req, res) => {
   const user = result.rows[0];
   if (!user) return res.status(401).json({ error: 'Identifiants incorrects' });
 
-  // Support both hashed and legacy plaintext passwords
-  let valid = false;
-  if (user.password.startsWith('$2')) {
-    valid = bcrypt.compareSync(password, user.password);
-  } else {
-    valid = user.password === password;
-    // Upgrade to hash
-    if (valid) {
-      await db.query('UPDATE commerciaux SET password = $1 WHERE id = $2', [bcrypt.hashSync(password, 10), user.id]);
-    }
-  }
+  // bcrypt only — no plaintext fallback
+  const valid = bcrypt.compareSync(password, user.password);
   if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
 
   const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -63,29 +140,34 @@ router.get('/auth/me', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// Helper: parse JSON fields for prospects
-// ============================================
-function parseProspect(p) {
-  if (!p) return p;
-  return { ...p, tags: JSON.parse(p.tags || '[]') };
-}
-
-function parseCommercial(c) {
-  if (!c) return c;
-  const { password: _, ...u } = c;
-  return { ...u, objectifs: JSON.parse(u.objectifs || '{}') };
-}
-
-// ============================================
-// Full state load (for initial sync)
+// Full state load (with RLS filtering)
 // ============================================
 
 router.get('/state', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const admin = isAdmin(req);
+
+  // Admins see everything, commercials only see their own data
+  const prospectQuery = admin
+    ? 'SELECT * FROM prospects'
+    : 'SELECT * FROM prospects WHERE commercial_id = $1';
+  const callQuery = admin
+    ? 'SELECT * FROM calls'
+    : 'SELECT * FROM calls WHERE commercial_id = $1';
+  const appointmentQuery = admin
+    ? 'SELECT * FROM appointments'
+    : 'SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1';
+  const reminderQuery = admin
+    ? 'SELECT * FROM reminders'
+    : 'SELECT * FROM reminders WHERE commercial_id = $1';
+
+  const params = admin ? [] : [userId];
+
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns] = await Promise.all([
-    db.query('SELECT * FROM prospects'),
-    db.query('SELECT * FROM calls'),
-    db.query('SELECT * FROM appointments'),
-    db.query('SELECT * FROM reminders'),
+    db.query(prospectQuery, params),
+    db.query(callQuery, params),
+    db.query(appointmentQuery, params),
+    db.query(reminderQuery, params),
     db.query('SELECT * FROM commerciaux'),
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
@@ -105,48 +187,73 @@ router.get('/state', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// Prospects CRUD
+// Prospects CRUD (with RLS)
 // ============================================
 
 router.get('/prospects', authMiddleware, async (req, res) => {
-  const result = await db.query('SELECT * FROM prospects');
+  const result = isAdmin(req)
+    ? await db.query('SELECT * FROM prospects')
+    : await db.query('SELECT * FROM prospects WHERE commercial_id = $1', [req.user.id]);
   res.json(result.rows.map(parseProspect));
 });
 
 router.post('/prospects', authMiddleware, async (req, res) => {
   const p = req.body;
+  const errors = validateProspect(p);
+  if (errors.length > 0) return validationError(res, errors);
+
+  // Force commercial_id to current user if not admin
+  const commercialId = isAdmin(req) ? (p.commercial_id || req.user.id) : req.user.id;
+
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
+    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
   );
   res.json({ ok: true });
 });
 
 router.put('/prospects/:id', authMiddleware, async (req, res) => {
   const p = req.body;
+  const errors = validateProspect(p);
+  if (errors.length > 0) return validationError(res, errors);
+
+  // Ownership check for non-admins
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM prospects WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Prospect non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
+
   await db.query(
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
-    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), isAdmin(req) ? (p.commercial_id || req.user.id) : req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
   );
   res.json({ ok: true });
 });
 
 router.delete('/prospects/:id', authMiddleware, async (req, res) => {
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM prospects WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Prospect non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
   await db.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
-// Bulk import
+// Bulk import (with RLS)
 router.post('/prospects/import', authMiddleware, async (req, res) => {
   const prospects = req.body;
   if (!prospects || prospects.length === 0) return res.json({ ok: true, count: 0 });
+
+  // Force commercial_id for non-admins
+  const forcedCommercialId = isAdmin(req) ? null : req.user.id;
 
   const client = await db.connect();
   try {
     await client.query('BEGIN');
 
-    // Batch insert: build multi-row VALUES for chunks of 50
     const CHUNK_SIZE = 50;
     const COLS = 20;
     for (let i = 0; i < prospects.length; i += CHUNK_SIZE) {
@@ -160,7 +267,7 @@ router.post('/prospects/import', authMiddleware, async (req, res) => {
           p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '',
           p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '',
           p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []),
-          p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50
+          forcedCommercialId || p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50
         );
       });
       await client.query(
@@ -189,25 +296,40 @@ router.post('/prospects/import', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// Calls CRUD
+// Calls CRUD (with RLS)
 // ============================================
 
 router.get('/calls', authMiddleware, async (req, res) => {
-  const result = await db.query('SELECT * FROM calls');
+  const result = isAdmin(req)
+    ? await db.query('SELECT * FROM calls')
+    : await db.query('SELECT * FROM calls WHERE commercial_id = $1', [req.user.id]);
   res.json(result.rows);
 });
 
 router.post('/calls', authMiddleware, async (req, res) => {
   const c = req.body;
+  const errors = validateCall(c);
+  if (errors.length > 0) return validationError(res, errors);
+
+  const commercialId = isAdmin(req) ? (c.commercial_id || req.user.id) : req.user.id;
   await db.query(
     'INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-    [c.id, c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '']
+    [c.id, c.prospect_id, commercialId, c.date, c.duree || 0, c.resultat, c.notes || '']
   );
   res.json({ ok: true });
 });
 
 router.put('/calls/:id', authMiddleware, async (req, res) => {
   const c = req.body;
+  const errors = validateCall(c);
+  if (errors.length > 0) return validationError(res, errors);
+
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM calls WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Appel non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
+
   await db.query(
     'UPDATE calls SET prospect_id=$1, commercial_id=$2, date=$3, duree=$4, resultat=$5, notes=$6 WHERE id=$7',
     [c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id]
@@ -216,30 +338,53 @@ router.put('/calls/:id', authMiddleware, async (req, res) => {
 });
 
 router.delete('/calls/:id', authMiddleware, async (req, res) => {
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM calls WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Appel non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
   await db.query('DELETE FROM calls WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // ============================================
-// Appointments CRUD
+// Appointments CRUD (with RLS)
 // ============================================
 
 router.get('/appointments', authMiddleware, async (req, res) => {
-  const result = await db.query('SELECT * FROM appointments');
+  const result = isAdmin(req)
+    ? await db.query('SELECT * FROM appointments')
+    : await db.query('SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1', [req.user.id]);
   res.json(result.rows);
 });
 
 router.post('/appointments', authMiddleware, async (req, res) => {
   const a = req.body;
+  const errors = validateAppointment(a);
+  if (errors.length > 0) return validationError(res, errors);
+
+  const commercialId = isAdmin(req) ? (a.commercial_id || req.user.id) : req.user.id;
   await db.query(
     'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-    [a.id, a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie']
+    [a.id, a.prospect_id, commercialId, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie']
   );
   res.json({ ok: true });
 });
 
 router.put('/appointments/:id', authMiddleware, async (req, res) => {
   const a = req.body;
+  const errors = validateAppointment(a);
+  if (errors.length > 0) return validationError(res, errors);
+
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id, prospecteur_id FROM appointments WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'RDV non trouve' });
+    const row = check.rows[0];
+    if (row.commercial_id !== req.user.id && row.prospecteur_id !== req.user.id) {
+      return res.status(403).json({ error: 'Acces refuse' });
+    }
+  }
+
   await db.query(
     'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9 WHERE id=$10',
     [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, req.params.id]
@@ -248,30 +393,50 @@ router.put('/appointments/:id', authMiddleware, async (req, res) => {
 });
 
 router.delete('/appointments/:id', authMiddleware, async (req, res) => {
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM appointments WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'RDV non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
   await db.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // ============================================
-// Reminders CRUD
+// Reminders CRUD (with RLS)
 // ============================================
 
 router.get('/reminders', authMiddleware, async (req, res) => {
-  const result = await db.query('SELECT * FROM reminders');
+  const result = isAdmin(req)
+    ? await db.query('SELECT * FROM reminders')
+    : await db.query('SELECT * FROM reminders WHERE commercial_id = $1', [req.user.id]);
   res.json(result.rows);
 });
 
 router.post('/reminders', authMiddleware, async (req, res) => {
   const r = req.body;
+  const errors = validateReminder(r);
+  if (errors.length > 0) return validationError(res, errors);
+
+  const commercialId = isAdmin(req) ? (r.commercial_id || req.user.id) : req.user.id;
   await db.query(
     'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-    [r.id, r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut || 'actif']
+    [r.id, r.prospect_id, commercialId, r.date, r.heure || '', r.message || '', r.statut || 'actif']
   );
   res.json({ ok: true });
 });
 
 router.put('/reminders/:id', authMiddleware, async (req, res) => {
   const r = req.body;
+  const errors = validateReminder(r);
+  if (errors.length > 0) return validationError(res, errors);
+
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM reminders WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Rappel non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
+
   await db.query(
     'UPDATE reminders SET prospect_id=$1, commercial_id=$2, date=$3, heure=$4, message=$5, statut=$6 WHERE id=$7',
     [r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id]
@@ -280,6 +445,11 @@ router.put('/reminders/:id', authMiddleware, async (req, res) => {
 });
 
 router.delete('/reminders/:id', authMiddleware, async (req, res) => {
+  if (!isAdmin(req)) {
+    const check = await db.query('SELECT commercial_id FROM reminders WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Rappel non trouve' });
+    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
+  }
   await db.query('DELETE FROM reminders WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
@@ -295,12 +465,14 @@ router.get('/tags', authMiddleware, async (req, res) => {
 
 router.post('/tags', authMiddleware, async (req, res) => {
   const t = req.body;
+  if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
   await db.query('INSERT INTO tags (id, nom, couleur) VALUES ($1,$2,$3)', [t.id, t.nom, t.couleur]);
   res.json({ ok: true });
 });
 
 router.put('/tags/:id', authMiddleware, async (req, res) => {
   const t = req.body;
+  if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
   await db.query('UPDATE tags SET nom=$1, couleur=$2 WHERE id=$3', [t.nom, t.couleur, req.params.id]);
   res.json({ ok: true });
 });
@@ -321,6 +493,7 @@ router.get('/email-templates', authMiddleware, async (req, res) => {
 
 router.post('/email-templates', authMiddleware, async (req, res) => {
   const e = req.body;
+  if (!e.nom) return res.status(400).json({ error: 'nom est requis' });
   await db.query(
     'INSERT INTO email_templates (id, nom, sujet, corps, type) VALUES ($1,$2,$3,$4,$5)',
     [e.id, e.nom, e.sujet || '', e.corps || '', e.type || '']
@@ -330,6 +503,7 @@ router.post('/email-templates', authMiddleware, async (req, res) => {
 
 router.put('/email-templates/:id', authMiddleware, async (req, res) => {
   const e = req.body;
+  if (!e.nom) return res.status(400).json({ error: 'nom est requis' });
   await db.query(
     'UPDATE email_templates SET nom=$1, sujet=$2, corps=$3, type=$4 WHERE id=$5',
     [e.nom, e.sujet || '', e.corps || '', e.type || '', req.params.id]
@@ -351,8 +525,9 @@ router.get('/pipeline-columns', authMiddleware, async (req, res) => {
   res.json(result.rows);
 });
 
-router.post('/pipeline-columns', authMiddleware, async (req, res) => {
+router.post('/pipeline-columns', authMiddleware, adminOnly, async (req, res) => {
   const c = req.body;
+  if (!c.label) return res.status(400).json({ error: 'label est requis' });
   const maxOrder = await db.query('SELECT MAX(sort_order) as m FROM pipeline_columns');
   await db.query(
     'INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ($1,$2,$3,$4)',
@@ -361,19 +536,20 @@ router.post('/pipeline-columns', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.put('/pipeline-columns/:id', authMiddleware, async (req, res) => {
+router.put('/pipeline-columns/:id', authMiddleware, adminOnly, async (req, res) => {
   const c = req.body;
+  if (!c.label) return res.status(400).json({ error: 'label est requis' });
   await db.query('UPDATE pipeline_columns SET label=$1, color=$2 WHERE id=$3', [c.label, c.color, req.params.id]);
   res.json({ ok: true });
 });
 
-router.delete('/pipeline-columns/:id', authMiddleware, async (req, res) => {
+router.delete('/pipeline-columns/:id', authMiddleware, adminOnly, async (req, res) => {
   await db.query('DELETE FROM pipeline_columns WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // ============================================
-// Commerciaux CRUD
+// Commerciaux CRUD (admin-restricted for create/delete)
 // ============================================
 
 router.get('/commerciaux', authMiddleware, async (req, res) => {
@@ -381,8 +557,14 @@ router.get('/commerciaux', authMiddleware, async (req, res) => {
   res.json(result.rows.map(parseCommercial));
 });
 
-router.post('/commerciaux', authMiddleware, async (req, res) => {
+router.post('/commerciaux', authMiddleware, adminOnly, async (req, res) => {
   const c = req.body;
+  if (!c.password || c.password.length < 8) {
+    return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caracteres' });
+  }
+  if (!c.email || !EMAIL_RE.test(c.email)) {
+    return res.status(400).json({ error: 'Email invalide' });
+  }
   const hashedPwd = bcrypt.hashSync(c.password, 10);
   await db.query(
     'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -393,23 +575,40 @@ router.post('/commerciaux', authMiddleware, async (req, res) => {
 
 router.put('/commerciaux/:id', authMiddleware, async (req, res) => {
   const c = req.body;
-  // Only update password if provided and non-empty
+  const targetId = req.params.id;
+
+  // Non-admins can only update their own profile, and cannot change role
+  if (!isAdmin(req)) {
+    if (targetId !== req.user.id) {
+      return res.status(403).json({ error: 'Vous ne pouvez modifier que votre propre profil' });
+    }
+    // Prevent role escalation
+    delete c.role;
+  }
+
+  // Password policy
   if (c.password && c.password.length > 0) {
+    if (c.password.length < 8) {
+      return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caracteres' });
+    }
     const hashedPwd = bcrypt.hashSync(c.password, 10);
     await db.query(
       'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7 WHERE id=$8',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role, hashedPwd, JSON.stringify(c.objectifs || {}), req.params.id]
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId]
     );
   } else {
     await db.query(
       'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6 WHERE id=$7',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role, JSON.stringify(c.objectifs || {}), req.params.id]
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId]
     );
   }
   res.json({ ok: true });
 });
 
-router.delete('/commerciaux/:id', authMiddleware, async (req, res) => {
+router.delete('/commerciaux/:id', authMiddleware, adminOnly, async (req, res) => {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
+  }
   await db.query('DELETE FROM commerciaux WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });

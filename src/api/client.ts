@@ -6,6 +6,13 @@ const API_BASE = '/api';
 
 let authToken: string | null = localStorage.getItem('suivipro_token');
 
+// Toast callback for API errors (set by ToastProvider integration)
+let onApiError: ((msg: string) => void) | null = null;
+
+export function setApiErrorHandler(handler: (msg: string) => void) {
+  onApiError = handler;
+}
+
 export function setToken(token: string | null) {
   authToken = token;
   if (token) {
@@ -74,19 +81,44 @@ export async function loadFullState() {
 }
 
 // ============================================
-// CRUD helpers (fire-and-forget for optimistic updates)
+// CRUD helpers with error reporting (retry once on network error)
 // ============================================
 
-function post(path: string, body: any) {
-  return request(path, { method: 'POST', body: JSON.stringify(body) }).catch(err => console.error('API POST error:', err));
+async function withRetry(fn: () => Promise<unknown>): Promise<unknown> {
+  try {
+    return await fn();
+  } catch (err) {
+    // Retry once after 2s on network errors
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      await new Promise(r => setTimeout(r, 2000));
+      return fn();
+    }
+    throw err;
+  }
 }
 
-function put(path: string, body: any) {
-  return request(path, { method: 'PUT', body: JSON.stringify(body) }).catch(err => console.error('API PUT error:', err));
+function post(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'POST', body: JSON.stringify(body) }))
+    .catch(err => {
+      console.error('API POST error:', err);
+      if (onApiError) onApiError(`Erreur de sauvegarde: ${err.message}`);
+    });
+}
+
+function put(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PUT', body: JSON.stringify(body) }))
+    .catch(err => {
+      console.error('API PUT error:', err);
+      if (onApiError) onApiError(`Erreur de mise a jour: ${err.message}`);
+    });
 }
 
 function del(path: string) {
-  return request(path, { method: 'DELETE' }).catch(err => console.error('API DELETE error:', err));
+  return withRetry(() => request(path, { method: 'DELETE' }))
+    .catch(err => {
+      console.error('API DELETE error:', err);
+      if (onApiError) onApiError(`Erreur de suppression: ${err.message}`);
+    });
 }
 
 // ============================================
@@ -140,19 +172,20 @@ export interface GoogleCalendarEvent {
 // Sync actions to API (called after dispatch)
 // ============================================
 
-export function syncAction(type: string, payload: any) {
+export function syncAction(type: string, payload: unknown) {
+  const p = payload as Record<string, unknown>;
   switch (type) {
     // Prospects
     case 'ADD_PROSPECT':
       return post('/prospects', payload);
     case 'UPDATE_PROSPECT':
-      return put(`/prospects/${payload.id}`, payload);
+      return put(`/prospects/${p.id}`, payload);
     case 'DELETE_PROSPECT':
       return del(`/prospects/${payload}`);
     case 'MOVE_PROSPECT':
-      return put(`/prospects/${payload.id}`, {
-        ...payload,
-        etape_pipeline: payload.stage,
+      return put(`/prospects/${p.id}`, {
+        ...p,
+        etape_pipeline: p.stage,
         date_modification: new Date().toISOString(),
       });
     case 'IMPORT_PROSPECTS':
@@ -162,7 +195,7 @@ export function syncAction(type: string, payload: any) {
     case 'ADD_CALL':
       return post('/calls', payload);
     case 'UPDATE_CALL':
-      return put(`/calls/${payload.id}`, payload);
+      return put(`/calls/${p.id}`, payload);
     case 'DELETE_CALL':
       return del(`/calls/${payload}`);
 
@@ -170,7 +203,7 @@ export function syncAction(type: string, payload: any) {
     case 'ADD_APPOINTMENT':
       return post('/appointments', payload);
     case 'UPDATE_APPOINTMENT':
-      return put(`/appointments/${payload.id}`, payload);
+      return put(`/appointments/${p.id}`, payload);
     case 'DELETE_APPOINTMENT':
       return del(`/appointments/${payload}`);
 
@@ -178,7 +211,7 @@ export function syncAction(type: string, payload: any) {
     case 'ADD_REMINDER':
       return post('/reminders', payload);
     case 'UPDATE_REMINDER':
-      return put(`/reminders/${payload.id}`, payload);
+      return put(`/reminders/${p.id}`, payload);
     case 'DELETE_REMINDER':
       return del(`/reminders/${payload}`);
 
@@ -186,7 +219,7 @@ export function syncAction(type: string, payload: any) {
     case 'ADD_TAG':
       return post('/tags', payload);
     case 'UPDATE_TAG':
-      return put(`/tags/${payload.id}`, payload);
+      return put(`/tags/${p.id}`, payload);
     case 'DELETE_TAG':
       return del(`/tags/${payload}`);
 
@@ -194,13 +227,13 @@ export function syncAction(type: string, payload: any) {
     case 'ADD_EMAIL_TEMPLATE':
       return post('/email-templates', payload);
     case 'UPDATE_EMAIL_TEMPLATE':
-      return put(`/email-templates/${payload.id}`, payload);
+      return put(`/email-templates/${p.id}`, payload);
     case 'DELETE_EMAIL_TEMPLATE':
       return del(`/email-templates/${payload}`);
 
     // Commerciaux
     case 'UPDATE_COMMERCIAL':
-      return put(`/commerciaux/${payload.id}`, payload);
+      return put(`/commerciaux/${p.id}`, payload);
     case 'ADD_COMMERCIAL':
       return post('/commerciaux', payload);
     case 'DELETE_COMMERCIAL':
@@ -208,15 +241,13 @@ export function syncAction(type: string, payload: any) {
 
     // Pipeline columns
     case 'UPDATE_PIPELINE_COLUMN':
-      return put(`/pipeline-columns/${payload.id}`, payload);
+      return put(`/pipeline-columns/${p.id}`, payload);
     case 'DELETE_PIPELINE_COLUMN':
       return del(`/pipeline-columns/${payload}`);
     case 'ADD_PIPELINE_COLUMN':
       return post('/pipeline-columns', payload);
 
-    // MOVE_PROSPECT needs special handling - we need to fetch the full prospect
     default:
-      // SET_STATE, SET_CURRENT_USER: no API sync needed
       break;
   }
 }

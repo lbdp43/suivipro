@@ -4,6 +4,7 @@ import {
   Trash2, BarChart3, Phone, Calendar, Award, Shield, User, Eye, EyeOff, Key,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { Commercial, Tag as TagType, UserRole } from '../types';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
@@ -15,6 +16,7 @@ import { PIPELINE_LABELS, PipelineStage } from '../types';
 
 export default function AdminPage() {
   const { state, dispatch } = useApp();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials'>('team');
 
   // Tag state
@@ -99,12 +101,12 @@ export default function AdminPage() {
 
   const deleteUser = (user: Commercial) => {
     if (user.id === state.currentUser?.id) {
-      alert('Vous ne pouvez pas supprimer votre propre compte.');
+      toast.warning('Vous ne pouvez pas supprimer votre propre compte.');
       return;
     }
     const adminCount = state.commerciaux.filter(c => c.role === 'admin').length;
     if (user.role === 'admin' && adminCount <= 1) {
-      alert('Impossible de supprimer le dernier administrateur.');
+      toast.warning('Impossible de supprimer le dernier administrateur.');
       return;
     }
     if (confirm(`Supprimer ${user.prenom} ${user.nom} ? Cette action est irreversible.`)) {

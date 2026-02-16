@@ -1,92 +1,17 @@
 import { useState, useMemo, useRef, useEffect, DragEvent } from 'react';
 import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Filter, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
-
-// Compact multi-select dropdown for pipeline filters
-function PipelineFilterDropdown({ label, options, selected, onToggle, color }: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: Set<string>;
-  onToggle: (value: string) => void;
-  color: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    if (open) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  const count = selected.size;
-  const colorMap: Record<string, { active: string }> = {
-    amber: { active: 'bg-amber-500 text-white border-amber-500' },
-    teal: { active: 'bg-teal-600 text-white border-teal-600' },
-  };
-  const c = colorMap[color] || colorMap.amber;
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
-          count > 0 ? c.active : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-        }`}
-        onClick={() => setOpen(!open)}
-      >
-        <Filter className="w-3 h-3" />
-        {label}
-        {count > 0 && <span className="bg-white/30 rounded-full px-1 text-[10px]">{count}</span>}
-        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px] max-h-64 overflow-y-auto">
-          <div className="sticky top-0 bg-white border-b border-gray-100 px-3 py-2 flex items-center justify-between">
-            <span className="text-[10px] text-gray-400">{count}/{options.length}</span>
-            <button
-              className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium"
-              onClick={() => {
-                if (count === options.length) {
-                  options.forEach(o => { if (selected.has(o.value)) onToggle(o.value); });
-                } else {
-                  options.forEach(o => { if (!selected.has(o.value)) onToggle(o.value); });
-                }
-              }}
-            >
-              {count === options.length ? 'Tout deselect.' : 'Tout select.'}
-            </button>
-          </div>
-          {options.map(option => (
-            <button
-              key={option.value}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors ${
-                selected.has(option.value) ? 'bg-gray-50 font-medium' : ''
-              }`}
-              onClick={() => onToggle(option.value)}
-            >
-              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                selected.has(option.value) ? 'bg-brewery-600 border-brewery-600' : 'border-gray-300'
-              }`}>
-                {selected.has(option.value) && <Check className="w-3 h-3 text-white" />}
-              </div>
-              <span className="truncate text-gray-700">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function PipelinePage() {
   const { state, dispatch } = useApp();
   const { startCall } = useCallModal();
+  const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -230,7 +155,7 @@ export default function PipelinePage() {
 
   const deleteColumn = (col: PipelineColumn) => {
     if (columns.length <= 1) {
-      alert('Impossible de supprimer la derniere etape.');
+      toast.warning('Impossible de supprimer la derniere etape.');
       return;
     }
     const count = (prospectsByStage[col.id] || []).length;
@@ -247,7 +172,7 @@ export default function PipelinePage() {
     if (!newLabel.trim()) return;
     const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (columns.some(c => c.id === id)) {
-      alert('Une etape avec cet identifiant existe deja');
+      toast.warning('Une etape avec cet identifiant existe deja');
       return;
     }
     dispatch({
@@ -274,7 +199,7 @@ export default function PipelinePage() {
         {/* Filters */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {allSecteurs.length > 0 && (
-            <PipelineFilterDropdown
+            <MultiSelectDropdown
               label="Secteur"
               options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
               selected={filterSecteurs}
@@ -283,7 +208,7 @@ export default function PipelinePage() {
             />
           )}
           {allDepartments.length > 0 && (
-            <PipelineFilterDropdown
+            <MultiSelectDropdown
               label="Dept (CP)"
               options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
               selected={filterDepartments}
@@ -292,7 +217,7 @@ export default function PipelinePage() {
             />
           )}
           {allPostalCodes.length > 0 && (
-            <PipelineFilterDropdown
+            <MultiSelectDropdown
               label="Code postal"
               options={allPostalCodes.map(c => ({ value: c, label: c }))}
               selected={filterPostalCodes}

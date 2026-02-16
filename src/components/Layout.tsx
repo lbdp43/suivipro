@@ -47,6 +47,8 @@ export default function Layout() {
       {/* Sidebar */}
       <aside
         className={`sidebar ${sidebarOpen ? 'open' : ''} w-64 bg-white border-r border-gray-200 flex flex-col h-full md:relative md:transform-none`}
+        role="navigation"
+        aria-label="Menu principal"
       >
         {/* Logo */}
         <div className="p-4 border-b border-gray-200">
@@ -166,6 +168,7 @@ export default function Layout() {
           <button
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-100"
             onClick={() => setSidebarOpen(true)}
+            aria-label="Ouvrir le menu"
           >
             <Menu className="w-5 h-5 text-gray-600" />
           </button>

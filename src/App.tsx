@@ -1,19 +1,30 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './store/AppContext';
 import { Beer } from 'lucide-react';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import MapPage from './pages/MapPage';
-import PipelinePage from './pages/PipelinePage';
-import ProspectsPage from './pages/ProspectsPage';
-import CallsPage from './pages/CallsPage';
-import AppointmentsPage from './pages/AppointmentsPage';
-import RemindersPage from './pages/RemindersPage';
-import EmailsPage from './pages/EmailsPage';
-import ImportPage from './pages/ImportPage';
-import AdminPage from './pages/AdminPage';
-import ProfilePage from './pages/ProfilePage';
+
+// Lazy-loaded pages
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const MapPage = lazy(() => import('./pages/MapPage'));
+const PipelinePage = lazy(() => import('./pages/PipelinePage'));
+const ProspectsPage = lazy(() => import('./pages/ProspectsPage'));
+const CallsPage = lazy(() => import('./pages/CallsPage'));
+const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'));
+const RemindersPage = lazy(() => import('./pages/RemindersPage'));
+const EmailsPage = lazy(() => import('./pages/EmailsPage'));
+const ImportPage = lazy(() => import('./pages/ImportPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="w-7 h-7 border-3 border-brewery-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
@@ -45,20 +56,22 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/carte" element={<MapPage />} />
-        <Route path="/pipeline" element={<PipelinePage />} />
-        <Route path="/prospects" element={<ProspectsPage />} />
-        <Route path="/appels" element={<CallsPage />} />
-        <Route path="/rdv" element={<AppointmentsPage />} />
-        <Route path="/rappels" element={<RemindersPage />} />
-        <Route path="/emails" element={<EmailsPage />} />
-        <Route path="/import" element={<ImportPage />} />
-        <Route path="/profil" element={<ProfilePage />} />
-        <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/carte" element={<MapPage />} />
+          <Route path="/pipeline" element={<PipelinePage />} />
+          <Route path="/prospects" element={<ProspectsPage />} />
+          <Route path="/appels" element={<CallsPage />} />
+          <Route path="/rdv" element={<AppointmentsPage />} />
+          <Route path="/rappels" element={<RemindersPage />} />
+          <Route path="/emails" element={<EmailsPage />} />
+          <Route path="/import" element={<ImportPage />} />
+          <Route path="/profil" element={<ProfilePage />} />
+          <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }

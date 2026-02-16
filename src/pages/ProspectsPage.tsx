@@ -8,97 +8,13 @@ import {
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
-
-// Multi-select dropdown component
-function MultiSelectDropdown({ label, options, selected, onToggle, color }: {
-  label: string;
-  options: { value: string; label: string; color?: string }[];
-  selected: Set<string>;
-  onToggle: (value: string) => void;
-  color: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    if (open) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  const count = selected.size;
-  const colorMap: Record<string, { btn: string; active: string }> = {
-    brewery: { btn: 'border-brewery-300 text-brewery-700 bg-brewery-50', active: 'bg-brewery-600 text-white border-brewery-600' },
-    blue: { btn: 'border-blue-300 text-blue-700 bg-blue-50', active: 'bg-blue-600 text-white border-blue-600' },
-    amber: { btn: 'border-amber-300 text-amber-700 bg-amber-50', active: 'bg-amber-500 text-white border-amber-500' },
-  };
-  const c = colorMap[color] || colorMap.brewery;
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
-          count > 0 ? c.active : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-        }`}
-        onClick={() => setOpen(!open)}
-      >
-        <Filter className="w-3 h-3" />
-        {label}
-        {count > 0 && <span className="bg-white/30 rounded-full px-1 text-[10px]">{count}</span>}
-        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] max-h-64 overflow-y-auto">
-          {/* Select/Deselect all */}
-          <div className="sticky top-0 bg-white border-b border-gray-100 px-3 py-2 flex items-center justify-between">
-            <span className="text-[10px] text-gray-400">{count}/{options.length} selectionne(s)</span>
-            <button
-              className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium"
-              onClick={() => {
-                if (count === options.length) {
-                  options.forEach(o => { if (selected.has(o.value)) onToggle(o.value); });
-                } else {
-                  options.forEach(o => { if (!selected.has(o.value)) onToggle(o.value); });
-                }
-              }}
-            >
-              {count === options.length ? 'Tout deselect.' : 'Tout select.'}
-            </button>
-          </div>
-
-          {options.map(option => (
-            <button
-              key={option.value}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors ${
-                selected.has(option.value) ? 'bg-gray-50 font-medium' : ''
-              }`}
-              onClick={() => onToggle(option.value)}
-            >
-              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                selected.has(option.value) ? 'bg-brewery-600 border-brewery-600' : 'border-gray-300'
-              }`}>
-                {selected.has(option.value) && <Check className="w-3 h-3 text-white" />}
-              </div>
-              {option.color && (
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: option.color }} />
-              )}
-              <span className="truncate text-gray-700">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function ProspectsPage() {
   const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
@@ -1320,7 +1236,7 @@ export default function ProspectsPage() {
   );
 }
 
-function Users(props: any) {
+function Users(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>

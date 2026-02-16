@@ -4,11 +4,13 @@ import {
   Search, Trash2, Trophy, CheckSquare, Square,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS } from '../types';
 import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 
 export default function ImportPage() {
   const { state, dispatch } = useApp();
+  const toast = useToast();
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; geocoded: number; duplicates: number } | null>(null);
   const [importing, setImporting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -44,7 +46,7 @@ export default function ImportPage() {
       XLSX.utils.book_append_sheet(wb, ws, 'Prospects');
       XLSX.writeFile(wb, `prospects-${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err) {
-      alert('Erreur lors de l\'export Excel');
+      toast.error('Erreur lors de l\'export Excel');
     }
   };
 
@@ -397,7 +399,7 @@ export default function ImportPage() {
       XLSX.utils.book_append_sheet(wb, ws, 'Template');
       XLSX.writeFile(wb, 'template-import-prospects.xlsx');
     } catch (err) {
-      alert('Erreur lors de la creation du template');
+      toast.error('Erreur lors de la creation du template');
     }
   };
 
@@ -569,7 +571,7 @@ export default function ImportPage() {
       setCrossMatches(matches);
       setCrossSelected(new Set(matches.map(m => m.prospect.id)));
     } catch {
-      alert('Erreur de lecture du fichier. Verifiez le format.');
+      toast.error('Erreur de lecture du fichier. Verifiez le format.');
     }
     setCrossSearching(false);
     setCrossDone(true);

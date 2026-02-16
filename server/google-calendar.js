@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
 import db from './db.js';
+import { encrypt, decrypt } from './crypto.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'suivipro-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required.');
+  process.exit(1);
+}
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -119,12 +124,12 @@ router.get('/google-calendar/callback', async (req, res) => {
       // Not critical
     }
 
-    // Store tokens in database (upsert)
+    // Store tokens in database (upsert) — encrypted
     await db.query(
       `INSERT INTO google_calendar_tokens (commercial_id, access_token, refresh_token, expiry_date, calendar_email, connected_at)
       VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (commercial_id) DO UPDATE SET access_token=$2, refresh_token=$3, expiry_date=$4, calendar_email=$5, connected_at=$6`,
-      [userId, tokens.access_token || '', tokens.refresh_token || '', tokens.expiry_date || 0, calendarEmail, new Date().toISOString()]
+      [userId, encrypt(tokens.access_token || ''), encrypt(tokens.refresh_token || ''), tokens.expiry_date || 0, calendarEmail, new Date().toISOString()]
     );
 
     // Return a page that closes itself and notifies the opener
@@ -182,7 +187,7 @@ router.post('/google-calendar/disconnect', authMiddleware, async (req, res) => {
   if (tokenResult.rows.length > 0) {
     try {
       const oauth2Client = getOAuth2Client();
-      oauth2Client.revokeToken(tokenResult.rows[0].access_token).catch(() => {});
+      oauth2Client.revokeToken(decrypt(tokenResult.rows[0].access_token)).catch(() => {});
     } catch {
       // Non-critical
     }
@@ -209,15 +214,15 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, async (req, 
   try {
     const oauth2Client = getOAuth2Client();
     oauth2Client.setCredentials({
-      access_token: tokenRow.access_token,
-      refresh_token: tokenRow.refresh_token,
+      access_token: decrypt(tokenRow.access_token),
+      refresh_token: decrypt(tokenRow.refresh_token),
       expiry_date: Number(tokenRow.expiry_date),
     });
 
-    // Refresh token if expired
+    // Refresh token if expired — store encrypted
     oauth2Client.on('tokens', (tokens) => {
       db.query('UPDATE google_calendar_tokens SET access_token = $1, expiry_date = $2 WHERE commercial_id = $3',
-        [tokens.access_token, tokens.expiry_date, commercialId]).catch(() => {});
+        [encrypt(tokens.access_token), tokens.expiry_date, commercialId]).catch(() => {});
     });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
@@ -276,14 +281,14 @@ router.get('/google-calendar/events-all', authMiddleware, async (req, res) => {
       try {
         const oauth2Client = getOAuth2Client();
         oauth2Client.setCredentials({
-          access_token: tokenRow.access_token,
-          refresh_token: tokenRow.refresh_token,
+          access_token: decrypt(tokenRow.access_token),
+          refresh_token: decrypt(tokenRow.refresh_token),
           expiry_date: Number(tokenRow.expiry_date),
         });
 
         oauth2Client.on('tokens', (tokens) => {
           db.query('UPDATE google_calendar_tokens SET access_token = $1, expiry_date = $2 WHERE commercial_id = $3',
-            [tokens.access_token, tokens.expiry_date, tokenRow.commercial_id]).catch(() => {});
+            [encrypt(tokens.access_token), tokens.expiry_date, tokenRow.commercial_id]).catch(() => {});
         });
 
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });

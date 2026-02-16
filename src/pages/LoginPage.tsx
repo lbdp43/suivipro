@@ -17,8 +17,8 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-    } catch (err: any) {
-      setError(err.message || 'Email ou mot de passe incorrect');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Email ou mot de passe incorrect');
     } finally {
       setLoading(false);
     }
@@ -102,12 +102,8 @@ export default function LoginPage() {
 
         {/* Hint */}
         <div className="mt-4 bg-white/80 rounded-xl border border-gray-200 p-4 text-xs text-gray-500 text-center">
-          <p className="font-medium text-gray-600 mb-1">Comptes par defaut :</p>
-          <p>Guillaume (admin) : guillaume@labrasseriedesplantes.fr / admin123</p>
-          <p>Louis : louis@labrasseriedesplantes.fr / louis123</p>
-          <p>Lucas : lucas@labrasseriedesplantes.fr / lucas123</p>
-          <p>Alban : alban@labrasseriedesplantes.fr / alban123</p>
-          <p>Loic : loic@labrasseriedesplantes.fr / loic123</p>
+          <p>Connectez-vous avec vos identifiants professionnels.</p>
+          <p className="mt-1">Contactez votre administrateur en cas de probleme.</p>
         </div>
       </div>
     </div>

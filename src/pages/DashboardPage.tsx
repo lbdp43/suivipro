@@ -18,7 +18,7 @@ import { fr } from 'date-fns/locale';
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
 // Helpers for month navigation
-function getCallsInRange(calls: { date: string }[], start: Date, end: Date) {
+function getCallsInRange<T extends { date: string }>(calls: T[], start: Date, end: Date): T[] {
   return calls.filter(c => {
     try {
       const d = parseISO(c.date);
@@ -124,7 +124,7 @@ export default function DashboardPage() {
           return isWithinInterval(d, { start: week.start, end: week.end });
         } catch { return false; }
       });
-      const weekAnswered = weekCalls.filter((c: any) => c.resultat === 'repondu').length;
+      const weekAnswered = weekCalls.filter(c => c.resultat === 'repondu').length;
       return {
         label: week.label,
         calls: weekCalls.length,
@@ -139,9 +139,9 @@ export default function DashboardPage() {
       totalCalls: monthCalls.length,
       totalRdv: monthRdv.length,
       totalProspects: monthProspects.length,
-      answered: monthCalls.filter((c: any) => c.resultat === 'repondu').length,
+      answered: monthCalls.filter(c => c.resultat === 'repondu').length,
       responseRate: monthCalls.length > 0
-        ? Math.round((monthCalls.filter((c: any) => c.resultat === 'repondu').length / monthCalls.length) * 100)
+        ? Math.round((monthCalls.filter(c => c.resultat === 'repondu').length / monthCalls.length) * 100)
         : 0,
       weeklyBreakdown,
     };

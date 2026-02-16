@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo } from 'react';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS,
 } from '../types';
-import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
+import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
 
 // ============================================
 // Actions
@@ -199,8 +199,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
         },
       });
-    } catch (err: any) {
-      setAuthError(err.message || 'Erreur de connexion');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erreur de connexion';
+      setAuthError(message);
       throw err;
     }
   }, []);
@@ -241,38 +242,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const getProspect = (id: string) => state.prospects.find(p => p.id === id);
-  const getCallsForProspect = (pid: string) => state.calls.filter(c => c.prospect_id === pid);
-  const getAppointmentsForProspect = (pid: string) => state.appointments.filter(a => a.prospect_id === pid);
-  const getRemindersForProspect = (pid: string) => state.reminders.filter(r => r.prospect_id === pid);
-  const getCallsForCommercial = (cid: string) => state.calls.filter(c => c.commercial_id === cid);
-  const getAppointmentsForCommercial = (cid: string) => state.appointments.filter(a => a.commercial_id === cid);
-  const getRemindersForCommercial = (cid: string) => state.reminders.filter(r => r.commercial_id === cid);
-  const getProspectsForCommercial = (cid: string) => state.prospects.filter(p => p.commercial_id === cid);
-  const getCommercial = (id: string) => state.commerciaux.find(c => c.id === id);
-  const getTag = (id: string) => state.tags.find(t => t.id === id);
+  const getProspect = useCallback((id: string) => state.prospects.find(p => p.id === id), [state.prospects]);
+  const getCallsForProspect = useCallback((pid: string) => state.calls.filter(c => c.prospect_id === pid), [state.calls]);
+  const getAppointmentsForProspect = useCallback((pid: string) => state.appointments.filter(a => a.prospect_id === pid), [state.appointments]);
+  const getRemindersForProspect = useCallback((pid: string) => state.reminders.filter(r => r.prospect_id === pid), [state.reminders]);
+  const getCallsForCommercial = useCallback((cid: string) => state.calls.filter(c => c.commercial_id === cid), [state.calls]);
+  const getAppointmentsForCommercial = useCallback((cid: string) => state.appointments.filter(a => a.commercial_id === cid), [state.appointments]);
+  const getRemindersForCommercial = useCallback((cid: string) => state.reminders.filter(r => r.commercial_id === cid), [state.reminders]);
+  const getProspectsForCommercial = useCallback((cid: string) => state.prospects.filter(p => p.commercial_id === cid), [state.prospects]);
+  const getCommercial = useCallback((id: string) => state.commerciaux.find(c => c.id === id), [state.commerciaux]);
+  const getTag = useCallback((id: string) => state.tags.find(t => t.id === id), [state.tags]);
+
+  const contextValue = useMemo(() => ({
+    state,
+    dispatch,
+    login,
+    logout,
+    loading,
+    authError,
+    getProspect,
+    getCallsForProspect,
+    getAppointmentsForProspect,
+    getRemindersForProspect,
+    getCallsForCommercial,
+    getAppointmentsForCommercial,
+    getRemindersForCommercial,
+    getProspectsForCommercial,
+    getCommercial,
+    getTag,
+  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag]);
 
   return (
-    <AppContext.Provider
-      value={{
-        state,
-        dispatch,
-        login,
-        logout,
-        loading,
-        authError,
-        getProspect,
-        getCallsForProspect,
-        getAppointmentsForProspect,
-        getRemindersForProspect,
-        getCallsForCommercial,
-        getAppointmentsForCommercial,
-        getRemindersForCommercial,
-        getProspectsForCommercial,
-        getCommercial,
-        getTag,
-      }}
-    >
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );
