@@ -231,18 +231,25 @@ export default function MapPage() {
             <option value={50}>50</option>
             <option value={100}>100</option>
             <option value={200}>200</option>
-            <option value={1000}>1000</option>
-            <option value={2000}>2000</option>
-            <option value={3000}>3000</option>
-            <option value={4000}>4000</option>
-            <option value={5000}>5000</option>
+            <option value={1000}>1 000</option>
+            <option value={2000}>2 000</option>
+            <option value={3000}>3 000</option>
+            <option value={4000}>4 000</option>
+            <option value={5000}>5 000</option>
+            <option value={6000}>6 000</option>
+            <option value={7000}>7 000</option>
+            <option value={8000}>8 000</option>
+            <option value={9000}>9 000</option>
+            <option value={10000}>10 000</option>
+            <option value={15000}>15 000</option>
+            <option value={0}>Tout voir</option>
           </select>
           <div className="text-xs sm:text-sm text-gray-500 flex-shrink-0">
             {showRdvPanel ? (
               <span className="text-blue-600 font-medium">{filteredProspects.length} RDV</span>
             ) : (
               <>
-                {Math.min(filteredProspects.length, maxMarkers)}{filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
+                {maxMarkers === 0 ? filteredProspects.length : Math.min(filteredProspects.length, maxMarkers)}{maxMarkers > 0 && filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
                 <span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
               </>
             )}
@@ -581,7 +588,7 @@ export default function MapPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {filteredProspects.slice(0, maxMarkers).map(prospect => {
+          {(maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)).map(prospect => {
             const markerColor = showRdvPanel ? '#2563eb' : PIPELINE_COLORS[prospect.etape_pipeline];
             return (
               <Marker
