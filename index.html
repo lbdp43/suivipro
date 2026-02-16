@@ -10,7 +10,23 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
   <body class="bg-gray-50">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Splash screen visible pendant le chargement de React -->
+      <div id="splash" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f0fdf4,#ffffff,#f0fdf4)">
+        <div style="text-align:center">
+          <div style="width:72px;height:72px;background:#16a34a;border-radius:18px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 25px rgba(22,163,74,0.3);animation:splashPulse 2s ease-in-out infinite">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 11h1a3 3 0 0 1 0 6h-1"/><path d="M9 12v6"/><path d="M13 12v6"/><path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 3 11 3s2 .5 3 .5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z"/><path d="M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/></svg>
+          </div>
+          <div style="font-weight:700;font-size:18px;color:#111827;font-family:system-ui,sans-serif;margin-bottom:4px">SuiviPro</div>
+          <div style="font-size:12px;color:#6b7280;font-family:system-ui,sans-serif;margin-bottom:24px">La Brasserie des Plantes</div>
+          <div style="width:36px;height:36px;border:3px solid #16a34a;border-top-color:transparent;border-radius:50%;margin:0 auto;animation:splashSpin 0.8s linear infinite"></div>
+        </div>
+      </div>
+      <style>
+        @keyframes splashSpin{to{transform:rotate(360deg)}}
+        @keyframes splashPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+      </style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
