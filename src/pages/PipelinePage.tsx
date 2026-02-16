@@ -1,10 +1,88 @@
-import { useState, useMemo, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect, DragEvent } from 'react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Filter, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
+
+// Compact multi-select dropdown for pipeline filters
+function PipelineFilterDropdown({ label, options, selected, onToggle, color }: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+  color: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const count = selected.size;
+  const colorMap: Record<string, { active: string }> = {
+    amber: { active: 'bg-amber-500 text-white border-amber-500' },
+    teal: { active: 'bg-teal-600 text-white border-teal-600' },
+  };
+  const c = colorMap[color] || colorMap.amber;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
+          count > 0 ? c.active : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+        }`}
+        onClick={() => setOpen(!open)}
+      >
+        <Filter className="w-3 h-3" />
+        {label}
+        {count > 0 && <span className="bg-white/30 rounded-full px-1 text-[10px]">{count}</span>}
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px] max-h-64 overflow-y-auto">
+          <div className="sticky top-0 bg-white border-b border-gray-100 px-3 py-2 flex items-center justify-between">
+            <span className="text-[10px] text-gray-400">{count}/{options.length}</span>
+            <button
+              className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium"
+              onClick={() => {
+                if (count === options.length) {
+                  options.forEach(o => { if (selected.has(o.value)) onToggle(o.value); });
+                } else {
+                  options.forEach(o => { if (!selected.has(o.value)) onToggle(o.value); });
+                }
+              }}
+            >
+              {count === options.length ? 'Tout deselect.' : 'Tout select.'}
+            </button>
+          </div>
+          {options.map(option => (
+            <button
+              key={option.value}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors ${
+                selected.has(option.value) ? 'bg-gray-50 font-medium' : ''
+              }`}
+              onClick={() => onToggle(option.value)}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                selected.has(option.value) ? 'bg-brewery-600 border-brewery-600' : 'border-gray-300'
+              }`}>
+                {selected.has(option.value) && <Check className="w-3 h-3 text-white" />}
+              </div>
+              <span className="truncate text-gray-700">{option.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PipelinePage() {
   const { state, dispatch } = useApp();
@@ -23,6 +101,24 @@ export default function PipelinePage() {
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
   const [maxPerColumn, setMaxPerColumn] = useState(50);
   const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
+  const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
+  const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
+
+  const allSecteurs = useMemo(() =>
+    [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort()
+  , [state.prospects]);
+
+  const allPostalCodes = useMemo(() =>
+    [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort()
+  , [state.prospects]);
+
+  const toggleFilter = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    setter(next);
+  };
+
+  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0;
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -45,18 +141,23 @@ export default function PipelinePage() {
   const columns = state.pipelineColumns;
 
   const prospectsByStage = useMemo(() => {
+    const filtered = state.prospects.filter(p => {
+      if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
+      if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
+      return true;
+    });
     const map: Record<string, Prospect[]> = {};
     for (const col of columns) {
-      map[col.id] = state.prospects.filter(p => p.etape_pipeline === col.id);
+      map[col.id] = filtered.filter(p => p.etape_pipeline === col.id);
     }
     // Also count prospects in stages not in columns (orphaned)
     const columnIds = new Set(columns.map(c => c.id));
-    const orphaned = state.prospects.filter(p => !columnIds.has(p.etape_pipeline));
+    const orphaned = filtered.filter(p => !columnIds.has(p.etape_pipeline));
     if (orphaned.length > 0) {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -146,6 +247,35 @@ export default function PipelinePage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline commercial</h1>
           <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les etapes</p>
+        </div>
+        {/* Filters */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {allSecteurs.length > 0 && (
+            <PipelineFilterDropdown
+              label="Secteur"
+              options={allSecteurs.map(s => ({ value: s, label: s }))}
+              selected={filterSecteurs}
+              onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+              color="amber"
+            />
+          )}
+          {allPostalCodes.length > 0 && (
+            <PipelineFilterDropdown
+              label="Code postal"
+              options={allPostalCodes.map(c => ({ value: c, label: c }))}
+              selected={filterPostalCodes}
+              onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
+              color="teal"
+            />
+          )}
+          {hasActiveFilters && (
+            <button
+              className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <select
           className="text-[10px] sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"

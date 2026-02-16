@@ -54,6 +54,7 @@ export default function MapPage() {
   const [selectedTags, setSelectedTags] = usePersistedState<string[]>('map_tags', []);
   const [selectedSecteurs, setSelectedSecteurs] = usePersistedState<string[]>('map_secteurs', []);
   const [selectedRegions, setSelectedRegions] = usePersistedState<string[]>('map_regions', []);
+  const [selectedPostalCodes, setSelectedPostalCodes] = usePersistedState<string[]>('map_postal_codes', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showRdvPanel, setShowRdvPanel] = useState(false);
@@ -108,6 +109,11 @@ export default function MapPage() {
     return REGION_LABELS.filter(r => regionSet.has(r));
   }, [state.prospects]);
 
+  // Extract unique postal codes
+  const allPostalCodes = useMemo(() => {
+    return [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort();
+  }, [state.prospects]);
+
   // Tournees = secteurs qui ont des prospects avec coordonnees
   const tournees = useMemo(() => {
     const map = new Map<string, number>();
@@ -140,6 +146,7 @@ export default function MapPage() {
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
       if (selectedSecteurs.length > 0 && !selectedSecteurs.includes(p.secteur)) return false;
+      if (selectedPostalCodes.length > 0 && !selectedPostalCodes.includes(p.code_postal)) return false;
       if (selectedRegions.length > 0) {
         const region = DEPARTEMENT_TO_REGION[p.departement];
         if (!region || !selectedRegions.includes(region)) return false;
@@ -156,7 +163,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -188,7 +195,13 @@ export default function MapPage() {
     );
   };
 
-  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedRegions.length;
+  const togglePostalCode = (code: string) => {
+    setSelectedPostalCodes(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+    );
+  };
+
+  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedRegions.length;
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
@@ -378,6 +391,28 @@ export default function MapPage() {
               </div>
             )}
 
+            {/* Postal code filters */}
+            {allPostalCodes.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Code postal</p>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                  {allPostalCodes.map(code => (
+                    <button
+                      key={code}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        selectedPostalCodes.includes(code)
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      onClick={() => togglePostalCode(code)}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Type filters */}
             <div>
               <p className="text-xs font-medium text-gray-500 mb-1.5">Type d'etablissement</p>
@@ -444,7 +479,7 @@ export default function MapPage() {
               {activeFilterCount > 0 && (
                 <button
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedRegions([]); }}
+                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedRegions([]); }}
                 >
                   Reinitialiser les filtres
                 </button>
@@ -456,6 +491,7 @@ export default function MapPage() {
                   stages: selectedStages,
                   tags: selectedTags,
                   secteurs: selectedSecteurs,
+                  postalCodes: selectedPostalCodes,
                   regions: selectedRegions,
                 })}
                 applyFilters={(f) => {
@@ -463,6 +499,7 @@ export default function MapPage() {
                   setSelectedStages((f.stages as PipelineStage[]) || []);
                   setSelectedTags((f.tags as string[]) || []);
                   setSelectedSecteurs((f.secteurs as string[]) || []);
+                  setSelectedPostalCodes((f.postalCodes as string[]) || []);
                   setSelectedRegions((f.regions as string[]) || []);
                 }}
               />
