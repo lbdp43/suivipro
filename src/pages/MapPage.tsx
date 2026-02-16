@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
-import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS } from '../types';
+import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { formatDate, downloadICS } from '../utils/helpers';
@@ -53,6 +53,7 @@ export default function MapPage() {
   const [selectedStages, setSelectedStages] = usePersistedState<PipelineStage[]>('map_stages', []);
   const [selectedTags, setSelectedTags] = usePersistedState<string[]>('map_tags', []);
   const [selectedSecteurs, setSelectedSecteurs] = usePersistedState<string[]>('map_secteurs', []);
+  const [selectedRegions, setSelectedRegions] = usePersistedState<string[]>('map_regions', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showRdvPanel, setShowRdvPanel] = useState(false);
@@ -95,6 +96,18 @@ export default function MapPage() {
     return [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
   }, [state.prospects]);
 
+  // Extract available regions (only those with actual prospects)
+  const availableRegions = useMemo(() => {
+    const regionSet = new Set<string>();
+    state.prospects.forEach(p => {
+      if (p.departement) {
+        const region = DEPARTEMENT_TO_REGION[p.departement];
+        if (region) regionSet.add(region);
+      }
+    });
+    return REGION_LABELS.filter(r => regionSet.has(r));
+  }, [state.prospects]);
+
   // Tournees = secteurs qui ont des prospects avec coordonnees
   const tournees = useMemo(() => {
     const map = new Map<string, number>();
@@ -127,6 +140,10 @@ export default function MapPage() {
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
       if (selectedSecteurs.length > 0 && !selectedSecteurs.includes(p.secteur)) return false;
+      if (selectedRegions.length > 0) {
+        const region = DEPARTEMENT_TO_REGION[p.departement];
+        if (!region || !selectedRegions.includes(region)) return false;
+      }
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -139,7 +156,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, searchTerm, showRdvPanel, rdvProspectIds]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -165,7 +182,13 @@ export default function MapPage() {
     );
   };
 
-  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length;
+  const toggleRegion = (region: string) => {
+    setSelectedRegions(prev =>
+      prev.includes(region) ? prev.filter(r => r !== region) : [...prev, region]
+    );
+  };
+
+  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedRegions.length;
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
@@ -311,6 +334,28 @@ export default function MapPage() {
         {/* Filter panels */}
         {showFilters && (
           <div className="space-y-3 pt-2 border-t border-gray-100 fade-in">
+            {/* Region filters */}
+            {availableRegions.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Region</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {availableRegions.map(region => (
+                    <button
+                      key={region}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        selectedRegions.includes(region)
+                          ? 'bg-brewery-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      onClick={() => toggleRegion(region)}
+                    >
+                      {region}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Sector filters */}
             {allSecteurs.length > 0 && (
               <div>
@@ -399,7 +444,7 @@ export default function MapPage() {
               {activeFilterCount > 0 && (
                 <button
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); }}
+                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedRegions([]); }}
                 >
                   Reinitialiser les filtres
                 </button>
@@ -411,12 +456,14 @@ export default function MapPage() {
                   stages: selectedStages,
                   tags: selectedTags,
                   secteurs: selectedSecteurs,
+                  regions: selectedRegions,
                 })}
                 applyFilters={(f) => {
                   setSelectedTypes((f.types as EstablishmentType[]) || []);
                   setSelectedStages((f.stages as PipelineStage[]) || []);
                   setSelectedTags((f.tags as string[]) || []);
                   setSelectedSecteurs((f.secteurs as string[]) || []);
+                  setSelectedRegions((f.regions as string[]) || []);
                 }}
               />
             </div>
