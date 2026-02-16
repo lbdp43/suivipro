@@ -13,6 +13,7 @@ import RemindersPage from './pages/RemindersPage';
 import EmailsPage from './pages/EmailsPage';
 import ImportPage from './pages/ImportPage';
 import AdminPage from './pages/AdminPage';
+import ProfilePage from './pages/ProfilePage';
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/rappels" element={<RemindersPage />} />
         <Route path="/emails" element={<EmailsPage />} />
         <Route path="/import" element={<ImportPage />} />
+        <Route path="/profil" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
       </Route>
     </Routes>

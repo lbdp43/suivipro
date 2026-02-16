@@ -104,23 +104,30 @@ export default function Layout() {
         {/* User info + logout */}
         <div className="p-3 border-t border-gray-200">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              isAdmin ? 'bg-amber-100' : 'bg-brewery-100'
-            }`}>
-              {isAdmin ? (
-                <Shield className="w-4 h-4 text-amber-700" />
-              ) : (
-                <User className="w-4 h-4 text-brewery-700" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {state.currentUser?.prenom} {state.currentUser?.nom}
-              </p>
-              <p className="text-[10px] text-gray-500">
-                {isAdmin ? 'Administrateur' : 'Commercial'}
-              </p>
-            </div>
+            <Link
+              to="/profil"
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center gap-3 flex-1 min-w-0 rounded-lg hover:bg-gray-50 transition-colors -mx-1 px-1 py-1"
+              title="Mon profil"
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                isAdmin ? 'bg-amber-100' : 'bg-brewery-100'
+              }`}>
+                {isAdmin ? (
+                  <Shield className="w-4 h-4 text-amber-700" />
+                ) : (
+                  <User className="w-4 h-4 text-brewery-700" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {state.currentUser?.prenom} {state.currentUser?.nom}
+                </p>
+                <p className="text-[10px] text-gray-500">
+                  {isAdmin ? 'Administrateur' : 'Commercial'}
+                </p>
+              </div>
+            </Link>
             <button
               className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
               onClick={handleLogout}
@@ -157,7 +164,7 @@ export default function Layout() {
             }`}>
               {isAdmin ? 'Admin' : 'Commercial'}
             </div>
-            <span className="font-medium">{state.currentUser?.prenom}</span>
+            <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors">{state.currentUser?.prenom}</Link>
           </div>
         </header>
 
