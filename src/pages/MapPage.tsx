@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
-  Filter, MapPin, Phone, Mail, ExternalLink, Route, Calendar, CalendarPlus,
+  Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
   ChevronLeft, ChevronRight, Users, X, Check,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -140,14 +140,6 @@ export default function MapPage() {
       .map(([nom, count]) => ({ nom, count }))
       .sort((a, b) => a.nom.localeCompare(b.nom));
   }, [state.prospects]);
-
-  const selectTournee = (secteur: string) => {
-    if (selectedSecteurs.length === 1 && selectedSecteurs[0] === secteur) {
-      setSelectedSecteurs([]);
-    } else {
-      setSelectedSecteurs([secteur]);
-    }
-  };
 
   const filteredProspects = useMemo(() => {
     return state.prospects.filter(p => {
@@ -312,44 +304,6 @@ export default function MapPage() {
             )}
           </div>
         </div>
-
-        {/* Raccourcis tournees */}
-        {tournees.length > 0 && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
-            <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
-              <Route className="w-3.5 h-3.5" /> Tournees :
-            </span>
-            {tournees.map(t => (
-              <button
-                key={t.nom}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                  selectedSecteurs.length === 1 && selectedSecteurs[0] === t.nom
-                    ? 'bg-brewery-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-brewery-50 hover:text-brewery-700'
-                }`}
-                onClick={() => selectTournee(t.nom)}
-              >
-                <MapPin className="w-3 h-3" />
-                {t.nom}
-                <span className={`text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center ${
-                  selectedSecteurs.length === 1 && selectedSecteurs[0] === t.nom
-                    ? 'bg-white/20 text-white'
-                    : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {t.count}
-                </span>
-              </button>
-            ))}
-            {selectedSecteurs.length > 0 && (
-              <button
-                className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
-                onClick={() => setSelectedSecteurs([])}
-              >
-                Tout afficher
-              </button>
-            )}
-          </div>
-        )}
 
         {/* Legende couleurs pipeline - cachee sur mobile */}
         <div className="hidden sm:flex items-center gap-2 flex-wrap">
