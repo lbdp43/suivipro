@@ -422,12 +422,30 @@ export default function ImportPage() {
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
+
+      // Patterns for recognizable column names
+      const headerPatterns = ['denom', 'raison', 'societe', 'société', 'enseigne', 'nom', 'client', 'tel', 'adresse', 'address', 'mobile', 'fixe', 'portable', 'mail', 'email', 'ville', 'code postal', 'siret', 'siren', 'activite', 'activité', 'ape', 'naf', 'ca ', 'chiffre'];
+
+      // First pass: read as raw arrays to find the real header row
+      const rawArrays = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
+      let headerRowIndex = 0;
+      for (let r = 0; r < Math.min(15, rawArrays.length); r++) {
+        const rowVals = (rawArrays[r] || []).map(v => String(v ?? '').toLowerCase().trim()).filter(Boolean);
+        if (rowVals.length < 2) continue;
+        const recognizable = rowVals.filter(v => headerPatterns.some(p => v.includes(p)));
+        if (recognizable.length >= 2) {
+          headerRowIndex = r;
+          break;
+        }
+      }
+
+      // Re-parse with correct header row
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { range: headerRowIndex });
       setCrossTotalRows(rows.length);
       if (rows.length === 0) { setCrossSearching(false); setCrossDone(true); return; }
 
-      // Auto-detect columns from first row headers
-      const headers = Object.keys(rows[0]);
+      // Auto-detect columns from headers (filter out __EMPTY columns)
+      const headers = Object.keys(rows[0]).filter(h => !h.startsWith('__EMPTY'));
       const findCol = (patterns: string[]): string => {
         for (const pat of patterns) {
           const p = pat.toLowerCase();
@@ -437,16 +455,16 @@ export default function ImportPage() {
         return '';
       };
 
-      const colDenom = findCol(['dénomination', 'denomination', 'raison sociale', 'etablissement', 'société', 'societe', 'enseigne', 'nom du', 'nom_etablissement', 'client']);
-      // Fallback: use first string-looking column if nothing found
+      const colDenom = findCol(['dénomination', 'denomination', 'raison sociale', 'etablissement', 'société', 'societe', 'enseigne', 'nom du', 'nom_etablissement', 'client', 'nom']);
+      // Fallback: use first non-__EMPTY string-looking column if nothing found
       const colDenomFinal = colDenom || headers.find(h => {
         const sample = String(rows[0][h] || '');
         return sample.length > 2 && !/^\d+$/.test(sample);
-      }) || headers[0];
+      }) || headers[0] || Object.keys(rows[0])[0];
 
       const colTelFixe = findCol(['tél. fixe', 'tel. fixe', 'tel fixe', 'telephone fixe', 'fixe', 'tel.', 'téléphone', 'telephone', 'tel']);
       const colTelMobile = findCol(['tél. mobile', 'tel. mobile', 'tel mobile', 'mobile', 'portable', 'gsm', 'cellulaire']);
-      const colAdresse = findCol(['adresse', 'address', 'adresse postale', 'adresse complete']);
+      const colAdresse = findCol(['adresse', 'address', 'adresse postale', 'adresse complete', 'rue']);
 
       setCrossDetectedCols({
         denomination: colDenomFinal,
