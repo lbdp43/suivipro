@@ -150,10 +150,8 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const admin = isAdmin(req);
 
-  // Admins see everything, commercials only see their own data
-  const prospectQuery = admin
-    ? 'SELECT * FROM prospects'
-    : 'SELECT * FROM prospects WHERE commercial_id = $1';
+  // Admins see everything, commercials see all prospects but only their own calls/appointments/reminders
+  const prospectQuery = 'SELECT * FROM prospects';
   const callQuery = admin
     ? 'SELECT * FROM calls'
     : 'SELECT * FROM calls WHERE commercial_id = $1';
@@ -167,7 +165,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   const params = admin ? [] : [userId];
 
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns] = await Promise.all([
-    db.query(prospectQuery, params),
+    db.query(prospectQuery),
     db.query(callQuery, params),
     db.query(appointmentQuery, params),
     db.query(reminderQuery, params),
@@ -194,9 +192,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/prospects', authMiddleware, asyncHandler(async (req, res) => {
-  const result = isAdmin(req)
-    ? await db.query('SELECT * FROM prospects')
-    : await db.query('SELECT * FROM prospects WHERE commercial_id = $1', [req.user.id]);
+  const result = await db.query('SELECT * FROM prospects');
   res.json(result.rows.map(parseProspect));
 }));
 
