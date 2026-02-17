@@ -147,28 +147,12 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-  const admin = isAdmin(req);
-
-  // Admins see everything, commercials see all prospects but only their own calls/appointments/reminders
-  const prospectQuery = 'SELECT * FROM prospects';
-  const callQuery = admin
-    ? 'SELECT * FROM calls'
-    : 'SELECT * FROM calls WHERE commercial_id = $1';
-  const appointmentQuery = admin
-    ? 'SELECT * FROM appointments'
-    : 'SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1';
-  const reminderQuery = admin
-    ? 'SELECT * FROM reminders'
-    : 'SELECT * FROM reminders WHERE commercial_id = $1';
-
-  const params = admin ? [] : [userId];
-
+  // All users see all data
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns] = await Promise.all([
-    db.query(prospectQuery),
-    db.query(callQuery, params),
-    db.query(appointmentQuery, params),
-    db.query(reminderQuery, params),
+    db.query('SELECT * FROM prospects'),
+    db.query('SELECT * FROM calls'),
+    db.query('SELECT * FROM appointments'),
+    db.query('SELECT * FROM reminders'),
     db.query('SELECT * FROM commerciaux'),
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
@@ -217,26 +201,14 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateProspect(p);
   if (errors.length > 0) return validationError(res, errors);
 
-  // Ownership check for non-admins
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM prospects WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Prospect non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
-
   await db.query(
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
-    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), isAdmin(req) ? (p.commercial_id || req.user.id) : req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
   );
   res.json({ ok: true });
 }));
 
 router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM prospects WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Prospect non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
   await db.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -299,9 +271,7 @@ router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) =
 // ============================================
 
 router.get('/calls', authMiddleware, asyncHandler(async (req, res) => {
-  const result = isAdmin(req)
-    ? await db.query('SELECT * FROM calls')
-    : await db.query('SELECT * FROM calls WHERE commercial_id = $1', [req.user.id]);
+  const result = await db.query('SELECT * FROM calls');
   res.json(result.rows);
 }));
 
@@ -323,12 +293,6 @@ router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateCall(c);
   if (errors.length > 0) return validationError(res, errors);
 
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM calls WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Appel non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
-
   await db.query(
     'UPDATE calls SET prospect_id=$1, commercial_id=$2, date=$3, duree=$4, resultat=$5, notes=$6 WHERE id=$7',
     [c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id]
@@ -337,11 +301,6 @@ router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 router.delete('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM calls WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Appel non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
   await db.query('DELETE FROM calls WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -351,9 +310,7 @@ router.delete('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/appointments', authMiddleware, asyncHandler(async (req, res) => {
-  const result = isAdmin(req)
-    ? await db.query('SELECT * FROM appointments')
-    : await db.query('SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1', [req.user.id]);
+  const result = await db.query('SELECT * FROM appointments');
   res.json(result.rows);
 }));
 
@@ -375,15 +332,6 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   const errors = validateAppointment(a);
   if (errors.length > 0) return validationError(res, errors);
 
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id, prospecteur_id FROM appointments WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'RDV non trouve' });
-    const row = check.rows[0];
-    if (row.commercial_id !== req.user.id && row.prospecteur_id !== req.user.id) {
-      return res.status(403).json({ error: 'Acces refuse' });
-    }
-  }
-
   await db.query(
     'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9 WHERE id=$10',
     [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, req.params.id]
@@ -392,11 +340,6 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
 }));
 
 router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM appointments WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'RDV non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
   await db.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -406,9 +349,7 @@ router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res)
 // ============================================
 
 router.get('/reminders', authMiddleware, asyncHandler(async (req, res) => {
-  const result = isAdmin(req)
-    ? await db.query('SELECT * FROM reminders')
-    : await db.query('SELECT * FROM reminders WHERE commercial_id = $1', [req.user.id]);
+  const result = await db.query('SELECT * FROM reminders');
   res.json(result.rows);
 }));
 
@@ -430,12 +371,6 @@ router.put('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateReminder(r);
   if (errors.length > 0) return validationError(res, errors);
 
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM reminders WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Rappel non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
-
   await db.query(
     'UPDATE reminders SET prospect_id=$1, commercial_id=$2, date=$3, heure=$4, message=$5, statut=$6 WHERE id=$7',
     [r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id]
@@ -444,11 +379,6 @@ router.put('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 router.delete('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
-  if (!isAdmin(req)) {
-    const check = await db.query('SELECT commercial_id FROM reminders WHERE id = $1', [req.params.id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Rappel non trouve' });
-    if (check.rows[0].commercial_id !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
-  }
   await db.query('DELETE FROM reminders WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
