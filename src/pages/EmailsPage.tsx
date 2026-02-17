@@ -212,7 +212,7 @@ export default function EmailsPage() {
 
       {/* Edit/Create modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editing ? 'Modifier le template' : 'Nouveau template'}</h3>
@@ -252,7 +252,7 @@ export default function EmailsPage() {
 
       {/* Preview modal */}
       {showPreview && selectedTemplate && (
-        <div className="modal-backdrop" onClick={() => setShowPreview(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Previsualisation</h3>

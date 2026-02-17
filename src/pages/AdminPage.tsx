@@ -302,7 +302,7 @@ export default function AdminPage() {
 
           {/* User form modal */}
           {showUserForm && (
-            <div className="modal-backdrop" onClick={() => setShowUserForm(false)}>
+            <div className="modal-backdrop">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
                 <div className="p-5 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">
@@ -563,7 +563,7 @@ export default function AdminPage() {
           </div>
 
           {showTagForm && (
-            <div className="modal-backdrop" onClick={() => setShowTagForm(false)}>
+            <div className="modal-backdrop">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
                 <div className="p-5 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">{editingTag ? 'Modifier le tag' : 'Nouveau tag'}</h3>

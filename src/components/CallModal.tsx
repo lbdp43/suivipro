@@ -295,7 +295,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
       {/* Global Call Modal */}
       {showModal && prospect && (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center" onClick={() => { if (!callActive) cancelCall(); }}>
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {/* Header */}
             {!showConfirmation && (

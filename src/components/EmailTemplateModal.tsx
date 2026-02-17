@@ -35,7 +35,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-gray-900 flex items-center gap-2">

@@ -259,7 +259,7 @@ export default function CallsPage() {
 
       {/* Edit call modal */}
       {editingCall && (
-        <div className="modal-backdrop" onClick={() => setEditingCall(null)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-sm sm:text-base">Modifier l'appel</h3>

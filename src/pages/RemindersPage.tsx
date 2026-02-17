@@ -303,7 +303,7 @@ export default function RemindersPage() {
 
       {/* Modale Reporter */}
       {snoozeTarget && (
-        <div className="modal-backdrop" onClick={() => setSnoozeTarget(null)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -393,7 +393,7 @@ export default function RemindersPage() {
 
       {/* Modale Modifier */}
       {editTarget && (
-        <div className="modal-backdrop" onClick={() => setEditTarget(null)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -454,7 +454,7 @@ export default function RemindersPage() {
 
       {/* Form modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Programmer un rappel</h3>

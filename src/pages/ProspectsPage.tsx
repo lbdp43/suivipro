@@ -968,7 +968,7 @@ export default function ProspectsPage() {
 
       {/* Quick notes modal */}
       {quickNoteId && (
-        <div className="modal-backdrop" onClick={() => setQuickNoteId(null)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -1005,7 +1005,7 @@ export default function ProspectsPage() {
 
       {/* Prospect form modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editingProspect ? 'Modifier le prospect' : 'Nouveau prospect'}</h3>
