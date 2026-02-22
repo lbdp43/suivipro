@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download } from 'lucide-react';
+import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download, Edit2, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Prospect, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';
@@ -16,6 +16,8 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [showDocPicker, setShowDocPicker] = useState(false);
+  const [prospectEmail, setProspectEmail] = useState(prospect.email || '');
+  const [editingEmail, setEditingEmail] = useState(!prospect.email);
 
   const commercial = state.currentUser;
 
@@ -37,8 +39,28 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
     );
   };
 
+  const saveEmail = () => {
+    if (prospectEmail.trim()) {
+      dispatch({
+        type: 'UPDATE_PROSPECT',
+        payload: { ...prospect, email: prospectEmail.trim(), date_modification: new Date().toISOString() },
+      });
+      setEditingEmail(false);
+    }
+  };
+
   const sendEmail = () => {
-    if (!selectedTemplate || !prospect.email) return;
+    if (!selectedTemplate || !prospectEmail.trim()) return;
+    const emailToUse = prospectEmail.trim();
+
+    // Save email on prospect if changed
+    if (emailToUse !== prospect.email) {
+      dispatch({
+        type: 'UPDATE_PROSPECT',
+        payload: { ...prospect, email: emailToUse, date_modification: new Date().toISOString() },
+      });
+    }
+
     const subject = encodeURIComponent(replaceVariables(selectedTemplate.sujet));
     let bodyText = replaceVariables(selectedTemplate.corps);
 
@@ -52,7 +74,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
     }
 
     const body = encodeURIComponent(bodyText);
-    window.open(`mailto:${prospect.email}?subject=${subject}&body=${body}`, '_blank');
+    window.open(`mailto:${emailToUse}?subject=${subject}&body=${body}`, '_blank');
 
     // Auto-download selected documents so the user can attach them
     selectedDocs.forEach(doc => {
@@ -98,9 +120,48 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
         <div className="p-5 space-y-4">
           {/* Destinataire */}
           <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-xs text-gray-500">Destinataire</p>
+            <p className="text-xs text-gray-500 mb-1">Destinataire</p>
             <p className="text-sm font-medium text-gray-900">{prospect.nom_contact} - {prospect.nom_etablissement}</p>
-            <p className="text-xs text-gray-500">{prospect.email || 'Pas d\'email renseigne'}</p>
+            {editingEmail ? (
+              <div className="flex items-center gap-2 mt-1.5">
+                <input
+                  type="email"
+                  className="flex-1 px-2.5 py-1.5 border border-purple-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                  placeholder="Saisir l'email du prospect..."
+                  value={prospectEmail}
+                  onChange={e => setProspectEmail(e.target.value)}
+                  autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter' && prospectEmail.trim()) saveEmail(); }}
+                />
+                <button
+                  className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  onClick={saveEmail}
+                  disabled={!prospectEmail.trim()}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <Mail className="w-3 h-3 text-gray-400" />
+                <span className="text-xs text-gray-600">{prospectEmail}</span>
+                <button
+                  className="p-0.5 text-gray-400 hover:text-purple-600 rounded"
+                  onClick={() => setEditingEmail(true)}
+                  title="Modifier l'email"
+                >
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {!prospectEmail.trim() && !editingEmail && (
+              <button
+                className="mt-1.5 text-xs text-purple-600 hover:text-purple-700 font-medium underline"
+                onClick={() => setEditingEmail(true)}
+              >
+                + Ajouter un email
+              </button>
+            )}
           </div>
 
           {/* Liste des templates */}
@@ -222,7 +283,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
           <button
             className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={sendEmail}
-            disabled={!selectedTemplateId || !prospect.email}
+            disabled={!selectedTemplateId || !prospectEmail.trim()}
           >
             <Send className="w-4 h-4" /> Envoyer
             {selectedDocIds.length > 0 && (
