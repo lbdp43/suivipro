@@ -386,21 +386,12 @@ export default function AppointmentsPage() {
             </button>
           )}
           {rdv.statut !== 'termine' && (
-            <>
-              <button
-                className="p-1.5 rounded bg-green-50 hover:bg-green-100 text-green-600"
-                onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
-                title="Confirmer"
-              >
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button
-                className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-[11px] font-medium"
-                onClick={() => openCompteRendu(rdv)}
-              >
-                <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
-              </button>
-            </>
+            <button
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-[11px] font-medium"
+              onClick={() => openCompteRendu(rdv)}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
+            </button>
           )}
           <button
             className="p-1.5 rounded bg-red-50 hover:bg-red-100 text-red-500"
