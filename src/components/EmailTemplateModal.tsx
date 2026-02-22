@@ -60,7 +60,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
     });
 
     // Move prospect to negociation if not already in a terminal stage
-    if (!['gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
+    if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
       dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
     }
 

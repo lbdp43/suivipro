@@ -442,7 +442,7 @@ export function exportProspectsCSV(prospects: Prospect[]): void {
 
 export function getConversionRate(prospects: Prospect[]): number {
   if (prospects.length === 0) return 0;
-  const converted = prospects.filter(p => p.etape_pipeline === 'gagne').length;
+  const converted = prospects.filter(p => p.etape_pipeline === 'client_gagne').length;
   return Math.round((converted / prospects.length) * 100);
 }
 

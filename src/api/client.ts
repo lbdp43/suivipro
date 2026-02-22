@@ -246,6 +246,8 @@ export function syncAction(type: string, payload: unknown) {
       return del(`/pipeline-columns/${payload}`);
     case 'ADD_PIPELINE_COLUMN':
       return post('/pipeline-columns', payload);
+    case 'REORDER_PIPELINE_COLUMNS':
+      return put('/pipeline-columns-reorder', { order: (payload as Array<{ id: string }>).map((c, i) => ({ id: c.id, sort_order: i })) });
 
     // Documents
     case 'ADD_DOCUMENT':

@@ -540,7 +540,7 @@ export default function AdminPage() {
             <div className="divide-y divide-gray-100">
               {state.tags.map(tag => {
                 const prospectCount = state.prospects.filter(p => p.tags.includes(tag.id)).length;
-                const convertedCount = state.prospects.filter(p => p.tags.includes(tag.id) && p.etape_pipeline === 'gagne').length;
+                const convertedCount = state.prospects.filter(p => p.tags.includes(tag.id) && p.etape_pipeline === 'client_gagne').length;
                 return (
                   <div key={tag.id} className="p-4 flex items-center gap-4">
                     <div className="w-8 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: tag.couleur }} />

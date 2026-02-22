@@ -188,7 +188,7 @@ export default function AppointmentsPage() {
 
       // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
       const prospect = state.prospects.find(p => p.id === formData.prospect_id);
-      if (prospect && !['gagne', 'perdu'].includes(prospect.etape_pipeline)) {
+      if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
         dispatch({
           type: 'MOVE_PROSPECT',
           payload: { id: prospect.id, stage: 'gagne' },
@@ -207,7 +207,7 @@ export default function AppointmentsPage() {
   const openCompteRendu = (rdv: Appointment) => {
     setCompteRenduRdv(rdv);
     setCompteRenduResult((rdv.compte_rendu as AppointmentResult) || '');
-    setCompteRenduNotes(rdv.notes);
+    setCompteRenduNotes(rdv.notes_compte_rendu || '');
     setCompteRenduRappel(false);
     const in7days = new Date();
     in7days.setDate(in7days.getDate() + 7);
@@ -220,13 +220,14 @@ export default function AppointmentsPage() {
     if (!compteRenduRdv) return;
 
     // Update the appointment with compte_rendu and mark as termine
+    // notes_compte_rendu is separate from the original appointment notes
     dispatch({
       type: 'UPDATE_APPOINTMENT',
       payload: {
         ...compteRenduRdv,
         statut: 'termine',
         compte_rendu: compteRenduResult,
-        notes: compteRenduNotes,
+        notes_compte_rendu: compteRenduNotes,
       },
     });
 
@@ -234,11 +235,11 @@ export default function AppointmentsPage() {
     const prospect = getProspect(compteRenduRdv.prospect_id);
     if (prospect) {
       if (compteRenduResult === 'client') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'gagne' } });
+        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'client_gagne' } });
       } else if (compteRenduResult === 'pas_interesse') {
         dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
       } else if (compteRenduResult === 'mail_envoye' || compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard') {
-        if (!['gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+        if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
           dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
         }
       }
@@ -355,6 +356,9 @@ export default function AppointmentsPage() {
             <p className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded flex items-center gap-1">
               <ClipboardCheck className="w-3 h-3" /> {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
             </p>
+          )}
+          {rdv.notes_compte_rendu && (
+            <p className="text-[10px] text-gray-500 bg-indigo-50/50 px-2 py-1 rounded italic">{rdv.notes_compte_rendu}</p>
           )}
           <p className="text-[10px] text-gray-400 flex items-center gap-1">
             <Users className="w-3 h-3" /> {commercial?.prenom} {commercial?.nom}
@@ -766,6 +770,9 @@ export default function AppointmentsPage() {
                                       <p className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded mt-1 flex items-center gap-1 w-fit">
                                         <ClipboardCheck className="w-3 h-3" /> {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
                                       </p>
+                                    )}
+                                    {rdv.notes_compte_rendu && (
+                                      <p className="text-[10px] text-gray-500 bg-indigo-50/50 px-2 py-1 rounded mt-1 italic">{rdv.notes_compte_rendu}</p>
                                     )}
                                   </div>
 
@@ -1179,7 +1186,7 @@ export default function AppointmentsPage() {
                     })}
                   </div>
                   {compteRenduResult === 'client' && (
-                    <p className="text-[10px] text-green-600 mt-1 italic">Le prospect sera deplace dans "Gagne"</p>
+                    <p className="text-[10px] text-green-600 mt-1 italic">Le prospect sera deplace dans l'etape "Gagne"</p>
                   )}
                   {compteRenduResult === 'pas_interesse' && (
                     <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>

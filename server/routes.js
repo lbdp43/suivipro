@@ -322,8 +322,8 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-    [a.id, a.prospect_id, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '']
+    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+    [a.id, a.prospect_id, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '']
   );
   res.json({ ok: true });
 }));
@@ -334,8 +334,8 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10 WHERE id=$11',
-    [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', req.params.id]
+    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11 WHERE id=$12',
+    [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', req.params.id]
   );
   res.json({ ok: true });
 }));
@@ -475,6 +475,15 @@ router.put('/pipeline-columns/:id', authMiddleware, adminOnly, asyncHandler(asyn
 
 router.delete('/pipeline-columns/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM pipeline_columns WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+router.put('/pipeline-columns-reorder', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { order } = req.body; // array of { id, sort_order }
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array is required' });
+  for (const item of order) {
+    await db.query('UPDATE pipeline_columns SET sort_order=$1 WHERE id=$2', [item.sort_order, item.id]);
+  }
   res.json({ ok: true });
 }));
 

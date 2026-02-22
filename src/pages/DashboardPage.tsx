@@ -85,8 +85,8 @@ export default function DashboardPage() {
       count: state.prospects.filter(p => p.etape_pipeline === col.id).length,
     }));
 
-    const activeProspects = state.prospects.filter(p => !['gagne', 'perdu'].includes(p.etape_pipeline)).length;
-    const wonProspects = state.prospects.filter(p => p.etape_pipeline === 'gagne').length;
+    const activeProspects = state.prospects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length;
+    const wonProspects = state.prospects.filter(p => p.etape_pipeline === 'client_gagne').length;
 
     return {
       callsToday: callsToday.length,
@@ -166,7 +166,7 @@ export default function DashboardPage() {
       const monthRdvTaken = getAppointmentsThisMonth(rdvTakenAsProspector);
       const responseRate = getResponseRate(userCalls);
       const avgDuration = getAverageCallDuration(userCalls);
-      const wonProspects = userProspects.filter(p => p.etape_pipeline === 'gagne').length;
+      const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
 
       // Prospects created this month by this user
       const now = new Date();
@@ -194,7 +194,7 @@ export default function DashboardPage() {
         responseRate,
         avgDuration,
         totalProspects: userProspects.length,
-        activeProspects: userProspects.filter(p => !['gagne', 'perdu'].includes(p.etape_pipeline)).length,
+        activeProspects: userProspects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length,
         wonProspects,
         objective,
         progress,
@@ -464,7 +464,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <p className="text-[10px] text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
-                      {cr.notes && <p className="text-[10px] text-gray-400 truncate mt-0.5">{cr.notes}</p>}
+                      {cr.notes_compte_rendu && <p className="text-[10px] text-gray-400 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
                     </div>
                   </div>
                 );

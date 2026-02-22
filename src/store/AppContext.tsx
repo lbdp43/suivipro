@@ -38,6 +38,7 @@ type Action =
   | { type: 'UPDATE_PIPELINE_COLUMN'; payload: PipelineColumn }
   | { type: 'DELETE_PIPELINE_COLUMN'; payload: string }
   | { type: 'ADD_PIPELINE_COLUMN'; payload: PipelineColumn }
+  | { type: 'REORDER_PIPELINE_COLUMNS'; payload: PipelineColumn[] }
   | { type: 'ADD_DOCUMENT'; payload: Document }
   | { type: 'DELETE_DOCUMENT'; payload: string };
 
@@ -117,6 +118,8 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'ADD_PIPELINE_COLUMN':
       return { ...state, pipelineColumns: [...state.pipelineColumns, action.payload] };
+    case 'REORDER_PIPELINE_COLUMNS':
+      return { ...state, pipelineColumns: action.payload };
     case 'ADD_DOCUMENT':
       return { ...state, documents: [action.payload, ...state.documents] };
     case 'DELETE_DOCUMENT':
@@ -130,9 +133,9 @@ function reducer(state: AppState, action: Action): AppState {
 // Default pipeline columns
 // ============================================
 
-const defaultPipelineColumns: PipelineColumn[] = (
-  Object.keys(PIPELINE_LABELS) as PipelineStage[]
-).map(key => ({
+const defaultPipelineColumns: PipelineColumn[] = ([
+  'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
+] as PipelineStage[]).map(key => ({
   id: key,
   label: PIPELINE_LABELS[key],
   color: PIPELINE_COLORS[key],

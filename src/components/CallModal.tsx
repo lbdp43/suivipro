@@ -167,7 +167,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         newStage = 'ne_pas_contacter';
       }
       // Regle : RDV pris → "Gagne" (prioritaire)
-      else if (hasRdv && !['gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+      else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
         newStage = 'gagne';
       }
       // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"

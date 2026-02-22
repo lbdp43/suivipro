@@ -32,6 +32,7 @@ export default function ProspectsPage() {
   const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
   const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
   const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
+  const [filterAvecRdv, setFilterAvecRdv] = useState(false);
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [pageSize, setPageSize] = useState(50);
@@ -207,13 +208,20 @@ export default function ProspectsPage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0;
+  const prospectIdsWithRdv = useMemo(() => {
+    const ids = new Set<string>();
+    state.appointments.forEach(a => ids.add(a.prospect_id));
+    return ids;
+  }, [state.appointments]);
+
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv;
   const clearAllFilters = () => {
     setFilterTypes(new Set());
     setFilterStages(new Set());
     setFilterSecteurs(new Set());
     setFilterPostalCodes(new Set());
     setFilterDepartments(new Set());
+    setFilterAvecRdv(false);
   };
 
   const filteredProspects = useMemo(() => {
@@ -223,6 +231,7 @@ export default function ProspectsPage() {
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
+      if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -240,12 +249,12 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, sortScore, sortDate, pageSize]);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, sortScore, sortDate, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -414,6 +423,15 @@ export default function ProspectsPage() {
                 color="brewery"
               />
             )}
+            <button
+              className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+                filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => setFilterAvecRdv(!filterAvecRdv)}
+              title="Filtrer les prospects ayant au moins un RDV"
+            >
+              <Calendar className="w-3 h-3" /> Avec RDV
+            </button>
             {hasActiveFilters && (
               <button
                 className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"

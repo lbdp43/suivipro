@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Filter, Check } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Filter, Check, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
@@ -29,6 +29,13 @@ export default function PipelinePage() {
   const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
   const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
+  const [filterAvecRdv, setFilterAvecRdv] = useState(false);
+
+  const prospectIdsWithRdv = useMemo(() => {
+    const ids = new Set<string>();
+    state.appointments.forEach(a => ids.add(a.prospect_id));
+    return ids;
+  }, [state.appointments]);
 
   const allSecteurs = useMemo(() =>
     [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort()
@@ -65,7 +72,7 @@ export default function PipelinePage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0;
+  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv;
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -92,6 +99,7 @@ export default function PipelinePage() {
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
+      if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
       return true;
     });
     const map: Record<string, Prospect[]> = {};
@@ -105,7 +113,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsWithRdv]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -184,6 +192,20 @@ export default function PipelinePage() {
     setShowAddForm(false);
   };
 
+  const moveColumnUp = (index: number) => {
+    if (index <= 0) return;
+    const newColumns = [...columns];
+    [newColumns[index - 1], newColumns[index]] = [newColumns[index], newColumns[index - 1]];
+    dispatch({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+  };
+
+  const moveColumnDown = (index: number) => {
+    if (index >= columns.length - 1) return;
+    const newColumns = [...columns];
+    [newColumns[index], newColumns[index + 1]] = [newColumns[index + 1], newColumns[index]];
+    dispatch({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+  };
+
   const presetColors = [
     '#6b7280', '#3b82f6', '#8b5cf6', '#f59e0b', '#f97316', '#ef4444', '#22c55e', '#dc2626',
     '#ec4899', '#14b8a6', '#06b6d4', '#84cc16',
@@ -225,10 +247,19 @@ export default function PipelinePage() {
               color="teal"
             />
           )}
+          <button
+            className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+              filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterAvecRdv(!filterAvecRdv)}
+            title="Filtrer les prospects ayant au moins un RDV"
+          >
+            <Calendar className="w-3 h-3" /> Avec RDV
+          </button>
           {hasActiveFilters && (
             <button
               className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); }}
+              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); }}
             >
               <X className="w-3 h-3" />
             </button>
@@ -306,12 +337,31 @@ export default function PipelinePage() {
 
             {/* Existing columns */}
             <div className="space-y-2">
-              {columns.map(col => {
+              {columns.map((col, colIndex) => {
                 const count = (prospectsByStage[col.id] || []).length;
                 const isEditing = editingColumn?.id === col.id;
 
                 return (
-                  <div key={col.id} className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 bg-white">
+                  <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-white">
+                    {/* Reorder arrows */}
+                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                      <button
+                        className="p-0.5 text-gray-300 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                        onClick={() => moveColumnUp(colIndex)}
+                        disabled={colIndex === 0}
+                        title="Monter"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        className="p-0.5 text-gray-300 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                        onClick={() => moveColumnDown(colIndex)}
+                        disabled={colIndex === columns.length - 1}
+                        title="Descendre"
+                      >
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                    </div>
                     <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: col.color }} />
 
                     {isEditing ? (

@@ -183,6 +183,22 @@ async function initDatabase(attempt = 1) {
     try {
       await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS compte_rendu TEXT DEFAULT \'\'');
     } catch { /* column may already exist */ }
+    try {
+      await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS notes_compte_rendu TEXT DEFAULT \'\'');
+    } catch { /* column may already exist */ }
+    // Add client_gagne pipeline column if not present
+    try {
+      const existing = await client.query("SELECT id FROM pipeline_columns WHERE id = 'client_gagne'");
+      if (existing.rows.length === 0) {
+        const maxO = await client.query('SELECT MAX(sort_order) as m FROM pipeline_columns');
+        const nextOrder = (maxO.rows[0]?.m || 0) + 1;
+        // Insert before 'perdu': shift perdu and ne_pas_contacter up
+        await client.query("UPDATE pipeline_columns SET sort_order = sort_order + 1 WHERE sort_order >= 6");
+        await client.query("INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ('client_gagne', 'Gagne', '#16a34a', 6)");
+        // Rename gagne to RDV if it's still the default
+        await client.query("UPDATE pipeline_columns SET label = 'RDV' WHERE id = 'gagne' AND label = 'RDV / Gagne'");
+      }
+    } catch { /* migration may fail on first run */ }
 
     // ============================================
     // Seed data (only if empty)
@@ -230,9 +246,10 @@ async function initDatabase(attempt = 1) {
         ['contacte', 'Contacte', '#8b5cf6', 2],
         ['proposition', 'Proposition', '#f97316', 3],
         ['negociation', 'Negociation', '#ef4444', 4],
-        ['gagne', 'RDV / Gagne', '#22c55e', 5],
-        ['perdu', 'Perdu', '#dc2626', 6],
-        ['ne_pas_contacter', 'Ne pas contacter', '#991b1b', 7],
+        ['gagne', 'RDV', '#22c55e', 5],
+        ['client_gagne', 'Gagne', '#16a34a', 6],
+        ['perdu', 'Perdu', '#dc2626', 7],
+        ['ne_pas_contacter', 'Ne pas contacter', '#991b1b', 8],
       ];
       for (const c of cols) {
         await client.query('INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ($1,$2,$3,$4)', c);

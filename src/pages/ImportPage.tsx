@@ -116,8 +116,8 @@ export default function ImportPage() {
         if (v.includes('echec') || v.includes('échec')) return 'perdu';
         if (v.includes('non qualifi') || v.includes('non qualifié')) return 'perdu';
         if (v.includes('besoin non identifi') || v.includes('besoin non identifié')) return 'perdu';
-        // Gagne: valide
-        if (v.includes('validé') || v.includes('valide') && !v.includes('validation')) return 'gagne';
+        // Gagne: valide, client
+        if (v.includes('validé') || v.includes('valide') && !v.includes('validation')) return 'client_gagne';
         // Proposition: validation en cours
         if (v.includes('validation en cours') || v.includes('validation')) return 'proposition';
         // Contacte: qualification, contacte, contact en cours
@@ -131,7 +131,8 @@ export default function ImportPage() {
         if (v.includes('nouveau') || v.includes('new')) return 'nouveau';
         if (v.includes('proposition') || v.includes('offre')) return 'proposition';
         if (v.includes('negociation') || v.includes('négociation')) return 'negociation';
-        if (v.includes('gagne') || v.includes('gagné') || v.includes('rdv') || v.includes('client')) return 'gagne';
+        if (v.includes('rdv')) return 'gagne';
+        if (v.includes('gagne') || v.includes('gagné') || v.includes('client')) return 'client_gagne';
         if (v.includes('perdu') || v.includes('refuse') || v.includes('refusé')) return 'perdu';
         return 'nouveau';
       };

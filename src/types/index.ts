@@ -57,6 +57,7 @@ export type PipelineStage =
   | 'proposition'
   | 'negociation'
   | 'gagne'
+  | 'client_gagne'
   | 'perdu'
   | 'ne_pas_contacter';
 
@@ -66,7 +67,8 @@ export const PIPELINE_LABELS: Record<PipelineStage, string> = {
   contacte: 'Contacte',
   proposition: 'Proposition',
   negociation: 'Negociation',
-  gagne: 'RDV / Gagne',
+  gagne: 'RDV',
+  client_gagne: 'Gagne',
   perdu: 'Perdu',
   ne_pas_contacter: 'Ne pas contacter',
 };
@@ -78,6 +80,7 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   proposition: '#f97316',
   negociation: '#ef4444',
   gagne: '#22c55e',
+  client_gagne: '#16a34a',
   perdu: '#dc2626',
   ne_pas_contacter: '#991b1b',
 };
@@ -302,6 +305,7 @@ export interface Appointment {
   notes: string;
   statut: AppointmentStatus;
   compte_rendu?: AppointmentResult;
+  notes_compte_rendu?: string;
 }
 
 export interface Reminder {
