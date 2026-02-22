@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Mail, X, Send, Eye, ChevronRight } from 'lucide-react';
+import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Prospect } from '../types';
+import { Prospect, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
+import { downloadDocument } from '../api/client';
 
 interface Props {
   prospect: Prospect;
@@ -12,6 +13,8 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
   const { state } = useApp();
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [showDocPicker, setShowDocPicker] = useState(false);
 
   const commercial = state.currentUser;
 
@@ -25,12 +28,36 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
   };
 
   const selectedTemplate = state.emailTemplates.find(t => t.id === selectedTemplateId);
+  const selectedDocs = state.documents.filter(d => selectedDocIds.includes(d.id));
+
+  const toggleDoc = (docId: string) => {
+    setSelectedDocIds(prev =>
+      prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
+    );
+  };
 
   const sendEmail = () => {
     if (!selectedTemplate || !prospect.email) return;
     const subject = encodeURIComponent(replaceVariables(selectedTemplate.sujet));
-    const body = encodeURIComponent(replaceVariables(selectedTemplate.corps));
+    let bodyText = replaceVariables(selectedTemplate.corps);
+
+    // Add attachment note if documents selected
+    if (selectedDocs.length > 0) {
+      bodyText += '\n\n---\nPieces jointes a envoyer :\n';
+      selectedDocs.forEach(doc => {
+        bodyText += `- ${doc.nom} (${doc.nom_fichier})\n`;
+      });
+      bodyText += '\n(Pensez a telecharger et joindre ces fichiers manuellement dans votre client email)';
+    }
+
+    const body = encodeURIComponent(bodyText);
     window.open(`mailto:${prospect.email}?subject=${subject}&body=${body}`, '_blank');
+
+    // Auto-download selected documents so the user can attach them
+    selectedDocs.forEach(doc => {
+      downloadDocument(doc.id, doc.nom_fichier).catch(() => {});
+    });
+
     onClose();
   };
 
@@ -80,6 +107,51 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
             </div>
           </div>
 
+          {/* Pieces jointes */}
+          {state.documents.length > 0 && (
+            <div>
+              <button
+                className="flex items-center gap-1.5 text-xs font-medium text-purple-600 hover:text-purple-700 mb-2"
+                onClick={() => setShowDocPicker(!showDocPicker)}
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                Pieces jointes ({selectedDocIds.length})
+              </button>
+              {showDocPicker && (
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 space-y-2 max-h-48 overflow-y-auto">
+                  {state.documents.map(doc => (
+                    <label key={doc.id} className="flex items-center gap-2.5 cursor-pointer hover:bg-white rounded p-1.5 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={selectedDocIds.includes(doc.id)}
+                        onChange={() => toggleDoc(doc.id)}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700 truncate">{doc.nom}</p>
+                        <p className="text-[10px] text-gray-400">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {selectedDocs.length > 0 && !showDocPicker && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedDocs.map(doc => (
+                    <span key={doc.id} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-[11px]">
+                      <FileText className="w-3 h-3" />
+                      {doc.nom}
+                      <button className="hover:text-purple-900" onClick={() => toggleDoc(doc.id)}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Apercu */}
           {selectedTemplate && (
             <div>
@@ -99,6 +171,19 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
                   <p className="text-xs text-gray-600 whitespace-pre-line leading-relaxed">
                     {replaceVariables(selectedTemplate.corps)}
                   </p>
+                  {selectedDocs.length > 0 && (
+                    <>
+                      <hr className="border-gray-200" />
+                      <div className="text-xs text-gray-500">
+                        <p className="font-medium mb-1">Pieces jointes :</p>
+                        {selectedDocs.map(doc => (
+                          <p key={doc.id} className="flex items-center gap-1">
+                            <Paperclip className="w-3 h-3" /> {doc.nom} ({doc.nom_fichier})
+                          </p>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -118,6 +203,11 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
             disabled={!selectedTemplateId || !prospect.email}
           >
             <Send className="w-4 h-4" /> Envoyer
+            {selectedDocIds.length > 0 && (
+              <span className="bg-purple-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                {selectedDocIds.length}
+              </span>
+            )}
           </button>
         </div>
       </div>

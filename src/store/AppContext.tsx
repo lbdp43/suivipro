@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo } from 'react';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
-  PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS,
+  PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
 } from '../types';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
 
@@ -37,7 +37,9 @@ type Action =
   | { type: 'IMPORT_PROSPECTS'; payload: Prospect[] }
   | { type: 'UPDATE_PIPELINE_COLUMN'; payload: PipelineColumn }
   | { type: 'DELETE_PIPELINE_COLUMN'; payload: string }
-  | { type: 'ADD_PIPELINE_COLUMN'; payload: PipelineColumn };
+  | { type: 'ADD_PIPELINE_COLUMN'; payload: PipelineColumn }
+  | { type: 'ADD_DOCUMENT'; payload: Document }
+  | { type: 'DELETE_DOCUMENT'; payload: string };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -115,6 +117,10 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'ADD_PIPELINE_COLUMN':
       return { ...state, pipelineColumns: [...state.pipelineColumns, action.payload] };
+    case 'ADD_DOCUMENT':
+      return { ...state, documents: [action.payload, ...state.documents] };
+    case 'DELETE_DOCUMENT':
+      return { ...state, documents: state.documents.filter(d => d.id !== action.payload) };
     default:
       return state;
   }
@@ -168,6 +174,7 @@ const emptyState: AppState = {
   emailTemplates: [],
   currentUser: null,
   pipelineColumns: defaultPipelineColumns,
+  documents: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {

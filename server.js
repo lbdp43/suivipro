@@ -55,8 +55,8 @@ app.use('/api/auth/login', rateLimit({
   message: { error: 'Trop de tentatives de connexion, reessayez dans 15 minutes' },
 }));
 
-// Body parser avec limite réduite
-app.use(express.json({ limit: '2mb' }));
+// Body parser — 10mb pour les uploads de documents
+app.use(express.json({ limit: '10mb' }));
 
 // API routes
 app.use('/api', apiRoutes);

@@ -148,7 +148,7 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // All users see all data
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -157,6 +157,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
+    db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
   ]);
 
   res.json({
@@ -168,6 +169,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     tags: tags.rows,
     emailTemplates: emailTemplates.rows,
     pipelineColumns: pipelineColumns.rows,
+    documents: documents.rows,
   });
 }));
 
@@ -539,6 +541,45 @@ router.delete('/commerciaux/:id', authMiddleware, adminOnly, asyncHandler(async 
     return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
   }
   await db.query('DELETE FROM commerciaux WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Documents CRUD
+// ============================================
+
+router.get('/documents', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC');
+  res.json(result.rows);
+}));
+
+router.post('/documents', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { id, nom, categorie, description, nom_fichier, type_mime, taille, contenu } = req.body;
+  if (!nom || !nom_fichier || !contenu) {
+    return res.status(400).json({ error: 'nom, nom_fichier et contenu sont requis' });
+  }
+  await db.query(
+    `INSERT INTO documents (id, nom, categorie, description, nom_fichier, type_mime, taille, contenu, uploaded_by, date_creation)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [id, nom, categorie || 'autre', description || '', nom_fichier, type_mime || 'application/octet-stream', taille || 0, contenu, req.user.id, new Date().toISOString()]
+  );
+  res.json({ ok: true });
+}));
+
+router.get('/documents/:id/download', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+  const doc = result.rows[0];
+  if (!doc) return res.status(404).json({ error: 'Document non trouve' });
+
+  const buffer = Buffer.from(doc.contenu, 'base64');
+  res.setHeader('Content-Type', doc.type_mime);
+  res.setHeader('Content-Disposition', `attachment; filename="${doc.nom_fichier}"`);
+  res.setHeader('Content-Length', buffer.length);
+  res.send(buffer);
+}));
+
+router.delete('/documents/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
 

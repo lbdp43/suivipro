@@ -17,6 +17,7 @@ const EmailsPage = lazy(() => import('./pages/EmailsPage'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 
 function PageLoader() {
   return (
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/rdv" element={<AppointmentsPage />} />
           <Route path="/rappels" element={<RemindersPage />} />
           <Route path="/emails" element={<EmailsPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/profil" element={<ProfilePage />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />

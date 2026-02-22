@@ -160,6 +160,20 @@ async function initDatabase(attempt = 1) {
         color TEXT NOT NULL DEFAULT '#6b7280',
         sort_order INTEGER DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        nom TEXT NOT NULL,
+        categorie TEXT NOT NULL DEFAULT 'autre',
+        description TEXT DEFAULT '',
+        nom_fichier TEXT NOT NULL,
+        type_mime TEXT NOT NULL,
+        taille INTEGER NOT NULL DEFAULT 0,
+        contenu TEXT NOT NULL,
+        uploaded_by TEXT NOT NULL,
+        date_creation TEXT NOT NULL,
+        FOREIGN KEY (uploaded_by) REFERENCES commerciaux(id)
+      );
     `);
 
     // ============================================

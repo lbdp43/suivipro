@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
-  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen,
+  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -24,6 +24,7 @@ export default function Layout() {
     { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
     { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
+    { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
     { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
   ];
@@ -120,6 +121,16 @@ export default function Layout() {
             <BookOpen className="w-4 h-4 flex-shrink-0" />
             <span>Guide Commercial</span>
             <span className="ml-auto text-[10px] text-emerald-400">Ouvrir</span>
+          </a>
+          <a
+            href="https://scan-docu-production.up.railway.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors"
+          >
+            <ScanLine className="w-4 h-4 flex-shrink-0" />
+            <span>Scan Docu</span>
+            <span className="ml-auto text-[10px] text-orange-400">Ouvrir</span>
           </a>
         </div>
 

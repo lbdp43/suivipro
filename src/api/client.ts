@@ -247,7 +247,37 @@ export function syncAction(type: string, payload: unknown) {
     case 'ADD_PIPELINE_COLUMN':
       return post('/pipeline-columns', payload);
 
+    // Documents
+    case 'ADD_DOCUMENT':
+      return post('/documents', payload);
+    case 'DELETE_DOCUMENT':
+      return del(`/documents/${payload}`);
+
     default:
       break;
   }
+}
+
+// ============================================
+// Documents
+// ============================================
+
+export function getDocumentDownloadUrl(documentId: string): string {
+  return `${API_BASE}/documents/${documentId}/download`;
+}
+
+export async function downloadDocument(documentId: string, filename: string) {
+  const res = await fetch(`${API_BASE}/documents/${documentId}/download`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+  if (!res.ok) throw new Error('Erreur de telechargement');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

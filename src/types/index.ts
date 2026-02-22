@@ -339,6 +339,28 @@ export interface PipelineColumn {
   color: string;
 }
 
+export type DocumentCategory = 'bar_restaurant' | 'prix_ce' | 'cave_epicerie' | 'grand_public' | 'autre';
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  bar_restaurant: 'Bar / Restaurant',
+  prix_ce: 'Prix C.E.',
+  cave_epicerie: 'Cave / Epicerie',
+  grand_public: 'Grand Public',
+  autre: 'Autre',
+};
+
+export interface Document {
+  id: string;
+  nom: string;
+  categorie: DocumentCategory;
+  description: string;
+  nom_fichier: string;
+  type_mime: string;
+  taille: number;
+  uploaded_by: string;
+  date_creation: string;
+}
+
 // ============================================
 // App State
 // ============================================
@@ -353,4 +375,5 @@ export interface AppState {
   emailTemplates: EmailTemplate[];
   currentUser: Commercial | null;
   pipelineColumns: PipelineColumn[];
+  documents: Document[];
 }
