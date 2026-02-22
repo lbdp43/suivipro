@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell,
+  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -632,6 +632,20 @@ export default function ProspectsPage() {
                       title="Envoyer un e-mail"
                     >
                       <Mail className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {p.etape_pipeline !== 'client_gagne' && p.etape_pipeline !== 'perdu' && (
+                    <button
+                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (confirm(`Valider "${p.nom_etablissement}" comme client et le passer en "Gagne" ?`)) {
+                          dispatch({ type: 'UPDATE_PROSPECT', payload: { ...p, etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() } });
+                        }
+                      }}
+                      title="Valider comme client (Gagne)"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
                     </button>
                   )}
                   <button

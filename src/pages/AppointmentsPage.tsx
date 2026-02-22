@@ -5,13 +5,12 @@ import {
   ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS } from '../types';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { Prospect } from '../types';
 import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
@@ -41,6 +40,23 @@ export default function AppointmentsPage() {
   const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
   const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
   const [compteRenduEmailProspect, setCompteRenduEmailProspect] = useState<Prospect | null>(null);
+
+  // Edit prospect inline modal
+  const [editProspectData, setEditProspectData] = useState<Prospect | null>(null);
+
+  const openEditProspect = (prospectId: string) => {
+    const p = getProspect(prospectId);
+    if (p) setEditProspectData({ ...p });
+  };
+
+  const saveEditProspect = () => {
+    if (!editProspectData) return;
+    dispatch({
+      type: 'UPDATE_PROSPECT',
+      payload: { ...editProspectData, date_modification: new Date().toISOString() },
+    });
+    setEditProspectData(null);
+  };
 
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -258,7 +274,7 @@ export default function AppointmentsPage() {
       } else if (compteRenduResult === 'pas_interesse') {
         dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
       } else if (compteRenduResult === 'mail_envoye' || compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard') {
-        if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+        if (!['client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
           dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
         }
       }
@@ -346,7 +362,13 @@ export default function AppointmentsPage() {
       <div key={rdv.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm text-gray-900">{prospect?.nom_etablissement || 'Inconnu'}</h4>
+            <button
+              className="font-medium text-sm text-indigo-700 hover:text-indigo-900 hover:underline text-left"
+              onClick={() => prospect && openEditProspect(prospect.id)}
+              title="Cliquer pour modifier les infos du prospect"
+            >
+              {prospect?.nom_etablissement || 'Inconnu'}
+            </button>
             <p className="text-xs text-gray-500 mt-0.5">{prospect?.nom_contact}</p>
           </div>
           <span className={`badge text-[10px] ${statusColors[rdv.statut]}`}>
@@ -741,7 +763,13 @@ export default function AppointmentsPage() {
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <h4 className="font-semibold text-sm text-gray-900 truncate">{prospect?.nom_etablissement || 'Inconnu'}</h4>
+                                      <button
+                                        className="font-semibold text-sm text-indigo-700 hover:text-indigo-900 hover:underline truncate text-left"
+                                        onClick={() => prospect && openEditProspect(prospect.id)}
+                                        title="Modifier les infos du prospect"
+                                      >
+                                        {prospect?.nom_etablissement || 'Inconnu'}
+                                      </button>
                                       <span className={`badge text-[9px] ${statusColors[rdv.statut]}`}>
                                         {APPOINTMENT_STATUS_LABELS[rdv.statut]}
                                       </span>
@@ -1294,6 +1322,130 @@ export default function AppointmentsPage() {
           </div>
         );
       })()}
+
+      {/* Edit prospect inline modal */}
+      {editProspectData && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-indigo-600" /> Modifier le prospect
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setEditProspectData(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nom etablissement</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  value={editProspectData.nom_etablissement}
+                  onChange={e => setEditProspectData({ ...editProspectData, nom_etablissement: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Type etablissement</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  value={editProspectData.type_etablissement}
+                  onChange={e => setEditProspectData({ ...editProspectData, type_etablissement: e.target.value as EstablishmentType })}
+                >
+                  {Object.entries(ESTABLISHMENT_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nom du contact</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    value={editProspectData.nom_contact}
+                    onChange={e => setEditProspectData({ ...editProspectData, nom_contact: e.target.value })}
+                    placeholder="Nom et prenom"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
+                  <input
+                    type="tel"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    value={editProspectData.telephone}
+                    onChange={e => setEditProspectData({ ...editProspectData, telephone: e.target.value })}
+                    placeholder="06 12 34 56 78"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Email {!editProspectData.email && <span className="text-orange-500 text-[10px]">(manquant)</span>}
+                </label>
+                <input
+                  type="email"
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 ${
+                    !editProspectData.email ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'
+                  }`}
+                  value={editProspectData.email}
+                  onChange={e => setEditProspectData({ ...editProspectData, email: e.target.value })}
+                  placeholder="email@exemple.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Adresse</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  value={editProspectData.adresse}
+                  onChange={e => setEditProspectData({ ...editProspectData, adresse: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Code postal</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    value={editProspectData.code_postal}
+                    onChange={e => setEditProspectData({ ...editProspectData, code_postal: e.target.value })}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Ville</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    value={editProspectData.ville}
+                    onChange={e => setEditProspectData({ ...editProspectData, ville: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-16 resize-none focus:ring-2 focus:ring-indigo-500"
+                  value={editProspectData.notes}
+                  onChange={e => setEditProspectData({ ...editProspectData, notes: e.target.value })}
+                  placeholder="Notes sur le prospect..."
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setEditProspectData(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium"
+                onClick={saveEditProspect}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Email modal after compte-rendu with mail_envoye */}
       {compteRenduEmailProspect && (
