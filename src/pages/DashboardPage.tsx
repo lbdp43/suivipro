@@ -216,7 +216,7 @@ export default function DashboardPage() {
       .map(apt => {
         const prospect = state.prospects.find(p => p.id === apt.prospect_id);
         const commercial = allUsers.find(u => u.id === apt.commercial_id);
-        return { ...apt, prospectName: prospect?.nom_etablissement || 'Inconnu', commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu' };
+        return { ...apt, prospectName: prospect?.nom_etablissement || 'Inconnu', contactName: prospect?.nom_contact || '', commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu' };
       });
   }, [state.appointments, state.prospects, allUsers, crFilterResult, crFilterUser]);
 
@@ -504,6 +504,9 @@ export default function DashboardPage() {
                         >
                           {cr.prospectName}
                         </Link>
+                        {cr.contactName && (
+                          <span className="text-[10px] text-gray-500">({cr.contactName})</span>
+                        )}
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>
                           {APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}
                         </span>
