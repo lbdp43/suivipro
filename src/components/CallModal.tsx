@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
@@ -43,6 +43,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [memoHeure, setMemoHeure] = useState('09:00');
   const [newTagName, setNewTagName] = useState('');
   const [showNewTag, setShowNewTag] = useState(false);
+  // Editable prospect info
+  const [editContact, setEditContact] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   // Negative outcome: pas_interesse → perdu, ne_pas_contacter → ne_pas_contacter
   const [negativeOutcome, setNegativeOutcome] = useState<'none' | 'pas_interesse' | 'ne_pas_contacter'>('none');
   // RDV state
@@ -89,6 +92,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setMemoHeure('09:00');
     setShowNewTag(false);
     setNewTagName('');
+    // Init editable prospect info
+    setEditContact(prospect.nom_contact || '');
+    setEditEmail(prospect.email || '');
     // Reset negative outcome + RDV
     setNegativeOutcome('none');
     setShowRdv(false);
@@ -180,6 +186,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         payload: {
           ...prospect,
           tags: selectedTags,
+          nom_contact: editContact.trim() || prospect.nom_contact,
+          email: editEmail.trim() || prospect.email,
           etape_pipeline: newStage,
           date_modification: new Date().toISOString(),
         },
@@ -343,6 +351,43 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   {callTimer > 0 && (
                     <div className="text-center text-sm text-gray-500">
                       Duree de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span>
+                    </div>
+                  )}
+
+                  {/* Editable prospect info */}
+                  {(!prospect.nom_contact || !prospect.email) && (
+                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
+                      <label className="block text-xs font-medium text-orange-700 flex items-center gap-1">
+                        <User className="w-3 h-3" /> Completer les infos du prospect
+                      </label>
+                      <div className="grid grid-cols-1 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-orange-600 mb-0.5">Nom / Prenom du contact</label>
+                          <input
+                            type="text"
+                            className={`w-full px-3 py-1.5 border rounded-lg text-sm bg-white ${
+                              !editContact ? 'border-orange-300 ring-1 ring-orange-200' : 'border-gray-200'
+                            }`}
+                            placeholder="Ex: Jean Dupont"
+                            value={editContact}
+                            onChange={e => setEditContact(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-orange-600 mb-0.5 flex items-center gap-1">
+                            <Mail className="w-3 h-3" /> Adresse e-mail
+                          </label>
+                          <input
+                            type="email"
+                            className={`w-full px-3 py-1.5 border rounded-lg text-sm bg-white ${
+                              !editEmail ? 'border-orange-300 ring-1 ring-orange-200' : 'border-gray-200'
+                            }`}
+                            placeholder="Ex: contact@prospect.com"
+                            value={editEmail}
+                            onChange={e => setEditEmail(e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
 
