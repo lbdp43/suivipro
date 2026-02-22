@@ -57,6 +57,8 @@ const ROLE_LABELS: Record<string, string> = {
 export default function DashboardPage() {
   const { state } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
+  const [crFilterResult, setCrFilterResult] = useState<string>('');
+  const [crFilterUser, setCrFilterUser] = useState<string>('');
 
   const selectedMonth = subMonths(new Date(), -monthOffset);
   const monthStart = startOfMonth(selectedMonth);
@@ -202,22 +204,25 @@ export default function DashboardPage() {
     }).sort((a, b) => b.weekCalls - a.weekCalls); // Sort by most active
   }, [allUsers, state.calls, state.appointments, state.prospects]);
 
-  // Recent RDV compte-rendus
+  // Recent RDV compte-rendus (with filters)
   const recentCompteRendus = useMemo(() => {
-    return state.appointments
-      .filter(a => a.compte_rendu && a.statut === 'termine')
+    let list = state.appointments.filter(a => a.compte_rendu && a.statut === 'termine');
+    if (crFilterResult) list = list.filter(a => a.compte_rendu === crFilterResult);
+    if (crFilterUser) list = list.filter(a => a.commercial_id === crFilterUser);
+    return list
       .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 15)
+      .slice(0, 50)
       .map(apt => {
         const prospect = state.prospects.find(p => p.id === apt.prospect_id);
         const commercial = allUsers.find(u => u.id === apt.commercial_id);
         return { ...apt, prospectName: prospect?.nom_etablissement || 'Inconnu', commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu' };
       });
-  }, [state.appointments, state.prospects, allUsers]);
+  }, [state.appointments, state.prospects, allUsers, crFilterResult, crFilterUser]);
 
-  // Compte-rendu stats
+  // Compte-rendu stats (filtered by user)
   const compteRenduStats = useMemo(() => {
-    const rdvsWithCR = state.appointments.filter(a => a.compte_rendu);
+    let rdvsWithCR = state.appointments.filter(a => a.compte_rendu);
+    if (crFilterUser) rdvsWithCR = rdvsWithCR.filter(a => a.commercial_id === crFilterUser);
     const total = rdvsWithCR.length;
     const byResult: Record<string, number> = {};
     rdvsWithCR.forEach(a => {
@@ -225,7 +230,7 @@ export default function DashboardPage() {
       byResult[cr] = (byResult[cr] || 0) + 1;
     });
     return { total, byResult };
-  }, [state.appointments]);
+  }, [state.appointments, crFilterUser]);
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {
@@ -413,31 +418,64 @@ export default function DashboardPage() {
 
         {/* Compte-rendu RDV */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4 flex items-center gap-2">
-            <ClipboardCheck className="w-4 h-4 text-indigo-500" />
-            Comptes-rendus des RDV
-          </h3>
-          {/* Stats summary */}
-          {compteRenduStats.total > 0 && (
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
-              {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
-                const count = compteRenduStats.byResult[key] || 0;
-                const colorMap: Record<string, string> = {
-                  client: 'bg-green-50 text-green-700',
-                  mail_envoye: 'bg-blue-50 text-blue-700',
-                  commande_plus_tard: 'bg-amber-50 text-amber-700',
-                  a_relancer: 'bg-purple-50 text-purple-700',
-                  pas_interesse: 'bg-red-50 text-red-700',
-                };
-                return (
-                  <div key={key} className={`${colorMap[key] || 'bg-gray-50 text-gray-700'} rounded-lg p-2 text-center`}>
-                    <p className="text-lg font-bold">{count}</p>
-                    <p className="text-[9px] leading-tight">{label}</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-indigo-500" />
+              Comptes-rendus des RDV
+            </h3>
+            <select
+              className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+              value={crFilterUser}
+              onChange={e => setCrFilterUser(e.target.value)}
+            >
+              <option value="">Tout le monde</option>
+              {allUsers.map(u => (
+                <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>
+              ))}
+            </select>
+          </div>
+          {/* Stats summary - clickable to filter by result */}
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+            <button
+              onClick={() => setCrFilterResult('')}
+              className={`rounded-lg p-2 text-center transition-all cursor-pointer ${
+                crFilterResult === '' ? 'bg-indigo-50 text-indigo-700 ring-2 ring-indigo-400' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <p className="text-lg font-bold">{compteRenduStats.total}</p>
+              <p className="text-[9px] leading-tight">Tous</p>
+            </button>
+            {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+              const count = compteRenduStats.byResult[key] || 0;
+              const colorMap: Record<string, string> = {
+                client: 'bg-green-50 text-green-700',
+                mail_envoye: 'bg-blue-50 text-blue-700',
+                commande_plus_tard: 'bg-amber-50 text-amber-700',
+                a_relancer: 'bg-purple-50 text-purple-700',
+                pas_interesse: 'bg-red-50 text-red-700',
+              };
+              const ringMap: Record<string, string> = {
+                client: 'ring-green-400',
+                mail_envoye: 'ring-blue-400',
+                commande_plus_tard: 'ring-amber-400',
+                a_relancer: 'ring-purple-400',
+                pas_interesse: 'ring-red-400',
+              };
+              const isActive = crFilterResult === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setCrFilterResult(isActive ? '' : key)}
+                  className={`${colorMap[key] || 'bg-gray-50 text-gray-700'} rounded-lg p-2 text-center transition-all cursor-pointer hover:opacity-80 ${
+                    isActive ? `ring-2 ${ringMap[key] || 'ring-gray-400'}` : ''
+                  }`}
+                >
+                  <p className="text-lg font-bold">{count}</p>
+                  <p className="text-[9px] leading-tight">{label}</p>
+                </button>
+              );
+            })}
+          </div>
           <div className="space-y-1.5 max-h-[350px] overflow-y-auto">
             {recentCompteRendus.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">Aucun compte-rendu enregistre</p>
