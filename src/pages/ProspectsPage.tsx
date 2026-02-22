@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter,
+  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -37,6 +37,11 @@ export default function ProspectsPage() {
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(0);
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
+  // Quick reminder
+  const [reminderProspect, setReminderProspect] = useState<Prospect | null>(null);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderHeure, setReminderHeure] = useState('09:00');
 
   // Tag management in form
   const [showTagManager, setShowTagManager] = useState(false);
@@ -618,6 +623,21 @@ export default function ProspectsPage() {
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                   </button>
+                  <button
+                    className="p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+                    onClick={e => {
+                      e.stopPropagation();
+                      const in3days = new Date();
+                      in3days.setDate(in3days.getDate() + 3);
+                      setReminderDate(in3days.toISOString().split('T')[0]);
+                      setReminderHeure('09:00');
+                      setReminderMessage('');
+                      setReminderProspect(p);
+                    }}
+                    title="Memo / Rappel"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -964,6 +984,107 @@ export default function ProspectsPage() {
       {/* Email template modal */}
       {emailProspect && (
         <EmailTemplateModal prospect={emailProspect} onClose={() => setEmailProspect(null)} />
+      )}
+
+      {/* Quick reminder modal */}
+      {reminderProspect && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                <Bell className="w-4 h-4 text-orange-500" /> Memo / Rappel
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setReminderProspect(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="bg-gray-50 rounded-lg p-2">
+                <p className="text-xs font-medium text-gray-700">{reminderProspect.nom_etablissement}</p>
+                <p className="text-[10px] text-gray-500">{reminderProspect.nom_contact}</p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-1">Message du rappel *</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
+                  placeholder="Ex: Relancer pour devis, rappeler pour RDV..."
+                  value={reminderMessage}
+                  onChange={e => setReminderMessage(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-medium text-gray-600 mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                    value={reminderDate}
+                    onChange={e => setReminderDate(e.target.value)}
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="block text-[10px] font-medium text-gray-600 mb-1">Heure</label>
+                  <input
+                    type="time"
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                    value={reminderHeure}
+                    onChange={e => setReminderHeure(e.target.value)}
+                  />
+                </div>
+              </div>
+              {/* Quick date shortcuts */}
+              <div className="flex gap-1.5 flex-wrap">
+                {[
+                  { label: 'Demain', days: 1 },
+                  { label: '3 jours', days: 3 },
+                  { label: '1 semaine', days: 7 },
+                  { label: '2 semaines', days: 14 },
+                  { label: '1 mois', days: 30 },
+                ].map(shortcut => (
+                  <button
+                    key={shortcut.days}
+                    className="px-2 py-1 rounded text-[10px] bg-gray-100 text-gray-600 hover:bg-orange-100 hover:text-orange-700 transition-colors"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + shortcut.days);
+                      setReminderDate(d.toISOString().split('T')[0]);
+                    }}
+                  >
+                    {shortcut.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setReminderProspect(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-1.5 disabled:opacity-50"
+                disabled={!reminderMessage.trim() || !reminderDate}
+                onClick={() => {
+                  dispatch({
+                    type: 'ADD_REMINDER',
+                    payload: {
+                      id: generateId('rem'),
+                      prospect_id: reminderProspect.id,
+                      commercial_id: state.currentUser?.id || 'com-1',
+                      date: reminderDate,
+                      heure: reminderHeure,
+                      message: reminderMessage.trim(),
+                      statut: 'actif',
+                    },
+                  });
+                  setReminderProspect(null);
+                }}
+              >
+                <Bell className="w-3.5 h-3.5" /> Creer le rappel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Quick notes modal */}

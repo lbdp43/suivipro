@@ -100,6 +100,16 @@ export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   annule: 'Annule',
 };
 
+export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | '';
+
+export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
+  client: 'Client',
+  mail_envoye: 'Mail envoye',
+  commande_plus_tard: 'Commande plus tard',
+  a_relancer: 'A relancer',
+  pas_interesse: 'Pas interesse',
+};
+
 export type ReminderStatus = 'actif' | 'termine' | 'reporte';
 
 export type UserRole = 'admin' | 'commercial';
@@ -291,6 +301,7 @@ export interface Appointment {
   lieu: string;
   notes: string;
   statut: AppointmentStatus;
+  compte_rendu?: AppointmentResult;
 }
 
 export interface Reminder {

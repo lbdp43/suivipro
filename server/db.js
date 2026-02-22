@@ -124,6 +124,7 @@ async function initDatabase(attempt = 1) {
         lieu TEXT DEFAULT '',
         notes TEXT DEFAULT '',
         statut TEXT NOT NULL DEFAULT 'planifie',
+        compte_rendu TEXT DEFAULT '',
         FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE,
         FOREIGN KEY (commercial_id) REFERENCES commerciaux(id)
       );
@@ -175,6 +176,13 @@ async function initDatabase(attempt = 1) {
         FOREIGN KEY (uploaded_by) REFERENCES commerciaux(id)
       );
     `);
+
+    // ============================================
+    // Migrations for existing databases
+    // ============================================
+    try {
+      await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS compte_rendu TEXT DEFAULT \'\'');
+    } catch { /* column may already exist */ }
 
     // ============================================
     // Seed data (only if empty)

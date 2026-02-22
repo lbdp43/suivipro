@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react';
 import {
   Users, Phone, Calendar, TrendingUp, BarChart3, Clock, ChevronLeft, ChevronRight,
-  UserCheck, PhoneCall, CalendarCheck, MapPin, ArrowRight, Star,
+  UserCheck, Star, ClipboardCheck,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { APPOINTMENT_RESULT_LABELS } from '../types';
 import {
   getCallsToday, getCallsThisWeek, getCallsThisMonth,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
   getConversionRate, getResponseRate, getAverageCallDuration,
-  formatDuration,
+  formatDuration, formatDate,
 } from '../utils/helpers';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
-import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, formatDistanceToNow } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
@@ -201,88 +202,30 @@ export default function DashboardPage() {
     }).sort((a, b) => b.weekCalls - a.weekCalls); // Sort by most active
   }, [allUsers, state.calls, state.appointments, state.prospects]);
 
-  // Recent activity feed (last 20 actions across all users)
-  const recentActivity = useMemo(() => {
-    const activities: {
-      type: 'call' | 'appointment' | 'prospect';
-      date: string;
-      userId: string;
-      userName: string;
-      description: string;
-      detail: string;
-      icon: 'phone' | 'calendar' | 'user';
-      color: string;
-    }[] = [];
-
-    // Recent calls
-    state.calls.forEach(call => {
-      const user = allUsers.find(u => u.id === call.commercial_id);
-      const prospect = state.prospects.find(p => p.id === call.prospect_id);
-      if (!user) return;
-      const resultLabel = call.resultat === 'repondu' ? 'Repondu' :
-        call.resultat === 'messagerie' ? 'Messagerie' :
-        call.resultat === 'injoignable' ? 'Injoignable' :
-        call.resultat === 'pas_de_reponse' ? 'Pas de reponse' : call.resultat;
-      activities.push({
-        type: 'call',
-        date: call.date,
-        userId: user.id,
-        userName: `${user.prenom} ${user.nom}`,
-        description: `Appel ${prospect ? prospect.nom_etablissement : 'prospect inconnu'}`,
-        detail: `${resultLabel} - ${formatDuration(call.duree)}`,
-        icon: 'phone',
-        color: call.resultat === 'repondu' ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50',
+  // Recent RDV compte-rendus
+  const recentCompteRendus = useMemo(() => {
+    return state.appointments
+      .filter(a => a.compte_rendu && a.statut === 'termine')
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 15)
+      .map(apt => {
+        const prospect = state.prospects.find(p => p.id === apt.prospect_id);
+        const commercial = allUsers.find(u => u.id === apt.commercial_id);
+        return { ...apt, prospectName: prospect?.nom_etablissement || 'Inconnu', commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu' };
       });
+  }, [state.appointments, state.prospects, allUsers]);
+
+  // Compte-rendu stats
+  const compteRenduStats = useMemo(() => {
+    const rdvsWithCR = state.appointments.filter(a => a.compte_rendu);
+    const total = rdvsWithCR.length;
+    const byResult: Record<string, number> = {};
+    rdvsWithCR.forEach(a => {
+      const cr = a.compte_rendu || '';
+      byResult[cr] = (byResult[cr] || 0) + 1;
     });
-
-    // Recent appointments
-    state.appointments.forEach(apt => {
-      const user = allUsers.find(u => u.id === apt.commercial_id);
-      const prospect = state.prospects.find(p => p.id === apt.prospect_id);
-      const prospector = apt.prospecteur_id ? allUsers.find(u => u.id === apt.prospecteur_id) : null;
-      if (!user) return;
-
-      const statusLabel = apt.statut === 'planifie' ? 'Planifie' :
-        apt.statut === 'confirme' ? 'Confirme' :
-        apt.statut === 'termine' ? 'Termine' : 'Annule';
-
-      const takenBy = prospector ? ` (pris par ${prospector.prenom})` : '';
-
-      activities.push({
-        type: 'appointment',
-        date: apt.date,
-        userId: user.id,
-        userName: `${user.prenom} ${user.nom}`,
-        description: `RDV ${prospect ? prospect.nom_etablissement : 'prospect'}${takenBy}`,
-        detail: `${apt.heure_debut}-${apt.heure_fin} | ${statusLabel} | ${apt.lieu || 'Lieu non defini'}`,
-        icon: 'calendar',
-        color: apt.statut === 'termine' ? 'text-blue-600 bg-blue-50' :
-          apt.statut === 'confirme' ? 'text-green-600 bg-green-50' :
-          apt.statut === 'annule' ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50',
-      });
-    });
-
-    // Recent prospects created
-    state.prospects.forEach(prospect => {
-      const user = allUsers.find(u => u.id === prospect.commercial_id);
-      if (!user) return;
-      activities.push({
-        type: 'prospect',
-        date: prospect.date_creation,
-        userId: user.id,
-        userName: `${user.prenom} ${user.nom}`,
-        description: `Nouveau prospect: ${prospect.nom_etablissement}`,
-        detail: `${prospect.ville || prospect.departement || 'Localisation inconnue'} | ${prospect.type_etablissement}`,
-        icon: 'user',
-        color: 'text-purple-600 bg-purple-50',
-      });
-    });
-
-    // Sort by date descending, take last 20
-    return activities
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 20);
-  }, [state.calls, state.appointments, state.prospects, allUsers]);
+    return { total, byResult };
+  }, [state.appointments]);
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {
@@ -353,12 +296,6 @@ export default function DashboardPage() {
     { label: 'RDV ce mois', value: stats.rdvMonth, icon: Calendar, color: 'bg-amber-500', sub: `${stats.rdvWeek} cette semaine` },
     { label: 'Taux de conversion', value: `${stats.conversionRate}%`, icon: TrendingUp, color: 'bg-purple-500', sub: `${stats.wonProspects} gagnes` },
   ];
-
-  const ActivityIcon = ({ type, className }: { type: string; className?: string }) => {
-    if (type === 'phone') return <PhoneCall className={className} />;
-    if (type === 'calendar') return <CalendarCheck className={className} />;
-    return <UserCheck className={className} />;
-  };
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
@@ -471,40 +408,67 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Activity feed + Performance side by side */}
+      {/* Compte-rendu RDV + Performance side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* Recent activity feed */}
+        {/* Compte-rendu RDV */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-400" />
-            Activite recente de l'equipe
+            <ClipboardCheck className="w-4 h-4 text-indigo-500" />
+            Comptes-rendus des RDV
           </h3>
-          <div className="space-y-1 max-h-[420px] overflow-y-auto">
-            {recentActivity.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">Aucune activite enregistree</p>
+          {/* Stats summary */}
+          {compteRenduStats.total > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
+              {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+                const count = compteRenduStats.byResult[key] || 0;
+                const colorMap: Record<string, string> = {
+                  client: 'bg-green-50 text-green-700',
+                  mail_envoye: 'bg-blue-50 text-blue-700',
+                  commande_plus_tard: 'bg-amber-50 text-amber-700',
+                  a_relancer: 'bg-purple-50 text-purple-700',
+                  pas_interesse: 'bg-red-50 text-red-700',
+                };
+                return (
+                  <div key={key} className={`${colorMap[key] || 'bg-gray-50 text-gray-700'} rounded-lg p-2 text-center`}>
+                    <p className="text-lg font-bold">{count}</p>
+                    <p className="text-[9px] leading-tight">{label}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="space-y-1.5 max-h-[350px] overflow-y-auto">
+            {recentCompteRendus.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">Aucun compte-rendu enregistre</p>
             ) : (
-              recentActivity.map((activity, i) => (
-                <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className={`p-1.5 rounded-lg shrink-0 ${activity.color}`}>
-                    <ActivityIcon type={activity.icon} className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-900 truncate">{activity.userName}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0">
-                        {(() => {
-                          try {
-                            return formatDistanceToNow(parseISO(activity.date), { addSuffix: true, locale: fr });
-                          } catch { return activity.date; }
-                        })()}
-                      </span>
+              recentCompteRendus.map(cr => {
+                const colorMap: Record<string, string> = {
+                  client: 'text-green-600 bg-green-50',
+                  mail_envoye: 'text-blue-600 bg-blue-50',
+                  commande_plus_tard: 'text-amber-600 bg-amber-50',
+                  a_relancer: 'text-purple-600 bg-purple-50',
+                  pas_interesse: 'text-red-600 bg-red-50',
+                };
+                const crColor = colorMap[cr.compte_rendu || ''] || 'text-gray-600 bg-gray-50';
+                return (
+                  <div key={cr.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className={`p-1.5 rounded-lg shrink-0 ${crColor}`}>
+                      <ClipboardCheck className="w-3.5 h-3.5" />
                     </div>
-                    <p className="text-xs text-gray-700 truncate">{activity.description}</p>
-                    <p className="text-[10px] text-gray-400 truncate">{activity.detail}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-900 truncate">{cr.prospectName}</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>
+                          {APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
+                      {cr.notes && <p className="text-[10px] text-gray-400 truncate mt-0.5">{cr.notes}</p>}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

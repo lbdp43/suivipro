@@ -3,6 +3,7 @@ import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download } from 
 import { useApp } from '../store/AppContext';
 import { Prospect, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';
+import { generateId } from '../utils/helpers';
 
 interface Props {
   prospect: Prospect;
@@ -10,7 +11,7 @@ interface Props {
 }
 
 export default function EmailTemplateModal({ prospect, onClose }: Props) {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
@@ -56,6 +57,27 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
     // Auto-download selected documents so the user can attach them
     selectedDocs.forEach(doc => {
       downloadDocument(doc.id, doc.nom_fichier).catch(() => {});
+    });
+
+    // Move prospect to negociation if not already in a terminal stage
+    if (!['gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
+      dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+    }
+
+    // Create a reminder for 7-day follow-up
+    const in7days = new Date();
+    in7days.setDate(in7days.getDate() + 7);
+    dispatch({
+      type: 'ADD_REMINDER',
+      payload: {
+        id: generateId('rem'),
+        prospect_id: prospect.id,
+        commercial_id: state.currentUser?.id || 'com-1',
+        date: in7days.toISOString().split('T')[0],
+        heure: '09:00',
+        message: `Relance email - ${prospect.nom_etablissement} (${selectedTemplate.nom})`,
+        statut: 'actif',
+      },
     });
 
     onClose();

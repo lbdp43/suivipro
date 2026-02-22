@@ -321,10 +321,9 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateAppointment(a);
   if (errors.length > 0) return validationError(res, errors);
 
-  const commercialId = isAdmin(req) ? (a.commercial_id || req.user.id) : req.user.id;
   await db.query(
-    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-    [a.id, a.prospect_id, commercialId, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie']
+    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+    [a.id, a.prospect_id, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '']
   );
   res.json({ ok: true });
 }));
@@ -335,8 +334,8 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9 WHERE id=$10',
-    [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, req.params.id]
+    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10 WHERE id=$11',
+    [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', req.params.id]
   );
   res.json({ ok: true });
 }));
