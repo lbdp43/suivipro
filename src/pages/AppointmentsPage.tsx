@@ -395,11 +395,10 @@ export default function AppointmentsPage() {
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
-                className="p-1.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600"
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-[11px] font-medium"
                 onClick={() => openCompteRendu(rdv)}
-                title="Compte-rendu"
               >
-                <ClipboardCheck className="w-3.5 h-3.5" />
+                <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
               </button>
             </>
           )}
@@ -787,11 +786,10 @@ export default function AppointmentsPage() {
                                     </button>
                                     {rdv.statut !== 'termine' && (
                                       <button
-                                        className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+                                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 text-[11px] font-medium"
                                         onClick={() => openCompteRendu(rdv)}
-                                        title="Compte-rendu"
                                       >
-                                        <ClipboardCheck className="w-3.5 h-3.5" />
+                                        <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
                                       </button>
                                     )}
                                     {prospect && (
