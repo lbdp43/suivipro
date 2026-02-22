@@ -10,6 +10,8 @@ import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts 
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
+import EmailTemplateModal from '../components/EmailTemplateModal';
+import { Prospect } from '../types';
 import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
@@ -38,6 +40,7 @@ export default function AppointmentsPage() {
   const [compteRenduRappel, setCompteRenduRappel] = useState(false);
   const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
   const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
+  const [compteRenduEmailProspect, setCompteRenduEmailProspect] = useState<Prospect | null>(null);
 
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -216,8 +219,24 @@ export default function AppointmentsPage() {
     setShowCompteRendu(true);
   };
 
+  // Auto-enable rappel when selecting results that require it
+  const handleCompteRenduResultChange = (value: AppointmentResult) => {
+    const newValue = compteRenduResult === value ? '' : value;
+    setCompteRenduResult(newValue);
+    // Auto-enable rappel for a_relancer, commande_plus_tard, mail_envoye
+    if (newValue === 'a_relancer' || newValue === 'commande_plus_tard' || newValue === 'mail_envoye') {
+      setCompteRenduRappel(true);
+    }
+  };
+
+  // Rappel is required for certain results
+  const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
+
+  // Validation: notes required + rappel date required when rappel is forced
+  const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
+
   const saveCompteRendu = () => {
-    if (!compteRenduRdv) return;
+    if (!compteRenduRdv || !compteRenduValid) return;
 
     // Update the appointment with compte_rendu and mark as termine
     // notes_compte_rendu is separate from the original appointment notes
@@ -245,7 +264,7 @@ export default function AppointmentsPage() {
       }
     }
 
-    // Create reminder if requested
+    // Create reminder if rappel is active
     if (compteRenduRappel && compteRenduRappelDate) {
       const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
       dispatch({
@@ -260,6 +279,11 @@ export default function AppointmentsPage() {
           statut: 'actif',
         },
       });
+    }
+
+    // If mail_envoye: open email modal after saving
+    if (compteRenduResult === 'mail_envoye' && prospect) {
+      setCompteRenduEmailProspect(prospect);
     }
 
     setShowCompteRendu(false);
@@ -1166,7 +1190,7 @@ export default function AppointmentsPage() {
                           className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
                             compteRenduResult === opt.value ? opt.color : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                           }`}
-                          onClick={() => setCompteRenduResult(compteRenduResult === opt.value ? '' : opt.value)}
+                          onClick={() => handleCompteRenduResultChange(opt.value)}
                         >
                           <Icon className="w-4 h-4" />
                           {opt.label}
@@ -1180,45 +1204,62 @@ export default function AppointmentsPage() {
                   {compteRenduResult === 'pas_interesse' && (
                     <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
                   )}
-                  {(compteRenduResult === 'mail_envoye' || compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard') && (
-                    <p className="text-[10px] text-blue-500 mt-1 italic">Le prospect sera deplace dans "Negociation"</p>
+                  {compteRenduResult === 'mail_envoye' && (
+                    <p className="text-[10px] text-blue-500 mt-1 italic">Un email sera propose apres validation + rappel programme</p>
+                  )}
+                  {compteRenduResult === 'a_relancer' && (
+                    <p className="text-[10px] text-purple-500 mt-1 italic">Un rappel sera programme pour la relance</p>
+                  )}
+                  {compteRenduResult === 'commande_plus_tard' && (
+                    <p className="text-[10px] text-amber-600 mt-1 italic">Un rappel sera programme pour le suivi de commande</p>
                   )}
                 </div>
 
-                {/* Notes */}
+                {/* Notes - obligatoires */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Notes du compte-rendu</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Notes du compte-rendu <span className="text-red-500">*</span>
+                  </label>
                   <textarea
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Comment s'est passe le rendez-vous ?"
+                    className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${
+                      compteRenduNotes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
+                    }`}
+                    placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
                     value={compteRenduNotes}
                     onChange={e => setCompteRenduNotes(e.target.value)}
                   />
+                  {compteRenduNotes.trim() === '' && (
+                    <p className="text-[10px] text-red-500 mt-0.5">Les notes sont obligatoires pour valider le compte-rendu</p>
+                  )}
                 </div>
 
-                {/* Rappel */}
-                {!compteRenduRappel ? (
+                {/* Rappel - forced for a_relancer / commande_plus_tard / mail_envoye, optional for others */}
+                {!compteRenduRappel && !rappelRequired ? (
                   <button
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
                     onClick={() => setCompteRenduRappel(true)}
                   >
                     <Bell className="w-4 h-4" /> Programmer un rappel
                   </button>
-                ) : (
+                ) : compteRenduRappel ? (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
-                        <Bell className="w-3 h-3" /> Rappel de relance
+                        <Bell className="w-3 h-3" /> Rappel de relance {rappelRequired && <span className="text-red-500">*</span>}
                       </label>
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
-                        <X className="w-4 h-4" />
-                      </button>
+                      {!rappelRequired && (
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel</label>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelRequired && <span className="text-red-500">*</span>}</label>
                       <input
                         type="date"
-                        className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
+                        className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${
+                          rappelRequired && !compteRenduRappelDate ? 'border-red-300' : 'border-amber-200'
+                        }`}
                         value={compteRenduRappelDate}
                         onChange={e => setCompteRenduRappelDate(e.target.value)}
                       />
@@ -1234,24 +1275,33 @@ export default function AppointmentsPage() {
                       />
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
               <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
                 <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCompteRendu(false)}>
                   Annuler
                 </button>
                 <button
-                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50"
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveCompteRendu}
-                  disabled={!compteRenduResult}
+                  disabled={!compteRenduValid}
                 >
-                  <ClipboardCheck className="w-4 h-4" /> Valider le compte-rendu
+                  <ClipboardCheck className="w-4 h-4" />
+                  {compteRenduResult === 'mail_envoye' ? 'Valider et envoyer un mail' : 'Valider le compte-rendu'}
                 </button>
               </div>
             </div>
           </div>
         );
       })()}
+
+      {/* Email modal after compte-rendu with mail_envoye */}
+      {compteRenduEmailProspect && (
+        <EmailTemplateModal
+          prospect={compteRenduEmailProspect}
+          onClose={() => setCompteRenduEmailProspect(null)}
+        />
+      )}
     </div>
   );
 }
