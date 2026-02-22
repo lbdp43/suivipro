@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Phone, PhoneCall, PhoneOff, Search,
   MessageSquare, PhoneMissed, CheckCircle,
@@ -171,7 +172,16 @@ export default function CallsPage() {
                   <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{prospect?.nom_etablissement || 'Inconnu'}</p>
+                  {prospect ? (
+                    <Link
+                      to={`/prospects?id=${prospect.id}`}
+                      className="text-xs sm:text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline truncate block"
+                    >
+                      {prospect.nom_etablissement}
+                    </Link>
+                  ) : (
+                    <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">Inconnu</p>
+                  )}
                   <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">{call.notes || 'Aucune note'}</p>
                 </div>
                 <div className="text-right flex-shrink-0 hidden sm:block">

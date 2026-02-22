@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
   AlertCircle, BellRing, CalendarClock, MessageSquare,
@@ -172,7 +173,12 @@ export default function RemindersPage() {
                 <Clock className="w-3 h-3" /> {rem.heure}
               </span>
               {prospect && (
-                <span className="text-xs text-brewery-600 font-medium">{prospect.nom_etablissement}</span>
+                <Link
+                  to={`/prospects?id=${prospect.id}`}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium"
+                >
+                  {prospect.nom_etablissement}
+                </Link>
               )}
             </div>
 

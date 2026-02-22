@@ -370,6 +370,16 @@ export default function AppointmentsPage() {
               {prospect?.nom_etablissement || 'Inconnu'}
             </button>
             <p className="text-xs text-gray-500 mt-0.5">{prospect?.nom_contact}</p>
+            {prospect?.telephone && (
+              <a
+                href={`tel:${prospect.telephone}`}
+                className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1 mt-0.5"
+                onClick={e => e.stopPropagation()}
+              >
+                <Phone className="w-3 h-3" />
+                {prospect.telephone}
+              </a>
+            )}
           </div>
           <span className={`badge text-[10px] ${statusColors[rdv.statut]}`}>
             {APPOINTMENT_STATUS_LABELS[rdv.statut]}
@@ -776,6 +786,16 @@ export default function AppointmentsPage() {
                                     </div>
                                     {prospect?.nom_contact && (
                                       <p className="text-[11px] text-gray-500 mt-0.5">{prospect.nom_contact}</p>
+                                    )}
+                                    {prospect?.telephone && (
+                                      <a
+                                        href={`tel:${prospect.telephone}`}
+                                        className="text-[11px] text-green-600 hover:text-green-800 hover:underline flex items-center gap-1 mt-0.5"
+                                        onClick={e => e.stopPropagation()}
+                                      >
+                                        <Phone className="w-3 h-3" />
+                                        {prospect.telephone}
+                                      </a>
                                     )}
                                     <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-gray-600">
                                       <span className="flex items-center gap-1 font-medium">
