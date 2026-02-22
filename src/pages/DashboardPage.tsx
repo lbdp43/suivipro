@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Users, Phone, Calendar, TrendingUp, BarChart3, Clock, ChevronLeft, ChevronRight,
   UserCheck, Star, ClipboardCheck,
@@ -496,7 +497,13 @@ export default function DashboardPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-900 truncate">{cr.prospectName}</span>
+                        <Link
+                          to={`/prospects?id=${cr.prospect_id}`}
+                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline truncate"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {cr.prospectName}
+                        </Link>
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>
                           {APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}
                         </span>
