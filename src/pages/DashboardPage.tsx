@@ -14,7 +14,7 @@ import {
 } from '../utils/helpers';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
-import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
@@ -55,11 +55,56 @@ const ROLE_LABELS: Record<string, string> = {
   commercial: 'Commercial / Prospecteur',
 };
 
+type TimePeriod = 'week' | 'week-1' | 'week-2' | 'week-3' | 'month' | 'month-1' | 'month-2';
+
+const PERIOD_OPTIONS: { value: TimePeriod; label: string }[] = [
+  { value: 'week', label: 'Cette semaine' },
+  { value: 'week-1', label: 'Semaine derniere' },
+  { value: 'week-2', label: 'Il y a 2 sem.' },
+  { value: 'week-3', label: 'Il y a 3 sem.' },
+  { value: 'month', label: 'Ce mois' },
+  { value: 'month-1', label: 'Mois dernier' },
+];
+
+function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
+  const now = new Date();
+  switch (period) {
+    case 'week':
+      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+    case 'week-1': {
+      const d = subWeeks(now, 1);
+      return { start: startOfWeek(d, { weekStartsOn: 1 }), end: endOfWeek(d, { weekStartsOn: 1 }) };
+    }
+    case 'week-2': {
+      const d = subWeeks(now, 2);
+      return { start: startOfWeek(d, { weekStartsOn: 1 }), end: endOfWeek(d, { weekStartsOn: 1 }) };
+    }
+    case 'week-3': {
+      const d = subWeeks(now, 3);
+      return { start: startOfWeek(d, { weekStartsOn: 1 }), end: endOfWeek(d, { weekStartsOn: 1 }) };
+    }
+    case 'month':
+      return { start: startOfMonth(now), end: endOfMonth(now) };
+    case 'month-1': {
+      const d = subMonths(now, 1);
+      return { start: startOfMonth(d), end: endOfMonth(d) };
+    }
+    case 'month-2': {
+      const d = subMonths(now, 2);
+      return { start: startOfMonth(d), end: endOfMonth(d) };
+    }
+    default:
+      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+  }
+}
+
 export default function DashboardPage() {
   const { state } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
   const [crFilterResult, setCrFilterResult] = useState<string>('');
   const [crFilterUser, setCrFilterUser] = useState<string>('');
+  const [rankingPeriod, setRankingPeriod] = useState<TimePeriod>('week');
+  const [perfPeriod, setPerfPeriod] = useState<TimePeriod>('week');
 
   const selectedMonth = subMonths(new Date(), -monthOffset);
   const monthStart = startOfMonth(selectedMonth);
@@ -204,6 +249,71 @@ export default function DashboardPage() {
       };
     }).sort((a, b) => b.weekCalls - a.weekCalls); // Sort by most active
   }, [allUsers, state.calls, state.appointments, state.prospects]);
+
+  // Ranked user activities for "Classement" section (based on selected period)
+  const rankedActivities = useMemo(() => {
+    const range = getPeriodRange(rankingPeriod);
+    return allUsers.map(user => {
+      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
+
+      const periodCalls = getCallsInRange(userCalls, range.start, range.end);
+      const periodRdv = getCallsInRange(userAppointments, range.start, range.end);
+
+      return {
+        user,
+        periodCalls: periodCalls.length,
+        periodRdv: periodRdv.length,
+        totalProspects: userProspects.length,
+      };
+    }).sort((a, b) => b.periodCalls - a.periodCalls);
+  }, [allUsers, state.calls, state.appointments, state.prospects, rankingPeriod]);
+
+  // Performance table user activities (based on selected period)
+  const perfUserActivities = useMemo(() => {
+    const range = getPeriodRange(perfPeriod);
+    const isMonthPeriod = perfPeriod.startsWith('month');
+
+    return allUsers.map(user => {
+      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
+      const rdvTakenAsProspector = state.appointments.filter(a => a.prospecteur_id === user.id);
+
+      const todayCalls = getCallsToday(userCalls);
+      const periodCalls = getCallsInRange(userCalls, range.start, range.end);
+      const periodRdv = getCallsInRange(userAppointments, range.start, range.end);
+      const periodRdvTaken = getCallsInRange(rdvTakenAsProspector, range.start, range.end);
+
+      const periodResponseRate = periodCalls.length > 0
+        ? Math.round((periodCalls.filter(c => c.resultat === 'repondu').length / periodCalls.length) * 100)
+        : 0;
+      const periodAnsweredCalls = periodCalls.filter(c => c.duree > 0);
+      const periodAvgDuration = periodAnsweredCalls.length > 0
+        ? Math.round(periodAnsweredCalls.reduce((sum, c) => sum + c.duree, 0) / periodAnsweredCalls.length)
+        : 0;
+      const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
+
+      const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
+      const progress = objective > 0 ? Math.round((periodCalls.length / objective) * 100) : 0;
+
+      return {
+        user,
+        todayCalls: todayCalls.length,
+        periodCalls: periodCalls.length,
+        periodRdv: periodRdv.length,
+        periodRdvTaken: periodRdvTaken.length,
+        responseRate: periodResponseRate,
+        avgDuration: periodAvgDuration,
+        totalProspects: userProspects.length,
+        activeProspects: userProspects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length,
+        wonProspects,
+        objective,
+        progress,
+      };
+    }).sort((a, b) => b.periodCalls - a.periodCalls);
+  }, [allUsers, state.calls, state.appointments, state.prospects, perfPeriod]);
 
   // Recent RDV compte-rendus (with filters)
   const recentCompteRendus = useMemo(() => {
@@ -521,14 +631,25 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Top performers this week */}
+        {/* Top performers - with period filter */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4 flex items-center gap-2">
-            <Star className="w-4 h-4 text-amber-400" />
-            Classement de la semaine
-          </h3>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+              <Star className="w-4 h-4 text-amber-400" />
+              Classement
+            </h3>
+            <select
+              className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+              value={rankingPeriod}
+              onChange={e => setRankingPeriod(e.target.value as TimePeriod)}
+            >
+              {PERIOD_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-3">
-            {userActivities.map((ua, i) => {
+            {rankedActivities.map((ua, i) => {
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
               return (
                 <div key={ua.user.id} className={`p-3 rounded-lg ${i < 3 ? 'bg-gradient-to-r from-amber-50/50 to-transparent' : 'bg-gray-50'}`}>
@@ -546,10 +667,10 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-[10px] text-green-600 flex items-center gap-0.5">
-                          <Phone className="w-3 h-3" /> {ua.weekCalls} appels
+                          <Phone className="w-3 h-3" /> {ua.periodCalls} appels
                         </span>
                         <span className="text-[10px] text-blue-600 flex items-center gap-0.5">
-                          <Calendar className="w-3 h-3" /> {ua.monthRdv} RDV
+                          <Calendar className="w-3 h-3" /> {ua.periodRdv} RDV
                         </span>
                         <span className="text-[10px] text-purple-600 flex items-center gap-0.5">
                           <UserCheck className="w-3 h-3" /> {ua.totalProspects} prospects
@@ -557,26 +678,37 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-lg font-bold text-gray-900">{ua.weekCalls}</p>
-                      <p className="text-[10px] text-gray-400">appels/sem</p>
+                      <p className="text-lg font-bold text-gray-900">{ua.periodCalls}</p>
+                      <p className="text-[10px] text-gray-400">appels</p>
                     </div>
                   </div>
                 </div>
               );
             })}
-            {userActivities.length === 0 && (
+            {rankedActivities.length === 0 && (
               <p className="text-sm text-gray-400 text-center py-8">Aucun membre dans l'equipe</p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Full team performance table (ALL users) */}
+      {/* Full team performance table (ALL users) - with period filter */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-gray-400" />
-          Performance detaillee de l'equipe
-        </h3>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-gray-400" />
+            Performance detaillee de l'equipe
+          </h3>
+          <select
+            className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+            value={perfPeriod}
+            onChange={e => setPerfPeriod(e.target.value as TimePeriod)}
+          >
+            {PERIOD_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -588,11 +720,11 @@ export default function DashboardPage() {
                 </th>
                 <th className="text-center py-3 px-2 font-medium text-gray-500">
                   <span className="hidden sm:inline">Appels</span>
-                  <span className="sm:hidden">App.</span> semaine
+                  <span className="sm:hidden">App.</span> periode
                 </th>
                 <th className="text-center py-3 px-2 font-medium text-gray-500">Objectif</th>
                 <th className="text-center py-3 px-2 font-medium text-gray-500">Progression</th>
-                <th className="text-center py-3 px-2 font-medium text-gray-500">RDV mois</th>
+                <th className="text-center py-3 px-2 font-medium text-gray-500">RDV periode</th>
                 <th className="text-center py-3 px-2 font-medium text-gray-500">
                   <span className="hidden sm:inline">RDV pris (prospection)</span>
                   <span className="sm:hidden">RDV prosp.</span>
@@ -607,7 +739,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {userActivities.map(ua => {
+              {perfUserActivities.map(ua => {
                 const progressColor = ua.progress >= 100 ? 'bg-green-500' : ua.progress >= 70 ? 'bg-amber-500' : 'bg-red-500';
 
                 return (
@@ -626,7 +758,7 @@ export default function DashboardPage() {
                     <td className="text-center py-3 px-2">
                       <span className={`font-semibold ${ua.todayCalls > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.todayCalls}</span>
                     </td>
-                    <td className="text-center py-3 px-2 font-semibold">{ua.weekCalls}</td>
+                    <td className="text-center py-3 px-2 font-semibold">{ua.periodCalls}</td>
                     <td className="text-center py-3 px-2 text-gray-500">{ua.objective}</td>
                     <td className="py-3 px-2">
                       <div className="flex items-center gap-2">
@@ -639,10 +771,10 @@ export default function DashboardPage() {
                         <span className="text-xs font-medium text-gray-600 w-10 text-right">{ua.progress}%</span>
                       </div>
                     </td>
-                    <td className="text-center py-3 px-2 font-semibold text-blue-600">{ua.monthRdv}</td>
+                    <td className="text-center py-3 px-2 font-semibold text-blue-600">{ua.periodRdv}</td>
                     <td className="text-center py-3 px-2">
-                      <span className={`font-semibold ${ua.monthRdvTaken > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
-                        {ua.monthRdvTaken}
+                      <span className={`font-semibold ${ua.periodRdvTaken > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
+                        {ua.periodRdvTaken}
                       </span>
                     </td>
                     <td className="text-center py-3 px-2">
@@ -667,7 +799,7 @@ export default function DashboardPage() {
                   </tr>
                 );
               })}
-              {userActivities.length === 0 && (
+              {perfUserActivities.length === 0 && (
                 <tr>
                   <td colSpan={11} className="py-6 text-center text-gray-400 text-sm">Aucun membre dans l'equipe</td>
                 </tr>
