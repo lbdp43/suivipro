@@ -278,13 +278,18 @@ export default function AppointmentsPage() {
     // Update prospect pipeline based on result
     const prospect = getProspect(compteRenduRdv.prospect_id);
     if (prospect) {
+      const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
       if (compteRenduResult === 'client') {
         dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'client_gagne' } });
       } else if (compteRenduResult === 'pas_interesse') {
         dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
-      } else if (compteRenduResult === 'mail_envoye' || compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard') {
-        if (!['client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+      } else if (compteRenduResult === 'mail_envoye') {
+        if (!terminal.includes(prospect.etape_pipeline)) {
           dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+        }
+      } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
+        if (!terminal.includes(prospect.etape_pipeline)) {
+          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'proposition' } });
         }
       }
     }
@@ -1307,13 +1312,13 @@ export default function AppointmentsPage() {
                     <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
                   )}
                   {compteRenduResult === 'mail_envoye' && (
-                    <p className="text-[10px] text-blue-500 mt-1 italic">Un email sera propose apres validation + rappel programme</p>
+                    <p className="text-[10px] text-blue-500 mt-1 italic">Prospect deplace vers "Negociation" + email propose + rappel programme</p>
                   )}
                   {compteRenduResult === 'a_relancer' && (
-                    <p className="text-[10px] text-purple-500 mt-1 italic">Un rappel sera programme pour la relance</p>
+                    <p className="text-[10px] text-purple-500 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
                   )}
                   {compteRenduResult === 'commande_plus_tard' && (
-                    <p className="text-[10px] text-amber-600 mt-1 italic">Un rappel sera programme pour le suivi de commande</p>
+                    <p className="text-[10px] text-amber-600 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
                   )}
                 </div>
 

@@ -215,6 +215,17 @@ router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true });
 }));
 
+// Move prospect to a different pipeline stage (partial update)
+router.patch('/prospects/:id/stage', authMiddleware, asyncHandler(async (req, res) => {
+  const { etape_pipeline, date_modification } = req.body;
+  if (!etape_pipeline) return validationError(res, ['etape_pipeline est requis']);
+  await db.query(
+    'UPDATE prospects SET etape_pipeline=$1, date_modification=$2 WHERE id=$3',
+    [etape_pipeline, date_modification || new Date().toISOString(), req.params.id]
+  );
+  res.json({ ok: true });
+}));
+
 // Bulk import (with RLS)
 router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) => {
   const prospects = req.body;

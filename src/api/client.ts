@@ -113,6 +113,14 @@ function put(path: string, body: unknown) {
     });
 }
 
+function patch(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }))
+    .catch(err => {
+      console.error('API PATCH error:', err);
+      if (onApiError) onApiError(`Erreur de mise a jour: ${err.message}`);
+    });
+}
+
 function del(path: string) {
   return withRetry(() => request(path, { method: 'DELETE' }))
     .catch(err => {
@@ -183,8 +191,7 @@ export function syncAction(type: string, payload: unknown) {
     case 'DELETE_PROSPECT':
       return del(`/prospects/${payload}`);
     case 'MOVE_PROSPECT':
-      return put(`/prospects/${p.id}`, {
-        ...p,
+      return patch(`/prospects/${p.id}/stage`, {
         etape_pipeline: p.stage,
         date_modification: new Date().toISOString(),
       });
