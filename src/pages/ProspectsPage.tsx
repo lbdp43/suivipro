@@ -227,6 +227,19 @@ export default function ProspectsPage() {
     setFilterCommercial('');
   };
 
+  // Build set of prospect IDs linked to the selected commercial via calls/appointments
+  const prospectIdsForCommercial = useMemo(() => {
+    if (!filterCommercial) return null;
+    const ids = new Set<string>();
+    state.calls.forEach(c => {
+      if (c.commercial_id === filterCommercial) ids.add(c.prospect_id);
+    });
+    state.appointments.forEach(a => {
+      if (a.commercial_id === filterCommercial || a.prospecteur_id === filterCommercial) ids.add(a.prospect_id);
+    });
+    return ids;
+  }, [filterCommercial, state.calls, state.appointments]);
+
   const filteredProspects = useMemo(() => {
     const list = state.prospects.filter(p => {
       if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
@@ -235,7 +248,7 @@ export default function ProspectsPage() {
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
-      if (filterCommercial && p.commercial_id !== filterCommercial) return false;
+      if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -253,7 +266,7 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {

@@ -95,13 +95,26 @@ export default function PipelinePage() {
 
   const columns = state.pipelineColumns;
 
+  // Build set of prospect IDs linked to the selected commercial via calls/appointments
+  const prospectIdsForCommercial = useMemo(() => {
+    if (!filterCommercial) return null;
+    const ids = new Set<string>();
+    state.calls.forEach(c => {
+      if (c.commercial_id === filterCommercial) ids.add(c.prospect_id);
+    });
+    state.appointments.forEach(a => {
+      if (a.commercial_id === filterCommercial || a.prospecteur_id === filterCommercial) ids.add(a.prospect_id);
+    });
+    return ids;
+  }, [filterCommercial, state.calls, state.appointments]);
+
   const prospectsByStage = useMemo(() => {
     const filtered = state.prospects.filter(p => {
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
-      if (filterCommercial && p.commercial_id !== filterCommercial) return false;
+      if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       return true;
     });
     const map: Record<string, Prospect[]> = {};
@@ -115,7 +128,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, prospectIdsWithRdv]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
