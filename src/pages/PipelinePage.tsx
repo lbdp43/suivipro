@@ -30,6 +30,7 @@ export default function PipelinePage() {
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
   const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
   const [filterAvecRdv, setFilterAvecRdv] = useState(false);
+  const [filterCommercial, setFilterCommercial] = useState<string>('');
 
   const prospectIdsWithRdv = useMemo(() => {
     const ids = new Set<string>();
@@ -72,7 +73,7 @@ export default function PipelinePage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv;
+  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -100,6 +101,7 @@ export default function PipelinePage() {
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (filterCommercial && p.commercial_id !== filterCommercial) return false;
       return true;
     });
     const map: Record<string, Prospect[]> = {};
@@ -113,7 +115,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsWithRdv]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, prospectIdsWithRdv]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -256,10 +258,22 @@ export default function PipelinePage() {
           >
             <Calendar className="w-3 h-3" /> Avec RDV
           </button>
+          <select
+            className={`text-[10px] sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
+              filterCommercial ? 'border-brewery-500 text-brewery-700' : 'border-gray-200 text-gray-500'
+            }`}
+            value={filterCommercial}
+            onChange={e => setFilterCommercial(e.target.value)}
+          >
+            <option value="">Tous les commerciaux</option>
+            {state.commerciaux.map(c => (
+              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+            ))}
+          </select>
           {hasActiveFilters && (
             <button
               className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); }}
+              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterCommercial(''); }}
             >
               <X className="w-3 h-3" />
             </button>

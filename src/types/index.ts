@@ -306,6 +306,7 @@ export interface Appointment {
   statut: AppointmentStatus;
   compte_rendu?: AppointmentResult;
   notes_compte_rendu?: string;
+  created_at?: string;
 }
 
 export interface Reminder {

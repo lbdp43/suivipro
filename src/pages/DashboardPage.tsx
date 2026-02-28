@@ -19,6 +19,16 @@ import { fr } from 'date-fns/locale';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
+// Filter appointments by created_at (fallback to date for old records)
+function getAppointmentsByCreatedAt<T extends { date: string; created_at?: string }>(items: T[], start: Date, end: Date): T[] {
+  return items.filter(item => {
+    try {
+      const d = parseISO(item.created_at || item.date);
+      return isWithinInterval(d, { start, end });
+    } catch { return false; }
+  });
+}
+
 // Helpers for month navigation
 function getCallsInRange<T extends { date: string }>(calls: T[], start: Date, end: Date): T[] {
   return calls.filter(c => {
@@ -211,13 +221,13 @@ export default function DashboardPage() {
       const todayCalls = getCallsToday(userCalls);
       const weekRdv = getAppointmentsThisWeek(userAppointments);
       const monthRdv = getAppointmentsThisMonth(userAppointments);
-      const monthRdvTaken = getAppointmentsThisMonth(rdvTakenAsProspector);
+      const now = new Date();
+      const monthRdvTaken = getAppointmentsByCreatedAt(rdvTakenAsProspector, startOfMonth(now), endOfMonth(now));
       const responseRate = getResponseRate(userCalls);
       const avgDuration = getAverageCallDuration(userCalls);
       const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
 
       // Prospects created this month by this user
-      const now = new Date();
       const mStart = startOfMonth(now);
       const mEnd = endOfMonth(now);
       const monthProspectsCreated = userProspects.filter(p => {
@@ -284,7 +294,7 @@ export default function DashboardPage() {
       const todayCalls = getCallsToday(userCalls);
       const periodCalls = getCallsInRange(userCalls, range.start, range.end);
       const periodRdv = getCallsInRange(userAppointments, range.start, range.end);
-      const periodRdvTaken = getCallsInRange(rdvTakenAsProspector, range.start, range.end);
+      const periodRdvTaken = getAppointmentsByCreatedAt(rdvTakenAsProspector, range.start, range.end);
 
       const periodResponseRate = periodCalls.length > 0
         ? Math.round((periodCalls.filter(c => c.resultat === 'repondu').length / periodCalls.length) * 100)
@@ -379,7 +389,10 @@ export default function DashboardPage() {
       borderRadius: 6,
     }, {
       label: 'RDV pris (prospection)',
-      data: allUsers.map(c => getAppointmentsThisMonth(state.appointments.filter(a => a.prospecteur_id === c.id)).length),
+      data: allUsers.map(c => {
+        const now = new Date();
+        return getAppointmentsByCreatedAt(state.appointments.filter(a => a.prospecteur_id === c.id), startOfMonth(now), endOfMonth(now)).length;
+      }),
       backgroundColor: '#a855f7',
       borderRadius: 6,
     }],

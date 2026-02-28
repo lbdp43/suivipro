@@ -11,6 +11,7 @@ import EmailTemplateModal from '../components/EmailTemplateModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
+  APPOINTMENT_RESULT_LABELS,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
@@ -33,6 +34,7 @@ export default function ProspectsPage() {
   const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
   const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
   const [filterAvecRdv, setFilterAvecRdv] = useState(false);
+  const [filterCommercial, setFilterCommercial] = useState<string>('');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [pageSize, setPageSize] = useState(50);
@@ -214,7 +216,7 @@ export default function ProspectsPage() {
     return ids;
   }, [state.appointments]);
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv;
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
   const clearAllFilters = () => {
     setFilterTypes(new Set());
     setFilterStages(new Set());
@@ -222,6 +224,7 @@ export default function ProspectsPage() {
     setFilterPostalCodes(new Set());
     setFilterDepartments(new Set());
     setFilterAvecRdv(false);
+    setFilterCommercial('');
   };
 
   const filteredProspects = useMemo(() => {
@@ -232,6 +235,7 @@ export default function ProspectsPage() {
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (filterCommercial && p.commercial_id !== filterCommercial) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -249,12 +253,12 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, sortScore, sortDate, pageSize]);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, sortScore, sortDate, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -274,19 +278,46 @@ export default function ProspectsPage() {
       commercial_id: state.currentUser?.id || 'com-1', notes: '', score: 50,
     });
     setEditingProspect(null);
+    setDuplicateWarning([]);
+    setForceCreate(false);
     setShowForm(true);
   };
 
   const openEditForm = (prospect: Prospect) => {
     setFormData({ ...prospect });
     setEditingProspect(prospect);
+    setDuplicateWarning([]);
+    setForceCreate(false);
     setShowForm(true);
   };
 
   const [saving, setSaving] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<Prospect[]>([]);
+  const [forceCreate, setForceCreate] = useState(false);
+
+  const checkDuplicates = (data: Partial<Prospect>): Prospect[] => {
+    const nom = (data.nom_etablissement || '').trim().toLowerCase();
+    const tel = (data.telephone || '').trim();
+    const email = (data.email || '').trim().toLowerCase();
+    return state.prospects.filter(p => {
+      if (editingProspect && p.id === editingProspect.id) return false;
+      if (nom && p.nom_etablissement.trim().toLowerCase() === nom) return true;
+      if (tel && p.telephone.trim() === tel) return true;
+      if (email && p.email && p.email.trim().toLowerCase() === email) return true;
+      return false;
+    });
+  };
 
   const saveProspect = async () => {
     if (!formData.nom_etablissement) return;
+    // Check duplicates unless user forced creation
+    if (!editingProspect && !forceCreate) {
+      const dupes = checkDuplicates(formData);
+      if (dupes.length > 0) {
+        setDuplicateWarning(dupes);
+        return;
+      }
+    }
     setSaving(true);
     const now = new Date().toISOString();
 
@@ -332,6 +363,8 @@ export default function ProspectsPage() {
     }
     setSaving(false);
     setShowForm(false);
+    setDuplicateWarning([]);
+    setForceCreate(false);
   };
 
   const deleteProspect = (id: string) => {
@@ -423,6 +456,16 @@ export default function ProspectsPage() {
                 color="brewery"
               />
             )}
+            <select
+              className="px-2 py-1.5 text-[10px] font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
+              value={filterCommercial}
+              onChange={e => setFilterCommercial(e.target.value)}
+            >
+              <option value="">Tous les commerciaux</option>
+              {state.commerciaux.map(c => (
+                <option key={c.id} value={c.id}>{c.nom}</option>
+              ))}
+            </select>
             <button
               className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
                 filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -966,15 +1009,34 @@ export default function ProspectsPage() {
               {prospectRdv.length > 0 ? (
                 <div className="space-y-2">
                   {prospectRdv.map(rdv => (
-                    <div key={rdv.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 text-sm">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
-                        <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
+                    <div key={rdv.id} className="p-2 rounded-lg bg-gray-50 text-sm space-y-1">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
+                          <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
+                        </div>
+                        <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
+                          {rdv.statut}
+                        </span>
                       </div>
-                      <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
-                        {rdv.statut}
-                      </span>
+                      {rdv.compte_rendu && (
+                        <div className="ml-7 space-y-0.5">
+                          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                            rdv.compte_rendu === 'client' ? 'bg-green-100 text-green-700' :
+                            rdv.compte_rendu === 'mail_envoye' ? 'bg-blue-100 text-blue-700' :
+                            rdv.compte_rendu === 'commande_plus_tard' ? 'bg-amber-100 text-amber-700' :
+                            rdv.compte_rendu === 'a_relancer' ? 'bg-purple-100 text-purple-700' :
+                            rdv.compte_rendu === 'pas_interesse' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
+                          </span>
+                          {rdv.notes_compte_rendu && (
+                            <p className="text-[10px] text-gray-500 italic">{rdv.notes_compte_rendu}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1371,6 +1433,49 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
               </div>
+
+              {/* Duplicate warning */}
+              {duplicateWarning.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                  <p className="text-xs font-semibold text-amber-800 mb-2">
+                    ⚠ Prospect(s) similaire(s) detecte(s) :
+                  </p>
+                  <div className="space-y-1.5 mb-3">
+                    {duplicateWarning.map(dup => (
+                      <div key={dup.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200">
+                        <div className="text-xs text-gray-700">
+                          <span className="font-medium">{dup.nom_etablissement}</span>
+                          {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
+                          {dup.email && <span className="text-gray-500 ml-2">{dup.email}</span>}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
+                          onClick={() => { setShowForm(false); setDuplicateWarning([]); setSearchParams({ id: dup.id }); }}
+                        >
+                          Voir →
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                      onClick={() => { setForceCreate(true); setDuplicateWarning([]); }}
+                    >
+                      Creer quand meme
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg"
+                      onClick={() => setDuplicateWarning([])}
+                    >
+                      Modifier
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>

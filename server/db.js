@@ -186,6 +186,9 @@ async function initDatabase(attempt = 1) {
     try {
       await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS notes_compte_rendu TEXT DEFAULT \'\'');
     } catch { /* column may already exist */ }
+    try {
+      await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS created_at TEXT DEFAULT \'\'');
+    } catch { /* column may already exist */ }
     // Add client_gagne pipeline column if not present
     try {
       const existing = await client.query("SELECT id FROM pipeline_columns WHERE id = 'client_gagne'");

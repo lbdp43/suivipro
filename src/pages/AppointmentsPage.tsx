@@ -22,6 +22,7 @@ export default function AppointmentsPage() {
   const [filterStatus, setFilterStatus] = usePersistedState<AppointmentStatus | ''>('rdv_status', '');
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
   const [filterProspecteur, setFilterProspecteur] = usePersistedState<string>('rdv_prospecteur', '');
+  const [filterCompteRendu, setFilterCompteRendu] = usePersistedState<string>('rdv_compte_rendu', '');
   const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda' | 'planning'>('rdv_view', 'planning');
   const [weekOffset, setWeekOffset] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -75,8 +76,15 @@ export default function AppointmentsPage() {
     if (filterStatus) list = list.filter(a => a.statut === filterStatus);
     if (filterCommercial) list = list.filter(a => a.commercial_id === filterCommercial);
     if (filterProspecteur) list = list.filter(a => a.prospecteur_id === filterProspecteur);
+    if (filterCompteRendu) {
+      if (filterCompteRendu === 'sans') {
+        list = list.filter(a => !a.compte_rendu);
+      } else {
+        list = list.filter(a => a.compte_rendu === filterCompteRendu);
+      }
+    }
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.appointments, filterStatus, filterCommercial, filterProspecteur]);
+  }, [state.appointments, filterStatus, filterCommercial, filterProspecteur, filterCompteRendu]);
 
   // Fetch Google Calendar events for current week range
   const fetchGoogleEvents = useCallback(async () => {
@@ -202,6 +210,7 @@ export default function AppointmentsPage() {
           id: generateId('rdv'),
           commercial_id: formData.commercial_id || state.currentUser?.id || 'com-1',
           prospecteur_id: formData.prospecteur_id || state.currentUser?.id || 'com-1',
+          created_at: new Date().toISOString(),
         } as Appointment,
       });
 
@@ -465,7 +474,7 @@ export default function AppointmentsPage() {
     );
   };
 
-  const activeFilterCount = (filterStatus ? 1 : 0) + (filterCommercial ? 1 : 0) + (filterProspecteur ? 1 : 0);
+  const activeFilterCount = (filterStatus ? 1 : 0) + (filterCommercial ? 1 : 0) + (filterProspecteur ? 1 : 0) + (filterCompteRendu ? 1 : 0);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
@@ -580,7 +589,7 @@ export default function AppointmentsPage() {
           {activeFilterCount > 0 && (
             <button
               className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
-              onClick={() => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); }}
+              onClick={() => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); setFilterCompteRendu(''); }}
             >
               Reinitialiser
             </button>
@@ -618,6 +627,41 @@ export default function AppointmentsPage() {
               </button>
             );
           })}
+        </div>
+
+        {/* Filtre par compte-rendu */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+            <ClipboardCheck className="w-3.5 h-3.5" /> Compte-rendu :
+          </span>
+          <button
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!filterCompteRendu ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            onClick={() => setFilterCompteRendu('')}
+          >
+            Tous
+          </button>
+          {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+            const count = state.appointments.filter(a => a.compte_rendu === key).length;
+            return (
+              <button
+                key={key}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterCompteRendu === key ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => setFilterCompteRendu(filterCompteRendu === key ? '' : key)}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+          <button
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              filterCompteRendu === 'sans' ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterCompteRendu(filterCompteRendu === 'sans' ? '' : 'sans')}
+          >
+            Sans CR ({state.appointments.filter(a => !a.compte_rendu).length})
+          </button>
         </div>
       </div>
 

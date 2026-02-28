@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo, useRef } from 'react';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
@@ -184,6 +184,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, emptyState);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const currentUserRef = useRef<Commercial | null>(null);
 
   // Wrapped dispatch that also syncs to API
   const dispatch: React.Dispatch<Action> = useCallback((action: Action) => {
@@ -199,6 +200,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     try {
       const user = await apiLogin(email, password);
+      currentUserRef.current = user;
       // Load full state from API
       const data = await loadFullState();
       rawDispatch({
@@ -219,6 +221,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Logout
   const logout = useCallback(() => {
     setToken(null);
+    currentUserRef.current = null;
     rawDispatch({ type: 'SET_STATE', payload: emptyState });
   }, []);
 
@@ -234,6 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const user = await getMe();
+        currentUserRef.current = user;
         const data = await loadFullState();
         rawDispatch({
           type: 'SET_STATE',
@@ -251,6 +255,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, []);
+
+  // Auto-reload polling every 30s for multi-user sync
+  useEffect(() => {
+    const token = getToken();
+    if (!token || loading) return;
+
+    const poll = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const data = await loadFullState();
+        rawDispatch({
+          type: 'SET_STATE',
+          payload: {
+            ...data,
+            currentUser: currentUserRef.current,
+            pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
+          },
+        });
+      } catch {
+        // Silently ignore polling errors
+      }
+    };
+
+    const interval = setInterval(poll, 30000);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const getProspect = useCallback((id: string) => state.prospects.find(p => p.id === id), [state.prospects]);
   const getCallsForProspect = useCallback((pid: string) => state.calls.filter(c => c.prospect_id === pid), [state.calls]);

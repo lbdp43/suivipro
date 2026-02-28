@@ -48,6 +48,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [editEmail, setEditEmail] = useState('');
   // Negative outcome: pas_interesse → perdu, ne_pas_contacter → ne_pas_contacter
   const [negativeOutcome, setNegativeOutcome] = useState<'none' | 'pas_interesse' | 'ne_pas_contacter'>('none');
+  const [saveErrors, setSaveErrors] = useState<string[]>([]);
   // RDV state
   const [showRdv, setShowRdv] = useState(false);
   const [rdvDate, setRdvDate] = useState('');
@@ -63,13 +64,25 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callStartTimeRef = useRef<number>(0);
 
-  // Timer logic
+  // Timer logic - uses Date.now() diff to avoid drift/freeze issues
   useEffect(() => {
     if (callActive) {
-      timerRef.current = setInterval(() => setCallTimer(prev => prev + 1), 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
+      if (callStartTimeRef.current === 0) {
+        callStartTimeRef.current = Date.now();
+      }
+      timerRef.current = setInterval(() => {
+        setCallTimer(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+      }, 500);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      if (callStartTimeRef.current > 0) {
+        setCallTimer(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+        callStartTimeRef.current = 0;
+      }
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [callActive]);
@@ -124,6 +137,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setSelectedTags(prev =>
       prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
     );
+    setSaveErrors([]);
   };
 
   const removeTag = (tagId: string) => {
@@ -143,6 +157,16 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   const saveCall = () => {
     if (!prospectId) return;
+
+    // Validation: notes et tags obligatoires
+    const errors: string[] = [];
+    if (!callNotes.trim()) errors.push('notes');
+    if (selectedTags.length === 0) errors.push('tags');
+    if (errors.length > 0) {
+      setSaveErrors(errors);
+      return;
+    }
+    setSaveErrors([]);
 
     // 1. Save the call
     dispatch({
@@ -226,6 +250,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           lieu: rdvLieu,
           notes: rdvNotes,
           statut: 'planifie',
+          created_at: new Date().toISOString(),
         },
       });
       // Show confirmation screen with agenda + export
@@ -451,10 +476,15 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   </div>
 
                   {/* Tags - tags actifs avec X + tags disponibles a ajouter */}
-                  <div>
+                  <div className={saveErrors.includes('tags') ? 'p-2 border border-red-300 rounded-lg bg-red-50/30' : ''}>
                     <label className="block text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
-                      <Tag className="w-3 h-3" /> Tags du prospect
+                      <Tag className="w-3 h-3" /> Tags du prospect <span className="text-red-500">*</span>
                     </label>
+                    {saveErrors.includes('tags') && (
+                      <p className="text-[10px] text-red-500 mb-1.5 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Au moins un tag est obligatoire
+                      </p>
+                    )}
                     {/* Tags actuellement selectionnes (avec bouton X) */}
                     {selectedTags.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2">
@@ -528,13 +558,20 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
                   {/* Notes */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>
                     <textarea
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-brewery-500"
+                      className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-brewery-500 ${
+                        saveErrors.includes('notes') ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-200'
+                      }`}
                       placeholder="Qu'est-ce qui s'est passe pendant l'appel ?"
                       value={callNotes}
-                      onChange={e => setCallNotes(e.target.value)}
+                      onChange={e => { setCallNotes(e.target.value); setSaveErrors([]); }}
                     />
+                    {saveErrors.includes('notes') && (
+                      <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Les notes sont obligatoires
+                      </p>
+                    )}
                   </div>
 
                   {/* RDV */}
