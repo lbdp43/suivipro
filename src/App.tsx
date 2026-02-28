@@ -18,6 +18,7 @@ const ImportPage = lazy(() => import('./pages/ImportPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
+const GuidePage = lazy(() => import('./pages/GuidePage'));
 
 function PageLoader() {
   return (
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/emails" element={<EmailsPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/guide" element={<GuidePage />} />
           <Route path="/profil" element={<ProfilePage />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
         </Route>

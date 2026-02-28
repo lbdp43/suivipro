@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck,
+  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -907,6 +907,12 @@ export default function ProspectsPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">{selectedProspect.nom_etablissement}</h2>
+                  {selectedProspect.nom_contact && (
+                    <p className="text-sm text-gray-700 font-medium mt-0.5 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      {selectedProspect.nom_contact}
+                    </p>
+                  )}
                   <p className="text-sm text-gray-500 mt-0.5">
                     {ESTABLISHMENT_LABELS[selectedProspect.type_etablissement]} - {selectedProspect.ville}
                   </p>

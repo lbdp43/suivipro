@@ -26,6 +26,7 @@ export default function Layout() {
     { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
     { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
+    { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false },
     { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
   ];
 
