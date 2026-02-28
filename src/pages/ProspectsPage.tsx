@@ -291,7 +291,6 @@ export default function ProspectsPage() {
       commercial_id: state.currentUser?.id || 'com-1', notes: '', score: 50,
     });
     setEditingProspect(null);
-    setDuplicateWarning([]);
     setForceCreate(false);
     setShowForm(true);
   };
@@ -299,37 +298,33 @@ export default function ProspectsPage() {
   const openEditForm = (prospect: Prospect) => {
     setFormData({ ...prospect });
     setEditingProspect(prospect);
-    setDuplicateWarning([]);
     setForceCreate(false);
     setShowForm(true);
   };
 
   const [saving, setSaving] = useState(false);
-  const [duplicateWarning, setDuplicateWarning] = useState<Prospect[]>([]);
   const [forceCreate, setForceCreate] = useState(false);
 
-  const checkDuplicates = (data: Partial<Prospect>): Prospect[] => {
-    const nom = (data.nom_etablissement || '').trim().toLowerCase();
-    const tel = (data.telephone || '').trim();
-    const email = (data.email || '').trim().toLowerCase();
+  // Live duplicate detection as user types
+  const liveDuplicates = useMemo(() => {
+    if (!showForm || editingProspect) return [];
+    const nom = (formData.nom_etablissement || '').trim().toLowerCase();
+    const tel = (formData.telephone || '').trim();
+    const email = (formData.email || '').trim().toLowerCase();
+    if (!nom && !tel && !email) return [];
     return state.prospects.filter(p => {
-      if (editingProspect && p.id === editingProspect.id) return false;
-      if (nom && p.nom_etablissement.trim().toLowerCase() === nom) return true;
-      if (tel && p.telephone.trim() === tel) return true;
-      if (email && p.email && p.email.trim().toLowerCase() === email) return true;
+      if (nom && nom.length >= 3 && p.nom_etablissement.trim().toLowerCase().includes(nom)) return true;
+      if (tel && tel.length >= 4 && p.telephone.trim().includes(tel)) return true;
+      if (email && email.length >= 5 && p.email && p.email.trim().toLowerCase().includes(email)) return true;
       return false;
     });
-  };
+  }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.prospects]);
 
   const saveProspect = async () => {
     if (!formData.nom_etablissement) return;
-    // Check duplicates unless user forced creation
-    if (!editingProspect && !forceCreate) {
-      const dupes = checkDuplicates(formData);
-      if (dupes.length > 0) {
-        setDuplicateWarning(dupes);
-        return;
-      }
+    // Block save if duplicates found and user hasn't forced creation
+    if (!editingProspect && !forceCreate && liveDuplicates.length > 0) {
+      return;
     }
     setSaving(true);
     const now = new Date().toISOString();
@@ -376,7 +371,6 @@ export default function ProspectsPage() {
     }
     setSaving(false);
     setShowForm(false);
-    setDuplicateWarning([]);
     setForceCreate(false);
   };
 
@@ -1244,8 +1238,46 @@ export default function ProspectsPage() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'etablissement *</label>
-                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => setFormData(prev => ({ ...prev, nom_etablissement: e.target.value }))} />
+                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => { setFormData(prev => ({ ...prev, nom_etablissement: e.target.value })); setForceCreate(false); }} />
               </div>
+
+              {/* Live duplicate warning */}
+              {!editingProspect && !forceCreate && liveDuplicates.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                  <p className="text-xs font-semibold text-amber-800 mb-2">
+                    Attention - Prospect(s) similaire(s) existant(s) :
+                  </p>
+                  <div className="space-y-1.5 mb-3 max-h-32 overflow-y-auto">
+                    {liveDuplicates.slice(0, 5).map(dup => (
+                      <div key={dup.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200">
+                        <div className="text-xs text-gray-700 min-w-0">
+                          <span className="font-medium">{dup.nom_etablissement}</span>
+                          {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
+                          {dup.ville && <span className="text-gray-400 ml-1">({dup.ville})</span>}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
+                          onClick={() => { setShowForm(false); setSearchParams({ id: dup.id }); }}
+                        >
+                          Voir →
+                        </button>
+                      </div>
+                    ))}
+                    {liveDuplicates.length > 5 && (
+                      <p className="text-[10px] text-amber-600">+ {liveDuplicates.length - 5} autre(s)...</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                    onClick={() => setForceCreate(true)}
+                  >
+                    Creer quand meme
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
@@ -1271,11 +1303,11 @@ export default function ProspectsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => setFormData(prev => ({ ...prev, telephone: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => { setFormData(prev => ({ ...prev, telephone: e.target.value })); setForceCreate(false); }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.email || ''} onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.email || ''} onChange={e => { setFormData(prev => ({ ...prev, email: e.target.value })); setForceCreate(false); }} />
                 </div>
               </div>
               <div>
@@ -1447,48 +1479,6 @@ export default function ProspectsPage() {
                 <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
               </div>
 
-              {/* Duplicate warning */}
-              {duplicateWarning.length > 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
-                  <p className="text-xs font-semibold text-amber-800 mb-2">
-                    ⚠ Prospect(s) similaire(s) detecte(s) :
-                  </p>
-                  <div className="space-y-1.5 mb-3">
-                    {duplicateWarning.map(dup => (
-                      <div key={dup.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200">
-                        <div className="text-xs text-gray-700">
-                          <span className="font-medium">{dup.nom_etablissement}</span>
-                          {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
-                          {dup.email && <span className="text-gray-500 ml-2">{dup.email}</span>}
-                        </div>
-                        <button
-                          type="button"
-                          className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
-                          onClick={() => { setShowForm(false); setDuplicateWarning([]); setSearchParams({ id: dup.id }); }}
-                        >
-                          Voir →
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700"
-                      onClick={() => { setForceCreate(true); setDuplicateWarning([]); }}
-                    >
-                      Creer quand meme
-                    </button>
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg"
-                      onClick={() => setDuplicateWarning([])}
-                    >
-                      Modifier
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
