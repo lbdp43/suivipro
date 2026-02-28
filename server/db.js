@@ -204,6 +204,38 @@ async function initDatabase(attempt = 1) {
     } catch { /* migration may fail on first run */ }
 
     // ============================================
+    // One-time migration: apply pipeline stages for existing compte-rendus
+    // that were not persisted due to the MOVE_PROSPECT sync bug
+    // ============================================
+    try {
+      const rdvsDone = await client.query(
+        "SELECT a.prospect_id, a.compte_rendu, a.date FROM appointments a WHERE a.statut = 'termine' AND a.compte_rendu != '' ORDER BY a.date ASC"
+      );
+      for (const rdv of rdvsDone.rows) {
+        const p = await client.query('SELECT etape_pipeline FROM prospects WHERE id = $1', [rdv.prospect_id]);
+        if (p.rows.length === 0) continue;
+        const current = p.rows[0].etape_pipeline;
+        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+        let newStage = null;
+        if (rdv.compte_rendu === 'client') {
+          newStage = 'client_gagne';
+        } else if (rdv.compte_rendu === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (rdv.compte_rendu === 'mail_envoye') {
+          if (!terminal.includes(current)) newStage = 'negociation';
+        } else if (rdv.compte_rendu === 'commande_plus_tard' || rdv.compte_rendu === 'a_relancer') {
+          if (!terminal.includes(current)) newStage = 'proposition';
+        }
+        if (newStage && newStage !== current) {
+          await client.query(
+            'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
+            [newStage, new Date().toISOString(), rdv.prospect_id]
+          );
+        }
+      }
+    } catch (err) { console.error('Migration compte-rendu pipeline:', err); }
+
+    // ============================================
     // Seed data (only if empty)
     // ============================================
 
