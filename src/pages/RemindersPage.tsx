@@ -30,6 +30,10 @@ export default function RemindersPage() {
   const [editTarget, setEditTarget] = useState<Reminder | null>(null);
   const [editForm, setEditForm] = useState({ date: '', heure: '', message: '' });
 
+  // Pagination rappels termines
+  const [completedPage, setCompletedPage] = useState(1);
+  const COMPLETED_PER_PAGE = 20;
+
   const reminders = useMemo(() => {
     let filtered = [...state.reminders];
     if (filterCommercial) filtered = filtered.filter(r => r.commercial_id === filterCommercial);
@@ -318,8 +322,16 @@ export default function RemindersPage() {
         <div>
           <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
           <div className="space-y-3">
-            {completedReminders.map(r => renderReminder(r))}
+            {completedReminders.slice(0, completedPage * COMPLETED_PER_PAGE).map(r => renderReminder(r))}
           </div>
+          {completedReminders.length > completedPage * COMPLETED_PER_PAGE && (
+            <button
+              className="mt-3 w-full py-2 rounded-lg text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+              onClick={() => setCompletedPage(p => p + 1)}
+            >
+              Voir plus ({completedReminders.length - completedPage * COMPLETED_PER_PAGE} restants)
+            </button>
+          )}
         </div>
       )}
 
