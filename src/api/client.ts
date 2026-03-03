@@ -290,3 +290,14 @@ export async function downloadDocument(documentId: string, filename: string) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ============================================
+// OCR - Scan image pour extraire infos prospect
+// ============================================
+
+export async function ocrProspect(base64Image: string): Promise<{ text: string; parsed: Record<string, string> }> {
+  return request('/ocr-prospect', {
+    method: 'POST',
+    body: JSON.stringify({ image: base64Image }),
+  });
+}

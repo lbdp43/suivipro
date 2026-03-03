@@ -4,10 +4,12 @@ import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
   CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
+  Camera, Loader2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
+import { ocrProspect } from '../api/client';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
@@ -304,6 +306,46 @@ export default function ProspectsPage() {
 
   const [saving, setSaving] = useState(false);
   const [forceCreate, setForceCreate] = useState(false);
+
+  // OCR scan
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanError('');
+    setScanning(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const { parsed } = await ocrProspect(base64);
+      // Pre-fill form with parsed data (only fill empty fields)
+      setFormData(prev => ({
+        ...prev,
+        nom_etablissement: parsed.nom_etablissement || prev.nom_etablissement || '',
+        nom_contact: parsed.nom_contact || prev.nom_contact || '',
+        telephone: parsed.telephone || prev.telephone || '',
+        email: parsed.email || prev.email || '',
+        adresse: parsed.adresse || prev.adresse || '',
+        code_postal: parsed.code_postal || prev.code_postal || '',
+        ville: parsed.ville || prev.ville || '',
+        departement: parsed.departement || prev.departement || '',
+        type_etablissement: (parsed.type_etablissement as EstablishmentType) || prev.type_etablissement || 'bar_restaurant',
+      }));
+      setForceCreate(false);
+    } catch (err: unknown) {
+      setScanError(err instanceof Error ? err.message : 'Erreur lors du scan');
+    } finally {
+      setScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Live duplicate detection as user types
   const liveDuplicates = useMemo(() => {
@@ -1242,6 +1284,40 @@ export default function ProspectsPage() {
               </button>
             </div>
             <div className="p-5 space-y-4">
+              {/* Bouton scan OCR - seulement en creation */}
+              {!editingProspect && (
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={handleScanFile}
+                  />
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-brewery-300 bg-brewery-50 text-brewery-700 hover:bg-brewery-100 hover:border-brewery-400 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={scanning}
+                  >
+                    {scanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Analyse en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4" />
+                        Scanner une image ou PDF pour pre-remplir
+                      </>
+                    )}
+                  </button>
+                  {scanError && (
+                    <p className="text-xs text-red-500">{scanError}</p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'etablissement *</label>
                 <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => { setFormData(prev => ({ ...prev, nom_etablissement: e.target.value })); setForceCreate(false); }} />

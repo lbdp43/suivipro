@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { createWorker } from 'tesseract.js';
 import db from './db.js';
 
 const router = Router();
@@ -600,6 +601,116 @@ router.get('/documents/:id/download', authMiddleware, asyncHandler(async (req, r
 router.delete('/documents/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ============================================
+// OCR - Scan image/PDF pour extraire infos prospect
+// ============================================
+
+// Mapping mots-cles → type d'etablissement
+const TYPE_KEYWORDS = {
+  bar_restaurant: ['restaurant', 'bar', 'brasserie', 'bistro', 'bistrot', 'pizzeria', 'creperie', 'pub', 'taverne', 'snack'],
+  cave: ['cave', 'caviste', 'vins', 'spiritueux', 'oenologie', 'vin', 'wine'],
+  epicerie: ['epicerie', 'fine', 'traiteur', 'alimentation', 'gourmet', 'delicatessen'],
+  supermarche: ['supermarche', 'hypermarche', 'magasin', 'carrefour', 'leclerc', 'auchan', 'lidl', 'intermarche'],
+  hotel: ['hotel', 'chambre', 'hotes', 'auberge', 'gite', 'hebergement', 'residence'],
+  camping: ['camping', 'camp'],
+  distributeur: ['distributeur', 'grossiste', 'distribution'],
+  marche: ['marche', 'foire', 'salon'],
+  association: ['association', 'club'],
+  comite_entreprise: ['comite', 'entreprise', 'cse'],
+  collectivite: ['collectivite', 'mairie', 'commune'],
+};
+
+function parseProspectFromText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const result = {};
+
+  // Telephone : formats francais
+  const phoneRegex = /(?:\+33|0033|0)\s*[1-9](?:[\s.-]*\d{2}){4}/g;
+  const phones = text.match(phoneRegex);
+  if (phones && phones.length > 0) {
+    result.telephone = phones[0].replace(/[\s.-]/g, '').replace(/^(\+33|0033)/, '0');
+  }
+
+  // Email
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emails = text.match(emailRegex);
+  if (emails && emails.length > 0) {
+    result.email = emails[0].toLowerCase();
+  }
+
+  // Code postal + ville
+  const cpRegex = /\b(\d{5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-ZÀ-Ü]?[a-zà-ÿ]+)*)/;
+  const cpMatch = text.match(cpRegex);
+  if (cpMatch) {
+    result.code_postal = cpMatch[1];
+    result.ville = cpMatch[2].trim();
+    result.departement = cpMatch[1].substring(0, 2);
+  }
+
+  // Adresse : chercher un pattern "numero + rue" avant le code postal
+  const adresseRegex = /(\d+[\s,]*(?:rue|avenue|boulevard|place|chemin|route|impasse|allee|cours|quai|passage|lot|zone|za|zi|rd|rn|av|bd|pl|ch|rte|imp|all)[^,\n]*)/i;
+  const adresseMatch = text.match(adresseRegex);
+  if (adresseMatch) {
+    result.adresse = adresseMatch[1].replace(/,\s*$/, '').trim();
+  }
+
+  // Type d'etablissement
+  const textLower = text.toLowerCase();
+  for (const [type, keywords] of Object.entries(TYPE_KEYWORDS)) {
+    if (keywords.some(kw => textLower.includes(kw))) {
+      result.type_etablissement = type;
+      break;
+    }
+  }
+
+  // Nom de l'etablissement : premiere ligne significative (pas un numero, pas une adresse)
+  for (const line of lines) {
+    const clean = line.trim();
+    if (clean.length < 2) continue;
+    if (/^\d+$/.test(clean)) continue;
+    if (/^[\d+\s()+.-]+$/.test(clean)) continue;  // juste un tel
+    if (emailRegex.test(clean)) continue;
+    if (/^\d{5}\s/.test(clean)) continue;  // code postal
+    if (/^(lun|mar|mer|jeu|ven|sam|dim|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(clean)) continue;
+    if (/^(ouvert|ferme|open|closed|horaire)/i.test(clean)) continue;
+    if (/^https?:\/\//i.test(clean)) continue;
+    if (/^(avis|review|note|etoile|\d+[.,]\d+\s)/i.test(clean)) continue;
+    if (/google/i.test(clean)) continue;
+    result.nom_etablissement = clean;
+    break;
+  }
+
+  // Nom du contact : chercher un pattern "prenom nom" dans le texte
+  const nomContactRegex = /(?:contact|gerant|responsable|proprietaire|dirigeant|mr|mme|m\.)\s*:?\s*([A-ZÀ-Ü][a-zà-ÿ]+\s+[A-ZÀ-Ü][a-zà-ÿ]+)/i;
+  const nomContactMatch = text.match(nomContactRegex);
+  if (nomContactMatch) {
+    result.nom_contact = nomContactMatch[1].trim();
+  }
+
+  return result;
+}
+
+router.post('/ocr-prospect', authMiddleware, asyncHandler(async (req, res) => {
+  const { image } = req.body; // base64 encoded image
+  if (!image) return res.status(400).json({ error: 'Image requise (base64)' });
+
+  try {
+    // Decode base64 (strip data:image/...;base64, prefix if present)
+    const base64Data = image.replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const worker = await createWorker('fra+eng');
+    const { data: { text } } = await worker.recognize(buffer);
+    await worker.terminate();
+
+    const parsed = parseProspectFromText(text);
+    res.json({ text, parsed });
+  } catch (err) {
+    console.error('OCR error:', err);
+    res.status(500).json({ error: 'Erreur OCR: ' + err.message });
+  }
 }));
 
 export default router;
