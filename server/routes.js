@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { createWorker } from 'tesseract.js';
 import db from './db.js';
+import { encrypt, decrypt } from './crypto.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -714,91 +715,149 @@ router.post('/ocr-prospect', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // ============================================
-// Hub LBDP proxy — keeps credentials server-side
+// Hub LBDP proxy — per-user credentials
 // ============================================
 
-let hubTokenCache = null;
-let hubTokenExpiry = 0;
+// Per-user Hub token cache: { [userId]: { token, expiry } }
+const hubTokenCacheByUser = {};
 
-router.get('/hub/token', authMiddleware, async (req, res) => {
+// Login to Hub with given credentials, return token
+async function hubLogin(email, password) {
   const HUB_API_URL = process.env.HUB_API_URL;
-  const HUB_EMAIL = process.env.HUB_EMAIL;
-  const HUB_PASSWORD = process.env.HUB_PASSWORD;
+  if (!HUB_API_URL) throw new Error('HUB_API_URL non configure');
 
-  if (!HUB_API_URL || !HUB_EMAIL || !HUB_PASSWORD) {
-    return res.status(503).json({ error: 'Hub non configure' });
-  }
-
-  try {
-    // Return cached token if still valid (with 60s margin)
-    if (hubTokenCache && Date.now() < hubTokenExpiry - 60_000) {
-      return res.json({ token: hubTokenCache });
-    }
-
-    const hubRes = await fetch(`${HUB_API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: HUB_EMAIL, password: HUB_PASSWORD }),
-    });
-
-    if (!hubRes.ok) {
-      return res.status(hubRes.status).json({ error: 'Hub login failed' });
-    }
-
-    const data = await hubRes.json();
-    hubTokenCache = data.token;
-    hubTokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
-
-    res.json({ token: data.token });
-  } catch (err) {
-    console.error('Hub token proxy error:', err.message);
-    res.status(502).json({ error: 'Impossible de contacter le Hub' });
-  }
-});
-
-// Get Hub token (internal helper, reuses cache from /hub/token)
-async function getHubTokenInternal() {
-  if (hubTokenCache && Date.now() < hubTokenExpiry - 60_000) {
-    return hubTokenCache;
-  }
-
-  const HUB_API_URL = process.env.HUB_API_URL;
   const hubRes = await fetch(`${HUB_API_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: process.env.HUB_EMAIL,
-      password: process.env.HUB_PASSWORD,
-    }),
+    body: JSON.stringify({ email, password }),
   });
 
-  if (!hubRes.ok) throw new Error('Hub login failed');
+  if (!hubRes.ok) {
+    const msg = hubRes.status === 401 ? 'Identifiants Hub incorrects' : `Hub login failed (${hubRes.status})`;
+    throw new Error(msg);
+  }
+
   const data = await hubRes.json();
-  hubTokenCache = data.token;
-  hubTokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
-  return hubTokenCache;
+  return data.token;
 }
 
-// List Hub channels
-router.get('/hub/channels', authMiddleware, async (req, res) => {
-  const HUB_API_URL = process.env.HUB_API_URL;
-  if (!HUB_API_URL || !process.env.HUB_EMAIL || !process.env.HUB_PASSWORD) {
-    return res.status(503).json({ error: 'Hub non configure' });
+// Get a Hub token for the current user (with cache)
+async function getHubTokenForUser(userId) {
+  const cached = hubTokenCacheByUser[userId];
+  if (cached && Date.now() < cached.expiry - 60_000) {
+    return cached.token;
+  }
+
+  // Fetch user's Hub credentials from DB
+  const result = await db.query('SELECT hub_email, hub_password FROM commerciaux WHERE id = $1', [userId]);
+  if (result.rows.length === 0) throw new Error('Utilisateur introuvable');
+
+  const { hub_email, hub_password } = result.rows[0];
+  if (!hub_email || !hub_password) {
+    throw new Error('HUB_NOT_CONFIGURED');
+  }
+
+  const decryptedPassword = decrypt(hub_password);
+  const token = await hubLogin(hub_email, decryptedPassword);
+
+  hubTokenCacheByUser[userId] = {
+    token,
+    expiry: Date.now() + 23 * 60 * 60 * 1000,
+  };
+
+  return token;
+}
+
+// Get Hub token for the authenticated user
+router.get('/hub/token', authMiddleware, async (req, res) => {
+  if (!process.env.HUB_API_URL) {
+    return res.status(503).json({ error: 'HUB_API_URL non configure' });
   }
 
   try {
-    const token = await getHubTokenInternal();
+    const token = await getHubTokenForUser(req.user.id);
+    res.json({ token });
+  } catch (err) {
+    if (err.message === 'HUB_NOT_CONFIGURED') {
+      return res.status(404).json({ error: 'hub_not_configured', message: 'Identifiants Hub non configures' });
+    }
+    console.error('Hub token proxy error:', err.message);
+    res.status(502).json({ error: err.message || 'Impossible de contacter le Hub' });
+  }
+});
+
+// Check if user has Hub credentials configured
+router.get('/hub/status', authMiddleware, async (req, res) => {
+  try {
+    const result = await db.query('SELECT hub_email FROM commerciaux WHERE id = $1', [req.user.id]);
+    const configured = !!(result.rows[0]?.hub_email);
+    res.json({ configured, hub_email: result.rows[0]?.hub_email || '' });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Save Hub credentials for the authenticated user
+router.post('/hub/credentials', authMiddleware, async (req, res) => {
+  const { hub_email, hub_password } = req.body;
+
+  if (!hub_email || !hub_password) {
+    return res.status(400).json({ error: 'Email et mot de passe Hub requis' });
+  }
+
+  if (!process.env.HUB_API_URL) {
+    return res.status(503).json({ error: 'HUB_API_URL non configure' });
+  }
+
+  try {
+    // Verify credentials work before saving
+    await hubLogin(hub_email, hub_password);
+
+    // Encrypt password and save
+    const encryptedPassword = encrypt(hub_password);
+    await db.query(
+      'UPDATE commerciaux SET hub_email = $1, hub_password = $2 WHERE id = $3',
+      [hub_email, encryptedPassword, req.user.id]
+    );
+
+    // Clear cache to use new credentials
+    delete hubTokenCacheByUser[req.user.id];
+
+    res.json({ success: true, message: 'Identifiants Hub enregistres' });
+  } catch (err) {
+    console.error('Hub credentials save error:', err.message);
+    res.status(400).json({ error: err.message || 'Identifiants Hub invalides' });
+  }
+});
+
+// List Hub channels for the authenticated user
+router.get('/hub/channels', authMiddleware, async (req, res) => {
+  if (!process.env.HUB_API_URL) {
+    return res.status(503).json({ error: 'HUB_API_URL non configure' });
+  }
+
+  try {
+    const token = await getHubTokenForUser(req.user.id);
+    const HUB_API_URL = process.env.HUB_API_URL;
+
     const hubRes = await fetch(`${HUB_API_URL}/channels`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!hubRes.ok) {
+      const text = await hubRes.text();
+      console.error('Hub channels error:', hubRes.status, text);
       return res.status(hubRes.status).json({ error: 'Impossible de recuperer les canaux' });
     }
 
-    const channels = await hubRes.json();
-    res.json(channels);
+    const data = await hubRes.json();
+    // Normalize: accept both array and { channels: [] }
+    const channels = Array.isArray(data) ? data : (data.channels || data.data || []);
+    res.json({ channels });
   } catch (err) {
+    if (err.message === 'HUB_NOT_CONFIGURED') {
+      return res.status(404).json({ error: 'hub_not_configured' });
+    }
     console.error('Hub channels proxy error:', err.message);
     res.status(502).json({ error: 'Impossible de contacter le Hub' });
   }

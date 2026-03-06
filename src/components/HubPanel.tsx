@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft } from 'lucide-react';
-import { getHubToken } from '../lib/hub';
+import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft, KeyRound, Check } from 'lucide-react';
+import { getHubToken, clearHubTokenCache, saveHubCredentials, getHubChannels } from '../lib/hub';
 
 const HUB_FRONTEND = (import.meta.env.VITE_HUB_FRONTEND_URL || '').replace(/\/$/, '');
 
@@ -25,7 +25,15 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Credentials form
+  const [hubEmail, setHubEmail] = useState('');
+  const [hubPassword, setHubPassword] = useState('');
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [credsError, setCredsError] = useState<string | null>(null);
+  const [credsSaved, setCredsSaved] = useState(false);
 
   // Messagerie state
   const [channels, setChannels] = useState<HubChannel[]>([]);
@@ -36,12 +44,23 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
 
   const claudeIframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Fetch token
   const fetchToken = useCallback(() => {
     setLoading(true);
     setError(null);
+    setNeedsSetup(false);
     getHubToken()
-      .then((t: string) => setToken(t))
-      .catch(() => setError('Connexion au Hub impossible'))
+      .then((t: string) => {
+        setToken(t);
+        setNeedsSetup(false);
+      })
+      .catch((err) => {
+        if (err.message === 'HUB_NOT_CONFIGURED') {
+          setNeedsSetup(true);
+        } else {
+          setError('Connexion au Hub impossible');
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -52,19 +71,11 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
 
   // Fetch channels when token is available
   const fetchChannels = useCallback(async () => {
-    const authToken = localStorage.getItem('suivipro_token');
-    if (!authToken) return;
-
     setChannelsLoading(true);
     setChannelsError(null);
     try {
-      const res = await fetch('/api/hub/channels', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!res.ok) throw new Error('Erreur chargement canaux');
-      const data = await res.json();
-      // Handle both array response and { channels: [] } response
-      setChannels(Array.isArray(data) ? data : data.channels || []);
+      const list = await getHubChannels();
+      setChannels(list);
     } catch {
       setChannelsError('Impossible de charger les canaux');
     } finally {
@@ -78,7 +89,28 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
     }
   }, [token, channels.length, channelsLoading, fetchChannels]);
 
+  // Save Hub credentials
+  const handleSaveCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCreds(true);
+    setCredsError(null);
+    setCredsSaved(false);
+    try {
+      await saveHubCredentials(hubEmail, hubPassword);
+      setCredsSaved(true);
+      setNeedsSetup(false);
+      setHubPassword('');
+      // Now fetch the token
+      fetchToken();
+    } catch (err: any) {
+      setCredsError(err.message || 'Erreur de connexion au Hub');
+    } finally {
+      setSavingCreds(false);
+    }
+  };
+
   const handleRetry = useCallback(() => {
+    clearHubTokenCache();
     setToken(null);
     setChannels([]);
     setSelectedChannel(null);
@@ -95,7 +127,6 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
     }
   }, []);
 
-  // Listen for prospect-context events dispatched from ProspectsPage
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ProspectContext>).detail;
@@ -120,20 +151,16 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           <button
             onClick={() => setTab('accueil')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'accueil'
-                ? 'bg-brewery-600 text-white'
-                : 'text-gray-600 hover:bg-gray-200'
+              tab === 'accueil' ? 'bg-brewery-600 text-white' : 'text-gray-600 hover:bg-gray-200'
             }`}
           >
             <Home className="w-4 h-4" />
             Accueil
           </button>
           <button
-            onClick={() => { setTab('messagerie'); }}
+            onClick={() => setTab('messagerie')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'messagerie'
-                ? 'bg-brewery-600 text-white'
-                : 'text-gray-600 hover:bg-gray-200'
+              tab === 'messagerie' ? 'bg-brewery-600 text-white' : 'text-gray-600 hover:bg-gray-200'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
@@ -142,9 +169,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           <button
             onClick={() => setTab('claude')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === 'claude'
-                ? 'bg-purple-600 text-white'
-                : 'text-gray-600 hover:bg-gray-200'
+              tab === 'claude' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-200'
             }`}
           >
             <Bot className="w-4 h-4" />
@@ -152,13 +177,15 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           </button>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={handleRetry}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-brewery-600 hover:bg-gray-200 transition-colors"
-            title="Rafraichir le Hub"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          {token && (
+            <button
+              onClick={handleRetry}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-brewery-600 hover:bg-gray-200 transition-colors"
+              title="Rafraichir le Hub"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
@@ -172,15 +199,15 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
       <div className="flex-1 relative overflow-hidden bg-white">
         {/* Global loading */}
         {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20">
             <Loader2 className="w-6 h-6 text-brewery-600 animate-spin" />
             <span className="mt-2 text-sm text-gray-500">Connexion au Hub...</span>
           </div>
         )}
 
         {/* Global error */}
-        {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
+        {error && !needsSetup && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20">
             <AlertTriangle className="w-8 h-8 text-red-400 mb-2" />
             <p className="text-sm text-red-500 mb-3">{error}</p>
             <button
@@ -193,9 +220,9 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           </div>
         )}
 
-        {/* Missing config warning */}
-        {missingConfig && !loading && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 px-6 text-center">
+        {/* Missing VITE_HUB_FRONTEND_URL */}
+        {missingConfig && !loading && !error && !needsSetup && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 px-6 text-center">
             <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
             <p className="text-sm font-medium text-gray-700 mb-1">Hub non configure</p>
             <p className="text-xs text-gray-500">
@@ -204,9 +231,80 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           </div>
         )}
 
+        {/* === SETUP SCREEN: user needs to enter Hub credentials === */}
+        {needsSetup && !loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 px-6">
+            <div className="w-full max-w-xs">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-12 h-12 rounded-full bg-brewery-100 flex items-center justify-center">
+                  <KeyRound className="w-6 h-6 text-brewery-600" />
+                </div>
+              </div>
+              <h3 className="text-base font-semibold text-gray-800 text-center mb-1">
+                Connexion au Hub
+              </h3>
+              <p className="text-xs text-gray-500 text-center mb-5">
+                Entrez vos identifiants Hub LBDP pour acceder a la messagerie, Claude et le dashboard.
+              </p>
+
+              <form onSubmit={handleSaveCredentials} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Email Hub</label>
+                  <input
+                    type="email"
+                    value={hubEmail}
+                    onChange={e => setHubEmail(e.target.value)}
+                    placeholder="votre@email.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brewery-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Mot de passe Hub</label>
+                  <input
+                    type="password"
+                    value={hubPassword}
+                    onChange={e => setHubPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brewery-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                {credsError && (
+                  <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{credsError}</p>
+                )}
+
+                {credsSaved && (
+                  <p className="text-xs text-green-600 bg-green-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    Connecte au Hub
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={savingCreds}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-brewery-600 text-white text-sm font-medium rounded-lg hover:bg-brewery-700 disabled:opacity-50 transition-colors"
+                >
+                  {savingCreds ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Verification...
+                    </>
+                  ) : (
+                    'Se connecter au Hub'
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* === CONNECTED: show tabs === */}
         {token && (
           <>
-            {/* === ACCUEIL TAB === */}
+            {/* ACCUEIL TAB */}
             <div className={`absolute inset-0 ${tab === 'accueil' ? '' : 'hidden'}`}>
               <iframe
                 key={`accueil-${refreshKey}`}
@@ -217,10 +315,9 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
               />
             </div>
 
-            {/* === MESSAGERIE TAB === */}
+            {/* MESSAGERIE TAB */}
             <div className={`absolute inset-0 ${tab === 'messagerie' ? '' : 'hidden'}`}>
-              {/* Channel selector (no channel selected) */}
-              {!selectedChannel && (
+              {!selectedChannel ? (
                 <div className="h-full flex flex-col">
                   <div className="px-4 py-3 border-b border-gray-100">
                     <h3 className="text-sm font-semibold text-gray-700">Canaux</h3>
@@ -233,20 +330,18 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                     </div>
                   )}
 
-                  {channelsError && (
+                  {channelsError && !channelsLoading && (
                     <div className="flex-1 flex flex-col items-center justify-center px-6">
                       <p className="text-sm text-red-500 mb-2">{channelsError}</p>
-                      <button
-                        onClick={fetchChannels}
-                        className="text-sm text-brewery-600 hover:underline"
-                      >
+                      <button onClick={fetchChannels} className="text-sm text-brewery-600 hover:underline">
                         Reessayer
                       </button>
                     </div>
                   )}
 
                   {!channelsLoading && !channelsError && channels.length === 0 && (
-                    <div className="flex-1 flex items-center justify-center px-6 text-center">
+                    <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+                      <MessageSquare className="w-8 h-8 text-gray-300 mb-2" />
                       <p className="text-sm text-gray-500">Aucun canal disponible</p>
                     </div>
                   )}
@@ -263,9 +358,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                             <Hash className="w-4 h-4 text-brewery-600" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {channel.name}
-                            </p>
+                            <p className="text-sm font-medium text-gray-900 truncate">{channel.name}</p>
                             {channel.description && (
                               <p className="text-xs text-gray-500 truncate">{channel.description}</p>
                             )}
@@ -275,10 +368,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                     </div>
                   )}
                 </div>
-              )}
-
-              {/* Channel iframe (channel selected) */}
-              {selectedChannel && (
+              ) : (
                 <div className="h-full flex flex-col">
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
                     <button
@@ -310,7 +400,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
               )}
             </div>
 
-            {/* === CLAUDE TAB === */}
+            {/* CLAUDE TAB */}
             <div className={`absolute inset-0 ${tab === 'claude' ? '' : 'hidden'}`}>
               <iframe
                 key={`claude-${refreshKey}`}

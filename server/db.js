@@ -180,6 +180,14 @@ async function initDatabase(attempt = 1) {
     // ============================================
     // Migrations for existing databases
     // ============================================
+    // Hub per-user credentials
+    try {
+      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS hub_email TEXT DEFAULT ''");
+    } catch { /* column may already exist */ }
+    try {
+      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS hub_password TEXT DEFAULT ''");
+    } catch { /* column may already exist */ }
+
     try {
       await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS compte_rendu TEXT DEFAULT \'\'');
     } catch { /* column may already exist */ }
