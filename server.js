@@ -19,7 +19,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Hub URLs for CSP (strip trailing slash)
-const HUB_API_URL = process.env.VITE_HUB_API_URL || '';
+const HUB_API_URL = process.env.HUB_API_URL || process.env.VITE_HUB_API_URL || '';
 const HUB_FRONTEND_URL = process.env.VITE_HUB_FRONTEND_URL || '';
 const hubOrigins = [HUB_API_URL, HUB_FRONTEND_URL]
   .map(u => { try { return new URL(u).origin; } catch { return ''; } })

@@ -127,7 +127,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
               title="Hub Accueil"
             />
             <iframe
-              src={`${HUB_FRONTEND}/embed/${CHANNEL_ID}?token=${token}`}
+              src={`${HUB_FRONTEND}/embed/${CHANNEL_ID || 'channels'}?token=${token}`}
               className={`absolute inset-0 w-full h-full border-0 ${tab === 'messagerie' ? '' : 'hidden'}`}
               title="Hub Messagerie"
             />
