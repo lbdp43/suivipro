@@ -450,7 +450,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                 src={`${HUB_FRONTEND}/embed/ai?token=${token}`}
                 className="w-full h-full border-0"
                 title="Hub Claude AI"
-                allow="clipboard-write"
+                allow="clipboard-write; microphone"
               />
             </div>
           </>
