@@ -1,17 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft, KeyRound, Check } from 'lucide-react';
 import { getHubToken, clearHubTokenCache, saveHubCredentials, getHubChannels } from '../lib/hub';
+import { useApp } from '../store/AppContext';
+import { handleSuiviProAction, type SuiviProResponse } from '../lib/hubBridge';
 
 const HUB_FRONTEND = (import.meta.env.VITE_HUB_FRONTEND_URL || '').replace(/\/$/, '');
+const HUB_ORIGIN = HUB_FRONTEND ? new URL(HUB_FRONTEND).origin : '';
 
 type Tab = 'accueil' | 'messagerie' | 'claude';
 
 interface ProspectContext {
+  id: string;
   nom: string;
+  nom_etablissement: string;
+  type_etablissement: string;
   email: string;
   telephone: string;
   statut: string;
   notes: string;
+  ville: string;
+  commercial_id: string;
 }
 
 interface HubChannel {
@@ -21,6 +29,7 @@ interface HubChannel {
 }
 
 export default function HubPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { state, dispatch } = useApp();
   const [tab, setTab] = useState<Tab>('accueil');
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,6 +52,39 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   const [iframeLoaded, setIframeLoaded] = useState(false);
 
   const claudeIframeRef = useRef<HTMLIFrameElement>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // ============================================
+  // postMessage listener — Hub Bridge
+  // Handles SUIVIPRO_REQUEST from Hub iframe
+  // Flow: Hub sends request → SuiviPro executes → sends response back
+  // For write actions: Hub sends without confirmed → gets needs_confirmation
+  //   → Claude asks user in chat → Hub resends with confirmed:true → executes
+  // ============================================
+  useEffect(() => {
+    if (!HUB_ORIGIN) return;
+
+    const handler = (event: MessageEvent) => {
+      // Security: only accept messages from Hub origin
+      if (event.origin !== HUB_ORIGIN) return;
+      if (event.data?.type !== 'SUIVIPRO_REQUEST') return;
+
+      const { requestId, action, payload } = event.data;
+      const result = handleSuiviProAction(action, payload || {}, stateRef.current, dispatch);
+
+      const response: SuiviProResponse = {
+        type: 'SUIVIPRO_RESPONSE',
+        requestId,
+        ...result,
+      };
+
+      claudeIframeRef.current?.contentWindow?.postMessage(response, HUB_ORIGIN);
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [dispatch]);
 
   // Fetch token
   const fetchToken = useCallback(() => {
@@ -100,7 +142,6 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
       setCredsSaved(true);
       setNeedsSetup(false);
       setHubPassword('');
-      // Now fetch the token
       fetchToken();
     } catch (err: any) {
       setCredsError(err.message || 'Erreur de connexion au Hub');
@@ -119,11 +160,11 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
 
   // Send prospect context to the Claude iframe
   const sendProspectContext = useCallback((prospect: ProspectContext) => {
-    if (claudeIframeRef.current?.contentWindow) {
+    if (claudeIframeRef.current?.contentWindow && HUB_ORIGIN) {
       claudeIframeRef.current.contentWindow.postMessage({
         type: 'HUB_AI_CONTEXT',
         prospect,
-      }, '*');
+      }, HUB_ORIGIN);
     }
   }, []);
 
