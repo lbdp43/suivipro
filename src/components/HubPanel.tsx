@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Bot, X, Loader2 } from 'lucide-react';
+import { Home, MessageSquare, Bot, X, Loader2 } from 'lucide-react';
 import { getHubToken } from '../lib/hub';
 
 const HUB_FRONTEND = import.meta.env.VITE_HUB_FRONTEND_URL;
 const CHANNEL_ID = import.meta.env.VITE_HUB_CHANNEL_ID;
 
-type Tab = 'messagerie' | 'claude';
+type Tab = 'accueil' | 'messagerie' | 'claude';
 
 interface ProspectContext {
   nom: string;
@@ -16,7 +16,7 @@ interface ProspectContext {
 }
 
 export default function HubPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('messagerie');
+  const [tab, setTab] = useState<Tab>('accueil');
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +62,17 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
         <div className="flex gap-1">
+          <button
+            onClick={() => setTab('accueil')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'accueil'
+                ? 'bg-brewery-600 text-white'
+                : 'text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Home className="w-4 h-4" />
+            Accueil
+          </button>
           <button
             onClick={() => setTab('messagerie')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -110,6 +121,11 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
 
         {token && (
           <>
+            <iframe
+              src={`${HUB_FRONTEND}/embed/home?token=${token}`}
+              className={`absolute inset-0 w-full h-full border-0 ${tab === 'accueil' ? '' : 'hidden'}`}
+              title="Hub Accueil"
+            />
             <iframe
               src={`${HUB_FRONTEND}/embed/${CHANNEL_ID}?token=${token}`}
               className={`absolute inset-0 w-full h-full border-0 ${tab === 'messagerie' ? '' : 'hidden'}`}
