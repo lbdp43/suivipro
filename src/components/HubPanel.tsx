@@ -126,10 +126,10 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   }, []);
 
   useEffect(() => {
-    if (token && channels.length === 0 && !channelsLoading) {
+    if (token && channels.length === 0 && !channelsLoading && !channelsError) {
       fetchChannels();
     }
-  }, [token, channels.length, channelsLoading, fetchChannels]);
+  }, [token, channels.length, channelsLoading, channelsError, fetchChannels]);
 
   // Save Hub credentials
   const handleSaveCredentials = async (e: React.FormEvent) => {
