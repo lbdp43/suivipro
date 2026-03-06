@@ -79,7 +79,8 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
         ...result,
       };
 
-      claudeIframeRef.current?.contentWindow?.postMessage(response, HUB_ORIGIN);
+      // Reply to the iframe that sent the request (not just Claude)
+      (event.source as WindowProxy)?.postMessage(response, HUB_ORIGIN);
     };
 
     window.addEventListener('message', handler);

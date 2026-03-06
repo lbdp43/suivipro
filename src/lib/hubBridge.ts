@@ -37,6 +37,7 @@ const READ_ACTIONS = new Set([
   'GET_PROSPECTS',
   'GET_PROSPECT',
   'GET_APPOINTMENTS',
+  'GET_UPCOMING_APPOINTMENTS',
   'GET_REMINDERS',
   'GET_PIPELINE_STAGES',
   'GET_STATS',
@@ -110,6 +111,26 @@ function handleGetAppointments(payload: Record<string, unknown>, state: AppState
   }
 
   return { success: true, data: appointments };
+}
+
+function handleGetUpcomingAppointments(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const limit = typeof payload.limit === 'number' ? payload.limit : 10;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const upcoming = state.appointments
+    .filter(a => a.date >= today && a.statut !== 'annule')
+    .sort((a, b) => a.date.localeCompare(b.date) || a.heure_debut.localeCompare(b.heure_debut))
+    .slice(0, limit)
+    .map(a => {
+      const prospect = state.prospects.find(p => p.id === a.prospect_id);
+      return {
+        ...a,
+        prospect_nom: prospect?.nom_etablissement || 'Inconnu',
+        prospect_ville: prospect?.ville || '',
+      };
+    });
+
+  return { success: true, data: upcoming };
 }
 
 function handleGetReminders(payload: Record<string, unknown>, state: AppState): ActionResult {
@@ -424,6 +445,7 @@ export function handleSuiviProAction(
       case 'GET_PROSPECTS': return handleGetProspects(payload, state);
       case 'GET_PROSPECT': return handleGetProspect(payload, state);
       case 'GET_APPOINTMENTS': return handleGetAppointments(payload, state);
+      case 'GET_UPCOMING_APPOINTMENTS': return handleGetUpcomingAppointments(payload, state);
       case 'GET_REMINDERS': return handleGetReminders(payload, state);
       case 'GET_PIPELINE_STAGES': return handleGetPipelineStages(state);
       case 'GET_STATS': return handleGetStats(state);
