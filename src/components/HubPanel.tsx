@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft, KeyRound, Check } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft, KeyRound, Check, Calendar, MapPin, ChevronLeft } from 'lucide-react';
 import { getHubToken, clearHubTokenCache, saveHubCredentials, getHubChannels } from '../lib/hub';
 import { useApp } from '../store/AppContext';
 import { handleSuiviProAction, type SuiviProResponse } from '../lib/hubBridge';
@@ -181,12 +181,44 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
     return () => window.removeEventListener('hub:prospect-context', handler);
   }, [sendProspectContext]);
 
+  // Compute upcoming appointments natively from SuiviPro state
+  const upcomingAppointments = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return state.appointments
+      .filter(a => a.date >= today && a.statut !== 'annule')
+      .sort((a, b) => a.date.localeCompare(b.date) || a.heure_debut.localeCompare(b.heure_debut))
+      .slice(0, 10)
+      .map(a => {
+        const prospect = state.prospects.find(p => p.id === a.prospect_id);
+        return {
+          ...a,
+          prospect_nom: prospect?.nom_etablissement || 'Inconnu',
+          prospect_ville: prospect?.ville || '',
+        };
+      });
+  }, [state.appointments, state.prospects]);
+
   if (!open) return null;
 
   const missingConfig = !HUB_FRONTEND;
 
+  // Format date for display
+  const formatDateFr = (dateStr: string) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
   return (
     <div className="fixed top-0 right-0 h-full w-[420px] max-w-full bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col slide-in">
+      {/* Mobile back button — always visible on small screens */}
+      <button
+        onClick={onClose}
+        className="sm:hidden flex items-center gap-2 px-4 py-2.5 bg-brewery-600 text-white text-sm font-medium w-full"
+      >
+        <ChevronLeft className="w-5 h-5" />
+        Retour SuiviPro
+      </button>
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
         <div className="flex gap-1">
@@ -230,7 +262,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           )}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+            className="hidden sm:block p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -347,14 +379,67 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
         {token && (
           <>
             {/* ACCUEIL TAB */}
-            <div className={`absolute inset-0 ${tab === 'accueil' ? '' : 'hidden'}`}>
-              <iframe
-                key={`accueil-${refreshKey}`}
-                src={`${HUB_FRONTEND}/embed/home?token=${token}`}
-                className="w-full h-full border-0"
-                title="Hub Accueil"
-                allow="clipboard-write"
-              />
+            <div className={`absolute inset-0 flex flex-col ${tab === 'accueil' ? '' : 'hidden'}`}>
+              {/* Native Agenda Widget */}
+              <div className="flex-shrink-0 border-b border-gray-200 bg-white">
+                <div className="px-4 py-3 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-brewery-600" />
+                  <h3 className="text-sm font-semibold text-gray-800">Agenda a venir</h3>
+                  <span className="ml-auto text-xs text-gray-400">{upcomingAppointments.length} RDV</span>
+                </div>
+                {upcomingAppointments.length === 0 ? (
+                  <div className="px-4 pb-3">
+                    <p className="text-xs text-gray-400 italic">Aucun RDV planifie</p>
+                  </div>
+                ) : (
+                  <div className="max-h-[200px] overflow-y-auto px-2 pb-2 space-y-1">
+                    {upcomingAppointments.map(rdv => (
+                      <div
+                        key={rdv.id}
+                        className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex-shrink-0 w-16 text-right">
+                          <p className="text-[10px] font-medium text-brewery-600 uppercase">{formatDateFr(rdv.date)}</p>
+                          <p className="text-xs text-gray-900 font-semibold">{rdv.heure_debut}</p>
+                        </div>
+                        <div className="w-px h-8 bg-brewery-200 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-900 truncate">{rdv.prospect_nom}</p>
+                          <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                            {rdv.prospect_ville && (
+                              <>
+                                <MapPin className="w-2.5 h-2.5" />
+                                <span className="truncate">{rdv.prospect_ville}</span>
+                              </>
+                            )}
+                            {rdv.lieu && (
+                              <span className="truncate ml-1">— {rdv.lieu}</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          rdv.statut === 'confirme'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {rdv.statut === 'confirme' ? 'Confirme' : 'Planifie'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Hub iframe below */}
+              <div className="flex-1 min-h-0">
+                <iframe
+                  key={`accueil-${refreshKey}`}
+                  src={`${HUB_FRONTEND}/embed/home?token=${token}`}
+                  className="w-full h-full border-0"
+                  title="Hub Accueil"
+                  allow="clipboard-write"
+                />
+              </div>
             </div>
 
             {/* MESSAGERIE TAB */}
