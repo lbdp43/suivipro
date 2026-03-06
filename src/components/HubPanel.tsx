@@ -433,7 +433,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                       src={`${HUB_FRONTEND}/embed/${selectedChannel.id}?token=${token}`}
                       className="w-full h-full border-0"
                       title={`Canal ${selectedChannel.name}`}
-                      allow="clipboard-write"
+                      allow="clipboard-write; microphone"
                       onLoad={() => setIframeLoaded(true)}
                     />
                   </div>
