@@ -22,9 +22,10 @@ export async function getHubToken(): Promise<string> {
   }
 
   const data = await res.json();
-  cachedToken = data.token;
+  const token: string = data.token;
+  cachedToken = token;
   // Cache for 23 hours (assuming 24h token validity)
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
 
-  return cachedToken;
+  return token;
 }
