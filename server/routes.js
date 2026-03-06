@@ -713,4 +713,47 @@ router.post('/ocr-prospect', authMiddleware, asyncHandler(async (req, res) => {
   }
 }));
 
+// ============================================
+// Hub LBDP proxy — keeps credentials server-side
+// ============================================
+
+let hubTokenCache = null;
+let hubTokenExpiry = 0;
+
+router.get('/hub/token', authMiddleware, async (req, res) => {
+  const HUB_API_URL = process.env.HUB_API_URL;
+  const HUB_EMAIL = process.env.HUB_EMAIL;
+  const HUB_PASSWORD = process.env.HUB_PASSWORD;
+
+  if (!HUB_API_URL || !HUB_EMAIL || !HUB_PASSWORD) {
+    return res.status(503).json({ error: 'Hub non configure' });
+  }
+
+  try {
+    // Return cached token if still valid (with 60s margin)
+    if (hubTokenCache && Date.now() < hubTokenExpiry - 60_000) {
+      return res.json({ token: hubTokenCache });
+    }
+
+    const hubRes = await fetch(`${HUB_API_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: HUB_EMAIL, password: HUB_PASSWORD }),
+    });
+
+    if (!hubRes.ok) {
+      return res.status(hubRes.status).json({ error: 'Hub login failed' });
+    }
+
+    const data = await hubRes.json();
+    hubTokenCache = data.token;
+    hubTokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+
+    res.json({ token: data.token });
+  } catch (err) {
+    console.error('Hub token proxy error:', err.message);
+    res.status(502).json({ error: 'Impossible de contacter le Hub' });
+  }
+});
+
 export default router;

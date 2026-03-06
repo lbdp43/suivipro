@@ -1,7 +1,3 @@
-const HUB_API_URL = import.meta.env.VITE_HUB_API_URL;
-const HUB_EMAIL = import.meta.env.VITE_HUB_EMAIL;
-const HUB_PASSWORD = import.meta.env.VITE_HUB_PASSWORD;
-
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
@@ -11,10 +7,13 @@ export async function getHubToken(): Promise<string> {
     return cachedToken;
   }
 
-  const res = await fetch(`${HUB_API_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: HUB_EMAIL, password: HUB_PASSWORD }),
+  // Get SuiviPro auth token from localStorage
+  const authToken = localStorage.getItem('suivipro_token');
+  if (!authToken) throw new Error('Non authentifié');
+
+  // Call our own backend proxy (credentials stay server-side)
+  const res = await fetch('/api/hub/token', {
+    headers: { Authorization: `Bearer ${authToken}` },
   });
 
   if (!res.ok) {
@@ -22,10 +21,8 @@ export async function getHubToken(): Promise<string> {
   }
 
   const data = await res.json();
-  const token: string = data.token;
-  cachedToken = token;
-  // Cache for 23 hours (assuming 24h token validity)
+  cachedToken = data.token;
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
 
-  return token;
+  return cachedToken!;
 }
