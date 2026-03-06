@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft } from 'lucide-react';
 import { getHubToken } from '../lib/hub';
 
 const HUB_FRONTEND = (import.meta.env.VITE_HUB_FRONTEND_URL || '').replace(/\/$/, '');
-const CHANNEL_ID = import.meta.env.VITE_HUB_CHANNEL_ID || '';
 
 type Tab = 'accueil' | 'messagerie' | 'claude';
 
@@ -15,9 +14,10 @@ interface ProspectContext {
   notes: string;
 }
 
-interface IframeState {
-  loaded: boolean;
-  error: boolean;
+interface HubChannel {
+  id: string;
+  name: string;
+  description?: string;
 }
 
 export default function HubPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -25,12 +25,15 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [iframeStates, setIframeStates] = useState<Record<Tab, IframeState>>({
-    accueil: { loaded: false, error: false },
-    messagerie: { loaded: false, error: false },
-    claude: { loaded: false, error: false },
-  });
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Messagerie state
+  const [channels, setChannels] = useState<HubChannel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<HubChannel | null>(null);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+
   const claudeIframeRef = useRef<HTMLIFrameElement>(null);
 
   const fetchToken = useCallback(() => {
@@ -47,25 +50,38 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
     fetchToken();
   }, [open, token, fetchToken]);
 
-  // Reset iframe states on refresh
+  // Fetch channels when token is available
+  const fetchChannels = useCallback(async () => {
+    const authToken = localStorage.getItem('suivipro_token');
+    if (!authToken) return;
+
+    setChannelsLoading(true);
+    setChannelsError(null);
+    try {
+      const res = await fetch('/api/hub/channels', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) throw new Error('Erreur chargement canaux');
+      const data = await res.json();
+      // Handle both array response and { channels: [] } response
+      setChannels(Array.isArray(data) ? data : data.channels || []);
+    } catch {
+      setChannelsError('Impossible de charger les canaux');
+    } finally {
+      setChannelsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    setIframeStates({
-      accueil: { loaded: false, error: false },
-      messagerie: { loaded: false, error: false },
-      claude: { loaded: false, error: false },
-    });
-  }, [refreshKey, token]);
-
-  const handleIframeLoad = useCallback((tabName: Tab) => {
-    setIframeStates(prev => ({ ...prev, [tabName]: { loaded: true, error: false } }));
-  }, []);
-
-  const handleIframeError = useCallback((tabName: Tab) => {
-    setIframeStates(prev => ({ ...prev, [tabName]: { loaded: true, error: true } }));
-  }, []);
+    if (token && channels.length === 0 && !channelsLoading) {
+      fetchChannels();
+    }
+  }, [token, channels.length, channelsLoading, fetchChannels]);
 
   const handleRetry = useCallback(() => {
     setToken(null);
+    setChannels([]);
+    setSelectedChannel(null);
     setRefreshKey(k => k + 1);
   }, []);
 
@@ -95,16 +111,6 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   if (!open) return null;
 
   const missingConfig = !HUB_FRONTEND;
-  const missingChannel = !CHANNEL_ID;
-
-  // Build iframe URLs
-  const urls: Record<Tab, string | null> = {
-    accueil: HUB_FRONTEND ? `${HUB_FRONTEND}/embed/home?token=${token}` : null,
-    messagerie: HUB_FRONTEND && CHANNEL_ID ? `${HUB_FRONTEND}/embed/${CHANNEL_ID}?token=${token}` : null,
-    claude: HUB_FRONTEND ? `${HUB_FRONTEND}/embed/ai?token=${token}` : null,
-  };
-
-  const currentIframeState = iframeStates[tab];
 
   return (
     <div className="fixed top-0 right-0 h-full w-[420px] max-w-full bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col slide-in">
@@ -123,7 +129,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
             Accueil
           </button>
           <button
-            onClick={() => setTab('messagerie')}
+            onClick={() => { setTab('messagerie'); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               tab === 'messagerie'
                 ? 'bg-brewery-600 text-white'
@@ -198,63 +204,123 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
           </div>
         )}
 
-        {/* Per-tab loading overlay (shows while iframe loads) */}
-        {token && !currentIframeState.loaded && urls[tab] && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
-            <Loader2 className="w-6 h-6 text-brewery-600 animate-spin" />
-            <span className="mt-2 text-sm text-gray-500">Chargement...</span>
-          </div>
-        )}
-
-        {/* Missing channel ID warning for messagerie */}
-        {tab === 'messagerie' && missingChannel && !loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 px-6 text-center">
-            <MessageSquare className="w-8 h-8 text-amber-400 mb-2" />
-            <p className="text-sm font-medium text-gray-700 mb-1">Canal non configure</p>
-            <p className="text-xs text-gray-500">
-              La variable <code className="bg-gray-100 px-1 rounded">VITE_HUB_CHANNEL_ID</code> n'est pas definie.
-              Ajoutez l'ID du canal de messagerie dans les variables d'environnement.
-            </p>
-          </div>
-        )}
-
-        {/* Iframes */}
         {token && (
           <>
-            {urls.accueil && (
+            {/* === ACCUEIL TAB === */}
+            <div className={`absolute inset-0 ${tab === 'accueil' ? '' : 'hidden'}`}>
               <iframe
                 key={`accueil-${refreshKey}`}
-                src={urls.accueil}
-                className={`absolute inset-0 w-full h-full border-0 ${tab === 'accueil' ? '' : 'hidden'}`}
+                src={`${HUB_FRONTEND}/embed/home?token=${token}`}
+                className="w-full h-full border-0"
                 title="Hub Accueil"
                 allow="clipboard-write"
-                onLoad={() => handleIframeLoad('accueil')}
-                onError={() => handleIframeError('accueil')}
               />
-            )}
-            {urls.messagerie && (
-              <iframe
-                key={`messagerie-${refreshKey}`}
-                src={urls.messagerie}
-                className={`absolute inset-0 w-full h-full border-0 ${tab === 'messagerie' ? '' : 'hidden'}`}
-                title="Hub Messagerie"
-                allow="clipboard-write"
-                onLoad={() => handleIframeLoad('messagerie')}
-                onError={() => handleIframeError('messagerie')}
-              />
-            )}
-            {urls.claude && (
+            </div>
+
+            {/* === MESSAGERIE TAB === */}
+            <div className={`absolute inset-0 ${tab === 'messagerie' ? '' : 'hidden'}`}>
+              {/* Channel selector (no channel selected) */}
+              {!selectedChannel && (
+                <div className="h-full flex flex-col">
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-700">Canaux</h3>
+                  </div>
+
+                  {channelsLoading && (
+                    <div className="flex-1 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 text-brewery-600 animate-spin" />
+                      <span className="ml-2 text-sm text-gray-500">Chargement...</span>
+                    </div>
+                  )}
+
+                  {channelsError && (
+                    <div className="flex-1 flex flex-col items-center justify-center px-6">
+                      <p className="text-sm text-red-500 mb-2">{channelsError}</p>
+                      <button
+                        onClick={fetchChannels}
+                        className="text-sm text-brewery-600 hover:underline"
+                      >
+                        Reessayer
+                      </button>
+                    </div>
+                  )}
+
+                  {!channelsLoading && !channelsError && channels.length === 0 && (
+                    <div className="flex-1 flex items-center justify-center px-6 text-center">
+                      <p className="text-sm text-gray-500">Aucun canal disponible</p>
+                    </div>
+                  )}
+
+                  {!channelsLoading && channels.length > 0 && (
+                    <div className="flex-1 overflow-y-auto">
+                      {channels.map(channel => (
+                        <button
+                          key={channel.id}
+                          onClick={() => { setSelectedChannel(channel); setIframeLoaded(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-brewery-100 flex items-center justify-center flex-shrink-0">
+                            <Hash className="w-4 h-4 text-brewery-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {channel.name}
+                            </p>
+                            {channel.description && (
+                              <p className="text-xs text-gray-500 truncate">{channel.description}</p>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Channel iframe (channel selected) */}
+              {selectedChannel && (
+                <div className="h-full flex flex-col">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                    <button
+                      onClick={() => setSelectedChannel(null)}
+                      className="p-1 rounded hover:bg-gray-200 transition-colors"
+                      title="Retour aux canaux"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-gray-600" />
+                    </button>
+                    <Hash className="w-4 h-4 text-brewery-600" />
+                    <span className="text-sm font-medium text-gray-700 truncate">{selectedChannel.name}</span>
+                  </div>
+                  <div className="flex-1 relative">
+                    {!iframeLoaded && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+                        <Loader2 className="w-5 h-5 text-brewery-600 animate-spin" />
+                      </div>
+                    )}
+                    <iframe
+                      key={`msg-${selectedChannel.id}-${refreshKey}`}
+                      src={`${HUB_FRONTEND}/embed/${selectedChannel.id}?token=${token}`}
+                      className="w-full h-full border-0"
+                      title={`Canal ${selectedChannel.name}`}
+                      allow="clipboard-write"
+                      onLoad={() => setIframeLoaded(true)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* === CLAUDE TAB === */}
+            <div className={`absolute inset-0 ${tab === 'claude' ? '' : 'hidden'}`}>
               <iframe
                 key={`claude-${refreshKey}`}
                 ref={claudeIframeRef}
-                src={urls.claude}
-                className={`absolute inset-0 w-full h-full border-0 ${tab === 'claude' ? '' : 'hidden'}`}
+                src={`${HUB_FRONTEND}/embed/ai?token=${token}`}
+                className="w-full h-full border-0"
                 title="Hub Claude AI"
                 allow="clipboard-write"
-                onLoad={() => handleIframeLoad('claude')}
-                onError={() => handleIframeError('claude')}
               />
-            )}
+            </div>
           </>
         )}
       </div>

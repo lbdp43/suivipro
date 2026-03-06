@@ -756,4 +756,52 @@ router.get('/hub/token', authMiddleware, async (req, res) => {
   }
 });
 
+// Get Hub token (internal helper, reuses cache from /hub/token)
+async function getHubTokenInternal() {
+  if (hubTokenCache && Date.now() < hubTokenExpiry - 60_000) {
+    return hubTokenCache;
+  }
+
+  const HUB_API_URL = process.env.HUB_API_URL;
+  const hubRes = await fetch(`${HUB_API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.HUB_EMAIL,
+      password: process.env.HUB_PASSWORD,
+    }),
+  });
+
+  if (!hubRes.ok) throw new Error('Hub login failed');
+  const data = await hubRes.json();
+  hubTokenCache = data.token;
+  hubTokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+  return hubTokenCache;
+}
+
+// List Hub channels
+router.get('/hub/channels', authMiddleware, async (req, res) => {
+  const HUB_API_URL = process.env.HUB_API_URL;
+  if (!HUB_API_URL || !process.env.HUB_EMAIL || !process.env.HUB_PASSWORD) {
+    return res.status(503).json({ error: 'Hub non configure' });
+  }
+
+  try {
+    const token = await getHubTokenInternal();
+    const hubRes = await fetch(`${HUB_API_URL}/channels`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!hubRes.ok) {
+      return res.status(hubRes.status).json({ error: 'Impossible de recuperer les canaux' });
+    }
+
+    const channels = await hubRes.json();
+    res.json(channels);
+  } catch (err) {
+    console.error('Hub channels proxy error:', err.message);
+    res.status(502).json({ error: 'Impossible de contacter le Hub' });
+  }
+});
+
 export default router;
