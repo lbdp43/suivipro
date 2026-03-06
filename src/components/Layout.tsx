@@ -3,13 +3,16 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
+  MessageCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
 import { Link } from 'react-router-dom';
+import HubPanel from './HubPanel';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hubOpen, setHubOpen] = useState(false);
   const { state, logout } = useApp();
   const today = new Date().toISOString().split('T')[0];
   // Badge = seulement les rappels du jour + en retard (pas les "a venir")
@@ -194,6 +197,18 @@ export default function Layout() {
               <Map className="w-4 h-4" />
               <span className="hidden sm:inline">Carte</span>
             </Link>
+            <button
+              onClick={() => setHubOpen(prev => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                hubOpen
+                  ? 'bg-brewery-100 text-brewery-700'
+                  : 'text-gray-500 hover:bg-brewery-50 hover:text-brewery-700'
+              }`}
+              title="Hub LBDP"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Hub</span>
+            </button>
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
             }`}>
@@ -208,6 +223,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Hub LBDP side panel */}
+      <HubPanel open={hubOpen} onClose={() => setHubOpen(false)} />
     </div>
   );
 }
