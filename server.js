@@ -15,6 +15,16 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
 
+// Trust Railway's reverse proxy (fixes X-Forwarded-For / rate-limit)
+app.set('trust proxy', 1);
+
+// Hub URLs for CSP (strip trailing slash)
+const HUB_API_URL = process.env.VITE_HUB_API_URL || '';
+const HUB_FRONTEND_URL = process.env.VITE_HUB_FRONTEND_URL || '';
+const hubOrigins = [HUB_API_URL, HUB_FRONTEND_URL]
+  .map(u => { try { return new URL(u).origin; } catch { return ''; } })
+  .filter(Boolean);
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
@@ -23,9 +33,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
       imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
-      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr"],
+      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", ...hubOrigins],
       fontSrc: ["'self'"],
-      frameSrc: ["'none'"],
+      frameSrc: ["'self'", ...hubOrigins],
     },
   },
   crossOriginEmbedderPolicy: false,
