@@ -27,7 +27,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
     setLoading(true);
     setError(null);
     getHubToken()
-      .then(t => setToken(t))
+      .then((t: string) => setToken(t))
       .catch(() => setError('Connexion au Hub impossible'))
       .finally(() => setLoading(false));
   }, [open, token]);

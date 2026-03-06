@@ -2,10 +2,10 @@ const HUB_API_URL = import.meta.env.VITE_HUB_API_URL;
 const HUB_EMAIL = import.meta.env.VITE_HUB_EMAIL;
 const HUB_PASSWORD = import.meta.env.VITE_HUB_PASSWORD;
 
-let cachedToken = null;
+let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-export async function getHubToken() {
+export async function getHubToken(): Promise<string> {
   // Return cached token if still valid (with 60s margin)
   if (cachedToken && Date.now() < tokenExpiry - 60_000) {
     return cachedToken;
