@@ -70,7 +70,7 @@ async function handleGetProspects(payload, userId) {
     );
   }
 
-  return { success: true, data: prospects.map(sanitizeProspect) };
+  return { success: true, prospects: prospects.map(sanitizeProspect) };
 }
 
 async function handleGetProspect(payload) {
@@ -89,12 +89,10 @@ async function handleGetProspect(payload) {
 
   return {
     success: true,
-    data: {
-      prospect: sanitizeProspect({ ...prospect, tags: JSON.parse(prospect.tags || '[]') }),
-      calls: cRes.rows,
-      appointments: aRes.rows,
-      reminders: rRes.rows,
-    },
+    prospect: sanitizeProspect({ ...prospect, tags: JSON.parse(prospect.tags || '[]') }),
+    calls: cRes.rows,
+    appointments: aRes.rows,
+    reminders: rRes.rows,
   };
 }
 
@@ -120,7 +118,7 @@ async function handleGetAppointments(payload) {
   query += ' ORDER BY date, heure_debut';
 
   const result = await db.query(query, params);
-  return { success: true, data: result.rows };
+  return { success: true, appointments: result.rows };
 }
 
 async function handleGetUpcomingAppointments(payload) {
@@ -137,7 +135,7 @@ async function handleGetUpcomingAppointments(payload) {
     [today, limit]
   );
 
-  return { success: true, data: result.rows };
+  return { success: true, appointments: result.rows };
 }
 
 async function handleGetReminders(payload) {
@@ -157,12 +155,12 @@ async function handleGetReminders(payload) {
   if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
 
   const result = await db.query(query, params);
-  return { success: true, data: result.rows };
+  return { success: true, reminders: result.rows };
 }
 
 async function handleGetPipelineStages() {
   const result = await db.query('SELECT * FROM pipeline_columns ORDER BY sort_order');
-  return { success: true, data: result.rows };
+  return { success: true, stages: result.rows };
 }
 
 async function handleGetStats() {
@@ -179,7 +177,7 @@ async function handleGetStats() {
 
   return {
     success: true,
-    data: {
+    stats: {
       total_prospects: prospects.rows.length,
       prospects_par_etape: columns.rows.map(col => ({
         etape: col.id,
@@ -209,7 +207,7 @@ async function handleSearchProspects(payload) {
     [q]
   );
 
-  return { success: true, data: result.rows.map(p => sanitizeProspect({ ...p, tags: JSON.parse(p.tags || '[]') })) };
+  return { success: true, prospects: result.rows.map(p => sanitizeProspect({ ...p, tags: JSON.parse(p.tags || '[]') })) };
 }
 
 async function handleGetCurrentUser(userEmail) {
@@ -217,7 +215,7 @@ async function handleGetCurrentUser(userEmail) {
   if (result.rows.length === 0) return { success: false, error: 'Utilisateur introuvable' };
   const { password, hub_password, ...safe } = result.rows[0];
   safe.objectifs = JSON.parse(safe.objectifs || '{}');
-  return { success: true, data: safe };
+  return { success: true, user: safe };
 }
 
 // ============================================
@@ -242,7 +240,7 @@ async function handleCreateAppointment(payload, userId, confirmed) {
     [id, prospect_id, userId, date, heure_debut, heure_fin, lieu || '', notes || '', 'planifie', new Date().toISOString()]
   );
 
-  return { success: true, data: { id, prospect_id, commercial_id: userId, date, heure_debut, heure_fin, lieu: lieu || '', notes: notes || '', statut: 'planifie' } };
+  return { success: true, appointment: { id, prospect_id, commercial_id: userId, date, heure_debut, heure_fin, lieu: lieu || '', notes: notes || '', statut: 'planifie' } };
 }
 
 async function handleUpdateAppointment(payload, confirmed) {
@@ -277,7 +275,7 @@ async function handleUpdateAppointment(payload, confirmed) {
   params.push(id);
   await db.query(`UPDATE appointments SET ${setClauses.join(', ')} WHERE id = $${params.length}`, params);
 
-  return { success: true, data: { id, ...updates } };
+  return { success: true, appointment: { id, ...updates } };
 }
 
 async function handleCreateReminder(payload, userId, confirmed) {
@@ -298,7 +296,7 @@ async function handleCreateReminder(payload, userId, confirmed) {
     [id, prospect_id, userId, date, heure, message, 'actif']
   );
 
-  return { success: true, data: { id, prospect_id, commercial_id: userId, date, heure, message, statut: 'actif' } };
+  return { success: true, reminder: { id, prospect_id, commercial_id: userId, date, heure, message, statut: 'actif' } };
 }
 
 async function handleUpdateProspect(payload, confirmed) {
@@ -331,7 +329,7 @@ async function handleUpdateProspect(payload, confirmed) {
   params.push(id);
   await db.query(`UPDATE prospects SET ${setClauses.join(', ')} WHERE id = $${params.length}`, params);
 
-  return { success: true, data: { id, ...updates } };
+  return { success: true, prospect: { id, ...updates } };
 }
 
 async function handleMoveProspectStage(payload, confirmed) {
@@ -349,7 +347,7 @@ async function handleMoveProspectStage(payload, confirmed) {
 
   await db.query('UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3', [stage, new Date().toISOString(), prospect_id]);
 
-  return { success: true, data: { id: prospect_id, etape_pipeline: stage } };
+  return { success: true, prospect: { id: prospect_id, etape_pipeline: stage } };
 }
 
 async function handleCreateCall(payload, userId, confirmed) {
@@ -371,7 +369,7 @@ async function handleCreateCall(payload, userId, confirmed) {
     [id, prospect_id, userId, date, duree || 0, resultat, notes || '']
   );
 
-  return { success: true, data: { id, prospect_id, commercial_id: userId, date, duree: duree || 0, resultat, notes: notes || '' } };
+  return { success: true, call: { id, prospect_id, commercial_id: userId, date, duree: duree || 0, resultat, notes: notes || '' } };
 }
 
 async function handleAddProspectNote(payload, confirmed) {
@@ -391,7 +389,7 @@ async function handleAddProspectNote(payload, confirmed) {
 
   await db.query('UPDATE prospects SET notes = $1, date_modification = $2 WHERE id = $3', [newNotes, new Date().toISOString(), prospect_id]);
 
-  return { success: true, data: { id: prospect_id, notes: newNotes } };
+  return { success: true, prospect: { id: prospect_id, notes: newNotes } };
 }
 
 // ============================================

@@ -19,14 +19,14 @@ export interface SuiviProRequest {
 export interface SuiviProResponse {
   type: 'SUIVIPRO_RESPONSE';
   requestId: string;
-  success: boolean;
+  success?: boolean;
   needs_confirmation?: boolean;
   description?: string;
-  data?: unknown;
   error?: string;
+  [key: string]: unknown;
 }
 
-type ActionResult = { success: boolean; data?: unknown; error?: string; needs_confirmation?: boolean; description?: string };
+type ActionResult = { success?: boolean; error?: string; needs_confirmation?: boolean; description?: string; [key: string]: unknown };
 type Dispatch = React.Dispatch<any>;
 
 // ============================================
@@ -76,7 +76,7 @@ function handleGetProspects(payload: Record<string, unknown>, state: AppState): 
     );
   }
 
-  return { success: true, data: prospects.map(sanitizeProspect) };
+  return { success: true, prospects: prospects.map(sanitizeProspect) };
 }
 
 function handleGetProspect(payload: Record<string, unknown>, state: AppState): ActionResult {
@@ -88,12 +88,10 @@ function handleGetProspect(payload: Record<string, unknown>, state: AppState): A
 
   return {
     success: true,
-    data: {
-      prospect: sanitizeProspect(prospect),
-      calls: state.calls.filter(c => c.prospect_id === id),
-      appointments: state.appointments.filter(a => a.prospect_id === id),
-      reminders: state.reminders.filter(r => r.prospect_id === id),
-    },
+    prospect: sanitizeProspect(prospect),
+    calls: state.calls.filter(c => c.prospect_id === id),
+    appointments: state.appointments.filter(a => a.prospect_id === id),
+    reminders: state.reminders.filter(r => r.prospect_id === id),
   };
 }
 
@@ -110,7 +108,7 @@ function handleGetAppointments(payload: Record<string, unknown>, state: AppState
     appointments = appointments.filter(a => a.date <= (payload.date_to as string));
   }
 
-  return { success: true, data: appointments };
+  return { success: true, appointments };
 }
 
 function handleGetUpcomingAppointments(payload: Record<string, unknown>, state: AppState): ActionResult {
@@ -130,7 +128,7 @@ function handleGetUpcomingAppointments(payload: Record<string, unknown>, state: 
       };
     });
 
-  return { success: true, data: upcoming };
+  return { success: true, appointments: upcoming };
 }
 
 function handleGetReminders(payload: Record<string, unknown>, state: AppState): ActionResult {
@@ -143,11 +141,11 @@ function handleGetReminders(payload: Record<string, unknown>, state: AppState): 
     reminders = reminders.filter(r => r.statut === payload.statut);
   }
 
-  return { success: true, data: reminders };
+  return { success: true, reminders };
 }
 
 function handleGetPipelineStages(state: AppState): ActionResult {
-  return { success: true, data: state.pipelineColumns };
+  return { success: true, stages: state.pipelineColumns };
 }
 
 function handleGetStats(state: AppState): ActionResult {
@@ -156,7 +154,7 @@ function handleGetStats(state: AppState): ActionResult {
 
   return {
     success: true,
-    data: {
+    stats: {
       total_prospects: state.prospects.length,
       prospects_par_etape: state.pipelineColumns.map(col => ({
         etape: col.id,
@@ -184,13 +182,13 @@ function handleSearchProspects(payload: Record<string, unknown>, state: AppState
     p.adresse.toLowerCase().includes(q)
   );
 
-  return { success: true, data: results.map(sanitizeProspect) };
+  return { success: true, prospects: results.map(sanitizeProspect) };
 }
 
 function handleGetCurrentUser(state: AppState): ActionResult {
   if (!state.currentUser) return { success: false, error: 'Non connecte' };
   const { password, ...safe } = state.currentUser;
-  return { success: true, data: safe };
+  return { success: true, user: safe };
 }
 
 // ============================================
@@ -232,7 +230,7 @@ function handleCreateAppointment(
   };
 
   dispatch({ type: 'ADD_APPOINTMENT', payload: appointment });
-  return { success: true, data: appointment };
+  return { success: true, appointment };
 }
 
 function handleUpdateAppointment(
@@ -261,7 +259,7 @@ function handleUpdateAppointment(
 
   const updated: Appointment = { ...existing, ...updates };
   dispatch({ type: 'UPDATE_APPOINTMENT', payload: updated });
-  return { success: true, data: updated };
+  return { success: true, appointment: updated };
 }
 
 function handleCreateReminder(
@@ -296,7 +294,7 @@ function handleCreateReminder(
   };
 
   dispatch({ type: 'ADD_REMINDER', payload: reminder });
-  return { success: true, data: reminder };
+  return { success: true, reminder };
 }
 
 function handleUpdateProspect(
@@ -329,7 +327,7 @@ function handleUpdateProspect(
   };
 
   dispatch({ type: 'UPDATE_PROSPECT', payload: updated });
-  return { success: true, data: sanitizeProspect(updated) };
+  return { success: true, prospect: sanitizeProspect(updated) };
 }
 
 function handleMoveProspectStage(
@@ -354,7 +352,7 @@ function handleMoveProspectStage(
   }
 
   dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect_id, stage: stage as PipelineStage } });
-  return { success: true, data: { id: prospect_id, etape_pipeline: stage } };
+  return { success: true, prospect: { id: prospect_id, etape_pipeline: stage } };
 }
 
 function handleCreateCall(
@@ -389,7 +387,7 @@ function handleCreateCall(
   };
 
   dispatch({ type: 'ADD_CALL', payload: call });
-  return { success: true, data: call };
+  return { success: true, call };
 }
 
 function handleAddProspectNote(
@@ -421,7 +419,7 @@ function handleAddProspectNote(
   };
 
   dispatch({ type: 'UPDATE_PROSPECT', payload: updated });
-  return { success: true, data: sanitizeProspect(updated) };
+  return { success: true, prospect: sanitizeProspect(updated) };
 }
 
 // ============================================
