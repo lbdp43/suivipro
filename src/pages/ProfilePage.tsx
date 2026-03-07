@@ -68,9 +68,9 @@ export default function ProfilePage() {
       }
 
       // Update local state only after API success
-      const { password: _pwd, ...withoutPassword } = updated;
-      dispatch({ type: 'UPDATE_COMMERCIAL', payload: withoutPassword });
-      dispatch({ type: 'SET_CURRENT_USER', payload: withoutPassword });
+      const saved = { ...updated, password: user.password };
+      dispatch({ type: 'UPDATE_COMMERCIAL', payload: saved });
+      dispatch({ type: 'SET_CURRENT_USER', payload: saved });
 
       setPassword('');
       setConfirmPassword('');
