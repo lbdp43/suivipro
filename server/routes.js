@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { createWorker } from 'tesseract.js';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
+import hubBridgeRouter from './hub-bridge.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -862,5 +863,8 @@ router.get('/hub/channels', authMiddleware, async (req, res) => {
     res.status(502).json({ error: 'Impossible de contacter le Hub' });
   }
 });
+
+// Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
+router.use(hubBridgeRouter);
 
 export default router;
