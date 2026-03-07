@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { dbReady } from './server/db.js';
 import apiRoutes from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
+import hubBridgeRoutes from './server/hub-bridge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
@@ -71,6 +72,7 @@ app.use(express.json({ limit: '10mb' }));
 // API routes
 app.use('/api', apiRoutes);
 app.use('/api', googleCalendarRoutes);
+app.use('/api', hubBridgeRoutes);
 
 // Serve static files from dist (production)
 if (existsSync(DIST)) {
