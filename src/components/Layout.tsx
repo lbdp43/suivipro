@@ -197,7 +197,6 @@ export default function Layout() {
               <Map className="w-4 h-4" />
               <span className="hidden sm:inline">Carte</span>
             </Link>
-{/* Hub button hidden — re-enable when Hub API key is configured
             <button
               onClick={() => setHubOpen(prev => !prev)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -210,7 +209,6 @@ export default function Layout() {
               <MessageCircle className="w-4 h-4" />
               <span className="hidden sm:inline">Hub</span>
             </button>
-            */}
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
             }`}>

@@ -712,13 +712,14 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
               )}
             </div>
 
-            {/* CLAUDE TAB */}
-            <div className={`absolute inset-0 ${tab === 'claude' ? '' : 'hidden'}`}>
+            {/* CLAUDE TAB — overflow hidden + negative margin hides the "Claude / En ligne" header */}
+            <div className={`absolute inset-0 overflow-hidden ${tab === 'claude' ? '' : 'hidden'}`}>
               <iframe
                 key={`claude-${refreshKey}`}
                 ref={claudeIframeRef}
-                src={`${HUB_FRONTEND}/embed/ai?token=${token}`}
-                className="w-full h-full border-0"
+                src={`${HUB_FRONTEND}/embed/ai?token=${token}&hideHeader=1`}
+                className="w-full border-0"
+                style={{ height: 'calc(100% + 56px)', marginTop: '-56px' }}
                 title="Hub Claude AI"
                 allow="clipboard-write; microphone"
               />
