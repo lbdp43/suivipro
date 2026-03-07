@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft, KeyRound, Check, Calendar, MapPin, ChevronLeft, ExternalLink, Clock } from 'lucide-react';
+import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, ArrowLeft, KeyRound, Check, Calendar, MapPin, ChevronLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { getHubToken, clearHubTokenCache, saveHubCredentials, getHubChannels } from '../lib/hub';
 import { useApp } from '../store/AppContext';
 import { handleSuiviProAction, type SuiviProResponse } from '../lib/hubBridge';
@@ -272,6 +272,9 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
     return () => window.removeEventListener('hub:prospect-context', handler);
   }, [sendProspectContext]);
 
+  // Collapsible section states
+  const [rdvExpanded, setRdvExpanded] = useState(true);
+
   // Compute upcoming appointments natively from SuiviPro state
   const upcomingAppointments = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -288,6 +291,56 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
         };
       });
   }, [state.appointments, state.prospects]);
+
+  // Merge SuiviPro RDV + Google Calendar events into a unified list
+  const mergedUpcomingEvents = useMemo(() => {
+    const events: Array<{
+      id: string;
+      date: string;
+      time: string;
+      title: string;
+      location: string;
+      source: 'suivipro' | 'google';
+      status?: string;
+      allDay?: boolean;
+    }> = [];
+
+    // Add SuiviPro appointments
+    upcomingAppointments.forEach(rdv => {
+      events.push({
+        id: `sp-${rdv.id}`,
+        date: rdv.date,
+        time: rdv.heure_debut,
+        title: rdv.prospect_nom,
+        location: [rdv.prospect_ville, rdv.lieu].filter(Boolean).join(' — '),
+        source: 'suivipro',
+        status: rdv.statut,
+      });
+    });
+
+    // Add Google Calendar events
+    if (gcalConnected && gcalEvents.length > 0) {
+      gcalEvents.forEach(evt => {
+        const startDate = new Date(evt.start);
+        const dateStr = startDate.toISOString().slice(0, 10);
+        const timeStr = evt.allDay ? '00:00' : startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        events.push({
+          id: `gc-${evt.id}`,
+          date: dateStr,
+          time: timeStr,
+          title: evt.summary,
+          location: evt.location || '',
+          source: 'google',
+          allDay: evt.allDay,
+        });
+      });
+    }
+
+    // Sort by date then time
+    events.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+
+    return events;
+  }, [upcomingAppointments, gcalConnected, gcalEvents]);
 
   if (!open) return null;
 
@@ -472,125 +525,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
             {/* ACCUEIL TAB */}
             <div className={`absolute inset-0 flex flex-col ${tab === 'accueil' ? '' : 'hidden'}`}>
               <div className="flex-1 overflow-y-auto">
-                {/* Native Agenda Widget — SuiviPro RDV */}
-                <div className="border-b border-gray-200 bg-white">
-                  <div className="px-4 py-3 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-brewery-600" />
-                    <h3 className="text-sm font-semibold text-gray-800">Agenda a venir</h3>
-                    <span className="ml-auto text-xs text-gray-400">{upcomingAppointments.length} RDV</span>
-                  </div>
-                  {upcomingAppointments.length === 0 ? (
-                    <div className="px-4 pb-3">
-                      <p className="text-xs text-gray-400 italic">Aucun RDV planifie</p>
-                    </div>
-                  ) : (
-                    <div className="px-2 pb-2 space-y-1">
-                      {upcomingAppointments.map(rdv => (
-                        <div
-                          key={rdv.id}
-                          className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex-shrink-0 w-16 text-right">
-                            <p className="text-[10px] font-medium text-brewery-600 uppercase">{formatDateFr(rdv.date)}</p>
-                            <p className="text-xs text-gray-900 font-semibold">{rdv.heure_debut}</p>
-                          </div>
-                          <div className="w-px h-8 bg-brewery-200 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-900 truncate">{rdv.prospect_nom}</p>
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              {rdv.prospect_ville && (
-                                <>
-                                  <MapPin className="w-2.5 h-2.5" />
-                                  <span className="truncate">{rdv.prospect_ville}</span>
-                                </>
-                              )}
-                              {rdv.lieu && (
-                                <span className="truncate ml-1">— {rdv.lieu}</span>
-                              )}
-                            </div>
-                          </div>
-                          <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                            rdv.statut === 'confirme'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {rdv.statut === 'confirme' ? 'Confirme' : 'Planifie'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Google Calendar Events */}
-                <div className="border-b border-gray-200 bg-white">
-                  <div className="px-4 py-3 flex items-center gap-2">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="#4285F4" strokeWidth="2" fill="none" />
-                      <path d="M3 9h18" stroke="#4285F4" strokeWidth="2" />
-                      <path d="M9 4V2M15 4V2" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    <h3 className="text-sm font-semibold text-gray-800">Agenda Google</h3>
-                    {gcalConnected && gcalEmail && (
-                      <span className="ml-auto text-[10px] text-gray-400 truncate max-w-[120px]">{gcalEmail}</span>
-                    )}
-                  </div>
-
-                  {gcalLoading && (
-                    <div className="px-4 pb-3 flex items-center gap-2">
-                      <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                      <span className="text-xs text-gray-400">Chargement...</span>
-                    </div>
-                  )}
-
-                  {!gcalLoading && gcalConnected && gcalEvents.length === 0 && (
-                    <div className="px-4 pb-3">
-                      <p className="text-xs text-gray-400 italic">Aucun evenement a venir</p>
-                    </div>
-                  )}
-
-                  {!gcalLoading && gcalConnected && gcalEvents.length > 0 && (
-                    <div className="px-2 pb-2 space-y-1">
-                      {gcalEvents.slice(0, 10).map(evt => {
-                        const startDate = new Date(evt.start);
-                        const dateStr = startDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-                        const timeStr = evt.allDay ? 'Journee' : startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                        return (
-                          <div
-                            key={evt.id}
-                            className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
-                          >
-                            <div className="flex-shrink-0 w-16 text-right">
-                              <p className="text-[10px] font-medium text-blue-600 uppercase">{dateStr}</p>
-                              <p className="text-xs text-gray-900 font-semibold">{timeStr}</p>
-                            </div>
-                            <div className="w-px h-8 bg-blue-200 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-gray-900 truncate">{evt.summary}</p>
-                              {evt.location && (
-                                <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                  <MapPin className="w-2.5 h-2.5" />
-                                  <span className="truncate">{evt.location}</span>
-                                </div>
-                              )}
-                            </div>
-                            <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600">
-                              Google
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {!gcalLoading && !gcalConnected && (
-                    <div className="px-4 pb-3 text-center">
-                      <p className="text-xs text-gray-400 mb-1">Google Calendar non connecte</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Hub iframe */}
+                {/* Hub iframe — Briefing, Taches, etc. */}
                 <div className="h-[500px]">
                   <iframe
                     key={`accueil-${refreshKey}`}
@@ -601,40 +536,82 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                   />
                 </div>
 
-                {/* Google Connect/Disconnect button — at the very bottom */}
-                <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
-                  {gcalConnected ? (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <div className="w-2 h-2 rounded-full bg-green-500" />
-                        <span>Google connecte</span>
-                        {gcalEmail && <span className="text-gray-400">({gcalEmail})</span>}
-                      </div>
-                      <button
-                        onClick={handleGoogleDisconnect}
-                        className="text-xs text-red-500 hover:text-red-700 hover:underline transition-colors"
-                      >
-                        Deconnecter
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleGoogleConnect}
-                      disabled={gcalConnecting}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 transition-colors shadow-sm"
-                    >
-                      {gcalConnecting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <svg className="w-4 h-4" viewBox="0 0 24 24">
-                          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                        </svg>
+                {/* RDV a venir — merged SuiviPro + Google Calendar, collapsible */}
+                <div className="border-t border-gray-200 bg-white">
+                  <button
+                    onClick={() => setRdvExpanded(v => !v)}
+                    className="w-full px-4 py-3 flex items-center gap-2 hover:bg-gray-50 transition-colors"
+                  >
+                    {rdvExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    )}
+                    <Calendar className="w-4 h-4 text-brewery-600" />
+                    <h3 className="text-sm font-semibold text-gray-800">RDV a venir</h3>
+                    <span className="ml-auto text-xs text-gray-400">{mergedUpcomingEvents.length}</span>
+                  </button>
+
+                  {rdvExpanded && (
+                    <>
+                      {gcalLoading && (
+                        <div className="px-4 pb-3 flex items-center gap-2">
+                          <Loader2 className="w-3.5 h-3.5 text-brewery-600 animate-spin" />
+                          <span className="text-xs text-gray-400">Chargement...</span>
+                        </div>
                       )}
-                      Se connecter a Google
-                    </button>
+
+                      {!gcalLoading && mergedUpcomingEvents.length === 0 && (
+                        <div className="px-4 pb-3">
+                          <p className="text-xs text-gray-400 italic">Aucun RDV a venir</p>
+                        </div>
+                      )}
+
+                      {!gcalLoading && mergedUpcomingEvents.length > 0 && (
+                        <div className="px-2 pb-2 space-y-1">
+                          {mergedUpcomingEvents.map(evt => (
+                            <div
+                              key={evt.id}
+                              className={`flex items-start gap-2 px-2 py-1.5 rounded-lg transition-colors ${
+                                evt.source === 'google' ? 'hover:bg-blue-50' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex-shrink-0 w-16 text-right">
+                                <p className={`text-[10px] font-medium uppercase ${
+                                  evt.source === 'google' ? 'text-blue-600' : 'text-brewery-600'
+                                }`}>
+                                  {formatDateFr(evt.date)}
+                                </p>
+                                <p className="text-xs text-gray-900 font-semibold">
+                                  {evt.allDay ? 'Journee' : evt.time}
+                                </p>
+                              </div>
+                              <div className={`w-px h-8 flex-shrink-0 mt-0.5 ${
+                                evt.source === 'google' ? 'bg-blue-200' : 'bg-brewery-200'
+                              }`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 truncate">{evt.title}</p>
+                                {evt.location && (
+                                  <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                    <MapPin className="w-2.5 h-2.5" />
+                                    <span className="truncate">{evt.location}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                evt.source === 'google'
+                                  ? 'bg-blue-50 text-blue-600'
+                                  : evt.status === 'confirme'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-brewery-100 text-brewery-700'
+                              }`}>
+                                {evt.source === 'google' ? 'Google' : evt.status === 'confirme' ? 'Confirme' : 'Planifie'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
