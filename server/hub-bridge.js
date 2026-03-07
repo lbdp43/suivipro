@@ -442,8 +442,16 @@ router.post('/hub/bridge', hubApiKeyAuth, asyncHandler(async (req, res) => {
   if (!action) return res.status(400).json({ error: 'action requis' });
   if (!user_email) return res.status(400).json({ error: 'user_email requis' });
 
-  // Resolve user by email
-  const userResult = await db.query('SELECT id FROM commerciaux WHERE email = $1', [user_email]);
+  // Resolve user by email (try exact match first, then fuzzy domain match)
+  let userResult = await db.query('SELECT id FROM commerciaux WHERE email = $1', [user_email]);
+  if (userResult.rows.length === 0) {
+    // Try matching by local part (before @) — handles domain differences
+    // e.g. Hub uses @brasseriedesplantes.fr, SuiviPro uses @labrasseriedesplantes.fr
+    const localPart = user_email.split('@')[0];
+    if (localPart) {
+      userResult = await db.query('SELECT id FROM commerciaux WHERE email LIKE $1', [localPart + '@%']);
+    }
+  }
   if (userResult.rows.length === 0) {
     return res.status(404).json({ error: `Utilisateur "${user_email}" introuvable` });
   }
