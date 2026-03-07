@@ -273,7 +273,8 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   }, [sendProspectContext]);
 
   // Collapsible section states
-  const [rdvExpanded, setRdvExpanded] = useState(true);
+  const [rdvSuiviExpanded, setRdvSuiviExpanded] = useState(true);
+  const [rdvGoogleExpanded, setRdvGoogleExpanded] = useState(true);
 
   // Compute upcoming appointments natively from SuiviPro state
   const upcomingAppointments = useMemo(() => {
@@ -292,55 +293,6 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
       });
   }, [state.appointments, state.prospects]);
 
-  // Merge SuiviPro RDV + Google Calendar events into a unified list
-  const mergedUpcomingEvents = useMemo(() => {
-    const events: Array<{
-      id: string;
-      date: string;
-      time: string;
-      title: string;
-      location: string;
-      source: 'suivipro' | 'google';
-      status?: string;
-      allDay?: boolean;
-    }> = [];
-
-    // Add SuiviPro appointments
-    upcomingAppointments.forEach(rdv => {
-      events.push({
-        id: `sp-${rdv.id}`,
-        date: rdv.date,
-        time: rdv.heure_debut,
-        title: rdv.prospect_nom,
-        location: [rdv.prospect_ville, rdv.lieu].filter(Boolean).join(' — '),
-        source: 'suivipro',
-        status: rdv.statut,
-      });
-    });
-
-    // Add Google Calendar events
-    if (gcalConnected && gcalEvents.length > 0) {
-      gcalEvents.forEach(evt => {
-        const startDate = new Date(evt.start);
-        const dateStr = startDate.toISOString().slice(0, 10);
-        const timeStr = evt.allDay ? '00:00' : startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        events.push({
-          id: `gc-${evt.id}`,
-          date: dateStr,
-          time: timeStr,
-          title: evt.summary,
-          location: evt.location || '',
-          source: 'google',
-          allDay: evt.allDay,
-        });
-      });
-    }
-
-    // Sort by date then time
-    events.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-
-    return events;
-  }, [upcomingAppointments, gcalConnected, gcalEvents]);
 
   if (!open) return null;
 
@@ -525,87 +477,71 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
             {/* ACCUEIL TAB */}
             <div className={`absolute inset-0 flex flex-col ${tab === 'accueil' ? '' : 'hidden'}`}>
               <div className="flex-1 overflow-y-auto">
-                {/* Hub iframe — Briefing, Taches, etc. */}
+                {/* Hub iframe — Briefing, Taches, etc. (hideGcal=1 to hide Agenda Google inside iframe) */}
                 <div className="h-[500px]">
                   <iframe
                     key={`accueil-${refreshKey}`}
-                    src={`${HUB_FRONTEND}/embed/home?token=${token}`}
+                    src={`${HUB_FRONTEND}/embed/home?token=${token}&hideGcal=1`}
                     className="w-full h-full border-0"
                     title="Hub Accueil"
                     allow="clipboard-write"
                   />
                 </div>
 
-                {/* RDV a venir — merged SuiviPro + Google Calendar, collapsible */}
+                {/* RDV SuiviPro — collapsible */}
                 <div className="border-t border-gray-200 bg-white">
                   <button
-                    onClick={() => setRdvExpanded(v => !v)}
+                    onClick={() => setRdvSuiviExpanded(v => !v)}
                     className="w-full px-4 py-3 flex items-center gap-2 hover:bg-gray-50 transition-colors"
                   >
-                    {rdvExpanded ? (
+                    {rdvSuiviExpanded ? (
                       <ChevronDown className="w-4 h-4 text-gray-400" />
                     ) : (
                       <ChevronRight className="w-4 h-4 text-gray-400" />
                     )}
                     <Calendar className="w-4 h-4 text-brewery-600" />
-                    <h3 className="text-sm font-semibold text-gray-800">RDV a venir</h3>
-                    <span className="ml-auto text-xs text-gray-400">{mergedUpcomingEvents.length}</span>
+                    <h3 className="text-sm font-semibold text-gray-800">RDV SuiviPro</h3>
+                    <span className="ml-auto text-xs text-gray-400">{upcomingAppointments.length}</span>
                   </button>
 
-                  {rdvExpanded && (
+                  {rdvSuiviExpanded && (
                     <>
-                      {gcalLoading && (
-                        <div className="px-4 pb-3 flex items-center gap-2">
-                          <Loader2 className="w-3.5 h-3.5 text-brewery-600 animate-spin" />
-                          <span className="text-xs text-gray-400">Chargement...</span>
-                        </div>
-                      )}
-
-                      {!gcalLoading && mergedUpcomingEvents.length === 0 && (
+                      {upcomingAppointments.length === 0 ? (
                         <div className="px-4 pb-3">
-                          <p className="text-xs text-gray-400 italic">Aucun RDV a venir</p>
+                          <p className="text-xs text-gray-400 italic">Aucun RDV planifie</p>
                         </div>
-                      )}
-
-                      {!gcalLoading && mergedUpcomingEvents.length > 0 && (
+                      ) : (
                         <div className="px-2 pb-2 space-y-1">
-                          {mergedUpcomingEvents.map(evt => (
+                          {upcomingAppointments.map(rdv => (
                             <div
-                              key={evt.id}
-                              className={`flex items-start gap-2 px-2 py-1.5 rounded-lg transition-colors ${
-                                evt.source === 'google' ? 'hover:bg-blue-50' : 'hover:bg-gray-50'
-                              }`}
+                              key={rdv.id}
+                              className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
                             >
                               <div className="flex-shrink-0 w-16 text-right">
-                                <p className={`text-[10px] font-medium uppercase ${
-                                  evt.source === 'google' ? 'text-blue-600' : 'text-brewery-600'
-                                }`}>
-                                  {formatDateFr(evt.date)}
-                                </p>
-                                <p className="text-xs text-gray-900 font-semibold">
-                                  {evt.allDay ? 'Journee' : evt.time}
-                                </p>
+                                <p className="text-[10px] font-medium text-brewery-600 uppercase">{formatDateFr(rdv.date)}</p>
+                                <p className="text-xs text-gray-900 font-semibold">{rdv.heure_debut}</p>
                               </div>
-                              <div className={`w-px h-8 flex-shrink-0 mt-0.5 ${
-                                evt.source === 'google' ? 'bg-blue-200' : 'bg-brewery-200'
-                              }`} />
+                              <div className="w-px h-8 bg-brewery-200 flex-shrink-0 mt-0.5" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-gray-900 truncate">{evt.title}</p>
-                                {evt.location && (
-                                  <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                    <MapPin className="w-2.5 h-2.5" />
-                                    <span className="truncate">{evt.location}</span>
-                                  </div>
-                                )}
+                                <p className="text-xs font-medium text-gray-900 truncate">{rdv.prospect_nom}</p>
+                                <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                  {rdv.prospect_ville && (
+                                    <>
+                                      <MapPin className="w-2.5 h-2.5" />
+                                      <span className="truncate">{rdv.prospect_ville}</span>
+                                    </>
+                                  )}
+                                  {rdv.lieu && (
+                                    <span className="truncate ml-1">— {rdv.lieu}</span>
+                                  )}
+                                </div>
                               </div>
                               <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                evt.source === 'google'
-                                  ? 'bg-blue-50 text-blue-600'
-                                  : evt.status === 'confirme'
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-brewery-100 text-brewery-700'
+                                rdv.statut === 'confirme'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-brewery-100 text-brewery-700'
                               }`}>
-                                {evt.source === 'google' ? 'Google' : evt.status === 'confirme' ? 'Confirme' : 'Planifie'}
+                                {rdv.statut === 'confirme' ? 'Confirme' : 'Planifie'}
                               </span>
                             </div>
                           ))}
@@ -614,6 +550,80 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
                     </>
                   )}
                 </div>
+
+                {/* Agenda Google — collapsible */}
+                {gcalConnected && (
+                  <div className="border-t border-gray-200 bg-white">
+                    <button
+                      onClick={() => setRdvGoogleExpanded(v => !v)}
+                      className="w-full px-4 py-3 flex items-center gap-2 hover:bg-blue-50 transition-colors"
+                    >
+                      {rdvGoogleExpanded ? (
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-gray-400" />
+                      )}
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="4" width="18" height="18" rx="2" stroke="#4285F4" strokeWidth="2" fill="none" />
+                        <path d="M3 9h18" stroke="#4285F4" strokeWidth="2" />
+                        <path d="M9 4V2M15 4V2" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      <h3 className="text-sm font-semibold text-gray-800">Agenda Google</h3>
+                      <span className="ml-auto text-xs text-gray-400">{gcalEvents.length}</span>
+                    </button>
+
+                    {rdvGoogleExpanded && (
+                      <>
+                        {gcalLoading && (
+                          <div className="px-4 pb-3 flex items-center gap-2">
+                            <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
+                            <span className="text-xs text-gray-400">Chargement...</span>
+                          </div>
+                        )}
+
+                        {!gcalLoading && gcalEvents.length === 0 && (
+                          <div className="px-4 pb-3">
+                            <p className="text-xs text-gray-400 italic">Aucun evenement a venir</p>
+                          </div>
+                        )}
+
+                        {!gcalLoading && gcalEvents.length > 0 && (
+                          <div className="px-2 pb-2 space-y-1">
+                            {gcalEvents.slice(0, 10).map(evt => {
+                              const startDate = new Date(evt.start);
+                              const dateStr = startDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                              const timeStr = evt.allDay ? 'Journee' : startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                              return (
+                                <div
+                                  key={evt.id}
+                                  className="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                                >
+                                  <div className="flex-shrink-0 w-16 text-right">
+                                    <p className="text-[10px] font-medium text-blue-600 uppercase">{dateStr}</p>
+                                    <p className="text-xs text-gray-900 font-semibold">{timeStr}</p>
+                                  </div>
+                                  <div className="w-px h-8 bg-blue-200 flex-shrink-0 mt-0.5" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-gray-900 truncate">{evt.summary}</p>
+                                    {evt.location && (
+                                      <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                        <MapPin className="w-2.5 h-2.5" />
+                                        <span className="truncate">{evt.location}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600">
+                                    Google
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
