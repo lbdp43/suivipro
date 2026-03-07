@@ -273,8 +273,8 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
   }, [sendProspectContext]);
 
   // Collapsible section states
-  const [rdvSuiviExpanded, setRdvSuiviExpanded] = useState(true);
-  const [rdvGoogleExpanded, setRdvGoogleExpanded] = useState(true);
+  const [rdvSuiviExpanded, setRdvSuiviExpanded] = useState(false);
+  const [rdvGoogleExpanded, setRdvGoogleExpanded] = useState(false);
 
   // Compute upcoming appointments natively from SuiviPro state
   const upcomingAppointments = useMemo(() => {
