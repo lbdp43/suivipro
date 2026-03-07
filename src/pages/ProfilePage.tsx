@@ -21,7 +21,9 @@ export default function ProfilePage() {
 
   const isAdmin = user.role === 'admin';
 
-  const handleSave = () => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
     setError('');
     setSaved(false);
 
@@ -51,13 +53,34 @@ export default function ProfilePage() {
       ...(password ? { password } : {}),
     };
 
-    dispatch({ type: 'UPDATE_COMMERCIAL', payload: updated });
-    dispatch({ type: 'SET_CURRENT_USER', payload: updated });
+    setSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/commerciaux/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Erreur lors de la sauvegarde');
+        return;
+      }
 
-    setPassword('');
-    setConfirmPassword('');
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+      // Update local state only after API success
+      const { password: _pwd, ...withoutPassword } = updated;
+      dispatch({ type: 'UPDATE_COMMERCIAL', payload: withoutPassword });
+      dispatch({ type: 'SET_CURRENT_USER', payload: withoutPassword });
+
+      setPassword('');
+      setConfirmPassword('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError('Erreur reseau, reessayez.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -211,11 +234,12 @@ export default function ProfilePage() {
           {/* Save button */}
           <div className="flex justify-end pt-2">
             <button
-              className="px-5 py-2.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
+              className="px-5 py-2.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 transition-colors text-sm font-medium flex items-center gap-2 shadow-sm disabled:opacity-50"
               onClick={handleSave}
+              disabled={saving}
             >
               <Save className="w-4 h-4" />
-              Enregistrer les modifications
+              {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
             </button>
           </div>
         </div>
