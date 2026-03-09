@@ -104,11 +104,8 @@ async function handleGetProspects(payload, userId) {
     if (!commercial) return { success: false, error: `Commercial "${payload.commercial_email}" introuvable` };
     conditions.push(`p.commercial_id = $${params.length + 1}`);
     params.push(commercial.id);
-  } else if (payload.all_commerciaux) {
-    // No filter — show all prospects across all commerciaux
-  } else if (userId) {
-    conditions.push(`p.commercial_id = $${params.length + 1}`);
-    params.push(userId);
+  } else {
+    // No filter — show all prospects across all commerciaux (collaborative mode)
   }
 
   if (payload.etape_pipeline) {
