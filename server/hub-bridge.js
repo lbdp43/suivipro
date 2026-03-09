@@ -612,6 +612,261 @@ async function handleAddProspectNote(payload, confirmed) {
 }
 
 // ============================================
+// NEW: Create prospect
+// ============================================
+
+async function handleCreateProspect(payload, userId, confirmed) {
+  const { nom_etablissement, type_etablissement } = payload;
+  if (!nom_etablissement) {
+    return { success: false, error: 'Champ requis: nom_etablissement' };
+  }
+
+  // Allow assigning to another commercial
+  let targetUserId = userId;
+  let targetName = '';
+  if (payload.for_commercial_email) {
+    const commercial = await resolveCommercial(payload.for_commercial_email);
+    if (!commercial) return { success: false, error: `Commercial "${payload.for_commercial_email}" introuvable` };
+    targetUserId = commercial.id;
+    targetName = commercial.nom;
+  }
+
+  const forText = targetName ? ` (assigne a ${targetName})` : '';
+  const description = `Creer le prospect "${nom_etablissement}"${payload.ville ? ` a ${payload.ville}` : ''}${forText}`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+    [id, nom_etablissement, type_etablissement || '', payload.nom_contact || '', payload.telephone || '', payload.email || '', payload.adresse || '', payload.ville || '', payload.code_postal || '', payload.departement || '', payload.secteur || '', payload.latitude || 0, payload.longitude || 0, payload.etape_pipeline || 'nouveau', JSON.stringify(payload.tags || []), targetUserId, payload.notes || '', now, now, payload.score || 50]
+  );
+
+  return { success: true, prospect: { id, nom_etablissement, ville: payload.ville || '', etape_pipeline: payload.etape_pipeline || 'nouveau', commercial_id: targetUserId } };
+}
+
+// ============================================
+// NEW: Delete prospect
+// ============================================
+
+async function handleDeleteProspect(payload, confirmed) {
+  const { prospect_id } = payload;
+  if (!prospect_id) return { success: false, error: 'prospect_id requis' };
+
+  const pRes = await db.query('SELECT nom_etablissement FROM prospects WHERE id = $1', [prospect_id]);
+  if (pRes.rows.length === 0) return { success: false, error: 'Prospect introuvable' };
+
+  const description = `Supprimer le prospect "${pRes.rows[0].nom_etablissement}" et toutes ses donnees associees (appels, RDV, rappels)`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  // Delete related data first, then the prospect
+  await Promise.all([
+    db.query('DELETE FROM calls WHERE prospect_id = $1', [prospect_id]),
+    db.query('DELETE FROM appointments WHERE prospect_id = $1', [prospect_id]),
+    db.query('DELETE FROM reminders WHERE prospect_id = $1', [prospect_id]),
+  ]);
+  await db.query('DELETE FROM prospects WHERE id = $1', [prospect_id]);
+
+  return { success: true, deleted: prospect_id };
+}
+
+// ============================================
+// NEW: Get calls (list/filter)
+// ============================================
+
+async function handleGetCalls(payload) {
+  let query = 'SELECT cl.*, p.nom_etablissement AS prospect_nom, c.nom AS commercial_nom FROM calls cl LEFT JOIN prospects p ON cl.prospect_id = p.id LEFT JOIN commerciaux c ON cl.commercial_id = c.id';
+  const params = [];
+  const conditions = [];
+
+  if (payload.commercial_email) {
+    const commercial = await resolveCommercial(payload.commercial_email);
+    if (!commercial) return { success: false, error: `Commercial "${payload.commercial_email}" introuvable` };
+    conditions.push(`cl.commercial_id = $${params.length + 1}`);
+    params.push(commercial.id);
+  }
+  if (payload.prospect_id) {
+    conditions.push(`cl.prospect_id = $${params.length + 1}`);
+    params.push(payload.prospect_id);
+  }
+  if (payload.date_from) {
+    conditions.push(`cl.date >= $${params.length + 1}`);
+    params.push(payload.date_from);
+  }
+  if (payload.date_to) {
+    conditions.push(`cl.date <= $${params.length + 1}`);
+    params.push(payload.date_to);
+  }
+  if (payload.resultat) {
+    conditions.push(`cl.resultat = $${params.length + 1}`);
+    params.push(payload.resultat);
+  }
+
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY cl.date DESC';
+
+  if (payload.limit) {
+    params.push(payload.limit);
+    query += ` LIMIT $${params.length}`;
+  }
+
+  const result = await db.query(query, params);
+  return { success: true, calls: result.rows };
+}
+
+// ============================================
+// NEW: Update call
+// ============================================
+
+async function handleUpdateCall(payload, confirmed) {
+  const { id, ...updates } = payload;
+  if (!id) return { success: false, error: 'id requis' };
+
+  const cRes = await db.query('SELECT cl.*, p.nom_etablissement AS prospect_nom FROM calls cl LEFT JOIN prospects p ON cl.prospect_id = p.id WHERE cl.id = $1', [id]);
+  if (cRes.rows.length === 0) return { success: false, error: 'Appel introuvable' };
+  const existing = cRes.rows[0];
+
+  const parts = [];
+  if (updates.resultat) parts.push(`resultat: ${updates.resultat}`);
+  if (updates.notes !== undefined) parts.push('notes');
+  if (updates.duree !== undefined) parts.push(`duree: ${updates.duree}s`);
+
+  const description = `Modifier l'appel du ${existing.date.slice(0, 10)} pour "${existing.prospect_nom || 'inconnu'}" — ${parts.join(', ') || 'mise a jour'}`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  const allowedFields = ['resultat', 'notes', 'duree'];
+  const setClauses = [];
+  const params = [];
+  for (const field of allowedFields) {
+    if (updates[field] !== undefined) {
+      params.push(updates[field]);
+      setClauses.push(`${field} = $${params.length}`);
+    }
+  }
+  if (setClauses.length === 0) return { success: false, error: 'Aucun champ a modifier' };
+
+  params.push(id);
+  await db.query(`UPDATE calls SET ${setClauses.join(', ')} WHERE id = $${params.length}`, params);
+
+  return { success: true, call: { id, ...updates } };
+}
+
+// ============================================
+// NEW: Delete call
+// ============================================
+
+async function handleDeleteCall(payload, confirmed) {
+  const { id } = payload;
+  if (!id) return { success: false, error: 'id requis' };
+
+  const cRes = await db.query('SELECT cl.*, p.nom_etablissement AS prospect_nom FROM calls cl LEFT JOIN prospects p ON cl.prospect_id = p.id WHERE cl.id = $1', [id]);
+  if (cRes.rows.length === 0) return { success: false, error: 'Appel introuvable' };
+  const existing = cRes.rows[0];
+
+  const description = `Supprimer l'appel "${existing.resultat}" du ${existing.date.slice(0, 10)} pour "${existing.prospect_nom || 'inconnu'}"`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  await db.query('DELETE FROM calls WHERE id = $1', [id]);
+  return { success: true, deleted: id };
+}
+
+// ============================================
+// NEW: Delete appointment
+// ============================================
+
+async function handleDeleteAppointment(payload, confirmed) {
+  const { id } = payload;
+  if (!id) return { success: false, error: 'id requis' };
+
+  const aRes = await db.query('SELECT a.*, p.nom_etablissement AS prospect_nom FROM appointments a LEFT JOIN prospects p ON a.prospect_id = p.id WHERE a.id = $1', [id]);
+  if (aRes.rows.length === 0) return { success: false, error: 'RDV introuvable' };
+  const existing = aRes.rows[0];
+
+  const description = `Supprimer le RDV du ${existing.date} pour "${existing.prospect_nom || 'inconnu'}"`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  await db.query('DELETE FROM appointments WHERE id = $1', [id]);
+  return { success: true, deleted: id };
+}
+
+// ============================================
+// NEW: Update reminder
+// ============================================
+
+async function handleUpdateReminder(payload, confirmed) {
+  const { id, ...updates } = payload;
+  if (!id) return { success: false, error: 'id requis' };
+
+  const rRes = await db.query('SELECT r.*, p.nom_etablissement AS prospect_nom FROM reminders r LEFT JOIN prospects p ON r.prospect_id = p.id WHERE r.id = $1', [id]);
+  if (rRes.rows.length === 0) return { success: false, error: 'Rappel introuvable' };
+  const existing = rRes.rows[0];
+
+  const parts = [];
+  if (updates.date) parts.push(`date: ${updates.date}`);
+  if (updates.heure) parts.push(`heure: ${updates.heure}`);
+  if (updates.message) parts.push('message');
+  if (updates.statut) parts.push(`statut: ${updates.statut}`);
+
+  const description = `Modifier le rappel du ${existing.date} pour "${existing.prospect_nom || 'inconnu'}" — ${parts.join(', ') || 'mise a jour'}`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  const allowedFields = ['date', 'heure', 'message', 'statut'];
+  const setClauses = [];
+  const params = [];
+  for (const field of allowedFields) {
+    if (updates[field] !== undefined) {
+      params.push(updates[field]);
+      setClauses.push(`${field} = $${params.length}`);
+    }
+  }
+  if (setClauses.length === 0) return { success: false, error: 'Aucun champ a modifier' };
+
+  params.push(id);
+  await db.query(`UPDATE reminders SET ${setClauses.join(', ')} WHERE id = $${params.length}`, params);
+
+  return { success: true, reminder: { id, ...updates } };
+}
+
+// ============================================
+// NEW: Delete reminder
+// ============================================
+
+async function handleDeleteReminder(payload, confirmed) {
+  const { id } = payload;
+  if (!id) return { success: false, error: 'id requis' };
+
+  const rRes = await db.query('SELECT r.*, p.nom_etablissement AS prospect_nom FROM reminders r LEFT JOIN prospects p ON r.prospect_id = p.id WHERE r.id = $1', [id]);
+  if (rRes.rows.length === 0) return { success: false, error: 'Rappel introuvable' };
+  const existing = rRes.rows[0];
+
+  const description = `Supprimer le rappel du ${existing.date} pour "${existing.prospect_nom || 'inconnu'}" : "${existing.message.substring(0, 50)}"`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  await db.query('DELETE FROM reminders WHERE id = $1', [id]);
+  return { success: true, deleted: id };
+}
+
+// ============================================
+// NEW: Mark reminder as done (convenience)
+// ============================================
+
+async function handleMarkReminderDone(payload, confirmed) {
+  const { id } = payload;
+  if (!id) return { success: false, error: 'id requis' };
+
+  const rRes = await db.query('SELECT r.*, p.nom_etablissement AS prospect_nom FROM reminders r LEFT JOIN prospects p ON r.prospect_id = p.id WHERE r.id = $1', [id]);
+  if (rRes.rows.length === 0) return { success: false, error: 'Rappel introuvable' };
+  const existing = rRes.rows[0];
+
+  const description = `Marquer comme fait le rappel du ${existing.date} pour "${existing.prospect_nom || 'inconnu'}" : "${existing.message.substring(0, 50)}"`;
+  if (!confirmed) return { success: true, needs_confirmation: true, description };
+
+  await db.query("UPDATE reminders SET statut = 'fait' WHERE id = $1", [id]);
+  return { success: true, reminder: { id, statut: 'fait' } };
+}
+
+// ============================================
 // Helpers
 // ============================================
 
@@ -644,12 +899,15 @@ function sanitizeProspect(p) {
 const READ_ACTIONS = new Set([
   'GET_COMMERCIAUX', 'GET_PROSPECTS', 'GET_PROSPECT', 'GET_APPOINTMENTS', 'GET_UPCOMING_APPOINTMENTS',
   'GET_REMINDERS', 'GET_PIPELINE_STAGES', 'GET_STATS', 'SEARCH_PROSPECTS', 'GET_CURRENT_USER',
-  'GET_PROSPECT_TIMELINE',
+  'GET_PROSPECT_TIMELINE', 'GET_CALLS',
 ]);
 
 const WRITE_ACTIONS = new Set([
-  'CREATE_APPOINTMENT', 'UPDATE_APPOINTMENT', 'CREATE_REMINDER',
-  'UPDATE_PROSPECT', 'ASSIGN_PROSPECT', 'MOVE_PROSPECT_STAGE', 'CREATE_CALL', 'ADD_PROSPECT_NOTE',
+  'CREATE_PROSPECT', 'DELETE_PROSPECT',
+  'CREATE_APPOINTMENT', 'UPDATE_APPOINTMENT', 'DELETE_APPOINTMENT',
+  'CREATE_REMINDER', 'UPDATE_REMINDER', 'DELETE_REMINDER', 'MARK_REMINDER_DONE',
+  'CREATE_CALL', 'UPDATE_CALL', 'DELETE_CALL',
+  'UPDATE_PROSPECT', 'ASSIGN_PROSPECT', 'MOVE_PROSPECT_STAGE', 'ADD_PROSPECT_NOTE',
 ]);
 
 // ============================================
@@ -691,6 +949,7 @@ router.post('/hub/bridge', hubApiKeyAuth, asyncHandler(async (req, res) => {
       case 'SEARCH_PROSPECTS': result = await handleSearchProspects(payload); break;
       case 'GET_CURRENT_USER': result = await handleGetCurrentUser(user_email); break;
       case 'GET_PROSPECT_TIMELINE': result = await handleGetProspectTimeline(payload); break;
+      case 'GET_CALLS': result = await handleGetCalls(payload); break;
       default: result = { success: false, error: 'Action inconnue' };
     }
     return res.json(result);
@@ -702,13 +961,21 @@ router.post('/hub/bridge', hubApiKeyAuth, asyncHandler(async (req, res) => {
     let result;
 
     switch (action) {
+      case 'CREATE_PROSPECT': result = await handleCreateProspect(payload, userId, confirmed); break;
+      case 'DELETE_PROSPECT': result = await handleDeleteProspect(payload, confirmed); break;
       case 'CREATE_APPOINTMENT': result = await handleCreateAppointment(payload, userId, confirmed); break;
       case 'UPDATE_APPOINTMENT': result = await handleUpdateAppointment(payload, confirmed); break;
+      case 'DELETE_APPOINTMENT': result = await handleDeleteAppointment(payload, confirmed); break;
       case 'CREATE_REMINDER': result = await handleCreateReminder(payload, userId, confirmed); break;
+      case 'UPDATE_REMINDER': result = await handleUpdateReminder(payload, confirmed); break;
+      case 'DELETE_REMINDER': result = await handleDeleteReminder(payload, confirmed); break;
+      case 'MARK_REMINDER_DONE': result = await handleMarkReminderDone(payload, confirmed); break;
+      case 'CREATE_CALL': result = await handleCreateCall(payload, userId, confirmed); break;
+      case 'UPDATE_CALL': result = await handleUpdateCall(payload, confirmed); break;
+      case 'DELETE_CALL': result = await handleDeleteCall(payload, confirmed); break;
       case 'UPDATE_PROSPECT': result = await handleUpdateProspect(payload, confirmed); break;
       case 'ASSIGN_PROSPECT': result = await handleAssignProspect(payload, confirmed); break;
       case 'MOVE_PROSPECT_STAGE': result = await handleMoveProspectStage(payload, confirmed); break;
-      case 'CREATE_CALL': result = await handleCreateCall(payload, userId, confirmed); break;
       case 'ADD_PROSPECT_NOTE': result = await handleAddProspectNote(payload, confirmed); break;
       default: result = { success: false, error: 'Action inconnue' };
     }

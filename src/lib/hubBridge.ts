@@ -46,12 +46,21 @@ const READ_ACTIONS = new Set([
 ]);
 
 const WRITE_ACTIONS = new Set([
+  'CREATE_PROSPECT',
+  'DELETE_PROSPECT',
   'CREATE_APPOINTMENT',
   'UPDATE_APPOINTMENT',
+  'DELETE_APPOINTMENT',
   'CREATE_REMINDER',
+  'UPDATE_REMINDER',
+  'DELETE_REMINDER',
+  'MARK_REMINDER_DONE',
+  'CREATE_CALL',
+  'UPDATE_CALL',
+  'DELETE_CALL',
   'UPDATE_PROSPECT',
   'MOVE_PROSPECT_STAGE',
-  'CREATE_CALL',
+  'ASSIGN_PROSPECT',
   'ADD_PROSPECT_NOTE',
 ]);
 
@@ -465,6 +474,17 @@ export function handleSuiviProAction(
       case 'MOVE_PROSPECT_STAGE': return handleMoveProspectStage(payload, state, dispatch, confirmed);
       case 'CREATE_CALL': return handleCreateCall(payload, state, dispatch, confirmed);
       case 'ADD_PROSPECT_NOTE': return handleAddProspectNote(payload, state, dispatch, confirmed);
+      // These actions are handled server-side only (HTTP bridge)
+      case 'CREATE_PROSPECT':
+      case 'DELETE_PROSPECT':
+      case 'DELETE_APPOINTMENT':
+      case 'UPDATE_REMINDER':
+      case 'DELETE_REMINDER':
+      case 'MARK_REMINDER_DONE':
+      case 'UPDATE_CALL':
+      case 'DELETE_CALL':
+      case 'ASSIGN_PROSPECT':
+        return { success: false, error: 'Action disponible uniquement via le bridge HTTP serveur' };
       default: return { success: false, error: 'Action inconnue' };
     }
   }
