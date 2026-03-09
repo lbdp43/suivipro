@@ -17,6 +17,9 @@ const SUIVIPRO_HUB_API_KEY = process.env.SUIVIPRO_HUB_API_KEY || '';
 // ============================================
 
 function hubApiKeyAuth(req, res, next) {
+  console.log('[bridge] === AUTH CHECK ===');
+  console.log('[bridge] SUIVIPRO_HUB_API_KEY définie:', !!SUIVIPRO_HUB_API_KEY, '| longueur:', SUIVIPRO_HUB_API_KEY.length);
+  console.log('[bridge] Authorization header:', req.headers.authorization ? 'présent' : 'ABSENT');
   if (!SUIVIPRO_HUB_API_KEY) {
     return res.status(503).json({ error: 'SUIVIPRO_HUB_API_KEY non configure' });
   }
