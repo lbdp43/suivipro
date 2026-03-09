@@ -21,11 +21,18 @@ function hubApiKeyAuth(req, res, next) {
     return res.status(503).json({ error: 'SUIVIPRO_HUB_API_KEY non configure' });
   }
 
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const token = req.headers.authorization?.replace('Bearer ', '').trim();
   if (!token) return res.status(401).json({ error: 'Token manquant' });
 
+  // Debug logs — à retirer après résolution
+  const expectedKey = SUIVIPRO_HUB_API_KEY.trim();
+  console.log('[bridge] clé attendue:', JSON.stringify(expectedKey));
+  console.log('[bridge] clé reçue:', JSON.stringify(token));
+  console.log('[bridge] longueur attendue:', expectedKey.length, '| longueur reçue:', token.length);
+  console.log('[bridge] correspond:', expectedKey === token);
+
   // Constant-time comparison to prevent timing attacks
-  const expected = Buffer.from(SUIVIPRO_HUB_API_KEY);
+  const expected = Buffer.from(expectedKey);
   const received = Buffer.from(token);
   if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
     return res.status(401).json({ error: 'Cle API invalide' });
