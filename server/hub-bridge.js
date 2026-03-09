@@ -17,9 +17,6 @@ const SUIVIPRO_HUB_API_KEY = process.env.SUIVIPRO_HUB_API_KEY || '';
 // ============================================
 
 function hubApiKeyAuth(req, res, next) {
-  console.log('[bridge] === AUTH CHECK ===');
-  console.log('[bridge] SUIVIPRO_HUB_API_KEY définie:', !!SUIVIPRO_HUB_API_KEY, '| longueur:', SUIVIPRO_HUB_API_KEY.length);
-  console.log('[bridge] Authorization header:', req.headers.authorization ? 'présent' : 'ABSENT');
   if (!SUIVIPRO_HUB_API_KEY) {
     return res.status(503).json({ error: 'SUIVIPRO_HUB_API_KEY non configure' });
   }
@@ -27,17 +24,12 @@ function hubApiKeyAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '').trim();
   if (!token) return res.status(401).json({ error: 'Token manquant' });
 
-  // Debug logs — à retirer après résolution
-  const expectedKey = SUIVIPRO_HUB_API_KEY.trim();
-  console.log('[bridge] clé attendue:', JSON.stringify(expectedKey));
-  console.log('[bridge] clé reçue:', JSON.stringify(token));
-  console.log('[bridge] longueur attendue:', expectedKey.length, '| longueur reçue:', token.length);
-  console.log('[bridge] correspond:', expectedKey === token);
-
   // Constant-time comparison to prevent timing attacks
+  const expectedKey = SUIVIPRO_HUB_API_KEY.trim();
   const expected = Buffer.from(expectedKey);
   const received = Buffer.from(token);
   if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
+    console.log('[bridge] AUTH FAILED — invalid API key');
     return res.status(401).json({ error: 'Cle API invalide' });
   }
 
