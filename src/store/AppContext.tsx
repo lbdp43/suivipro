@@ -45,9 +45,15 @@ type Action =
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_STATE':
-      return action.payload;
+      return {
+        ...action.payload,
+        prospects: (action.payload.prospects || []).map(p => ({
+          ...p,
+          tags: Array.isArray(p.tags) ? p.tags : [],
+        })),
+      };
     case 'ADD_PROSPECT':
-      return { ...state, prospects: [...state.prospects, action.payload] };
+      return { ...state, prospects: [...state.prospects, { ...action.payload, tags: Array.isArray(action.payload.tags) ? action.payload.tags : [] }] };
     case 'UPDATE_PROSPECT':
       return { ...state, prospects: state.prospects.map(p => p.id === action.payload.id ? action.payload : p) };
     case 'DELETE_PROSPECT':

@@ -640,7 +640,7 @@ async function handleCreateProspect(payload, userId, confirmed) {
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [id, nom_etablissement, type_etablissement || '', payload.nom_contact || '', payload.telephone || '', payload.email || '', payload.adresse || '', payload.ville || '', payload.code_postal || '', payload.departement || '', payload.secteur || '', payload.latitude || 0, payload.longitude || 0, payload.etape_pipeline || 'nouveau', JSON.stringify(payload.tags || []), targetUserId, payload.notes || '', now, now, payload.score || 50]
+    [id, nom_etablissement, type_etablissement || '', payload.nom_contact || '', payload.telephone || '', payload.email || '', payload.adresse || '', payload.ville || '', payload.code_postal || '', payload.departement || '', payload.secteur || '', payload.latitude || 0, payload.longitude || 0, payload.etape_pipeline || 'nouveau', JSON.stringify(Array.isArray(payload.tags) ? payload.tags : []), targetUserId, payload.notes || '', now, now, payload.score || 50]
   );
 
   return { success: true, prospect: { id, nom_etablissement, ville: payload.ville || '', etape_pipeline: payload.etape_pipeline || 'nouveau', commercial_id: targetUserId } };

@@ -105,7 +105,12 @@ function validationError(res, errors) {
 
 function parseProspect(p) {
   if (!p) return p;
-  return { ...p, tags: JSON.parse(p.tags || '[]') };
+  let tags = p.tags;
+  if (typeof tags === 'string') {
+    try { tags = JSON.parse(tags); } catch { tags = []; }
+  }
+  if (!Array.isArray(tags)) tags = [];
+  return { ...p, tags };
 }
 
 function parseCommercial(c) {
