@@ -1133,8 +1133,10 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
 // ============================================
 
 // Webhook endpoint (no auth, uses secret header)
-router.post('/webhook/easybeer', asyncHandler(async (req, res) => {
-  const webhookSecret = req.headers['x-webhook-secret'];
+// EasyBeer sends the webhook secret as URL path param: /webhook/easybeer/{secret}
+// Also support header-based secret and no-secret path
+router.post('/webhook/easybeer/:secret?', asyncHandler(async (req, res) => {
+  const webhookSecret = req.params.secret || req.headers['x-webhook-secret'];
 
   // Check secret from config
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
@@ -1149,14 +1151,15 @@ router.post('/webhook/easybeer', asyncHandler(async (req, res) => {
   // Log webhook
   await db.query(
     'INSERT INTO webhooks (source, type, external_id, payload, received_at) VALUES ($1,$2,$3,$4,$5)',
-    ['easybeer', type || '', id || '', JSON.stringify(req.body), now]
+    ['easybeer', type || '', String(id || ''), JSON.stringify(req.body), now]
   );
 
   // Keep only last 100 webhooks
   await db.query(`DELETE FROM webhooks WHERE id NOT IN (SELECT id FROM webhooks ORDER BY received_at DESC LIMIT 100)`);
 
-  // If client.created, try to fetch from EasyBeer after delay
-  if (type === 'client.created' && id && config?.username && config?.api_url) {
+  // Handle EasyBeer event types: CLIENT_CREATION, client.created, etc.
+  const isClientCreation = type === 'CLIENT_CREATION' || type === 'client.created' || type === 'CLIENT_CREATED';
+  if (isClientCreation && id && config?.username && config?.api_url) {
     // Background fetch with retry
     setTimeout(async () => {
       const delays = [0, 15000, 30000, 30000, 30000];

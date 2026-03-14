@@ -869,10 +869,10 @@ export default function AdminPage() {
             </div>
             <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
               <p className="font-medium text-gray-700 mb-1">URL du webhook a configurer dans EasyBeer :</p>
-              <code className="bg-gray-200 px-2 py-1 rounded text-gray-800">
-                {window.location.origin}/api/webhook/easybeer
+              <code className="bg-gray-200 px-2 py-1 rounded text-gray-800 break-all">
+                {window.location.origin}/api/webhook/easybeer/{ebConfig.webhook_secret || 'VOTRE_SECRET'}
               </code>
-              <p className="mt-2">Ajoutez le header <code className="bg-gray-200 px-1 rounded">X-Webhook-Secret</code> avec la valeur du secret ci-dessus.</p>
+              <p className="mt-2 text-gray-500">EasyBeer envoie le secret dans l'URL. Le format supporte aussi le header <code className="bg-gray-200 px-1 rounded">X-Webhook-Secret</code>.</p>
             </div>
           </div>
 
