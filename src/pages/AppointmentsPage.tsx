@@ -1253,24 +1253,34 @@ export default function AppointmentsPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Type</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(EVENT_TYPE_LABELS) as EventType[]).map(type => (
-                    <button
-                      key={type}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        formData.event_type === type
-                          ? EVENT_TYPE_COLORS[type].replace('100', '600').replace('text-', 'text-white bg-').split(' ').reverse().join(' ')
-                          : EVENT_TYPE_COLORS[type] + ' hover:opacity-80'
-                      }`}
-                      onClick={() => setFormData(prev => ({
-                        ...prev,
-                        event_type: type,
-                        prospect_id: type !== 'rdv' ? '' : prev.prospect_id,
-                        client_id: type !== 'rdv' ? '' : prev.client_id,
-                      }))}
-                    >
-                      {EVENT_TYPE_LABELS[type]}
-                    </button>
-                  ))}
+                  {(Object.keys(EVENT_TYPE_LABELS) as EventType[]).map(type => {
+                    const activeColors: Record<EventType, string> = {
+                      rdv: 'bg-blue-600 text-white',
+                      reunion: 'bg-purple-600 text-white',
+                      boutique: 'bg-amber-600 text-white',
+                      depot: 'bg-orange-600 text-white',
+                      marche: 'bg-green-600 text-white',
+                      autre: 'bg-gray-600 text-white',
+                    };
+                    return (
+                      <button
+                        key={type}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          formData.event_type === type
+                            ? activeColors[type]
+                            : EVENT_TYPE_COLORS[type] + ' hover:opacity-80'
+                        }`}
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          event_type: type,
+                          prospect_id: type !== 'rdv' ? '' : prev.prospect_id,
+                          client_id: type !== 'rdv' ? '' : prev.client_id,
+                        }))}
+                      >
+                        {EVENT_TYPE_LABELS[type]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
