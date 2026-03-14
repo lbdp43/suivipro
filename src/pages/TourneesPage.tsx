@@ -459,75 +459,82 @@ export default function TourneesPage() {
               </div>
             )}
 
-            {hasConfig ? (
-              <>
-                {/* Mobile: vertical list */}
-                <div className="sm:hidden space-y-1.5">
-                  {DAY_KEYS.map(day => {
-                    const zones = config?.config[day] || [];
-                    if (zones.length === 0) return null;
-                    return (
-                      <div key={day} className="flex items-center gap-2 py-1.5 px-2 bg-indigo-50 rounded-lg">
-                        <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
-                        <div className="flex flex-wrap gap-1">
-                          {zones.map((z, i) => (
-                            <span key={i} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">{z}</span>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Desktop: grid */}
-                <div className="hidden sm:grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
-                  {DAY_KEYS.map(day => {
-                    const zones = config?.config[day] || [];
-                    return (
-                      <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
-                        <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
-                        {zones.length > 0 ? (
-                          <div className="space-y-0.5">
-                            {zones.map((z, i) => (
-                              <span key={i} className="block text-xs font-medium text-indigo-700">{z}</span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>
-            )}
-
-            {/* Prospection priority zones banner — after the day grid to avoid visual duplication */}
             {(() => {
-              const raw = (config?.config as any)?.prospection;
-              const prospZones: { zone: string; slots: number }[] = Array.isArray(raw)
-                ? raw.map((p: any) => typeof p === 'string' ? { zone: p, slots: 1 } : p)
-                : [];
-              if (prospZones.length === 0) return null;
+              // Build prospection lookup: zone -> slots
+              const rawProsp = (config?.config as any)?.prospection;
+              const prospMap = new Map<string, number>();
+              if (Array.isArray(rawProsp)) {
+                rawProsp.forEach((p: any) => {
+                  if (typeof p === 'string') prospMap.set(p, 1);
+                  else if (p?.zone) prospMap.set(p.zone, p.slots ?? 1);
+                });
+              }
+
+              if (!hasConfig) return <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>;
+
               return (
-                <div className="flex items-start gap-2 p-2 sm:p-3 bg-green-50 border border-green-200 rounded-lg mt-3">
-                  <div className="w-3 h-3 mt-0.5 rounded-full bg-green-500 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs font-semibold text-green-800 mb-1">Zones ouvertes a la prospection :</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {prospZones.map(({ zone, slots }) => (
-                        <span key={zone} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full border border-green-300 font-medium">
-                          {zone}
-                          <span className="bg-green-600 text-white text-[10px] font-bold px-1.5 py-0 rounded-full ml-0.5">
-                            {slots} RDV
-                          </span>
-                        </span>
-                      ))}
-                    </div>
+                <>
+                  {/* Mobile: vertical list */}
+                  <div className="sm:hidden space-y-1.5">
+                    {DAY_KEYS.map(day => {
+                      const zones = config?.config[day] || [];
+                      if (zones.length === 0) return null;
+                      const hasProsp = zones.some(z => prospMap.has(z));
+                      return (
+                        <div key={day} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg ${hasProsp ? 'bg-green-50' : 'bg-indigo-50'}`}>
+                          <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
+                          <div className="flex flex-wrap gap-1">
+                            {zones.map((z, i) => {
+                              const slots = prospMap.get(z);
+                              return (
+                                <span key={i} className={`text-xs px-2 py-0.5 rounded font-medium ${slots ? 'bg-green-100 text-green-800' : 'bg-indigo-100 text-indigo-700'}`}>
+                                  {z}{slots ? ` · ${slots} RDV` : ''}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+
+                  {/* Desktop: grid */}
+                  <div className="hidden sm:grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+                    {DAY_KEYS.map(day => {
+                      const zones = config?.config[day] || [];
+                      const hasProsp = zones.some(z => prospMap.has(z));
+                      const cellClass = hasProsp
+                        ? 'bg-green-50 border border-green-200'
+                        : zones.length > 0
+                          ? 'bg-indigo-50 border border-indigo-100'
+                          : 'bg-gray-50 border border-gray-100';
+                      return (
+                        <div key={day} className={`p-2 rounded-lg text-center ${cellClass}`}>
+                          <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
+                          {zones.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {zones.map((z, i) => {
+                                const slots = prospMap.get(z);
+                                return (
+                                  <div key={i}>
+                                    <span className={`block text-xs font-medium ${slots ? 'text-green-700' : 'text-indigo-700'}`}>{z}</span>
+                                    {slots && (
+                                      <span className="inline-block text-[10px] font-bold text-white bg-green-500 rounded-full px-1.5 leading-4 mt-0.5">
+                                        {slots} RDV
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               );
             })()}
           </div>
