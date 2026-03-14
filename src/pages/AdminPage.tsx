@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Settings, Users, Target, TrendingUp, Tag, Plus, X, Save, Edit2,
   Trash2, BarChart3, Phone, Calendar, Award, Shield, User, Eye, EyeOff, Key,
-  Building2, Link2, RefreshCw, Check, AlertCircle, Loader2,
+  Building2, Link2, RefreshCw, Check, AlertCircle, Loader2, MapPin,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -18,7 +18,7 @@ import { PIPELINE_LABELS, PipelineStage } from '../types';
 export default function AdminPage() {
   const { state, dispatch } = useApp();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees'>('team');
 
   // Tag state
   const [showTagForm, setShowTagForm] = useState(false);
@@ -51,6 +51,77 @@ export default function AdminPage() {
   const [ebImportType, setEbImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
   const [ebImportCommercial, setEbImportCommercial] = useState('');
   const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
+
+  // Tournee config state
+  const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string }>>({});
+  const [tourneeEditing, setTourneeEditing] = useState<string | null>(null);
+  const [tourneeEditConfig, setTourneeEditConfig] = useState<Record<string, string[]>>({});
+  const [tourneeEditNotes, setTourneeEditNotes] = useState('');
+  const [tourneeSaving, setTourneeSaving] = useState(false);
+
+  const DAY_LABELS: Record<string, string> = { '1': 'Lundi', '2': 'Mardi', '3': 'Mercredi', '4': 'Jeudi', '5': 'Vendredi', '6': 'Samedi', '0': 'Dimanche' };
+  const DAY_KEYS = ['1', '2', '3', '4', '5', '6', '0'];
+
+  const loadTourneeConfigs = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/tournee-config', { headers });
+      if (res.ok) {
+        const rows = await res.json();
+        const configs: Record<string, { config: Record<string, string[]>; notes: string }> = {};
+        for (const row of rows) {
+          let parsed = {};
+          try { parsed = typeof row.config === 'string' ? JSON.parse(row.config) : row.config; } catch { /* ignore */ }
+          configs[row.commercial_id] = { config: parsed as Record<string, string[]>, notes: row.notes || '' };
+        }
+        setTourneeConfigs(configs);
+      }
+    } catch (err) {
+      console.error('Erreur chargement tournees:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'tournees') loadTourneeConfigs();
+  }, [activeTab, loadTourneeConfigs]);
+
+  const startEditTournee = (commercialId: string) => {
+    const existing = tourneeConfigs[commercialId];
+    setTourneeEditing(commercialId);
+    setTourneeEditConfig(existing?.config ? { ...existing.config } : {});
+    setTourneeEditNotes(existing?.notes || '');
+  };
+
+  const saveTourneeConfig = async (commercialId: string) => {
+    setTourneeSaving(true);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch(`/api/tournee-config/${commercialId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ config: tourneeEditConfig, notes: tourneeEditNotes }),
+      });
+      setTourneeConfigs(prev => ({
+        ...prev,
+        [commercialId]: { config: { ...tourneeEditConfig }, notes: tourneeEditNotes },
+      }));
+      setTourneeEditing(null);
+      toast.success('Tournees sauvegardees');
+    } catch (err) {
+      toast.error('Erreur sauvegarde tournees');
+    } finally {
+      setTourneeSaving(false);
+    }
+  };
+
+  const updateDayTournees = (day: string, value: string) => {
+    const tournees = value.split(',').map(s => s.trim()).filter(Boolean);
+    setTourneeEditConfig(prev => ({ ...prev, [day]: tournees }));
+  };
 
   const loadEasyBeerData = async () => {
     try {
@@ -185,6 +256,7 @@ export default function AdminPage() {
     { id: 'tags' as const, label: 'Tags', icon: Tag },
     { id: 'commercials' as const, label: 'Statistiques', icon: BarChart3 },
     { id: 'easybeer' as const, label: 'EasyBeer', icon: Link2 },
+    { id: 'tournees' as const, label: 'Tournees', icon: MapPin },
   ];
 
   // ============================================
@@ -1094,6 +1166,129 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ============================================ */}
+      {/* TOURNEES TAB */}
+      {/* ============================================ */}
+      {activeTab === 'tournees' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-gray-900">Configuration des tournees</h3>
+            <p className="text-xs text-gray-500">Definissez les zones de tournee par jour pour chaque commercial</p>
+          </div>
+
+          {state.commerciaux.filter(c => c.role !== 'admin').map(commercial => {
+            const isEditing = tourneeEditing === commercial.id;
+            const config = tourneeConfigs[commercial.id];
+
+            return (
+              <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-brewery-100 rounded-full flex items-center justify-center">
+                      <User className="w-4 h-4 text-brewery-700" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-900">{commercial.prenom} {commercial.nom}</h4>
+                      <p className="text-xs text-gray-500">{commercial.email}</p>
+                    </div>
+                  </div>
+                  {!isEditing ? (
+                    <button
+                      onClick={() => startEditTournee(commercial.id)}
+                      className="px-3 py-1.5 text-xs font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center gap-1"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" /> Modifier
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setTourneeEditing(null)}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        onClick={() => saveTourneeConfig(commercial.id)}
+                        disabled={tourneeSaving}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {tourneeSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        Sauvegarder
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {DAY_KEYS.map(day => (
+                        <div key={day}>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">{DAY_LABELS[day]}</label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                            value={(tourneeEditConfig[day] || []).join(', ')}
+                            onChange={e => updateDayTournees(day, e.target.value)}
+                            placeholder="Zone 1, Zone 2..."
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        rows={2}
+                        value={tourneeEditNotes}
+                        onChange={e => setTourneeEditNotes(e.target.value)}
+                        placeholder="Notes sur les tournees..."
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    {config && Object.keys(config.config).some(k => (config.config[k] || []).length > 0) ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+                        {DAY_KEYS.map(day => {
+                          const zones = config.config[day] || [];
+                          return (
+                            <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
+                              <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
+                              {zones.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {zones.map((z, i) => (
+                                    <span key={i} className="block text-xs font-medium text-indigo-700">{z}</span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Aucune tournee configuree</p>
+                    )}
+                    {config?.notes && (
+                      <p className="mt-2 text-xs text-gray-500 italic">{config.notes}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {state.commerciaux.filter(c => c.role !== 'admin').length === 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+              <p className="text-sm text-gray-500">Aucun commercial dans l'equipe</p>
+              <p className="text-xs text-gray-400 mt-1">Ajoutez des membres dans l'onglet Equipe</p>
+            </div>
+          )}
         </div>
       )}
     </div>

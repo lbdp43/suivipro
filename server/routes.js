@@ -1040,6 +1040,16 @@ router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
      t.date_echeance || null, t.commercial_id || req.user.id, t.client_id || null,
      t.date_creation || now, t.completed_at || null]
   );
+
+  // Notify the assigned commercial (if different from creator)
+  const assignedId = t.commercial_id || req.user.id;
+  if (assignedId !== req.user.id) {
+    createNotification(assignedId, 'TASK_ASSIGNED', 'Nouvelle tache assignee',
+      `${t.titre}${t.date_echeance ? ` - Echeance: ${t.date_echeance}` : ''}`,
+      { task_id: t.id, client_id: t.client_id }
+    ).catch(() => {});
+  }
+
   res.json({ ok: true });
 }));
 
@@ -1679,6 +1689,399 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
     imported++;
   }
   res.json({ ok: true, imported });
+}));
+
+// ============================================
+// Notifications
+// ============================================
+
+router.get('/notifications/:userId', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [req.params.userId]
+  );
+  res.json(result.rows);
+}));
+
+router.get('/notifications/:userId/unread-count', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    'SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND read = false',
+    [req.params.userId]
+  );
+  res.json({ count: parseInt(result.rows[0].count) });
+}));
+
+router.put('/notifications/:notificationId/read', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('UPDATE notifications SET read = true WHERE id = $1', [req.params.notificationId]);
+  res.json({ ok: true });
+}));
+
+router.put('/notifications/:userId/read-all', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('UPDATE notifications SET read = true WHERE user_id = $1', [req.params.userId]);
+  res.json({ ok: true });
+}));
+
+// Helper to create a notification
+async function createNotification(userId, type, title, message, data = {}) {
+  const id = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  await db.query(
+    'INSERT INTO notifications (id, user_id, type, title, message, data, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [id, userId, type, title, message, JSON.stringify(data), now]
+  );
+  return id;
+}
+
+// ============================================
+// Admin Stats (per-commercial analytics)
+// ============================================
+
+router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+
+  // Get Monday of current week
+  const dayOfWeek = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + 1);
+  const weekStart = monday.toISOString().split('T')[0];
+
+  // Start of month
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+  // All commerciaux
+  const commerciaux = await db.query('SELECT id, prenom, nom, role FROM commerciaux');
+
+  // Per-commercial stats
+  const stats = [];
+  for (const com of commerciaux.rows) {
+    // Clients count
+    const clientsResult = await db.query(
+      "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE statut = 'ACTIF') as actifs FROM clients WHERE commercial_id = $1",
+      [com.id]
+    );
+    // Late clients (next_visit < today AND statut = ACTIF)
+    const lateResult = await db.query(
+      "SELECT COUNT(*) as count FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' AND next_visit IS NOT NULL AND next_visit < $2",
+      [com.id, today]
+    );
+    // Today's clients
+    const todayResult = await db.query(
+      "SELECT COUNT(*) as count FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' AND next_visit = $2",
+      [com.id, today]
+    );
+    // Visits this week
+    const visitsWeek = await db.query(
+      "SELECT COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2",
+      [com.id, weekStart]
+    );
+    // Visits this month
+    const visitsMonth = await db.query(
+      "SELECT COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2",
+      [com.id, monthStart]
+    );
+    // Tasks pending
+    const tasksPending = await db.query(
+      "SELECT COUNT(*) as count FROM tasks_client WHERE commercial_id = $1 AND statut != 'TERMINEE'",
+      [com.id]
+    );
+    // Tasks overdue
+    const tasksOverdue = await db.query(
+      "SELECT COUNT(*) as count FROM tasks_client WHERE commercial_id = $1 AND statut != 'TERMINEE' AND date_echeance IS NOT NULL AND date_echeance < $2",
+      [com.id, today]
+    );
+    // Tasks completed this month
+    const tasksCompleted = await db.query(
+      "SELECT COUNT(*) as count FROM tasks_client WHERE commercial_id = $1 AND statut = 'TERMINEE' AND completed_at >= $2",
+      [com.id, monthStart]
+    );
+
+    stats.push({
+      commercial: { id: com.id, prenom: com.prenom, nom: com.nom, role: com.role },
+      clients_total: parseInt(clientsResult.rows[0].total),
+      clients_actifs: parseInt(clientsResult.rows[0].actifs),
+      clients_en_retard: parseInt(lateResult.rows[0].count),
+      clients_aujourd_hui: parseInt(todayResult.rows[0].count),
+      visites_semaine: parseInt(visitsWeek.rows[0].count),
+      visites_mois: parseInt(visitsMonth.rows[0].count),
+      taches_en_cours: parseInt(tasksPending.rows[0].count),
+      taches_en_retard: parseInt(tasksOverdue.rows[0].count),
+      taches_terminees_mois: parseInt(tasksCompleted.rows[0].count),
+    });
+  }
+
+  // Global stats
+  const totalLate = await db.query(
+    "SELECT COUNT(*) as count FROM clients WHERE statut = 'ACTIF' AND next_visit IS NOT NULL AND next_visit < $1",
+    [today]
+  );
+  const totalToday = await db.query(
+    "SELECT COUNT(*) as count FROM clients WHERE statut = 'ACTIF' AND next_visit = $1",
+    [today]
+  );
+  const totalVisitsWeek = await db.query(
+    "SELECT COUNT(*) as count FROM interactions WHERE date >= $1",
+    [weekStart]
+  );
+  const totalVisitsMonth = await db.query(
+    "SELECT COUNT(*) as count FROM interactions WHERE date >= $1",
+    [monthStart]
+  );
+
+  res.json({
+    global: {
+      clients_en_retard: parseInt(totalLate.rows[0].count),
+      clients_aujourd_hui: parseInt(totalToday.rows[0].count),
+      visites_semaine: parseInt(totalVisitsWeek.rows[0].count),
+      visites_mois: parseInt(totalVisitsMonth.rows[0].count),
+    },
+    par_commercial: stats,
+  });
+}));
+
+// ============================================
+// Activity Feed (recent activity across all commercials)
+// ============================================
+
+router.get('/admin/activity-feed', authMiddleware, asyncHandler(async (req, res) => {
+  const { month, commercial_id, type } = req.query;
+  const now = new Date();
+  let startDate, endDate;
+
+  if (month) {
+    // month format: "2026-03"
+    startDate = `${month}-01`;
+    const [y, m] = month.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    endDate = `${month}-${lastDay}`;
+  } else {
+    startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    endDate = now.toISOString().split('T')[0];
+  }
+
+  const activities = [];
+
+  // Interactions (visits, calls)
+  if (!type || type === 'visite' || type === 'appel') {
+    let query = `SELECT i.*, c.nom as client_nom, co.prenom as commercial_prenom, co.nom as commercial_nom
+      FROM interactions i
+      LEFT JOIN clients c ON i.client_id = c.id
+      LEFT JOIN commerciaux co ON i.commercial_id = co.id
+      WHERE i.date >= $1 AND i.date <= $2`;
+    const params = [startDate, endDate];
+    if (commercial_id) {
+      query += ` AND i.commercial_id = $3`;
+      params.push(commercial_id);
+    }
+    if (type) {
+      query += ` AND LOWER(i.type) = $${params.length + 1}`;
+      params.push(type.toUpperCase());
+    }
+    const result = await db.query(query, params);
+    for (const r of result.rows) {
+      activities.push({
+        id: r.id,
+        type: r.type.toLowerCase(),
+        date: r.date,
+        commercial: `${r.commercial_prenom} ${r.commercial_nom}`,
+        commercial_id: r.commercial_id,
+        description: `${r.type === 'VISITE' ? 'Visite' : r.type === 'APPEL' ? 'Appel' : 'RDV'} - ${r.client_nom || 'Client inconnu'}`,
+        comment: r.comment,
+      });
+    }
+  }
+
+  // Tasks completed
+  if (!type || type === 'tache') {
+    let query = `SELECT t.*, co.prenom as commercial_prenom, co.nom as commercial_nom, c.nom as client_nom
+      FROM tasks_client t
+      LEFT JOIN commerciaux co ON t.commercial_id = co.id
+      LEFT JOIN clients c ON t.client_id = c.id
+      WHERE t.statut = 'TERMINEE' AND t.completed_at >= $1 AND t.completed_at <= $2`;
+    const params = [startDate, endDate + 'T23:59:59'];
+    if (commercial_id) {
+      query += ` AND t.commercial_id = $3`;
+      params.push(commercial_id);
+    }
+    const result = await db.query(query, params);
+    for (const r of result.rows) {
+      activities.push({
+        id: r.id,
+        type: 'tache',
+        date: r.completed_at,
+        commercial: `${r.commercial_prenom} ${r.commercial_nom}`,
+        commercial_id: r.commercial_id,
+        description: `Tache terminee: ${r.titre}${r.client_nom ? ` (${r.client_nom})` : ''}`,
+      });
+    }
+  }
+
+  // New clients this month
+  if (!type || type === 'nouveau_client') {
+    let query = `SELECT cl.*, co.prenom as commercial_prenom, co.nom as commercial_nom
+      FROM clients cl
+      LEFT JOIN commerciaux co ON cl.commercial_id = co.id
+      WHERE cl.date_creation >= $1 AND cl.date_creation <= $2`;
+    const params = [startDate, endDate + 'T23:59:59'];
+    if (commercial_id) {
+      query += ` AND cl.commercial_id = $3`;
+      params.push(commercial_id);
+    }
+    const result = await db.query(query, params);
+    for (const r of result.rows) {
+      activities.push({
+        id: r.id,
+        type: 'nouveau_client',
+        date: r.date_creation,
+        commercial: `${r.commercial_prenom} ${r.commercial_nom}`,
+        commercial_id: r.commercial_id,
+        description: `Nouveau client: ${r.nom}${r.ville ? ` (${r.ville})` : ''}`,
+      });
+    }
+  }
+
+  // Sort by date descending
+  activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  res.json(activities.slice(0, 100));
+}));
+
+// ============================================
+// 6-Week Planning
+// ============================================
+
+router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
+  const { commercial_id } = req.query;
+  const now = new Date();
+
+  // Get Monday of current week
+  const dayOfWeek = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + 1);
+
+  const weeks = [];
+  for (let w = 0; w < 6; w++) {
+    const weekStart = new Date(monday);
+    weekStart.setDate(monday.getDate() + w * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    const startStr = weekStart.toISOString().split('T')[0];
+    const endStr = weekEnd.toISOString().split('T')[0];
+
+    let query = `SELECT c.id, c.nom, c.ville, c.type_client, c.next_visit, c.tournee,
+      co.prenom as commercial_prenom, co.nom as commercial_nom, c.commercial_id
+      FROM clients c
+      LEFT JOIN commerciaux co ON c.commercial_id = co.id
+      WHERE c.statut = 'ACTIF' AND c.next_visit >= $1 AND c.next_visit <= $2`;
+    const params = [startStr, endStr];
+    if (commercial_id) {
+      query += ` AND c.commercial_id = $3`;
+      params.push(commercial_id);
+    }
+    query += ` ORDER BY c.next_visit ASC`;
+    const result = await db.query(query, params);
+
+    weeks.push({
+      week_number: w + 1,
+      start: startStr,
+      end: endStr,
+      clients: result.rows,
+      count: result.rows.length,
+    });
+  }
+
+  res.json(weeks);
+}));
+
+// ============================================
+// Commercial Dashboard Data (tournée-based weekly view)
+// ============================================
+
+router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+
+  // Get Monday of current week
+  const dayOfWeek = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + 1);
+  const weekStart = monday.toISOString().split('T')[0];
+  const weekEnd = new Date(monday);
+  weekEnd.setDate(monday.getDate() + 6);
+  const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+  // My clients
+  const clients = await db.query(
+    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
+    [userId]
+  );
+
+  // My tournée config
+  const tourneeConfig = await db.query(
+    'SELECT * FROM tournee_config WHERE commercial_id = $1',
+    [userId]
+  );
+  const config = tourneeConfig.rows.length > 0
+    ? JSON.parse(tourneeConfig.rows[0].config || '{}')
+    : {};
+  const tourneeNotes = tourneeConfig.rows.length > 0 ? tourneeConfig.rows[0].notes : '';
+
+  // Organize clients by day of week based on tournée rules
+  const weekDays = {};
+  for (let d = 0; d < 7; d++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + d);
+    const dayKey = String(d === 6 ? 0 : d + 1); // 0=dimanche, 1=lundi, ...
+    const tourneesForDay = config[dayKey] || [];
+
+    const dayClients = clients.rows.filter(c => {
+      // Client is in one of the tournées for this day
+      if (tourneesForDay.length > 0 && c.tournee && tourneesForDay.includes(c.tournee)) return true;
+      // Client has next_visit on this date
+      if (c.next_visit === date.toISOString().split('T')[0]) return true;
+      return false;
+    });
+
+    weekDays[dayKey] = {
+      date: date.toISOString().split('T')[0],
+      day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][d === 6 ? 0 : d + 1],
+      tournees: tourneesForDay,
+      clients: dayClients,
+      count: dayClients.length,
+    };
+  }
+
+  // Late clients
+  const lateClients = clients.rows.filter(c => c.next_visit && c.next_visit < today);
+
+  // Today's clients
+  const todayClients = clients.rows.filter(c => c.next_visit === today);
+
+  // Recent interactions
+  const recentInteractions = await db.query(
+    `SELECT i.*, c.nom as client_nom FROM interactions i
+     LEFT JOIN clients c ON i.client_id = c.id
+     WHERE i.commercial_id = $1 ORDER BY i.date DESC LIMIT 20`,
+    [userId]
+  );
+
+  // Pending tasks
+  const tasks = await db.query(
+    "SELECT t.*, c.nom as client_nom FROM tasks_client t LEFT JOIN clients c ON t.client_id = c.id WHERE t.commercial_id = $1 AND t.statut != 'TERMINEE' ORDER BY t.date_echeance ASC NULLS LAST LIMIT 10",
+    [userId]
+  );
+
+  res.json({
+    week_days: weekDays,
+    tournee_config: config,
+    tournee_notes: tourneeNotes,
+    late_clients: lateClients,
+    today_clients: todayClients,
+    recent_interactions: recentInteractions.rows,
+    pending_tasks: tasks.rows,
+    total_clients: clients.rows.length,
+  });
 }));
 
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)

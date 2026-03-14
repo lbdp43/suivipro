@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users, Phone, Calendar, TrendingUp, BarChart3, Clock, ChevronLeft, ChevronRight,
-  UserCheck, Star, ClipboardCheck,
+  UserCheck, Star, ClipboardCheck, Briefcase, Target,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { APPOINTMENT_RESULT_LABELS } from '../types';
@@ -16,6 +16,8 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import AdminClientsDashboard from '../components/AdminClientsDashboard';
+import CommercialClientsDashboard from '../components/CommercialClientsDashboard';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -108,6 +110,8 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
   }
 }
 
+type DashboardTab = 'prospection' | 'clients';
+
 export default function DashboardPage() {
   const { state } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
@@ -115,6 +119,8 @@ export default function DashboardPage() {
   const [crFilterUser, setCrFilterUser] = useState<string>('');
   const [rankingPeriod, setRankingPeriod] = useState<TimePeriod>('week');
   const [perfPeriod, setPerfPeriod] = useState<TimePeriod>('week');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('clients');
+  const isAdmin = state.currentUser?.role === 'admin';
 
   const selectedMonth = subMonths(new Date(), -monthOffset);
   const monthStart = startOfMonth(selectedMonth);
@@ -428,11 +434,42 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
-      {/* Page header */}
+      {/* Page header with tabs */}
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-1">Vue d'ensemble de l'activite - Prospection & Commercial</p>
+        <div className="flex gap-2 mt-3">
+          <button
+            onClick={() => setActiveTab('clients')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'clients'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Briefcase className="w-4 h-4" />
+            Gestion Clients
+          </button>
+          <button
+            onClick={() => setActiveTab('prospection')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'prospection'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Target className="w-4 h-4" />
+            Prospection
+          </button>
+        </div>
       </div>
+
+      {/* Clients Dashboard (Admin or Commercial view) */}
+      {activeTab === 'clients' && (
+        isAdmin ? <AdminClientsDashboard /> : <CommercialClientsDashboard />
+      )}
+
+      {/* Prospection Dashboard (existing content) */}
+      {activeTab !== 'prospection' ? null : <>
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -917,6 +954,7 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
+      </>}
     </div>
   );
 }

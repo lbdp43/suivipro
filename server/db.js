@@ -285,6 +285,18 @@ async function initDatabase(attempt = 1) {
         created_at TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'info',
+        title TEXT NOT NULL,
+        message TEXT DEFAULT '',
+        data TEXT DEFAULT '{}',
+        read BOOLEAN DEFAULT FALSE,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+      );
     `);
 
     // ============================================
