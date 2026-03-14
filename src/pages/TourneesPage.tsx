@@ -139,7 +139,6 @@ export default function TourneesPage() {
   const { state } = useApp();
   const toast = useToast();
   const [configs, setConfigs] = useState<TourneeConfig[]>([]);
-  const [commerciaux, setCommerciaux] = useState<CommercialInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editConfig, setEditConfig] = useState<Record<string, string[]>>({});
@@ -169,23 +168,15 @@ export default function TourneesPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [configsRes, commerciauxRes] = await Promise.all([
-        fetch('/api/tournee-config', { headers }),
-        fetch('/api/data', { headers }),
-      ]);
-      if (configsRes.ok) {
-        const rows = await configsRes.json();
+      const res = await fetch('/api/tournee-config', { headers });
+      if (res.ok) {
+        const rows = await res.json();
         const parsed = rows.map((r: any) => ({
           ...r,
           config: typeof r.config === 'string' ? JSON.parse(r.config) : r.config,
         }));
         setConfigs(parsed);
-        // Auto-expand all commercials
         setExpandedCommercials(new Set(parsed.map((c: TourneeConfig) => c.commercial_id)));
-      }
-      if (commerciauxRes.ok) {
-        const data = await commerciauxRes.json();
-        setCommerciaux(data.commerciaux || []);
       }
     } catch (err) {
       console.error('Erreur chargement tournees:', err);
@@ -289,8 +280,8 @@ export default function TourneesPage() {
     );
   }
 
-  const commercials = commerciaux.filter(c => c.role === 'commercial' || c.role === 'admin');
-  const prospecteurs = commerciaux.filter(c => c.role === 'prospection');
+  const commercials = state.commerciaux.filter(c => c.role === 'commercial' || c.role === 'admin');
+  const prospecteurs = state.commerciaux.filter(c => c.role === 'prospection');
   const isProspection = state.currentUser?.role === 'prospection';
 
   const renderCommercialCard = (commercial: CommercialInfo, readOnly = false) => {
