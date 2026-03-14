@@ -500,7 +500,10 @@ export default function TourneesPage() {
                 });
               }
 
-              if (!hasConfig) return <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>;
+              const commercialRdvs = rdvCountsByCommercialDay[commercial.id] || {};
+              const hasAnyRdv = Object.values(commercialRdvs).some(c => c > 0);
+
+              if (!hasConfig && !hasAnyRdv) return <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>;
 
               return (
                 <>
@@ -512,7 +515,7 @@ export default function TourneesPage() {
                       if (zones.length === 0 && dayRdvCount === 0) return null;
                       const hasProsp = zones.some(z => prospMap.has(z));
                       return (
-                        <div key={day} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg ${hasProsp ? 'bg-green-50' : 'bg-indigo-50'}`}>
+                        <div key={day} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg ${hasProsp ? 'bg-green-50' : zones.length > 0 ? 'bg-indigo-50' : 'bg-blue-50'}`}>
                           <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
                           <div className="flex flex-wrap gap-1 flex-1">
                             {zones.map((z, i) => {
@@ -544,7 +547,9 @@ export default function TourneesPage() {
                         ? 'bg-green-50 border border-green-200'
                         : zones.length > 0
                           ? 'bg-indigo-50 border border-indigo-100'
-                          : 'bg-gray-50 border border-gray-100';
+                          : dayRdvCount > 0
+                            ? 'bg-blue-50 border border-blue-100'
+                            : 'bg-gray-50 border border-gray-100';
                       return (
                         <div key={day} className={`p-2 rounded-lg text-center ${cellClass}`}>
                           <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
@@ -564,11 +569,11 @@ export default function TourneesPage() {
                                 );
                               })}
                             </div>
-                          ) : (
+                          ) : dayRdvCount === 0 ? (
                             <span className="text-xs text-gray-400">-</span>
-                          )}
+                          ) : null}
                           {dayRdvCount > 0 && (
-                            <div className="mt-1.5 pt-1 border-t border-gray-200">
+                            <div className={zones.length > 0 ? 'mt-1.5 pt-1 border-t border-gray-200' : 'mt-0.5'}>
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
                                 <Calendar className="w-2.5 h-2.5" />
                                 {dayRdvCount} RDV
