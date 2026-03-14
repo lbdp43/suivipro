@@ -844,53 +844,90 @@ export default function CompteRenduPage() {
                   commande_plus_tard: 'border-yellow-200', a_relancer: 'border-orange-200',
                   pas_interesse: 'border-red-200',
                 };
-                return (
-                  <div className={`mt-3 border-t pt-3 space-y-2`}>
-                    <p className="text-xs text-gray-500 font-medium">{APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult} ({rdvsForResult.length})</p>
-                    {rdvsForResult.map(rdv => {
-                      const name = getEntityName(rdv);
-                      const entityId = rdv.client_id || rdv.prospect_id;
-                      const isClient = !!rdv.client_id;
-                      const entity = isClient
-                        ? state.clients.find((c: Client) => c.id === rdv.client_id)
-                        : state.prospects.find((p: any) => p.id === rdv.prospect_id);
-                      const phone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
-                      const ville = entity?.ville || '';
-                      return (
-                        <div key={rdv.id} className={`bg-white rounded-lg border ${resultColors[expandedResult] || 'border-gray-200'} p-3`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-medium text-gray-800">{name}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                                  {isClient ? 'Client' : 'Prospect'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
-                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date}</span>
-                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut} - {rdv.heure_fin}</span>
-                                {ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{ville}</span>}
-                              </div>
-                              {rdv.notes_compte_rendu && <p className="text-xs text-gray-500 italic mt-1 truncate">{rdv.notes_compte_rendu}</p>}
-                            </div>
-                            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                              {phone && (
-                                <a href={`tel:${phone}`} onClick={e => e.stopPropagation()}
-                                  className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100">
-                                  <Phone className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                              {isClient && rdv.client_id && (
-                                <button onClick={() => openQuickNote(rdv.client_id!)}
-                                  className="p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100">
-                                  <StickyNote className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
+                const commercialColors = ['bg-blue-50 border-blue-200', 'bg-purple-50 border-purple-200', 'bg-teal-50 border-teal-200', 'bg-pink-50 border-pink-200', 'bg-amber-50 border-amber-200'];
+
+                // Group by commercial when in team view
+                const grouped = isTeamView
+                  ? Object.entries(rdvsForResult.reduce<Record<string, Appointment[]>>((acc, rdv) => {
+                      const cId = rdv.commercial_id || 'unknown';
+                      if (!acc[cId]) acc[cId] = [];
+                      acc[cId].push(rdv);
+                      return acc;
+                    }, {}))
+                  : [['single', rdvsForResult] as [string, Appointment[]]];
+
+                const renderRdvCard = (rdv: Appointment) => {
+                  const name = getEntityName(rdv);
+                  const isClient = !!rdv.client_id;
+                  const entity = isClient
+                    ? state.clients.find((c: Client) => c.id === rdv.client_id)
+                    : state.prospects.find((p: any) => p.id === rdv.prospect_id);
+                  const phone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
+                  const ville = entity?.ville || '';
+                  return (
+                    <div key={rdv.id} className={`bg-white rounded-lg border ${resultColors[expandedResult] || 'border-gray-200'} p-3`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-800">{name}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                              {isClient ? 'Client' : 'Prospect'}
+                            </span>
                           </div>
+                          <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
+                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date}</span>
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut} - {rdv.heure_fin}</span>
+                            {ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{ville}</span>}
+                          </div>
+                          {rdv.notes_compte_rendu && <p className="text-xs text-gray-500 italic mt-1 truncate">{rdv.notes_compte_rendu}</p>}
                         </div>
-                      );
-                    })}
+                        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                          {phone && (
+                            <a href={`tel:${phone}`} onClick={e => e.stopPropagation()}
+                              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100">
+                              <Phone className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          {isClient && rdv.client_id && (
+                            <button onClick={() => openQuickNote(rdv.client_id!)}
+                              className="p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100">
+                              <StickyNote className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div className="mt-3 border-t pt-3 space-y-2">
+                    <p className="text-xs text-gray-500 font-medium">{APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult} ({rdvsForResult.length})</p>
+                    {isTeamView ? (
+                      <div className="space-y-3">
+                        {grouped.map(([commercialId, rdvs], idx) => {
+                          const commercial = state.commerciaux.find((c: any) => c.id === commercialId);
+                          const commercialName = commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu';
+                          const colorClass = commercialColors[idx % commercialColors.length];
+                          return (
+                            <div key={commercialId} className={`rounded-lg border p-3 ${colorClass}`}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-xs font-bold text-gray-600 border">
+                                  {commercial?.prenom?.charAt(0) || '?'}
+                                </div>
+                                <span className="text-xs font-semibold text-gray-700">{commercialName}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 font-medium">{rdvs.length}</span>
+                              </div>
+                              <div className="space-y-2">
+                                {rdvs.map(renderRdvCard)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      rdvsForResult.map(renderRdvCard)
+                    )}
                   </div>
                 );
               })()}
