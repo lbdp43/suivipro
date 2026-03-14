@@ -380,6 +380,36 @@ export default function TourneesPage() {
   const isEvenWeek = currentWeekNum % 2 === 0;
   const isCurrentWeek = weekOffset === 0;
 
+  // Compute dates for each day of the week (DAY_KEYS: '1'=Mon ... '0'=Sun)
+  const weekDates = useMemo(() => {
+    const dates: Record<string, string> = {};
+    DAY_KEYS.forEach((dayKey) => {
+      const offset = dayKey === '0' ? 6 : parseInt(dayKey) - 1;
+      const d = new Date(targetMonday);
+      d.setDate(targetMonday.getDate() + offset);
+      dates[dayKey] = d.toISOString().slice(0, 10);
+    });
+    return dates;
+  }, [targetMonday.getTime()]);
+
+  // Count RDVs per commercial per day of week
+  const rdvCountsByCommercialDay = useMemo(() => {
+    const counts: Record<string, Record<string, number>> = {};
+    const dateToDay: Record<string, string> = {};
+    for (const [dayKey, dateStr] of Object.entries(weekDates)) {
+      dateToDay[dateStr] = dayKey;
+    }
+    for (const rdv of state.appointments) {
+      if (rdv.statut === 'annule') continue;
+      const dayKey = dateToDay[rdv.date];
+      if (!dayKey) continue;
+      const commId = rdv.commercial_id;
+      if (!counts[commId]) counts[commId] = {};
+      counts[commId][dayKey] = (counts[commId][dayKey] || 0) + 1;
+    }
+    return counts;
+  }, [state.appointments, weekDates]);
+
   const formatWeekRange = () => {
     const end = new Date(targetMonday);
     end.setDate(targetMonday.getDate() + 6);
@@ -478,12 +508,13 @@ export default function TourneesPage() {
                   <div className="sm:hidden space-y-1.5">
                     {DAY_KEYS.map(day => {
                       const zones = config?.config[day] || [];
-                      if (zones.length === 0) return null;
+                      const dayRdvCount = rdvCountsByCommercialDay[commercial.id]?.[day] || 0;
+                      if (zones.length === 0 && dayRdvCount === 0) return null;
                       const hasProsp = zones.some(z => prospMap.has(z));
                       return (
                         <div key={day} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg ${hasProsp ? 'bg-green-50' : 'bg-indigo-50'}`}>
                           <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1 flex-1">
                             {zones.map((z, i) => {
                               const slots = prospMap.get(z);
                               return (
@@ -493,6 +524,11 @@ export default function TourneesPage() {
                               );
                             })}
                           </div>
+                          {dayRdvCount > 0 && (
+                            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5 flex-shrink-0">
+                              {dayRdvCount} RDV
+                            </span>
+                          )}
                         </div>
                       );
                     })}
@@ -503,6 +539,7 @@ export default function TourneesPage() {
                     {DAY_KEYS.map(day => {
                       const zones = config?.config[day] || [];
                       const hasProsp = zones.some(z => prospMap.has(z));
+                      const dayRdvCount = rdvCountsByCommercialDay[commercial.id]?.[day] || 0;
                       const cellClass = hasProsp
                         ? 'bg-green-50 border border-green-200'
                         : zones.length > 0
@@ -529,6 +566,14 @@ export default function TourneesPage() {
                             </div>
                           ) : (
                             <span className="text-xs text-gray-400">-</span>
+                          )}
+                          {dayRdvCount > 0 && (
+                            <div className="mt-1.5 pt-1 border-t border-gray-200">
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
+                                <Calendar className="w-2.5 h-2.5" />
+                                {dayRdvCount} RDV
+                              </span>
+                            </div>
                           )}
                         </div>
                       );
