@@ -61,6 +61,7 @@ export default function AppointmentsPage() {
 
   const [formData, setFormData] = useState({
     prospect_id: '',
+    client_id: '',
     commercial_id: '',
     prospecteur_id: '',
     date: '',
@@ -166,6 +167,7 @@ export default function AppointmentsPage() {
   const openNewForm = () => {
     setFormData({
       prospect_id: '',
+      client_id: '',
       commercial_id: state.currentUser?.id || 'com-1',
       prospecteur_id: state.currentUser?.id || 'com-1',
       date: '',
@@ -182,6 +184,7 @@ export default function AppointmentsPage() {
   const openEditForm = (rdv: Appointment) => {
     setFormData({
       prospect_id: rdv.prospect_id,
+      client_id: rdv.client_id || '',
       commercial_id: rdv.commercial_id,
       prospecteur_id: rdv.prospecteur_id || rdv.commercial_id,
       date: rdv.date,
@@ -196,7 +199,7 @@ export default function AppointmentsPage() {
   };
 
   const saveAppointment = () => {
-    if (!formData.prospect_id || !formData.date) return;
+    if ((!formData.prospect_id && !formData.client_id) || !formData.date) return;
     if (editing) {
       dispatch({
         type: 'UPDATE_APPOINTMENT',
@@ -1151,10 +1154,22 @@ export default function AppointmentsPage() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Prospect *</label>
-                <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.prospect_id} onChange={e => setFormData(prev => ({ ...prev, prospect_id: e.target.value }))}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Prospect / Client *</label>
+                <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.client_id ? `client:${formData.client_id}` : formData.prospect_id} onChange={e => {
+                  const val = e.target.value;
+                  if (val.startsWith('client:')) {
+                    setFormData(prev => ({ ...prev, prospect_id: '', client_id: val.replace('client:', '') }));
+                  } else {
+                    setFormData(prev => ({ ...prev, prospect_id: val, client_id: '' }));
+                  }
+                }}>
                   <option value="">Selectionnez</option>
-                  {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
+                  <optgroup label="Prospects">
+                    {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
+                  </optgroup>
+                  <optgroup label="Clients">
+                    {state.clients.filter(c => c.statut === 'ACTIF').map(c => (<option key={c.id} value={`client:${c.id}`}>{c.nom}</option>))}
+                  </optgroup>
                 </select>
               </div>
               {/* Selecteur prospecteur + commercial */}
