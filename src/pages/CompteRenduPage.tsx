@@ -426,6 +426,44 @@ export default function CompteRenduPage() {
     );
   };
 
+  // Render RDVs grouped by commercial (for team view)
+  const commercialGroupColors = ['bg-blue-50 border-blue-200', 'bg-purple-50 border-purple-200', 'bg-teal-50 border-teal-200', 'bg-pink-50 border-pink-200', 'bg-amber-50 border-amber-200'];
+  const renderRdvListGrouped = (rdvs: Appointment[]) => {
+    if (!isTeamView) {
+      return <div className="space-y-3">{rdvs.map(renderRdvCard)}</div>;
+    }
+    // Group by commercial
+    const grouped = rdvs.reduce<Record<string, Appointment[]>>((acc, rdv) => {
+      const cId = rdv.commercial_id || 'unknown';
+      if (!acc[cId]) acc[cId] = [];
+      acc[cId].push(rdv);
+      return acc;
+    }, {});
+    return (
+      <div className="space-y-3">
+        {Object.entries(grouped).map(([commercialId, cRdvs], idx) => {
+          const commercial = state.commerciaux.find((c: any) => c.id === commercialId);
+          const commercialName = commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu';
+          const colorClass = commercialGroupColors[idx % commercialGroupColors.length];
+          return (
+            <div key={commercialId} className={`rounded-xl border p-3 ${colorClass}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-xs font-bold text-gray-600 border">
+                  {commercial?.prenom?.charAt(0) || '?'}
+                </div>
+                <span className="text-xs font-semibold text-gray-700">{commercialName}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 font-medium">{cRdvs.length}</span>
+              </div>
+              <div className="space-y-3">
+                {cRdvs.map(renderRdvCard)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderClientCard = (client: Client) => {
     const visited = visitedClientIds.has(client.id);
     const isExpanded = expandedVisit === client.id;
@@ -952,7 +990,7 @@ export default function CompteRenduPage() {
                   <p className="text-sm text-gray-400">Aucun RDV ce jour</p>
                 </div>
               ) : (
-                <div className="space-y-3">{dayAppointments.map(renderRdvCard)}</div>
+                renderRdvListGrouped(dayAppointments)
               )
             )}
           </div>
@@ -1021,7 +1059,7 @@ export default function CompteRenduPage() {
                     {group.rdvs.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1"><Calendar className="w-3 h-3" />RDV</p>
-                        <div className="space-y-2">{group.rdvs.map(renderRdvCard)}</div>
+                        {renderRdvListGrouped(group.rdvs)}
                       </div>
                     )}
                     {group.visites.length > 0 && (
