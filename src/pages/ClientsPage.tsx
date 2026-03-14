@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
   Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
-  Download, FileSpreadsheet, ListTodo, Check,
+  Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import {
@@ -63,7 +63,82 @@ export default function ClientsPage() {
   const [taskDate, setTaskDate] = useState('');
   const [taskClientId, setTaskClientId] = useState('');
 
+  // Multi-select
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut'>('none');
+  const [bulkValue, setBulkValue] = useState('');
+
+  // Frequency config from DB
+  const [frequencyConfig, setFrequencyConfig] = useState<Record<string, number | null>>({});
+
   const isAdmin = state.currentUser?.role === 'admin';
+
+  // Load frequency config from DB
+  useEffect(() => {
+    const token = localStorage.getItem('suivipro_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/visit-frequency-config', { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: { type_client: string; frequency_days: number }[]) => {
+        const config: Record<string, number | null> = {};
+        rows.forEach(r => { config[r.type_client] = r.frequency_days; });
+        setFrequencyConfig(config);
+      })
+      .catch(() => {});
+  }, []);
+
+  const getEffectiveFrequency = (typeClient: string, customRecurrence: number | null): number | null => {
+    if (customRecurrence) return customRecurrence;
+    return frequencyConfig[typeClient] ?? (CLIENT_VISIT_FREQUENCIES as Record<string, number | null>)[typeClient] ?? null;
+  };
+
+  // Multi-select helpers
+  const toggleSelection = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkAction('none');
+    setBulkValue('');
+  };
+
+  const applyBulkAction = async () => {
+    if (!bulkValue.trim() && bulkAction !== 'statut') return;
+    const now = new Date().toISOString();
+    const token = localStorage.getItem('suivipro_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    for (const id of selectedIds) {
+      const client = state.clients.find(c => c.id === id);
+      if (!client) continue;
+      let updated: Client = { ...client, date_modification: now };
+      if (bulkAction === 'commercial') updated.commercial_id = bulkValue;
+      if (bulkAction === 'tournee') updated.tournee = bulkValue;
+      if (bulkAction === 'type') updated.type_client = bulkValue as ClientType;
+      if (bulkAction === 'statut') updated.statut = bulkValue as ClientStatus;
+      dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      fetch(`/api/clients/${id}`, { method: 'PUT', headers, body: JSON.stringify(updated) }).catch(() => {});
+    }
+    exitSelectionMode();
+  };
+
+  const bulkDelete = () => {
+    if (!confirm(`Supprimer ${selectedIds.size} client(s) ? Cette action est irreversible.`)) return;
+    selectedIds.forEach(id => {
+      dispatch({ type: 'DELETE_CLIENT', payload: id });
+    });
+    exitSelectionMode();
+  };
 
   // Get unique tournees
   const allTournees = useMemo(() => {
@@ -348,6 +423,13 @@ export default function ClientsPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+                className={`p-2 rounded-lg transition-colors ${selectionMode ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                title={selectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
+              >
+                <CheckSquare className="w-4 h-4" />
+              </button>
               <button onClick={handleExportClients} className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors" title="Exporter">
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">Export</span>
@@ -471,6 +553,90 @@ export default function ClientsPage() {
           </div>
         </div>
 
+        {/* Selection mode toolbar */}
+        {selectionMode && (
+          <div className="px-4 py-2 bg-brewery-50 border-b border-brewery-200 flex items-center gap-2 flex-wrap">
+            <button
+              className="text-xs font-medium text-brewery-700 hover:text-brewery-900 underline"
+              onClick={() => selectedIds.size === paginated.length
+                ? setSelectedIds(new Set())
+                : setSelectedIds(new Set(filtered.map(c => c.id)))}
+            >
+              {selectedIds.size === filtered.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+            </button>
+            <span className="text-xs text-brewery-600 ml-auto font-medium">{selectedIds.size} sélectionné(s)</span>
+            <button onClick={() => setSelectionMode(false)} className="p-1 text-gray-400 hover:text-gray-600"><XCircle className="w-4 h-4" /></button>
+          </div>
+        )}
+
+        {/* Bulk action bar */}
+        {selectionMode && selectedIds.size > 0 && (
+          <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-200 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-indigo-700 mr-1">Actions en masse :</span>
+            <select
+              className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-gray-700"
+              value={bulkAction}
+              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); }}
+            >
+              <option value="none">Choisir une action…</option>
+              {isAdmin && <option value="commercial">Changer le commercial</option>}
+              <option value="tournee">Changer la tournée</option>
+              <option value="type">Changer le type</option>
+              <option value="statut">Changer le statut</option>
+            </select>
+
+            {bulkAction === 'commercial' && (
+              <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" value={bulkValue} onChange={e => setBulkValue(e.target.value)}>
+                <option value="">Choisir…</option>
+                {state.commerciaux.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+              </select>
+            )}
+            {bulkAction === 'tournee' && (
+              <input
+                list="bulk-tournee-list"
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white w-36"
+                placeholder="Zone / Tournée"
+                value={bulkValue}
+                onChange={e => setBulkValue(e.target.value)}
+              />
+            )}
+            {bulkAction === 'type' && (
+              <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" value={bulkValue} onChange={e => setBulkValue(e.target.value)}>
+                <option value="">Choisir…</option>
+                {Object.entries(CLIENT_TYPE_FAMILIES).map(([, fam]) =>
+                  fam.types.map(t => <option key={t} value={t}>{CLIENT_TYPE_LABELS[t]}</option>)
+                )}
+              </select>
+            )}
+            {bulkAction === 'statut' && (
+              <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" value={bulkValue} onChange={e => setBulkValue(e.target.value)}>
+                <option value="">Choisir…</option>
+                <option value="ACTIF">Actif</option>
+                <option value="INACTIF">Inactif</option>
+              </select>
+            )}
+
+            {bulkAction !== 'none' && (
+              <button
+                onClick={applyBulkAction}
+                disabled={!bulkValue && bulkAction !== 'statut'}
+                className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
+              >
+                Appliquer
+              </button>
+            )}
+            <button
+              onClick={bulkDelete}
+              className="px-3 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg ml-auto"
+            >
+              <Trash2 className="w-3 h-3 inline mr-1" />Supprimer
+            </button>
+          </div>
+        )}
+        <datalist id="bulk-tournee-list">
+          {allTournees.map(t => <option key={t} value={t} />)}
+        </datalist>
+
         {/* Client list */}
         <div className="flex-1 overflow-y-auto">
           {paginated.length === 0 ? (
@@ -490,14 +656,21 @@ export default function ClientsPage() {
                 return (
                   <div
                     key={client.id}
-                    onClick={() => setSearchParams({ id: client.id })}
+                    onClick={selectionMode ? (e) => toggleSelection(client.id, e) : () => setSearchParams({ id: client.id })}
                     className={`px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${
-                      isSelected ? 'bg-brewery-50 border-l-3 border-brewery-600' : ''
-                    }`}
+                      isSelected && !selectionMode ? 'bg-brewery-50 border-l-3 border-brewery-600' : ''
+                    } ${selectionMode && selectedIds.has(client.id) ? 'bg-indigo-50' : ''}`}
                   >
                     <div className="flex items-start gap-3">
-                      {/* Visit status dot */}
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5 ${statusConfig.dot}`} title={statusConfig.label} />
+                      {selectionMode ? (
+                        <div className="flex-shrink-0 mt-0.5" onClick={e => toggleSelection(client.id, e)}>
+                          {selectedIds.has(client.id)
+                            ? <CheckSquare className="w-4 h-4 text-indigo-600" />
+                            : <Square className="w-4 h-4 text-gray-300" />}
+                        </div>
+                      ) : (
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5 ${statusConfig.dot}`} title={statusConfig.label} />
+                      )}
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -709,8 +882,8 @@ export default function ClientsPage() {
                   <p className="font-medium text-gray-900">
                     {selectedClient.custom_recurrence
                       ? `${selectedClient.custom_recurrence}j (perso)`
-                      : CLIENT_VISIT_FREQUENCIES[selectedClient.type_client]
-                        ? `${CLIENT_VISIT_FREQUENCIES[selectedClient.type_client]}j`
+                      : getEffectiveFrequency(selectedClient.type_client, null) != null
+                        ? `${getEffectiveFrequency(selectedClient.type_client, null)}j`
                         : 'Aucune'}
                   </p>
                 </div>
