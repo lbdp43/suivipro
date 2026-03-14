@@ -1200,19 +1200,52 @@ async function handleEasyBeerWebhook(req, res) {
     console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name=${directName || '(depuis webhook)'}`);
   }
 
-  // Helper to extract fields from EasyBeer data (English field names per docs)
-  const extractEbFields = (d) => ({
-    name: d.name || d.nom || d.libelle || d.raisonSociale || '',
-    type: d.type || '',
-    contact_name: d.contact_name || d.contactName || d.contact || '',
-    phone: d.phone || d.telephone || d.mobile || d.tel || '',
-    email: d.email || d.mail || '',
-    city: d.city || d.ville || '',
-    address: d.address || d.adresse || d.rue || '',
-    postal_code: d.postal_code || d.postalCode || d.codePostal || d.cp || '',
-    notes: d.notes || d.commentaire || '',
-    commercial_email: d.commercial_email || d.commercialEmail || d.emailCommercial || '',
-  });
+  // Helper to extract fields from EasyBeer data (handles nested structures from /parametres/client/detail/)
+  const extractEbFields = (data) => {
+    // Handle nested adresses
+    let adresse = '', ville = '', codePostal = '';
+    let adresseObj = null;
+    if (data.adresses && Array.isArray(data.adresses) && data.adresses.length > 0) {
+      adresseObj = data.adresses.find(a => a.type === 'Facturation' || a.principale) || data.adresses[0];
+    } else if (data.adresse && typeof data.adresse === 'object') {
+      adresseObj = data.adresse;
+    }
+    if (adresseObj) {
+      if (adresseObj.numero && adresseObj.rue) adresse = `${adresseObj.numero} ${adresseObj.rue}`.trim();
+      else if (adresseObj.rue) adresse = adresseObj.rue;
+      else adresse = [adresseObj.ligne1 || adresseObj.adresse1, adresseObj.ligne2].filter(Boolean).join(', ');
+      ville = adresseObj.ville || adresseObj.commune || '';
+      codePostal = adresseObj.codePostal || adresseObj.cp || '';
+    }
+    // Handle nested contacts
+    let contactName = '', contactEmail = '', contactTel = '';
+    let contactObj = null;
+    if (data.contacts && Array.isArray(data.contacts) && data.contacts.length > 0) {
+      contactObj = data.contacts.find(c => c.type === 'Principal' || c.principal) || data.contacts[0];
+    } else if (data.listeContacts && Array.isArray(data.listeContacts) && data.listeContacts.length > 0) {
+      contactObj = data.listeContacts[0];
+    }
+    if (contactObj && typeof contactObj === 'object') {
+      contactName = contactObj.denomination || contactObj.libelle || `${contactObj.prenom || ''} ${contactObj.nom || ''}`.trim();
+      contactEmail = contactObj.email || contactObj.emailPrincipal || '';
+      contactTel = contactObj.telephone || contactObj.mobile || '';
+    }
+    let typeStr = data.type || '';
+    if (typeof typeStr === 'object' && typeStr) typeStr = typeStr.libelle || typeStr.code || '';
+
+    return {
+      name: data.nom || data.libelle || data.raisonSociale || data.name || '',
+      type: typeStr,
+      contact_name: contactName || data.contact_name || data.contact || '',
+      phone: data.telephonePrincipal || data.telephone || contactTel || data.mobile || data.tel || '',
+      email: data.emailPrincipal || data.email || contactEmail || data.mail || '',
+      city: ville || data.ville || data.city || '',
+      address: adresse || data.address || '',
+      postal_code: codePostal || data.postal_code || data.cp || '',
+      notes: data.notes || data.commentaire || data.observation || '',
+      commercial_email: data.commercial?.email || data.commercial?.emailPrincipal || data.commercial_email || data.commercialEmail || '',
+    };
+  };
 
   // Try to enrich with EasyBeer API data in background
   if (id && config?.username && config?.api_url) {
@@ -1224,29 +1257,34 @@ async function handleEasyBeerWebhook(req, res) {
 
         let found = null;
 
-        // Strategy 1: Direct lookup
-        for (const path of [`/tiers/${id}`, `/clients/${id}`]) {
+        // Strategy 1: Direct lookup via /parametres/client/detail/{id}
+        for (const path of [`/parametres/client/detail/${id}`, `/param%C3%A8tres/client/detail/${id}`]) {
           try {
-            const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(10000) });
+            const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
             if (resp.ok) {
               found = await resp.json();
-              if (Array.isArray(found)) found = found.find(d => String(d.id) === String(id)) || found[0];
+              if (Array.isArray(found)) found = found.find(d => String(d.id || d.idClient) === String(id)) || found[0];
               console.log(`[EasyBeer Webhook] Fetch reussi via ${path}`);
               break;
             }
           } catch { /* next */ }
         }
 
-        // Strategy 2: List and search
+        // Strategy 2: List via POST /parametres/client/liste and search
         if (!found) {
-          for (const path of ['/tiers', '/clients']) {
+          for (const path of ['/parametres/client/liste', '/param%C3%A8tres/client/liste']) {
             try {
-              const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+              const resp = await fetch(`${apiBase}${path}`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000 }),
+                signal: AbortSignal.timeout(20000)
+              });
               if (resp.ok) {
-                let list = await resp.json();
-                if (!Array.isArray(list)) list = list.results || list.data || list.items || [];
+                let data = await resp.json();
+                let list = Array.isArray(data) ? data : (data.liste || data.results || data.data || data.items || []);
                 if (Array.isArray(list)) {
-                  found = list.find(d => String(d.id) === String(id));
+                  found = list.find(d => String(d.id || d.idClient) === String(id));
                   if (found) {
                     console.log(`[EasyBeer Webhook] Trouve dans liste ${path}`);
                     break;
@@ -1352,19 +1390,25 @@ router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
   const headers = { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' };
 
-  // Try several common EasyBeer endpoint paths
-  const pathsToTry = ['/tiers', '/clients', '/api/tiers', '/api/clients', '/v1/clients', '/'];
+  // Try EasyBeer endpoint paths (correct path: POST /parametres/client/liste)
+  const pathsToTry = ['/parametres/client/liste', '/param%C3%A8tres/client/liste'];
 
   for (const path of pathsToTry) {
     try {
-      const resp = await fetch(`${baseUrl}${path}`, { headers, signal: AbortSignal.timeout(8000) });
+      const resp = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 }),
+        signal: AbortSignal.timeout(8000)
+      });
       if (resp.status === 200 || resp.status === 206) {
-        return res.json({ ok: true, message: `Connexion reussie (${path})` });
+        const data = await resp.json().catch(() => null);
+        const count = data?.liste?.length || 0;
+        return res.json({ ok: true, message: `Connexion reussie (${count} clients)` });
       }
       if (resp.status === 401 || resp.status === 403) {
         return res.json({ ok: false, message: `Serveur accessible mais identifiants refuses (${resp.status})` });
       }
-      // 404 on this path → try next
     } catch {
       // network error on this path → try next
     }
@@ -1440,19 +1484,72 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
-  // Helper to extract fields from EasyBeer data (fields are in English per EasyBeer docs)
-  const extractFields = (data) => ({
-    name: data.name || data.nom || data.libelle || data.raisonSociale || '',
-    type: data.type || '',
-    contact_name: data.contact_name || data.contactName || data.contact || '',
-    phone: data.phone || data.telephone || data.mobile || data.tel || '',
-    email: data.email || data.mail || '',
-    city: data.city || data.ville || '',
-    address: data.address || data.adresse || data.rue || '',
-    postal_code: data.postal_code || data.postalCode || data.codePostal || data.cp || '',
-    notes: data.notes || data.commentaire || '',
-    commercial_email: data.commercial_email || data.commercialEmail || data.emailCommercial || '',
-  });
+  // Helper to extract fields from EasyBeer data (handles nested structures from /parametres/client/detail/)
+  const extractFields = (data) => {
+    // Handle nested adresses array or adresse object
+    let adresse = '', ville = '', codePostal = '';
+    let adresseObj = null;
+    if (data.adresses && Array.isArray(data.adresses) && data.adresses.length > 0) {
+      adresseObj = data.adresses.find(a => a.type === 'Facturation' || a.principale) || data.adresses[0];
+    } else if (data.adresse && typeof data.adresse === 'object') {
+      adresseObj = data.adresse;
+    } else if (data.adresseFacturation && typeof data.adresseFacturation === 'object') {
+      adresseObj = data.adresseFacturation;
+    }
+    if (adresseObj) {
+      if (adresseObj.numero && adresseObj.rue) {
+        adresse = `${adresseObj.numero} ${adresseObj.rue}`.trim();
+      } else if (adresseObj.rue) {
+        adresse = adresseObj.rue;
+      } else {
+        const lignes = [adresseObj.ligne1 || adresseObj.adresse1 || adresseObj.adresse,
+          adresseObj.ligne2 || adresseObj.adresse2, adresseObj.ligne3].filter(Boolean);
+        adresse = lignes.join(', ');
+      }
+      ville = adresseObj.ville || adresseObj.commune || '';
+      codePostal = adresseObj.codePostal || adresseObj.cp || adresseObj.code_postal || '';
+    }
+
+    // Handle nested contacts array
+    let contactName = '', contactEmail = '', contactTel = '';
+    let contactObj = null;
+    if (data.contacts && Array.isArray(data.contacts) && data.contacts.length > 0) {
+      contactObj = data.contacts.find(c => c.type === 'Principal' || c.principal) || data.contacts[0];
+    } else if (data.listeContacts && Array.isArray(data.listeContacts) && data.listeContacts.length > 0) {
+      contactObj = data.listeContacts[0];
+    } else if (data.contactPrincipal && typeof data.contactPrincipal === 'object') {
+      contactObj = data.contactPrincipal;
+    }
+    if (contactObj && typeof contactObj === 'object') {
+      const prenom = contactObj.prenom || '';
+      const nom = contactObj.nom || '';
+      contactName = contactObj.denomination || contactObj.libelle || `${prenom} ${nom}`.trim();
+      contactEmail = contactObj.email || contactObj.emailPrincipal || contactObj.mail || '';
+      contactTel = contactObj.telephone || contactObj.mobile || contactObj.portable || '';
+    }
+
+    // Type can be an object
+    let typeStr = data.type || '';
+    if (typeof typeStr === 'object' && typeStr) {
+      typeStr = typeStr.libelle || typeStr.code || '';
+    }
+
+    const finalPhone = data.telephonePrincipal || data.telephone || contactTel || data.mobile || data.tel || '';
+    const finalEmail = data.emailPrincipal || data.email || contactEmail || data.mail || '';
+
+    return {
+      name: data.nom || data.libelle || data.raisonSociale || data.name || '',
+      type: typeStr,
+      contact_name: contactName || data.contact_name || data.contact || '',
+      phone: finalPhone,
+      email: finalEmail,
+      city: ville || data.ville || data.city || '',
+      address: adresse || data.address || '',
+      postal_code: codePostal || data.postal_code || data.cp || '',
+      notes: data.notes || data.commentaire || data.observation || '',
+      commercial_email: data.commercial?.email || data.commercial?.emailPrincipal || data.commercial_email || data.commercialEmail || '',
+    };
+  };
 
   // Helper to update client from data
   const updateFromData = async (data, path) => {
@@ -1478,17 +1575,17 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
     return res.json({ ok: true, message: `Synchronise via ${path}`, name: f.name });
   };
 
-  // Strategy 1: Try direct ID lookup
-  const directPaths = [`/tiers/${ebId}`, `/clients/${ebId}`, `/api/tiers/${ebId}`, `/api/clients/${ebId}`];
+  // Strategy 1: Try direct ID lookup via EasyBeer /parametres/client/detail/{id}
+  const directPaths = [`/parametres/client/detail/${ebId}`, `/param%C3%A8tres/client/detail/${ebId}`, `/parametres/client/${ebId}`, `/client/${ebId}`];
   const errors = [];
   let firstErrorBody = '';
 
   for (const path of directPaths) {
     try {
-      const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(10000) });
+      const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
       if (resp.ok) {
         let data = await resp.json();
-        if (Array.isArray(data)) data = data.find(d => String(d.id) === String(ebId)) || data[0] || {};
+        if (Array.isArray(data)) data = data.find(d => String(d.id || d.idClient) === String(ebId)) || data[0] || {};
         return await updateFromData(data, path);
       } else {
         const body = await resp.text().catch(() => '');
@@ -1500,28 +1597,25 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
     }
   }
 
-  // Strategy 2: Fetch the full list and search by ID
-  const listPaths = ['/tiers', '/clients', '/api/tiers', '/api/clients'];
+  // Strategy 2: Fetch the full list via POST /parametres/client/liste and search by ID
+  const listPaths = ['/parametres/client/liste', '/param%C3%A8tres/client/liste'];
   for (const path of listPaths) {
     try {
-      const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+      const resp = await fetch(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000 }),
+        signal: AbortSignal.timeout(20000)
+      });
       if (resp.ok) {
         const data = await resp.json();
-        if (Array.isArray(data)) {
-          const match = data.find(d => String(d.id) === String(ebId));
+        const items = Array.isArray(data) ? data : (data.liste || data.results || data.data || data.items || []);
+        if (Array.isArray(items)) {
+          const match = items.find(d => String(d.id || d.idClient) === String(ebId));
           if (match) {
             return await updateFromData(match, `${path} (liste)`);
           }
-          errors.push(`${path}: liste OK (${data.length} items) mais ID ${ebId} non trouve`);
-        } else if (data.results || data.data || data.items) {
-          const items = data.results || data.data || data.items;
-          if (Array.isArray(items)) {
-            const match = items.find(d => String(d.id) === String(ebId));
-            if (match) {
-              return await updateFromData(match, `${path} (liste paginee)`);
-            }
-            errors.push(`${path}: liste OK (${items.length} items) mais ID ${ebId} non trouve`);
-          }
+          errors.push(`${path}: liste OK (${items.length} items) mais ID ${ebId} non trouve`);
         }
       }
     } catch { /* ignore list errors */ }
