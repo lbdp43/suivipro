@@ -208,25 +208,66 @@ export default function CompteRenduPage() {
     return { totalRdv, rdvWithCR, totalVisites, visitesParType, resultCounts, rdvFromProspection, rdvClients };
   }, [rangeAppointments, rangeInteractions]);
 
-  // Group by day for week/month/period views
+  // Helper: get clients to visit for a specific date
+  const getClientsToVisitForDate = (dateStr: string): Client[] => {
+    const uids = new Set(effectiveUserIds);
+    const zones = getZonesForDate(dateStr);
+    const weekMonday = getMondayOf(dateStr);
+    const weekSunday = getSundayOf(weekMonday);
+
+    // Get interactions already done on that date
+    const doneClientIds = new Set(
+      state.interactions
+        .filter((i: Interaction) => i.date.substring(0, 10) === dateStr && uids.has(i.commercial_id))
+        .map((i: Interaction) => i.client_id)
+    );
+
+    return state.clients.filter((c: Client) => {
+      if (!uids.has(c.commercial_id) || c.statut !== 'ACTIF') return false;
+      if (!c.tournee || !zones.includes(c.tournee)) return false;
+
+      // Case 1: Client is late (next_visit < dateStr)
+      if (c.next_visit && c.next_visit < dateStr) return true;
+
+      // Case 2: Client's next_visit falls this week AND zone matches this day
+      if (c.next_visit && c.next_visit >= weekMonday && c.next_visit <= weekSunday) {
+        const assignedDate = getDateForZone(c.tournee, weekMonday);
+        if (assignedDate === dateStr) return true;
+      }
+
+      return false;
+    }).sort((a: Client, b: Client) => {
+      const aLate = a.next_visit && a.next_visit < dateStr;
+      const bLate = b.next_visit && b.next_visit < dateStr;
+      if (aLate && !bLate) return -1;
+      if (!aLate && bLate) return 1;
+      if (aLate && bLate) return (a.next_visit || '').localeCompare(b.next_visit || '');
+      return a.nom.localeCompare(b.nom);
+    }).map(c => ({ ...c, _visited: doneClientIds.has(c.id) }));
+  };
+
+  // Group by day for week/month/period views - now includes clients to visit
   const dayGroups = useMemo(() => {
     if (viewMode === 'jour') return [];
-    const groups: { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[] }[] = [];
+    const groups: { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] = [];
     for (const dateStr of dateRange.dates) {
       const d = new Date(dateStr + 'T12:00:00');
       const rdvs = rangeAppointments.filter(a => a.date === dateStr);
       const visites = rangeInteractions.filter(i => i.date.substring(0, 10) === dateStr);
-      if (rdvs.length === 0 && visites.length === 0) continue;
+      const zones = getZonesForDate(dateStr);
+      const clients = viewMode === 'semaine' ? getClientsToVisitForDate(dateStr) : [];
+      if (rdvs.length === 0 && visites.length === 0 && clients.length === 0) continue;
       groups.push({
         date: dateStr,
         label: `${DAY_SHORT[d.getDay()]} ${d.getDate()} ${MONTH_LABELS[d.getMonth()].substring(0, 3)}`,
         rdvs,
         visites,
-        zones: getZonesForDate(dateStr),
+        zones,
+        clientsToVisit: clients,
       });
     }
     return groups;
-  }, [viewMode, dateRange, rangeAppointments, rangeInteractions]);
+  }, [viewMode, dateRange, rangeAppointments, rangeInteractions, state.clients, effectiveUserIds, parsedConfig, state.interactions]);
 
   // Day view data
   const selectedDow = new Date(selectedDate + 'T12:00:00').getDay().toString();
@@ -1059,24 +1100,36 @@ export default function CompteRenduPage() {
           ) : dayGroups.map(group => {
             const isOpen = expandedDay === group.date;
             const rdvDone = group.rdvs.filter(r => !!r.compte_rendu).length;
+            const visitedCount = group.clientsToVisit.filter((c: any) => c._visited).length;
+            const lateCount = group.clientsToVisit.filter((c: Client) => c.next_visit && c.next_visit < group.date).length;
             return (
               <div key={group.date} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <button onClick={() => setExpandedDay(isOpen ? null : group.date)}
                   className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm text-gray-800">{group.label}</span>
-                      {group.zones.length > 0 && <span className="text-[10px] text-brewery-600">{group.zones.join(', ')}</span>}
+                      {group.zones.length > 0 && <span className="text-[10px] text-brewery-600 font-medium">{group.zones.join(', ')}</span>}
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {group.rdvs.length > 0 && (
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rdvDone === group.rdvs.length ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                           {group.rdvs.length} RDV {rdvDone > 0 && `(${rdvDone} CR)`}
                         </span>
                       )}
+                      {group.clientsToVisit.length > 0 && (
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${visitedCount === group.clientsToVisit.length ? 'bg-green-100 text-green-700' : 'bg-cyan-100 text-cyan-700'}`}>
+                          {visitedCount}/{group.clientsToVisit.length} clients visites
+                        </span>
+                      )}
+                      {lateCount > 0 && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          {lateCount} en retard
+                        </span>
+                      )}
                       {group.visites.length > 0 && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">
-                          {group.visites.length} visite{group.visites.length > 1 ? 's' : ''}
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                          {group.visites.length} interaction{group.visites.length > 1 ? 's' : ''}
                         </span>
                       )}
                     </div>
@@ -1084,16 +1137,36 @@ export default function CompteRenduPage() {
                   <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isOpen && (
-                  <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
+                  <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
+                    {/* RDVs du jour */}
                     {group.rdvs.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1"><Calendar className="w-3 h-3" />RDV</p>
+                        <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" /> Rendez-vous ({group.rdvs.length})
+                        </p>
                         {renderRdvListGrouped(group.rdvs)}
                       </div>
                     )}
+
+                    {/* Clients a visiter ce jour */}
+                    {group.clientsToVisit.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5" /> Clients a visiter ({group.clientsToVisit.length})
+                          <span className="text-[10px] font-normal text-gray-400 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
+                        </p>
+                        <div className="space-y-2">
+                          {group.clientsToVisit.map(renderClientCard)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Interactions deja faites (hors clients a visiter) */}
                     {group.visites.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1"><Building2 className="w-3 h-3" />Visites</p>
+                        <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Interactions enregistrees ({group.visites.length})
+                        </p>
                         <div className="space-y-1.5">
                           {group.visites.map(v => {
                             const clientName = getClientName(v.client_id);

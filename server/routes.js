@@ -2275,13 +2275,23 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
           if (!tourneesForDay.length || !c.tournee || !tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())) return false;
           // Late client: next_visit before today, show on the day their zone is configured
           if (c.next_visit && c.next_visit < today) return true;
-          // Due this week: next_visit is within this week
+          // Due this week: next_visit is within this week — show on the day their zone is scheduled
           if (c.next_visit && c.next_visit >= mondayStr && c.next_visit <= sundayStr) return true;
           return false;
         });
-        const visitClients = comClients.filter(c =>
-          c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
-        );
+        // Only add clients without a configured zone, whose next_visit matches this exact date
+        const visitClients = comClients.filter(c => {
+          if (c.next_visit !== dateStr) return false;
+          if (tourneeClients.find(tc2 => tc2.id === c.id)) return false;
+          if (c.tournee) {
+            for (const [, zones] of Object.entries(config)) {
+              if (Array.isArray(zones) && zones.some(z => z.toLowerCase() === c.tournee.toLowerCase())) {
+                return false;
+              }
+            }
+          }
+          return true;
+        });
 
         weekDays.push({
           day_key: dayKey, date: dateStr,
@@ -2348,13 +2358,25 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
       if (!tourneesForDay.length || !c.tournee || !tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())) return false;
       // Late client: next_visit before today, show on the day their zone is configured
       if (c.next_visit && c.next_visit < today) return true;
-      // Due this week: next_visit is within this week
+      // Due this week: next_visit is within this week — show on the day their zone is scheduled
       if (c.next_visit && c.next_visit >= mondayStr && c.next_visit <= sundayStr) return true;
       return false;
     });
-    const visitClients = clients.rows.filter(c =>
-      c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
-    );
+    // Only add clients without a configured zone/tournee, whose next_visit matches this exact date
+    // Clients WITH a zone should only appear on their zone's day (handled by tourneeClients above)
+    const visitClients = clients.rows.filter(c => {
+      if (c.next_visit !== dateStr) return false;
+      if (tourneeClients.find(tc2 => tc2.id === c.id)) return false;
+      // If client has a zone that exists in ANY day of the week config, skip — they'll be shown on that day
+      if (c.tournee) {
+        for (const [, zones] of Object.entries(config)) {
+          if (Array.isArray(zones) && zones.some(z => z.toLowerCase() === c.tournee.toLowerCase())) {
+            return false; // Zone is configured, client will appear on the correct day
+          }
+        }
+      }
+      return true;
+    });
 
     weekDays.push({
       day_key: dayKey, date: dateStr,
@@ -2425,11 +2447,21 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     const dayKey = String(d === 6 ? 0 : d + 1); // 0=dimanche, 1=lundi, ...
     const tourneesForDay = config[dayKey] || [];
 
+    const dateStr = date.toISOString().split('T')[0];
     const dayClients = clients.rows.filter(c => {
       // Client is in one of the tournées for this day
       if (tourneesForDay.length > 0 && c.tournee && tourneesForDay.includes(c.tournee)) return true;
-      // Client has next_visit on this date
-      if (c.next_visit === date.toISOString().split('T')[0]) return true;
+      // Client has next_visit on this date BUT only if their zone isn't configured on another day
+      if (c.next_visit === dateStr) {
+        if (c.tournee) {
+          for (const [, zones] of Object.entries(config)) {
+            if (Array.isArray(zones) && zones.some(z => z.toLowerCase() === c.tournee.toLowerCase())) {
+              return false; // Zone is configured, client will appear on the correct day
+            }
+          }
+        }
+        return true;
+      }
       return false;
     });
 
