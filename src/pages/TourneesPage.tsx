@@ -553,6 +553,8 @@ export default function TourneesPage() {
                       const daySectorStats = sectorStatsByCommercialDay[commercial.id]?.[day];
                       if (zones.length === 0 && dayRdvCount === 0) return null;
                       const hasProsp = zones.some(z => prospMap.has(z));
+                      // Sum prospection slots for zones on this day
+                      const totalSlotsForDay = zones.reduce((sum, z) => sum + (prospMap.get(z) || 0), 0);
                       return (
                         <div key={day} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg ${hasProsp ? 'bg-green-50' : zones.length > 0 ? 'bg-indigo-50' : 'bg-blue-50'}`}>
                           <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
@@ -568,8 +570,13 @@ export default function TourneesPage() {
                           </div>
                           <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             {daySectorStats && daySectorStats.totalClients > 0 && (
+                              <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
+                                {daySectorStats.visitsDone}/{daySectorStats.totalClients} visites
+                              </span>
+                            )}
+                            {totalSlotsForDay > 0 && (
                               <span className="text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
-                                {daySectorStats.totalClients} RDV à prendre
+                                {totalSlotsForDay} RDV à prendre
                               </span>
                             )}
                             {dayRdvCount > 0 && (
@@ -590,6 +597,8 @@ export default function TourneesPage() {
                       const hasProsp = zones.some(z => prospMap.has(z));
                       const dayRdvCount = rdvCountsByCommercialDay[commercial.id]?.[day] || 0;
                       const daySectorStats = sectorStatsByCommercialDay[commercial.id]?.[day];
+                      // Sum prospection slots for zones on this day
+                      const totalSlotsForDay = zones.reduce((sum, z) => sum + (prospMap.get(z) || 0), 0);
                       const cellClass = hasProsp
                         ? 'bg-green-50 border border-green-200'
                         : zones.length > 0
@@ -621,9 +630,17 @@ export default function TourneesPage() {
                           ) : null}
                           {daySectorStats && daySectorStats.totalClients > 0 && (
                             <div className={`mt-1 ${zones.length > 0 ? 'pt-1 border-t border-gray-200' : ''}`}>
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
                                 <User className="w-2.5 h-2.5" />
-                                {daySectorStats.totalClients} à prendre
+                                {daySectorStats.visitsDone}/{daySectorStats.totalClients} visites
+                              </span>
+                            </div>
+                          )}
+                          {totalSlotsForDay > 0 && (
+                            <div className="mt-0.5">
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                                <Calendar className="w-2.5 h-2.5" />
+                                {totalSlotsForDay} à prendre
                               </span>
                             </div>
                           )}
