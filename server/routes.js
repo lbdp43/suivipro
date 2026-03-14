@@ -1410,17 +1410,26 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
 
   const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
-  const pathsToTry = [`/tiers/${ebId}`, `/clients/${ebId}`, `/api/tiers/${ebId}`, `/api/clients/${ebId}`];
+  const pathsToTry = [
+    `/tiers/${ebId}`, `/clients/${ebId}`, `/api/tiers/${ebId}`, `/api/clients/${ebId}`,
+    `/tiers?id=${ebId}`, `/clients?id=${ebId}`, `/api/tiers?id=${ebId}`, `/api/clients?id=${ebId}`,
+  ];
 
+  const errors = [];
   for (const path of pathsToTry) {
     try {
-      const resp = await fetch(`${apiBase}${path}`, {
+      const url = `${apiBase}${path}`;
+      const resp = await fetch(url, {
         headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
         signal: AbortSignal.timeout(10000),
       });
       if (resp.ok) {
-        const data = await resp.json();
-        const clientName = data.nom || data.libelle || data.raisonSociale || '';
+        let data = await resp.json();
+        // If response is an array, find the matching item
+        if (Array.isArray(data)) {
+          data = data.find(d => String(d.id) === String(ebId)) || data[0] || {};
+        }
+        const clientName = data.nom || data.libelle || data.raisonSociale || data.name || '';
         const now = new Date().toISOString();
         await db.query(
           `UPDATE easybeer_clients SET
@@ -1436,15 +1445,22 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
             commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
             raw_data = $12, updated_at = $13
           WHERE id = $1`,
-          [req.params.id, clientName, data.type || '', data.contact || '', data.phone || data.mobile || '', data.email || '',
-           data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '', data.notes || '',
-           data.commercialEmail || '', JSON.stringify(data), now]
+          [req.params.id, clientName, data.type || '', data.contact || data.contactNom || '',
+           data.phone || data.telephone || data.mobile || data.tel || '',
+           data.email || data.mail || '',
+           data.ville || data.city || '', data.rue || data.adresse || data.address || '',
+           data.codePostal || data.cp || data.postal_code || '', data.notes || data.commentaire || '',
+           data.commercialEmail || data.commercial_email || data.emailCommercial || '', JSON.stringify(data), now]
         );
         return res.json({ ok: true, message: `Synchronise via ${path}`, name: clientName });
+      } else {
+        errors.push(`${path}: HTTP ${resp.status}`);
       }
-    } catch { /* try next */ }
+    } catch (err) {
+      errors.push(`${path}: ${err.message}`);
+    }
   }
-  return res.json({ ok: false, message: `Impossible de recuperer le client ${ebId} depuis l'API EasyBeer` });
+  return res.json({ ok: false, message: `Impossible de recuperer le client ${ebId}. Erreurs: ${errors.join(' | ')}` });
 }));
 
 // Assignment rules
