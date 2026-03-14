@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
-  MessageCircle, Building2, CheckCheck, ClipboardCheck,
+  MessageCircle, Building2, CheckCheck, ClipboardCheck, ListTodo,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -119,6 +119,7 @@ export default function Layout() {
     { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
     { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
     { to: '/visites', icon: ClipboardCheck, label: 'Visites Clients', adminOnly: false },
+    { to: '/taches', icon: ListTodo, label: 'Taches', adminOnly: false },
     { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
     { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false },

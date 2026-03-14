@@ -1037,7 +1037,18 @@ router.delete('/interactions/:id', authMiddleware, asyncHandler(async (req, res)
 // ============================================
 
 router.get('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC');
+  const result = await db.query(
+    `SELECT t.*, c.nom as client_nom, com.prenom as commercial_prenom, com.nom as commercial_nom,
+     cr.prenom as creator_prenom
+     FROM tasks_client t
+     LEFT JOIN clients c ON t.client_id = c.id
+     LEFT JOIN commerciaux com ON t.commercial_id = com.id
+     LEFT JOIN commerciaux cr ON t.created_by = cr.id
+     ORDER BY
+       CASE t.statut WHEN 'A_FAIRE' THEN 0 WHEN 'EN_COURS' THEN 1 ELSE 2 END,
+       CASE t.priorite WHEN 'HAUTE' THEN 0 WHEN 'MOYENNE' THEN 1 ELSE 2 END,
+       t.date_echeance ASC NULLS LAST`
+  );
   res.json(result.rows);
 }));
 
@@ -1046,38 +1057,84 @@ router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
   if (!t.titre) return validationError(res, ['titre est requis']);
 
   const now = new Date().toISOString();
+  const id = t.id || `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   await db.query(
-    `INSERT INTO tasks_client (id, titre, description, statut, priorite, date_echeance, commercial_id, client_id, date_creation, completed_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [t.id, t.titre, t.description || '', t.statut || 'A_FAIRE', t.priorite || 'MOYENNE',
+    `INSERT INTO tasks_client (id, titre, description, statut, priorite, date_echeance, commercial_id, client_id, date_creation, completed_at, categorie, created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [id, t.titre, t.description || '', t.statut || 'A_FAIRE', t.priorite || 'MOYENNE',
      t.date_echeance || null, t.commercial_id || req.user.id, t.client_id || null,
-     t.date_creation || now, t.completed_at || null]
+     now, null, t.categorie || 'general', req.user.id]
   );
 
   // Notify the assigned commercial (if different from creator)
   const assignedId = t.commercial_id || req.user.id;
   if (assignedId !== req.user.id) {
+    const creator = await db.query('SELECT prenom FROM commerciaux WHERE id = $1', [req.user.id]);
+    const creatorName = creator.rows[0]?.prenom || 'Un administrateur';
     createNotification(assignedId, 'TASK_ASSIGNED', 'Nouvelle tache assignee',
-      `${t.titre}${t.date_echeance ? ` - Echeance: ${t.date_echeance}` : ''}`,
-      { task_id: t.id, client_id: t.client_id }
+      `${creatorName}: ${t.titre}${t.date_echeance ? ` — Echeance: ${t.date_echeance}` : ''}`,
+      { task_id: id, client_id: t.client_id }
     ).catch(() => {});
   }
 
-  res.json({ ok: true });
+  // Return the full task with joins
+  const result = await db.query(
+    `SELECT t.*, c.nom as client_nom, com.prenom as commercial_prenom, com.nom as commercial_nom
+     FROM tasks_client t
+     LEFT JOIN clients c ON t.client_id = c.id
+     LEFT JOIN commerciaux com ON t.commercial_id = com.id
+     WHERE t.id = $1`, [id]
+  );
+  res.json(result.rows[0] || { ok: true });
 }));
 
 router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.titre) return validationError(res, ['titre est requis']);
 
+  // Check if task is being completed
+  const oldTask = await db.query('SELECT statut, commercial_id, created_by FROM tasks_client WHERE id = $1', [req.params.id]);
+  const wasNotDone = oldTask.rows[0] && oldTask.rows[0].statut !== 'TERMINEE';
+  const isNowDone = t.statut === 'TERMINEE';
+
+  const completedAt = isNowDone ? (t.completed_at || new Date().toISOString()) : null;
+
   await db.query(
     `UPDATE tasks_client SET titre=$1, description=$2, statut=$3, priorite=$4, date_echeance=$5,
-     commercial_id=$6, client_id=$7, completed_at=$8 WHERE id=$9`,
+     commercial_id=$6, client_id=$7, completed_at=$8, categorie=$9 WHERE id=$10`,
     [t.titre, t.description || '', t.statut || 'A_FAIRE', t.priorite || 'MOYENNE',
      t.date_echeance || null, t.commercial_id || null, t.client_id || null,
-     t.completed_at || null, req.params.id]
+     completedAt, t.categorie || 'general', req.params.id]
   );
-  res.json({ ok: true });
+
+  // Notify creator when task is completed by assignee
+  if (wasNotDone && isNowDone && oldTask.rows[0].created_by && oldTask.rows[0].created_by !== req.user.id) {
+    const completer = await db.query('SELECT prenom FROM commerciaux WHERE id = $1', [req.user.id]);
+    const completerName = completer.rows[0]?.prenom || 'Un commercial';
+    createNotification(oldTask.rows[0].created_by, 'TASK_COMPLETED', 'Tache terminee',
+      `${completerName} a termine: ${t.titre}`,
+      { task_id: req.params.id }
+    ).catch(() => {});
+  }
+
+  // Notify new assignee if reassigned
+  if (t.commercial_id && oldTask.rows[0] && t.commercial_id !== oldTask.rows[0].commercial_id && t.commercial_id !== req.user.id) {
+    const reassigner = await db.query('SELECT prenom FROM commerciaux WHERE id = $1', [req.user.id]);
+    const reassignerName = reassigner.rows[0]?.prenom || 'Un administrateur';
+    createNotification(t.commercial_id, 'TASK_ASSIGNED', 'Tache reassignee',
+      `${reassignerName}: ${t.titre}${t.date_echeance ? ` — Echeance: ${t.date_echeance}` : ''}`,
+      { task_id: req.params.id }
+    ).catch(() => {});
+  }
+
+  const result = await db.query(
+    `SELECT t.*, c.nom as client_nom, com.prenom as commercial_prenom, com.nom as commercial_nom
+     FROM tasks_client t
+     LEFT JOIN clients c ON t.client_id = c.id
+     LEFT JOIN commerciaux com ON t.commercial_id = com.id
+     WHERE t.id = $1`, [req.params.id]
+  );
+  res.json(result.rows[0] || { ok: true });
 }));
 
 router.delete('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) => {

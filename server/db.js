@@ -393,6 +393,14 @@ async function initDatabase(attempt = 1) {
       await client.query("ALTER TABLE tournee_config ADD COLUMN IF NOT EXISTS week_pattern TEXT DEFAULT 'every'");
     } catch { /* column may already exist */ }
 
+    // Migration: tasks_client extra columns
+    try {
+      await client.query("ALTER TABLE tasks_client ADD COLUMN IF NOT EXISTS categorie TEXT DEFAULT 'general'");
+    } catch { /* column may already exist */ }
+    try {
+      await client.query("ALTER TABLE tasks_client ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT ''");
+    } catch { /* column may already exist */ }
+
     // Migration: update Louis/Lucas to prospection role + add Étienne as admin
     try {
       await client.query("UPDATE commerciaux SET role = 'prospection' WHERE prenom IN ('Louis', 'Lucas') AND role = 'commercial'");
