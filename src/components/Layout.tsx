@@ -128,6 +128,7 @@ export default function Layout() {
     { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
     { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
     { to: '/visites', icon: ClipboardCheck, label: 'Visites Clients', adminOnly: false },
+    { to: '/compte-rendu', icon: CheckCheck, label: 'Compte Rendu', adminOnly: false },
     { to: '/taches', icon: ListTodo, label: 'Taches', adminOnly: false },
     { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
