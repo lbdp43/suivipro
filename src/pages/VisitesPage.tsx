@@ -81,7 +81,6 @@ export default function VisitesPage() {
   const [loading, setLoading] = useState(true);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
-  const [showLate, setShowLate] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
   // viewMode: 'me' = my visites, 'all' = all commercials, or a specific commercial_id
   const [viewMode, setViewMode] = useState<string>('me');
@@ -96,7 +95,6 @@ export default function VisitesPage() {
         const s = JSON.parse(saved);
         if (s.weekOffset !== undefined) setWeekOffset(s.weekOffset);
         if (s.viewMode) setViewMode(s.viewMode);
-        if (s.showLate !== undefined) setShowLate(s.showLate);
         if (s.expandedDays) setExpandedDays(new Set(s.expandedDays));
         if (s.expandedCommercials) setExpandedCommercials(new Set(s.expandedCommercials));
         if (s.scrollTop) pendingScrollRef.current = s.scrollTop;
@@ -111,12 +109,11 @@ export default function VisitesPage() {
     sessionStorage.setItem('visites_state', JSON.stringify({
       weekOffset,
       viewMode,
-      showLate,
       expandedDays: Array.from(expandedDays),
       expandedCommercials: Array.from(expandedCommercials),
       scrollTop: window.scrollY,
     }));
-  }, [weekOffset, viewMode, showLate, expandedDays, expandedCommercials]);
+  }, [weekOffset, viewMode, expandedDays, expandedCommercials]);
 
   // Interaction modal state
   const [modalClient, setModalClient] = useState<VisitClient | null>(null);
@@ -403,6 +400,41 @@ export default function VisitesPage() {
     return Math.ceil((d.getTime() - now.getTime()) / 86400000);
   };
 
+  // Distribute late clients into week days based on their zone/tournee
+  const getWeekDaysWithLate = (weekDays: WeekDay[], lateClients: VisitClient[]): (WeekDay & { lateClients: VisitClient[] })[] => {
+    // Build a map: zone -> day index (first day that has this zone)
+    const zoneToDayIdx = new Map<string, number>();
+    weekDays.forEach((day, idx) => {
+      day.tournees.forEach(t => {
+        if (!zoneToDayIdx.has(t)) zoneToDayIdx.set(t, idx);
+      });
+    });
+
+    // Initialize enriched days
+    const enriched = weekDays.map(day => ({ ...day, lateClients: [] as VisitClient[] }));
+
+    // Distribute late clients
+    const unassigned: VisitClient[] = [];
+    lateClients.forEach(client => {
+      const dayIdx = zoneToDayIdx.get(client.tournee);
+      if (dayIdx !== undefined) {
+        enriched[dayIdx].lateClients.push(client);
+      } else {
+        unassigned.push(client);
+      }
+    });
+
+    // If some clients have no matching zone day, put them on the first day with clients or first day
+    if (unassigned.length > 0) {
+      const targetIdx = enriched.findIndex(d => d.is_today) >= 0 ? enriched.findIndex(d => d.is_today) : 0;
+      if (enriched[targetIdx]) {
+        enriched[targetIdx].lateClients.push(...unassigned);
+      }
+    }
+
+    return enriched;
+  };
+
   const formatShortDate = (dateStr: string) => {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
@@ -543,94 +575,88 @@ export default function VisitesPage() {
     );
   };
 
-  const renderWeekDays = (weekDays: WeekDay[], keyPrefix = '') => (
-    <div className="space-y-2">
-      {weekDays.map(day => {
-        const expandKey = keyPrefix + day.day_key;
-        const isExpanded = expandedDays.has(expandKey);
-        const isPast = day.is_past && !day.is_today;
-        return (
-          <div key={expandKey} className={`rounded-xl border overflow-hidden transition-shadow ${
-            day.is_today ? 'border-brewery-300 bg-brewery-50/30 shadow-sm' : 'border-gray-200 bg-white'
-          }`}>
-            <button
-              onClick={() => {
-                setExpandedDays(prev => {
-                  const next = new Set(prev);
-                  if (next.has(expandKey)) next.delete(expandKey); else next.add(expandKey);
-                  return next;
-                });
-              }}
-              className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-gray-50/50 transition-colors"
-            >
-              <div className="flex items-center gap-2 sm:gap-3">
-                {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`font-semibold text-sm ${day.is_today ? 'text-brewery-700' : 'text-gray-900'}`}>{day.day_name}</span>
-                    <span className="text-xs text-gray-400">{formatShortDate(day.date)}</span>
-                    {day.is_today && <span className="px-1.5 py-0.5 bg-brewery-600 text-white text-[10px] rounded-full font-medium">Aujourd'hui</span>}
-                  </div>
-                  {day.tournees.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {day.tournees.map((t, i) => (
-                        <span key={i} className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded font-medium">{t}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {day.clients.length > 0 ? (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${day.is_today ? 'bg-brewery-100 text-brewery-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {day.clients.length} visite{day.clients.length > 1 ? 's' : ''}
-                  </span>
-                ) : (
-                  <span className="text-xs text-gray-400">Aucune visite</span>
-                )}
-                {isPast && day.clients.length > 0 && <CheckCircle2 className="w-4 h-4 text-green-400" />}
-              </div>
-            </button>
-            {isExpanded && day.clients.length > 0 && (
-              <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2">
-                {day.clients.map(client => renderClient(client))}
-              </div>
-            )}
-            {isExpanded && day.clients.length === 0 && (
-              <div className="px-4 pb-3">
-                <p className="text-sm text-gray-400 italic">
-                  {day.tournees.length > 0 ? 'Aucun client sur ces tournees' : 'Pas de tournee configuree'}
-                </p>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  const renderLateSection = (lateClients: VisitClient[], label?: string) => {
-    if (lateClients.length === 0) return null;
+  const renderWeekDays = (weekDays: WeekDay[], lateClients: VisitClient[], keyPrefix = '') => {
+    const enrichedDays = getWeekDaysWithLate(weekDays, lateClients);
     return (
-      <div className="bg-red-50 rounded-xl border border-red-200 overflow-hidden">
-        <button onClick={() => setShowLate(!showLate)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-red-100/50 transition-colors">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
-            <h2 className="font-semibold text-red-800 text-sm">
-              {label || 'Clients en retard'} ({lateClients.length})
-            </h2>
-          </div>
-          {showLate ? <ChevronDown className="w-4 h-4 text-red-400" /> : <ChevronRight className="w-4 h-4 text-red-400" />}
-        </button>
-        {showLate && (
-          <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2">
-            {lateClients.sort((a, b) => (a.next_visit || '').localeCompare(b.next_visit || '')).map(c => renderClient(c, true))}
-          </div>
-        )}
+      <div className="space-y-2">
+        {enrichedDays.map(day => {
+          const expandKey = keyPrefix + day.day_key;
+          const isExpanded = expandedDays.has(expandKey);
+          const isPast = day.is_past && !day.is_today;
+          const totalClients = day.clients.length + day.lateClients.length;
+          const lateCount = day.lateClients.length;
+          return (
+            <div key={expandKey} className={`rounded-xl border overflow-hidden transition-shadow ${
+              day.is_today ? 'border-brewery-300 bg-brewery-50/30 shadow-sm' : 'border-gray-200 bg-white'
+            }`}>
+              <button
+                onClick={() => {
+                  setExpandedDays(prev => {
+                    const next = new Set(prev);
+                    if (next.has(expandKey)) next.delete(expandKey); else next.add(expandKey);
+                    return next;
+                  });
+                }}
+                className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-gray-50/50 transition-colors"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-semibold text-sm ${day.is_today ? 'text-brewery-700' : 'text-gray-900'}`}>{day.day_name}</span>
+                      <span className="text-xs text-gray-400">{formatShortDate(day.date)}</span>
+                      {day.is_today && <span className="px-1.5 py-0.5 bg-brewery-600 text-white text-[10px] rounded-full font-medium">Aujourd'hui</span>}
+                    </div>
+                    {day.tournees.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {day.tournees.map((t, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded font-medium">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {lateCount > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700">
+                      {lateCount} en retard
+                    </span>
+                  )}
+                  {totalClients > 0 ? (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${day.is_today ? 'bg-brewery-100 text-brewery-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {day.clients.length} visite{day.clients.length > 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">Aucune visite</span>
+                  )}
+                  {isPast && day.clients.length > 0 && <CheckCircle2 className="w-4 h-4 text-green-400" />}
+                </div>
+              </button>
+              {isExpanded && totalClients > 0 && (
+                <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2">
+                  {day.lateClients.length > 0 && (
+                    <>
+                      {day.lateClients.sort((a, b) => (a.next_visit || '').localeCompare(b.next_visit || '')).map(client => renderClient(client, true))}
+                      {day.clients.length > 0 && <hr className="border-gray-200 my-1" />}
+                    </>
+                  )}
+                  {day.clients.map(client => renderClient(client))}
+                </div>
+              )}
+              {isExpanded && totalClients === 0 && (
+                <div className="px-4 pb-3">
+                  <p className="text-sm text-gray-400 italic">
+                    {day.tournees.length > 0 ? 'Aucun client sur ces tournees' : 'Pas de tournee configuree'}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
+
 
   // Compute stats from data
   const getStats = () => {
@@ -786,8 +812,7 @@ export default function VisitesPage() {
       {/* Single commercial view */}
       {data.view === 'single' && (
         <>
-          {renderLateSection((data as VisitesDataSingle).late_clients)}
-          {renderWeekDays((data as VisitesDataSingle).week_days)}
+          {renderWeekDays((data as VisitesDataSingle).week_days, (data as VisitesDataSingle).late_clients)}
         </>
       )}
 
@@ -837,8 +862,7 @@ export default function VisitesPage() {
 
                 {isExpanded && (
                   <div className="px-4 pb-4 space-y-3">
-                    {comData.late_clients.length > 0 && renderLateSection(comData.late_clients, `En retard — ${comData.commercial.prenom}`)}
-                    {renderWeekDays(comData.week_days, comData.commercial.id + '-')}
+                    {renderWeekDays(comData.week_days, comData.late_clients, comData.commercial.id + '-')}
                   </div>
                 )}
               </div>
