@@ -148,6 +148,7 @@ export default function TourneesPage() {
   const [saving, setSaving] = useState(false);
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
   const [weekOffset, setWeekOffset] = useState(0);
+  const [editProspectionZones, setEditProspectionZones] = useState<string[]>([]);
 
   // Unique zones from clients
   const allZones = useMemo(() => {
@@ -189,7 +190,11 @@ export default function TourneesPage() {
 
   const startEdit = () => {
     const myConfig = configs.find(c => c.commercial_id === currentUserId);
-    setEditConfig(myConfig?.config || {});
+    const fullConfig = myConfig?.config || {};
+    // Extract prospection zones separately, keep day config clean
+    const { prospection: prospZones, ...dayConfig } = fullConfig as any;
+    setEditConfig(dayConfig);
+    setEditProspectionZones(Array.isArray(prospZones) ? prospZones : []);
     setEditNotes(myConfig?.notes || '');
     setEditInfo(myConfig?.tournee_info || '');
     setEditWeekPattern(myConfig?.week_pattern || 'every');
@@ -204,7 +209,7 @@ export default function TourneesPage() {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          config: editConfig,
+          config: { ...editConfig, ...(editProspectionZones.length > 0 ? { prospection: editProspectionZones } : {}) },
           notes: editNotes,
           tournee_info: editInfo,
           week_pattern: editWeekPattern,
@@ -342,6 +347,29 @@ export default function TourneesPage() {
                 <p>{config.tournee_info}</p>
               </div>
             )}
+
+            {/* Prospection priority zones banner */}
+            {(() => {
+              const prospZones: string[] = Array.isArray((config?.config as any)?.prospection)
+                ? (config?.config as any).prospection
+                : [];
+              if (prospZones.length === 0) return null;
+              return (
+                <div className="flex items-start gap-2 p-2 sm:p-3 bg-green-50 border border-green-200 rounded-lg mb-3">
+                  <div className="w-3 h-3 mt-0.5 rounded-full bg-green-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-green-800 mb-1">Zones ouvertes a la prospection :</p>
+                    <div className="flex flex-wrap gap-1">
+                      {prospZones.map((z: string) => (
+                        <span key={z} className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full border border-green-300 font-medium">
+                          {z}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {hasConfig ? (
               <>
@@ -529,6 +557,27 @@ export default function TourneesPage() {
                 onRemove={zone => removeZoneFromDay(day, zone)}
               />
             ))}
+          </div>
+
+          {/* Zones prioritaires pour la prospection */}
+          <div className="border border-green-200 rounded-xl p-3 bg-green-50">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-3 h-3 rounded-full bg-green-500" />
+              <label className="text-xs font-semibold text-green-800">
+                Zones prioritaires pour la prospection
+              </label>
+              <span className="text-[10px] text-green-600 font-normal">(visibles par les prospecteurs)</span>
+            </div>
+            <p className="text-[11px] text-green-700 mb-2.5">
+              Indiquez les secteurs ou vous souhaitez que la prospection vous cale des rendez-vous.
+            </p>
+            <ZoneDayPicker
+              label=""
+              selected={editProspectionZones}
+              allZones={allZones}
+              onAdd={zone => setEditProspectionZones(prev => prev.includes(zone) ? prev : [...prev, zone])}
+              onRemove={zone => setEditProspectionZones(prev => prev.filter(z => z !== zone))}
+            />
           </div>
 
           {/* Info tournée (visible par les prospecteurs) */}
