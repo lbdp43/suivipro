@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
-  CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall,
+  CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -10,7 +10,7 @@ import {
   APPOINTMENT_RESULT_LABELS, INTERACTION_TYPE_LABELS,
   AppointmentResult,
 } from '../types';
-import { generateId } from '../utils/helpers';
+import { generateId, detectConflicts } from '../utils/helpers';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -419,6 +419,27 @@ export default function CompteRenduPage() {
             {/* RDV fields */}
             {currentType === 'RDV_PLANIFIE' && (
               <div className="space-y-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
+                {/* RDV existants ce jour */}
+                {(() => {
+                  const rdvDate = visitRdvDate[client.id] || todayStr;
+                  const existingRdvs = state.appointments.filter((a: Appointment) =>
+                    a.date === rdvDate && (a.commercial_id === userId || a.prospecteur_id === userId) && a.statut !== 'annule'
+                  ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
+                  if (existingRdvs.length === 0) return null;
+                  return (
+                    <div className="p-2 bg-white/60 border border-purple-200 rounded-lg mb-1">
+                      <p className="text-[10px] font-medium text-purple-700 mb-1">RDV deja prevus ce jour :</p>
+                      {existingRdvs.map((r: Appointment) => {
+                        const name = (r.client_id ? getClientName(r.client_id) : '') || (r.prospect_id ? getProspectName(r.prospect_id) : '') || 'RDV';
+                        return (
+                          <p key={r.id} className="text-[10px] text-purple-600">
+                            {r.heure_debut || '?'}-{r.heure_fin || '?'} : {name} {r.lieu ? `(${r.lieu})` : ''}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Date du RDV</label>
@@ -447,6 +468,34 @@ export default function CompteRenduPage() {
                       className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
                   </div>
                 </div>
+
+                {/* Conflits horaires */}
+                {(() => {
+                  const conflicts = detectConflicts(
+                    state.appointments,
+                    userId || '',
+                    visitRdvDate[client.id] || todayStr,
+                    visitRdvHeureDebut[client.id] || '10:00',
+                    visitRdvHeureFin[client.id] || '11:00'
+                  );
+                  if (conflicts.length === 0) return null;
+                  return (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
+                      </p>
+                      {conflicts.map(c => {
+                        const cp = c.prospect_id ? state.prospects.find((p: any) => p.id === c.prospect_id) : null;
+                        const cc = c.client_id ? state.clients.find((cl: Client) => cl.id === c.client_id) : null;
+                        return (
+                          <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
+                            {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
