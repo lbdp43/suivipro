@@ -1165,9 +1165,16 @@ router.post('/webhook/easybeer', asyncHandler(async (req, res) => {
         if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
         try {
           const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
-          const resp = await fetch(`${config.api_url}/clients/${id}`, {
-            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+          // Try /tiers/:id first (EasyBeer uses "tiers" for clients), fallback to /clients/:id
+          let resp = await fetch(`${apiBase}/tiers/${id}`, {
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
           });
+          if (!resp.ok) {
+            resp = await fetch(`${apiBase}/clients/${id}`, {
+              headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            });
+          }
           if (resp.ok) {
             const data = await resp.json();
             const clientName = data.nom || data.libelle || data.raisonSociale || '';
@@ -1237,18 +1244,37 @@ router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) =>
 
 router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req, res) => {
   const { username, password, api_url } = req.body;
-  try {
-    const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
-    const resp = await fetch(`${api_url || 'https://api.easybeer.fr'}/clients?limit=1`, {
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-    });
-    if (resp.ok) {
-      res.json({ ok: true, message: 'Connexion reussie' });
-    } else {
-      res.json({ ok: false, message: `Erreur ${resp.status}: ${resp.statusText}` });
+  const baseUrl = (api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+  const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+  const headers = { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' };
+
+  // Try several common EasyBeer endpoint paths
+  const pathsToTry = ['/tiers', '/clients', '/api/tiers', '/api/clients', '/v1/clients', '/'];
+
+  for (const path of pathsToTry) {
+    try {
+      const resp = await fetch(`${baseUrl}${path}`, { headers, signal: AbortSignal.timeout(8000) });
+      if (resp.status === 200 || resp.status === 206) {
+        return res.json({ ok: true, message: `Connexion reussie (${path})` });
+      }
+      if (resp.status === 401 || resp.status === 403) {
+        return res.json({ ok: false, message: `Serveur accessible mais identifiants refuses (${resp.status})` });
+      }
+      // 404 on this path → try next
+    } catch {
+      // network error on this path → try next
     }
+  }
+
+  // Last resort: just ping the base URL
+  try {
+    const pingResp = await fetch(baseUrl, { headers, signal: AbortSignal.timeout(8000) });
+    if (pingResp.status < 500) {
+      return res.json({ ok: true, message: `Serveur accessible (verifiez les identifiants)` });
+    }
+    return res.json({ ok: false, message: `Serveur repond avec erreur ${pingResp.status}` });
   } catch (err) {
-    res.json({ ok: false, message: `Erreur connexion: ${err.message}` });
+    return res.json({ ok: false, message: `Impossible de joindre ${baseUrl}: ${err.message}` });
   }
 }));
 
