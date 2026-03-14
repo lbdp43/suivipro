@@ -823,42 +823,42 @@ export default function ClientsPage() {
                         <a
                           href={`tel:${client.telephone_mobile || client.telephone}`}
                           onClick={e => e.stopPropagation()}
-                          className="p-3 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                          className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
                           title={`Appeler${client.telephone_mobile ? ` (mobile: ${client.telephone_mobile})` : ` (${client.telephone})`}`}
                         >
-                          <Phone className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                          <Phone className="w-3.5 h-3.5" />
                         </a>
                       )}
                       {client.email && (
                         <a
                           href={`mailto:${client.email}`}
                           onClick={e => e.stopPropagation()}
-                          className="p-3 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                          className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
                           title={`Envoyer un email a ${client.email}`}
                         >
-                          <Mail className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                          <Mail className="w-3.5 h-3.5" />
                         </a>
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
-                        className="p-3 sm:p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                        className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                         title="Enregistrer une visite"
                       >
-                        <CheckCircle2 className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                        <CheckCircle2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('RDV_PLANIFIE'); }}
-                        className="p-3 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                        className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
                         title="Planifier un RDV"
                       >
-                        <Calendar className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                        <Calendar className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); openEditForm(client); }}
-                        className="p-3 sm:p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+                        className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
                         title="Modifier le client"
                       >
-                        <Edit2 className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                        <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       {(client.latitude && client.longitude) ? (
                         <a
@@ -866,10 +866,10 @@ export default function ClientsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          className="p-3 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                          className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
                           title="Naviguer vers ce client"
                         >
-                          <Navigation className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                          <Navigation className="w-3.5 h-3.5" />
                         </a>
                       ) : client.adresse ? (
                         <a
@@ -877,10 +877,10 @@ export default function ClientsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          className="p-3 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                          className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
                           title="Voir sur la carte"
                         >
-                          <Navigation className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
+                          <Navigation className="w-3.5 h-3.5" />
                         </a>
                       ) : null}
                     </div>
