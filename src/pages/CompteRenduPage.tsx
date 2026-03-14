@@ -721,15 +721,6 @@ export default function CompteRenduPage() {
         </div>
         {/* Quick actions - same style as VisitesPage */}
         <div className="flex items-center gap-3 sm:gap-1.5 mt-2">
-          {(client.telephone_mobile || client.telephone) && (
-            <button
-              onClick={e => { e.stopPropagation(); openVisitModal(client, 'APPEL'); }}
-              className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-              title="Appeler et enregistrer"
-            >
-              <Phone className="w-3.5 h-3.5" />
-            </button>
-          )}
           {!visited ? (
             <>
               <button
