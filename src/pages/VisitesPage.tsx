@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ClipboardCheck, RefreshCw, AlertTriangle, MapPin, Phone, Building2,
   ChevronDown, ChevronRight, Calendar, CheckCircle2,
   Navigation, ChevronLeft, ArrowLeft, ArrowRight, User, Users,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { CLIENT_TYPE_LABELS } from '../types';
@@ -80,6 +81,38 @@ export default function VisitesPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   // viewMode: 'me' = my visites, 'all' = all commercials, or a specific commercial_id
   const [viewMode, setViewMode] = useState<string>('me');
+  const restoredRef = useRef(false);
+  const pendingScrollRef = useRef<number | null>(null);
+
+  // Restore state from sessionStorage on mount
+  useEffect(() => {
+    const saved = sessionStorage.getItem('visites_state');
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        if (s.weekOffset !== undefined) setWeekOffset(s.weekOffset);
+        if (s.viewMode) setViewMode(s.viewMode);
+        if (s.showLate !== undefined) setShowLate(s.showLate);
+        if (s.expandedDays) setExpandedDays(new Set(s.expandedDays));
+        if (s.expandedCommercials) setExpandedCommercials(new Set(s.expandedCommercials));
+        if (s.scrollTop) pendingScrollRef.current = s.scrollTop;
+        restoredRef.current = true;
+      } catch { /* ignore */ }
+      sessionStorage.removeItem('visites_state');
+    }
+  }, []);
+
+  // Save state to sessionStorage before navigating away
+  const saveState = useCallback(() => {
+    sessionStorage.setItem('visites_state', JSON.stringify({
+      weekOffset,
+      viewMode,
+      showLate,
+      expandedDays: Array.from(expandedDays),
+      expandedCommercials: Array.from(expandedCommercials),
+      scrollTop: window.scrollY,
+    }));
+  }, [weekOffset, viewMode, showLate, expandedDays, expandedCommercials]);
 
   const isAdmin = state.currentUser?.role === 'admin';
   const isProspection = state.currentUser?.role === 'prospection';
@@ -103,7 +136,18 @@ export default function VisitesPage() {
         const d: VisitesData = await res.json();
         setData(d);
 
-        if (d.view === 'single') {
+        // Skip overwriting expanded state when restoring from saved state
+        if (restoredRef.current) {
+          restoredRef.current = false;
+          // Restore scroll position after render
+          if (pendingScrollRef.current) {
+            const scrollTop = pendingScrollRef.current;
+            pendingScrollRef.current = null;
+            requestAnimationFrame(() => {
+              setTimeout(() => window.scrollTo(0, scrollTop), 50);
+            });
+          }
+        } else if (d.view === 'single') {
           const expanded = new Set<string>();
           d.week_days.forEach(wd => {
             if (wd.is_today || wd.clients.length > 0) expanded.add(wd.day_key);
@@ -184,7 +228,13 @@ export default function VisitesPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <Building2 className={`w-4 h-4 flex-shrink-0 ${isLate ? 'text-red-500' : 'text-brewery-600'}`} />
-              <h4 className="font-semibold text-gray-900 text-sm truncate">{client.nom}</h4>
+              <Link
+                to={`/clients?id=${client.id}`}
+                onClick={saveState}
+                className="font-semibold text-sm truncate text-brewery-700 hover:text-brewery-900 hover:underline"
+              >
+                {client.nom}
+              </Link>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
               <span>{CLIENT_TYPE_LABELS[client.type_client as keyof typeof CLIENT_TYPE_LABELS] || client.type_client}</span>
