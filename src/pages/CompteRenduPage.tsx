@@ -88,6 +88,9 @@ export default function CompteRenduPage() {
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [selectedCommercialId, setSelectedCommercialId] = useState<string>('');
 
+  const [showRdvSection, setShowRdvSection] = useState(true);
+  const [showVisitesSection, setShowVisitesSection] = useState(true);
+
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
@@ -830,36 +833,44 @@ export default function CompteRenduPage() {
       {/* Day view content */}
       {viewMode === 'jour' && (
         <>
-          {/* RDV Section */}
+          {/* RDV Section - collapsible */}
           <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <button onClick={() => setShowRdvSection(v => !v)} className="w-full flex items-center gap-2 text-left mb-3 group">
+              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showRdvSection ? '' : '-rotate-90'}`} />
               <Calendar className="w-5 h-5 text-indigo-500" />
-              Rendez-vous ({dayAppointments.length})
-            </h2>
-            {dayAppointments.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                <p className="text-sm text-gray-400">Aucun RDV ce jour</p>
-              </div>
-            ) : (
-              <div className="space-y-3">{dayAppointments.map(renderRdvCard)}</div>
+              <h2 className="text-lg font-semibold text-gray-800">Rendez-vous ({dayAppointments.length})</h2>
+            </button>
+            {showRdvSection && (
+              dayAppointments.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+                  <p className="text-sm text-gray-400">Aucun RDV ce jour</p>
+                </div>
+              ) : (
+                <div className="space-y-3">{dayAppointments.map(renderRdvCard)}</div>
+              )
             )}
           </div>
 
-          {/* Visites Section */}
+          {/* Visites Section - collapsible */}
           <div>
-            <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <button onClick={() => setShowVisitesSection(v => !v)} className="w-full flex items-center gap-2 text-left mb-3 group">
+              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showVisitesSection ? '' : '-rotate-90'}`} />
               <Building2 className="w-5 h-5 text-green-600" />
-              Visites Clients ({clientsToVisit.length})
-              {clientsToVisit.length > 0 && (
-                <span className="text-sm font-normal text-gray-500">— {visitedClientIds.size}/{clientsToVisit.length} faites</span>
-              )}
-            </h2>
-            {clientsToVisit.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                <p className="text-sm text-gray-400">{dayZones.length === 0 ? 'Aucune tournee configuree ce jour' : 'Aucun client dans les secteurs du jour'}</p>
-              </div>
-            ) : (
-              <div className="space-y-2">{clientsToVisit.map(renderClientCard)}</div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Visites Clients ({clientsToVisit.length})
+                {clientsToVisit.length > 0 && (
+                  <span className="text-sm font-normal text-gray-500 ml-2">— {visitedClientIds.size}/{clientsToVisit.length} faites</span>
+                )}
+              </h2>
+            </button>
+            {showVisitesSection && (
+              clientsToVisit.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+                  <p className="text-sm text-gray-400">{dayZones.length === 0 ? 'Aucune tournee configuree ce jour' : 'Aucun client dans les secteurs du jour'}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">{clientsToVisit.map(renderClientCard)}</div>
+              )
             )}
           </div>
         </>
