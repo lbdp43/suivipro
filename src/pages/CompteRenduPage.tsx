@@ -229,13 +229,72 @@ export default function CompteRenduPage() {
     ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
   }, [state.appointments, selectedDate, effectiveUserIds]);
 
+  // Helper: get Monday of a given date
+  const getMondayOf = (dateStr: string) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    const day = d.getDay() || 7;
+    d.setDate(d.getDate() - day + 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  // Helper: get Sunday of a week starting from Monday
+  const getSundayOf = (mondayStr: string) => {
+    const d = new Date(mondayStr + 'T12:00:00');
+    d.setDate(d.getDate() + 6);
+    return d.toISOString().split('T')[0];
+  };
+
+  // Find which day of the week a zone is configured for (to assign weekly clients to correct day)
+  const getDateForZone = (zone: string, weekMondayStr: string): string | null => {
+    for (const [dow, zones] of Object.entries(parsedConfig)) {
+      if (Array.isArray(zones) && zones.includes(zone)) {
+        const monday = new Date(weekMondayStr + 'T12:00:00');
+        // dow: 0=Sun, 1=Mon, ..., 6=Sat
+        const dowNum = parseInt(dow);
+        const offset = dowNum === 0 ? 6 : dowNum - 1; // Convert to Monday-based offset
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + offset);
+        return date.toISOString().split('T')[0];
+      }
+    }
+    return null;
+  };
+
   const clientsToVisit = useMemo(() => {
-    if (dayZones.length === 0) return [];
     const uids = new Set(effectiveUserIds);
-    return state.clients.filter((c: Client) =>
-      uids.has(c.commercial_id) && c.statut === 'ACTIF' && dayZones.includes(c.tournee)
-    ).sort((a: Client, b: Client) => a.nom.localeCompare(b.nom));
-  }, [state.clients, dayZones, effectiveUserIds]);
+    const today = selectedDate;
+    const weekMonday = getMondayOf(today);
+    const weekSunday = getSundayOf(weekMonday);
+
+    return state.clients.filter((c: Client) => {
+      if (!uids.has(c.commercial_id) || c.statut !== 'ACTIF') return false;
+
+      // Case 1: Client is late (next_visit < today)
+      if (c.next_visit && c.next_visit < today && dayZones.includes(c.tournee)) {
+        return true;
+      }
+
+      // Case 2: Client's next_visit falls this week AND their sector matches today's sector
+      if (c.next_visit && c.next_visit >= weekMonday && c.next_visit <= weekSunday) {
+        // Assign client to the day when their zone is scheduled
+        if (c.tournee && dayZones.includes(c.tournee)) {
+          // Client's zone is today's zone
+          const assignedDate = getDateForZone(c.tournee, weekMonday);
+          if (assignedDate === today) return true;
+        }
+      }
+
+      return false;
+    }).sort((a: Client, b: Client) => {
+      // Sort: late clients first (by how many days late), then due clients by name
+      const aLate = a.next_visit && a.next_visit < today;
+      const bLate = b.next_visit && b.next_visit < today;
+      if (aLate && !bLate) return -1;
+      if (!aLate && bLate) return 1;
+      if (aLate && bLate) return (a.next_visit || '').localeCompare(b.next_visit || '');
+      return a.nom.localeCompare(b.nom);
+    });
+  }, [state.clients, dayZones, effectiveUserIds, selectedDate, parsedConfig]);
 
   const todayInteractions = useMemo(() => {
     const uids = new Set(effectiveUserIds);
@@ -471,8 +530,11 @@ export default function CompteRenduPage() {
     const currentType = visitTypes[client.id] || 'VISITE';
     const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
     const clientOwner = isTeamView ? getCommercialName(client.commercial_id) : '';
+    // Calculate days late
+    const isLate = client.next_visit && client.next_visit < selectedDate;
+    const daysLate = isLate ? Math.floor((new Date(selectedDate + 'T12:00:00').getTime() - new Date(client.next_visit + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)) : 0;
     return (
-      <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} overflow-hidden`}>
+      <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : isLate ? 'border-red-200 bg-red-50/20' : 'border-gray-200'} overflow-hidden`}>
         <button onClick={() => {
           if (!visited) {
             setExpandedVisit(isExpanded ? null : client.id);
@@ -486,18 +548,29 @@ export default function CompteRenduPage() {
           }
         }}
           className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
-          {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />}
+          {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : isLate ? <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium text-sm text-gray-800">{client.nom}</span>
               {clientOwner && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{clientOwner}</span>
               )}
+              {isLate && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                  En retard de {daysLate}j
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
               {client.tournee && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{client.tournee}</span>}
               {client.ville && <span>{client.ville}</span>}
             </div>
+            {client.next_visit && (
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {isLate ? `Prevu le ${client.next_visit}` : `Visite prevue: ${client.next_visit}`}
+                {client.last_visit && ` — Derniere: ${client.last_visit}`}
+              </div>
+            )}
             {visited && interaction && (
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -1006,11 +1079,21 @@ export default function CompteRenduPage() {
                   <span className="text-sm font-normal text-gray-500 ml-2">— {visitedClientIds.size}/{clientsToVisit.length} faites</span>
                 )}
               </h2>
+              {(() => {
+                const lateCount = clientsToVisit.filter((c: Client) => c.next_visit && c.next_visit < selectedDate).length;
+                const dueCount = clientsToVisit.length - lateCount;
+                return (lateCount > 0 || dueCount > 0) ? (
+                  <div className="flex items-center gap-2 ml-auto">
+                    {lateCount > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">{lateCount} en retard</span>}
+                    {dueCount > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{dueCount} prevus</span>}
+                  </div>
+                ) : null;
+              })()}
             </button>
             {showVisitesSection && (
               clientsToVisit.length === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                  <p className="text-sm text-gray-400">{dayZones.length === 0 ? 'Aucune tournee configuree ce jour' : 'Aucun client dans les secteurs du jour'}</p>
+                  <p className="text-sm text-gray-400">{dayZones.length === 0 ? 'Aucune tournee configuree ce jour' : 'Aucun client a visiter (en retard ou prevu cette semaine)'}</p>
                 </div>
               ) : (
                 <div className="space-y-2">{clientsToVisit.map(renderClientCard)}</div>

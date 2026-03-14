@@ -2261,6 +2261,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
       const wp = tcRow?.week_pattern || 'every';
       const active = wp === 'every' || (wp === 'even' && isEvenWeek) || (wp === 'odd' && !isEvenWeek);
 
+      const sundayStr = new Date(new Date(monday).setDate(monday.getDate() + 6)).toISOString().split('T')[0];
       const weekDays = [];
       for (let d = 0; d < 7; d++) {
         const date = new Date(monday);
@@ -2269,9 +2270,15 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
         const dayKey = String(d === 6 ? 0 : d + 1);
         const tourneesForDay = active ? (config[dayKey] || []) : [];
 
-        const tourneeClients = comClients.filter(c =>
-          tourneesForDay.length > 0 && c.tournee && tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())
-        );
+        // Only show clients who are late OR whose next_visit falls this week
+        const tourneeClients = comClients.filter(c => {
+          if (!tourneesForDay.length || !c.tournee || !tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())) return false;
+          // Late client: next_visit before today, show on the day their zone is configured
+          if (c.next_visit && c.next_visit < today) return true;
+          // Due this week: next_visit is within this week
+          if (c.next_visit && c.next_visit >= mondayStr && c.next_visit <= sundayStr) return true;
+          return false;
+        });
         const visitClients = comClients.filter(c =>
           c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
         );
@@ -2327,6 +2334,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     (weekPattern === 'even' && isEvenWeek) ||
     (weekPattern === 'odd' && !isEvenWeek);
 
+  const sundayStr = new Date(new Date(monday).setDate(monday.getDate() + 6)).toISOString().split('T')[0];
   const weekDays = [];
   for (let d = 0; d < 7; d++) {
     const date = new Date(monday);
@@ -2335,9 +2343,15 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     const dayKey = String(d === 6 ? 0 : d + 1);
     const tourneesForDay = isTourneeActive ? (config[dayKey] || []) : [];
 
-    const tourneeClients = clients.rows.filter(c =>
-      tourneesForDay.length > 0 && c.tournee && tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())
-    );
+    // Only show clients who are late OR whose next_visit falls this week
+    const tourneeClients = clients.rows.filter(c => {
+      if (!tourneesForDay.length || !c.tournee || !tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())) return false;
+      // Late client: next_visit before today, show on the day their zone is configured
+      if (c.next_visit && c.next_visit < today) return true;
+      // Due this week: next_visit is within this week
+      if (c.next_visit && c.next_visit >= mondayStr && c.next_visit <= sundayStr) return true;
+      return false;
+    });
     const visitClients = clients.rows.filter(c =>
       c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
     );
