@@ -51,16 +51,16 @@ export default function Layout() {
   const notifRef = useRef<HTMLDivElement>(null);
   const { state, logout } = useApp();
   const today = new Date().toISOString().split('T')[0];
-  // Badge = rappels en retard de l'utilisateur connecté uniquement
-  // Exception: Louis Lucas partage ses rappels avec l'utilisateur connecté
+  // Badge = rappels en retard filtrés par utilisateur
+  // Les prospecteurs partagent leurs rappels entre eux
   const currentUserId = state.currentUser?.id;
-  const louisLucas = state.commerciaux.find(c => c.prenom === 'Louis' && c.nom === 'Lucas');
-  const myReminderIds = new Set<string>([
-    ...(currentUserId ? [currentUserId] : []),
-    ...(louisLucas ? [louisLucas.id] : []),
-  ]);
+  const isProspecteur = state.currentUser?.role === 'prospection';
+  const prospecteurIds = isProspecteur
+    ? new Set(state.commerciaux.filter(c => c.role === 'prospection').map(c => c.id))
+    : null;
   const urgentReminders = state.reminders.filter(r =>
-    r.statut === 'actif' && r.date <= today && myReminderIds.has(r.commercial_id)
+    r.statut === 'actif' && r.date <= today &&
+    (isProspecteur ? prospecteurIds!.has(r.commercial_id) : r.commercial_id === currentUserId)
   ).length;
   const isAdmin = state.currentUser?.role === 'admin';
 
