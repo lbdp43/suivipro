@@ -13,7 +13,7 @@ import {
   ClientType, ClientStatus, Client, InteractionType,
   INTERACTION_TYPE_LABELS, TaskClient, TASK_CLIENT_STATUS_LABELS,
 } from '../types';
-import { generateId, formatDate, detectConflicts, downloadICSClient } from '../utils/helpers';
+import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress } from '../utils/helpers';
 import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
@@ -227,10 +227,24 @@ export default function ClientsPage() {
     if (!editingClient && !forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0)) return;
     const now = new Date().toISOString();
 
+    // Geocode si pas de coordonnees
+    let lat = formData.latitude || 0;
+    let lng = formData.longitude || 0;
+    if ((!lat || !lng) && (formData.adresse || formData.ville)) {
+      const fullAddress = [formData.adresse, formData.code_postal, formData.ville].filter(Boolean).join(' ');
+      const geo = await geocodeAddress(fullAddress);
+      if (geo) {
+        lat = geo.latitude;
+        lng = geo.longitude;
+      }
+    }
+
     if (editingClient) {
       const updated: Client = {
         ...editingClient,
         ...formData,
+        latitude: lat,
+        longitude: lng,
         date_modification: now,
       } as Client;
       dispatch({ type: 'UPDATE_CLIENT', payload: updated });
@@ -256,8 +270,8 @@ export default function ClientsPage() {
             commercial_id: formData.commercial_id || state.currentUser?.id || '',
             notes: formData.notes || '',
             custom_recurrence: formData.custom_recurrence || null,
-            latitude: formData.latitude || 0,
-            longitude: formData.longitude || 0,
+            latitude: lat,
+            longitude: lng,
             siret: formData.siret || '',
             tournee: formData.tournee || '',
           }),
