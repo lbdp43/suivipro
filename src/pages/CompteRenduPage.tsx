@@ -1,15 +1,16 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
-  StickyNote, X, FileText, Bell, Users2,
+  StickyNote, X, FileText, Bell, Users2, Navigation, Edit2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import {
   Appointment, Client, Interaction, InteractionType,
   APPOINTMENT_RESULT_LABELS, INTERACTION_TYPE_LABELS,
-  AppointmentResult,
+  AppointmentResult, CLIENT_TYPE_LABELS,
 } from '../types';
 import { generateId, detectConflicts } from '../utils/helpers';
 
@@ -647,30 +648,58 @@ export default function CompteRenduPage() {
     const clientOwner = isTeamView ? getCommercialName(client.commercial_id) : '';
     const isLate = client.next_visit && client.next_visit < selectedDate;
     const daysLate = isLate ? Math.floor((new Date(selectedDate + 'T12:00:00').getTime() - new Date(client.next_visit + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const gmapsUrl = client.latitude && client.longitude
+      ? `https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`
+      : client.adresse
+        ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(client.adresse + (client.ville ? ', ' + client.ville : ''))}`
+        : null;
     return (
-      <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : isLate ? 'border-red-200 bg-red-50/20' : 'border-gray-200'} p-3`}>
-        <div className="flex items-start gap-3">
-          {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" /> : isLate ? <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" /> : <Building2 className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />}
+      <div key={client.id} className={`p-3 rounded-lg border transition-colors ${
+        visited ? 'bg-green-50/30 border-green-200' : isLate ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200 hover:border-gray-300'
+      }`}>
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm text-gray-800">{client.nom}</span>
+            <div className="flex items-center gap-2 mb-1">
+              {visited ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-green-500" /> : isLate ? <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" /> : <Building2 className="w-4 h-4 flex-shrink-0 text-gray-400" />}
+              <Link
+                to={`/clients?id=${client.id}`}
+                className="font-semibold text-sm truncate text-gray-800 hover:text-indigo-700 hover:underline"
+              >
+                {client.nom}
+              </Link>
               {clientOwner && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{clientOwner}</span>
               )}
-              {isLate && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                  En retard de {daysLate}j
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+              <span>{CLIENT_TYPE_LABELS[client.type_client] || client.type_client}</span>
+              {client.tournee && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded font-medium">
+                  <MapPin className="w-3 h-3" />{client.tournee}
                 </span>
               )}
+              {client.ville && <span className="text-gray-400">{client.ville}</span>}
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-              {client.tournee && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{client.tournee}</span>}
-              {client.ville && <span>{client.ville}</span>}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs">
+              {(client.telephone_mobile || client.telephone) && (
+                <span className="inline-flex items-center gap-1 text-green-600">
+                  <Phone className="w-3 h-3" />{client.telephone_mobile || client.telephone}
+                </span>
+              )}
+              {client.contact && <span className="text-gray-500">{client.contact}</span>}
             </div>
             {client.next_visit && (
-              <div className="text-[10px] text-gray-400 mt-0.5">
-                {isLate ? `Prevu le ${client.next_visit}` : `Visite prevue: ${client.next_visit}`}
+              <div className="mt-1 text-[10px] text-gray-400">
+                Visite prevue: {client.next_visit}
                 {client.last_visit && ` — Derniere: ${client.last_visit}`}
+              </div>
+            )}
+            {isLate && (
+              <div className="mt-1 flex items-center gap-1 text-xs">
+                <span className="text-red-600 font-medium flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  En retard de {daysLate}j
+                </span>
               </div>
             )}
             {visited && interaction && (
@@ -684,34 +713,38 @@ export default function CompteRenduPage() {
               </div>
             )}
             {client.notes && (
-              <div className="flex items-start gap-1 mt-1 px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded text-[10px] text-yellow-800">
-                <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0 text-yellow-500" />
-                <span className="line-clamp-1">{client.notes}</span>
+              <div className="mt-1.5 px-2 py-1.5 bg-yellow-50 rounded border border-yellow-100">
+                <p className="text-[10px] text-yellow-700 truncate">{client.notes}</p>
               </div>
             )}
           </div>
         </div>
-        {/* Quick action buttons */}
-        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-gray-100">
+        {/* Quick actions - same style as VisitesPage */}
+        <div className="flex items-center gap-3 sm:gap-1.5 mt-2">
+          {(client.telephone_mobile || client.telephone) && (
+            <button
+              onClick={e => { e.stopPropagation(); openVisitModal(client, 'APPEL'); }}
+              className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+              title="Appeler et enregistrer"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </button>
+          )}
           {!visited ? (
             <>
               <button
                 onClick={() => openVisitModal(client, 'VISITE')}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+                className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                title="Marquer une visite"
               >
-                <CheckCircle2 className="w-3.5 h-3.5" /> Visite
-              </button>
-              <button
-                onClick={() => openVisitModal(client, 'APPEL')}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-              >
-                <PhoneCall className="w-3.5 h-3.5" /> Appel
+                <CheckCircle2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => openRdvModal(client)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                title="Planifier un RDV"
               >
-                <Calendar className="w-3.5 h-3.5" /> RDV
+                <Calendar className="w-3.5 h-3.5" />
               </button>
             </>
           ) : (
@@ -721,19 +754,17 @@ export default function CompteRenduPage() {
           )}
           <button
             onClick={() => openQuickNote(client.id)}
-            className="p-2 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors flex-shrink-0"
+            className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors"
             title="Note rapide"
           >
             <StickyNote className="w-3.5 h-3.5" />
           </button>
-          {(client.telephone_mobile || client.telephone) && (
-            <button
-              onClick={e => { e.stopPropagation(); openVisitModal(client, 'APPEL'); }}
-              className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors flex-shrink-0"
-              title="Appeler et enregistrer"
-            >
-              <Phone className="w-3.5 h-3.5" />
-            </button>
+          {gmapsUrl && (
+            <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
+              className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+              title="Itineraire Google Maps">
+              <Navigation className="w-3.5 h-3.5" />
+            </a>
           )}
         </div>
       </div>
