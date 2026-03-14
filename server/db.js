@@ -312,6 +312,29 @@ async function initDatabase(attempt = 1) {
       );
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS activity_log (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        details TEXT DEFAULT '',
+        entity_type TEXT DEFAULT '',
+        entity_id TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        FOREIGN KEY (user_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+      );
+    `);
+
+    // Index for fast lookups by user and date
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_activity_log_user_date ON activity_log (user_id, created_at DESC);
+    `);
+
+    // Track last_seen per user
+    try {
+      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ");
+    } catch { /* column may already exist */ }
+
     // ============================================
     // Migrations for existing databases
     // ============================================

@@ -9,6 +9,18 @@ import hubBridgeRouter from './hub-bridge.js';
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Helper to log user activity
+async function logActivity(userId, action, details = '', entityType = '', entityId = '') {
+  try {
+    await db.query(
+      "INSERT INTO activity_log (user_id, action, details, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)",
+      [userId, action, details, entityType, entityId]
+    );
+  } catch (err) {
+    console.error('Activity log error:', err.message);
+  }
+}
+
 // Geocoding helper using api-adresse.data.gouv.fr
 async function geocodeServer(adresse) {
   if (!adresse || adresse.trim().length < 3) return null;
@@ -159,6 +171,11 @@ router.post('/auth/login', asyncHandler(async (req, res) => {
   const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
   const { password: _, ...userWithoutPwd } = user;
   userWithoutPwd.objectifs = JSON.parse(userWithoutPwd.objectifs || '{}');
+
+  // Log connexion
+  await db.query("UPDATE commerciaux SET last_seen = NOW() WHERE id = $1", [user.id]);
+  await logActivity(user.id, 'connexion', 'Connexion à l\'application');
+
   res.json({ token, user: userWithoutPwd });
 }));
 
@@ -166,6 +183,8 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM commerciaux WHERE id = $1', [req.user.id]);
   const user = result.rows[0];
   if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
+  // Update last_seen on each app access
+  await db.query("UPDATE commerciaux SET last_seen = NOW() WHERE id = $1", [req.user.id]);
   const { password: _, ...u } = user;
   u.objectifs = JSON.parse(u.objectifs || '{}');
   res.json(u);
@@ -232,6 +251,7 @@ router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
   );
+  logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
   res.json({ ok: true });
 }));
 
@@ -244,6 +264,7 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
     [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
   );
+  logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
   res.json({ ok: true });
 }));
 
@@ -335,6 +356,7 @@ router.post('/calls', authMiddleware, asyncHandler(async (req, res) => {
     'INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
     [c.id, c.prospect_id, commercialId, c.date, c.duree || 0, c.resultat, c.notes || '']
   );
+  logActivity(req.user.id, 'appel', `Résultat: ${c.resultat}`, 'call', c.id);
   res.json({ ok: true });
 }));
 
@@ -373,6 +395,7 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
     'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu, created_at, client_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
     [a.id, a.prospect_id || null, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString(), a.client_id || null]
   );
+  logActivity(req.user.id, 'creation_rdv', `RDV le ${a.date} à ${a.lieu || 'N/A'}`, 'appointment', a.id);
   res.json({ ok: true });
 }));
 
@@ -385,6 +408,11 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
     'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11, client_id=$13 WHERE id=$12',
     [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', req.params.id, a.client_id || null]
   );
+  if (a.compte_rendu) {
+    logActivity(req.user.id, 'compte_rendu_rdv', `Compte rendu: ${a.compte_rendu}`, 'appointment', req.params.id);
+  } else {
+    logActivity(req.user.id, 'modification_rdv', `RDV le ${a.date}`, 'appointment', req.params.id);
+  }
   res.json({ ok: true });
 }));
 
@@ -981,6 +1009,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
      c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
   );
   const created = await db.query('SELECT * FROM clients WHERE id = $1', [clientId]);
+  logActivity(req.user.id, 'creation_client', c.nom, 'client', clientId);
   res.json(created.rows[0]);
 }));
 
@@ -1047,6 +1076,7 @@ router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
     );
   }
 
+  logActivity(req.user.id, 'visite_client', `${i.type}${i.comment ? ': ' + i.comment.substring(0, 100) : ''}`, 'client', i.client_id);
   res.json({ ok: true });
 }));
 
@@ -2399,6 +2429,41 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     pending_tasks: tasks.rows,
     total_clients: clients.rows.length,
   });
+}));
+
+// ============================================
+// Activity Log (admin only)
+// ============================================
+
+router.get('/activity-log', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+  const userId = req.query.user_id || null;
+  const since = req.query.since || null;
+
+  let query = 'SELECT al.*, c.prenom, c.nom FROM activity_log al JOIN commerciaux c ON al.user_id = c.id';
+  const params = [];
+  const conditions = [];
+
+  if (userId) {
+    conditions.push(`al.user_id = $${params.length + 1}`);
+    params.push(userId);
+  }
+  if (since) {
+    conditions.push(`al.created_at >= $${params.length + 1}`);
+    params.push(since);
+  }
+
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ` ORDER BY al.created_at DESC LIMIT $${params.length + 1}`;
+  params.push(limit);
+
+  const result = await db.query(query, params);
+  res.json(result.rows);
+}));
+
+router.get('/commerciaux/last-seen', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT id, prenom, nom, last_seen FROM commerciaux ORDER BY last_seen DESC NULLS LAST');
+  res.json(result.rows);
 }));
 
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
