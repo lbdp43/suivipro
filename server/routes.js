@@ -2039,6 +2039,93 @@ router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // ============================================
+// Visites Clients - weekly visit planning based on tournées
+// ============================================
+
+router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+
+  // Get Monday of current week
+  const dayOfWeek = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + 1);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  // My clients
+  const clients = await db.query(
+    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
+    [userId]
+  );
+
+  // My tournée config
+  const tourneeConfig = await db.query(
+    'SELECT * FROM tournee_config WHERE commercial_id = $1',
+    [userId]
+  );
+  const tc = tourneeConfig.rows[0] || null;
+  const config = tc ? JSON.parse(tc.config || '{}') : {};
+  const weekPattern = tc?.week_pattern || 'every';
+
+  // Current week number
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  const isEvenWeek = weekNum % 2 === 0;
+
+  // Check if tournée is active this week
+  const isTourneeActive = weekPattern === 'every' ||
+    (weekPattern === 'even' && isEvenWeek) ||
+    (weekPattern === 'odd' && !isEvenWeek);
+
+  // Build week days with tournée clients
+  const weekDays = [];
+  for (let d = 0; d < 7; d++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + d);
+    const dateStr = date.toISOString().split('T')[0];
+    const dayKey = String(d === 6 ? 0 : d + 1);
+    const tourneesForDay = isTourneeActive ? (config[dayKey] || []) : [];
+
+    // Clients matching this day's tournées
+    const tourneeClients = clients.rows.filter(c =>
+      tourneesForDay.length > 0 && c.tournee && tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())
+    );
+
+    // Clients with next_visit on this date (not already in tournée list)
+    const visitClients = clients.rows.filter(c =>
+      c.next_visit === dateStr && !tourneeClients.find(tc => tc.id === c.id)
+    );
+
+    weekDays.push({
+      day_key: dayKey,
+      date: dateStr,
+      day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][date.getDay()],
+      tournees: tourneesForDay,
+      clients: [...tourneeClients, ...visitClients],
+      is_today: dateStr === today,
+      is_past: dateStr < today,
+    });
+  }
+
+  // Late clients (next_visit before this week's Monday)
+  const lateClients = clients.rows.filter(c =>
+    c.next_visit && c.next_visit < monday.toISOString().split('T')[0]
+  );
+
+  res.json({
+    week_days: weekDays,
+    late_clients: lateClients,
+    week_number: weekNum,
+    is_even_week: isEvenWeek,
+    week_pattern: weekPattern,
+    tournee_active: isTourneeActive,
+    total_active_clients: clients.rows.length,
+  });
+}));
+
+// ============================================
 // Commercial Dashboard Data (tournée-based weekly view)
 // ============================================
 
