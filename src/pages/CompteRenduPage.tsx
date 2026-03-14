@@ -313,12 +313,18 @@ export default function CompteRenduPage() {
   const getProspectName = (id: string) => state.prospects.find((p: any) => p.id === id)?.nom_etablissement || '';
   const getClientName = (id: string) => state.clients.find((c: Client) => c.id === id)?.nom || '';
   const getEntityName = (rdv: Appointment) => (rdv.client_id ? getClientName(rdv.client_id) : '') || (rdv.prospect_id ? getProspectName(rdv.prospect_id) : '') || 'N/A';
+  const getCommercialName = (id: string) => {
+    const c = state.commerciaux.find((c: any) => c.id === id);
+    return c ? c.prenom : '';
+  };
+  const isTeamView = selectedCommercialId === 'all' || (isAdmin && selectedCommercialId !== '' && selectedCommercialId !== userId);
 
   // RDV card (reusable for day and expanded day views)
   const renderRdvCard = (rdv: Appointment) => {
     const isExpanded = expandedRdv === rdv.id;
     const hasCR = !!rdv.compte_rendu;
     const entityName = getEntityName(rdv);
+    const rdvOwner = isTeamView ? getCommercialName(rdv.commercial_id) : '';
     return (
       <div key={rdv.id} className={`bg-white rounded-xl border ${hasCR ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} overflow-hidden`}>
         <button
@@ -332,8 +338,11 @@ export default function CompteRenduPage() {
         >
           {hasCR ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium text-sm text-gray-800 truncate">{entityName}</span>
+              {rdvOwner && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{rdvOwner}</span>
+              )}
               {hasCR && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
@@ -386,6 +395,7 @@ export default function CompteRenduPage() {
     const interaction = todayInteractions.find((i: Interaction) => i.client_id === client.id);
     const currentType = visitTypes[client.id] || 'VISITE';
     const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
+    const clientOwner = isTeamView ? getCommercialName(client.commercial_id) : '';
     return (
       <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} overflow-hidden`}>
         <button onClick={() => {
@@ -403,7 +413,12 @@ export default function CompteRenduPage() {
           className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
           {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
-            <span className="font-medium text-sm text-gray-800">{client.nom}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm text-gray-800">{client.nom}</span>
+              {clientOwner && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{clientOwner}</span>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
               {client.tournee && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{client.tournee}</span>}
               {client.ville && <span>{client.ville}</span>}

@@ -429,6 +429,15 @@ export default function VisitesPage() {
             {client.last_visit && (
               <div className="mt-0.5 text-[10px] text-gray-400">Derniere visite: {formatShortDate(client.last_visit)}</div>
             )}
+            {/* Client notes snippet */}
+            {(() => {
+              const fullC = getClient(client.id);
+              return fullC?.notes ? (
+                <div className="mt-1.5 px-2 py-1.5 bg-yellow-50 rounded border border-yellow-100">
+                  <p className="text-[10px] text-yellow-700 truncate">{fullC.notes}</p>
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
         {/* Quick actions - horizontal */}
@@ -886,6 +895,16 @@ export default function VisitesPage() {
                     <X className="w-4 h-4 text-gray-400" />
                   </button>
                 </div>
+                {/* Client notes display */}
+                {(() => {
+                  const fullC = getClient(modalClient.id);
+                  return fullC?.notes ? (
+                    <div className="mx-5 mt-3 p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-[10px] font-semibold text-yellow-800 mb-0.5">Notes client</p>
+                      <p className="text-xs text-gray-700 whitespace-pre-wrap">{fullC.notes}</p>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="p-5 space-y-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
