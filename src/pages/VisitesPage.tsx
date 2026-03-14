@@ -145,7 +145,8 @@ export default function VisitesPage() {
     setModalDate(new Date().toISOString().split('T')[0]);
     setModalRdvHeureDebut('10:00');
     setModalRdvHeureFin('11:00');
-    setModalRdvLieu('');
+    const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
+    setModalRdvLieu(addr || '');
     setModalRdvCommercialId(state.currentUser?.id || '');
     setModalRdvNotes('');
     setModalShowConfirmation(false);
@@ -225,7 +226,7 @@ export default function VisitesPage() {
             heure_debut: modalRdvHeureDebut,
             heure_fin: modalRdvHeureFin,
             lieu: modalRdvLieu,
-            notes: modalRdvNotes || modalComment.trim(),
+            notes: [modalRdvNotes, modalComment.trim()].filter(Boolean).join('\n'),
             statut: 'planifie',
             created_at: now,
           },

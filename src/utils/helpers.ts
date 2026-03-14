@@ -97,6 +97,11 @@ export function formatDurationTimer(seconds: number): string {
 export function generateICS(appointment: Appointment, prospect: Prospect): string {
   const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
   const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+  const descParts = [];
+  if (appointment.notes) descParts.push(appointment.notes.replace(/\n/g, '\\n'));
+  if (prospect.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
+  if (prospect.telephone) descParts.push(`Tel: ${prospect.telephone}`);
+  const description = descParts.join('\\n');
 
   return `BEGIN:VCALENDAR
 VERSION:2.0
@@ -105,7 +110,7 @@ BEGIN:VEVENT
 DTSTART:${dtStart}
 DTEND:${dtEnd}
 SUMMARY:RDV ${prospect.nom_etablissement}
-DESCRIPTION:${appointment.notes}\\nContact: ${prospect.nom_contact}\\nTel: ${prospect.telephone}
+DESCRIPTION:${description}
 LOCATION:${appointment.lieu}
 END:VEVENT
 END:VCALENDAR`;
@@ -123,6 +128,13 @@ export function downloadICS(appointment: Appointment, prospect: Prospect) {
 export function generateICSClient(appointment: Appointment, client: Client): string {
   const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
   const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+  const location = appointment.lieu || [client.adresse, client.ville].filter(Boolean).join(', ') || '';
+  const descParts = [];
+  if (appointment.notes) descParts.push(appointment.notes.replace(/\n/g, '\\n'));
+  if (client.contact) descParts.push(`Contact: ${client.contact}`);
+  if (client.telephone) descParts.push(`Tel: ${client.telephone}`);
+  if (client.telephone_mobile) descParts.push(`Mobile: ${client.telephone_mobile}`);
+  const description = descParts.join('\\n');
 
   return `BEGIN:VCALENDAR
 VERSION:2.0
@@ -131,8 +143,8 @@ BEGIN:VEVENT
 DTSTART:${dtStart}
 DTEND:${dtEnd}
 SUMMARY:RDV ${client.nom}
-DESCRIPTION:${appointment.notes}\\nContact: ${client.contact}\\nTel: ${client.telephone}
-LOCATION:${appointment.lieu || client.adresse || ''}
+DESCRIPTION:${description}
+LOCATION:${location}
 END:VEVENT
 END:VCALENDAR`;
 }

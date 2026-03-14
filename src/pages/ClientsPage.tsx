@@ -101,10 +101,14 @@ export default function ClientsPage() {
       .catch(() => {});
   }, []);
 
-  // Initialize rdvCommercialId when modal opens
+  // Initialize RDV fields when modal opens
   useEffect(() => {
-    if (interactionClient && interactionType === 'RDV_PLANIFIE' && !rdvCommercialId) {
-      setRdvCommercialId(state.currentUser?.id || '');
+    if (interactionClient && interactionType === 'RDV_PLANIFIE') {
+      if (!rdvCommercialId) setRdvCommercialId(state.currentUser?.id || '');
+      if (!rdvLieu) {
+        const addr = [interactionClient.adresse, interactionClient.ville].filter(Boolean).join(', ');
+        if (addr) setRdvLieu(addr);
+      }
     }
   }, [interactionClient, interactionType]);
 
@@ -315,7 +319,7 @@ export default function ClientsPage() {
           heure_debut: rdvHeureDebut,
           heure_fin: rdvHeureFin,
           lieu: rdvLieu,
-          notes: rdvNotes || interactionComment.trim(),
+          notes: [rdvNotes, interactionComment.trim()].filter(Boolean).join('\n'),
           statut: 'planifie',
           created_at: now,
         },
