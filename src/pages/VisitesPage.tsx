@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardCheck, RefreshCw, AlertTriangle, MapPin, Phone, Building2,
-  ChevronDown, ChevronRight, Calendar, Clock, CheckCircle2, ExternalLink,
-  Navigation,
+  ChevronDown, ChevronRight, Calendar, CheckCircle2,
+  Navigation, ChevronLeft, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { CLIENT_TYPE_LABELS } from '../types';
-import { formatDate } from '../utils/helpers';
 
 interface VisitClient {
   id: string;
@@ -42,6 +41,8 @@ interface VisitesData {
   week_number: number;
   is_even_week: boolean;
   week_pattern: string;
+  week_offset: number;
+  week_start: string;
   tournee_active: boolean;
   total_active_clients: number;
 }
@@ -53,6 +54,7 @@ export default function VisitesPage() {
   const [loading, setLoading] = useState(true);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [showLate, setShowLate] = useState(true);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const token = localStorage.getItem('suivipro_token');
   const headers: Record<string, string> = {
@@ -60,14 +62,13 @@ export default function VisitesPage() {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (offset: number) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/commercial/visites', { headers });
+      const res = await fetch(`/api/commercial/visites?week_offset=${offset}`, { headers });
       if (res.ok) {
         const d: VisitesData = await res.json();
         setData(d);
-        // Auto-expand today + days with clients
         const expanded = new Set<string>();
         d.week_days.forEach(wd => {
           if (wd.is_today || wd.clients.length > 0) expanded.add(wd.day_key);
@@ -83,7 +84,11 @@ export default function VisitesPage() {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(weekOffset); }, [weekOffset, loadData]);
+
+  const goToPreviousWeek = () => setWeekOffset(prev => prev - 1);
+  const goToNextWeek = () => setWeekOffset(prev => prev + 1);
+  const goToCurrentWeek = () => setWeekOffset(0);
 
   const toggleDay = (key: string) => {
     setExpandedDays(prev => {
@@ -106,7 +111,15 @@ export default function VisitesPage() {
     return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
 
-  if (loading) {
+  const formatWeekRange = (weekStart: string) => {
+    const start = new Date(weekStart);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+    return `${start.toLocaleDateString('fr-FR', opts)} - ${end.toLocaleDateString('fr-FR', opts)}`;
+  };
+
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-12">
         <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
@@ -119,6 +132,7 @@ export default function VisitesPage() {
 
   const totalWeekClients = data.week_days.reduce((sum, d) => sum + d.clients.length, 0);
   const todayDay = data.week_days.find(d => d.is_today);
+  const isCurrentWeek = weekOffset === 0;
 
   const renderClient = (client: VisitClient, showVisitInfo = false) => {
     const isLate = client.next_visit && client.next_visit < new Date().toISOString().split('T')[0];
@@ -157,7 +171,6 @@ export default function VisitesPage() {
                 </span>
               )}
             </div>
-            {/* Contact info */}
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs">
               {(client.telephone_mobile || client.telephone) && (
                 <a
@@ -172,7 +185,6 @@ export default function VisitesPage() {
                 <span className="text-gray-500">{client.contact}</span>
               )}
             </div>
-            {/* Visit info */}
             {showVisitInfo && client.next_visit && (
               <div className="mt-1.5 flex items-center gap-1 text-xs">
                 {isLate ? (
@@ -194,7 +206,6 @@ export default function VisitesPage() {
               </div>
             )}
           </div>
-          {/* Actions */}
           <div className="flex flex-col gap-1.5 flex-shrink-0">
             {gmapsUrl && (
               <a
@@ -223,20 +234,68 @@ export default function VisitesPage() {
             Visites Clients
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            Semaine {data.week_number} ({data.is_even_week ? 'paire' : 'impaire'})
             {!data.tournee_active && (
-              <span className="text-amber-600 ml-2 font-medium">
-                — Tournee inactive cette semaine ({data.week_pattern === 'even' ? 'semaines paires' : 'semaines impaires'})
+              <span className="text-amber-600 font-medium">
+                Tournee inactive cette semaine ({data.week_pattern === 'even' ? 'semaines paires' : 'semaines impaires'})
               </span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
-            <RefreshCw className="w-4 h-4" />
+          <button onClick={() => loadData(weekOffset)} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
+
+      {/* Week navigator */}
+      <div className="bg-white rounded-xl border border-gray-200 p-3 flex items-center justify-between gap-2">
+        <button
+          onClick={goToPreviousWeek}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Semaine precedente"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        <div className="flex-1 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <p className="font-semibold text-gray-900 text-sm sm:text-base">
+              Semaine {data.week_number}
+            </p>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+              {data.is_even_week ? 'paire' : 'impaire'}
+            </span>
+            {isCurrentWeek && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brewery-100 text-brewery-700 font-medium">
+                Cette semaine
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {formatWeekRange(data.week_start)}
+          </p>
+        </div>
+
+        <button
+          onClick={goToNextWeek}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Semaine suivante"
+        >
+          <ArrowRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Back to current week button */}
+      {!isCurrentWeek && (
+        <button
+          onClick={goToCurrentWeek}
+          className="w-full py-2 text-sm font-medium text-brewery-600 bg-brewery-50 hover:bg-brewery-100 rounded-lg border border-brewery-200 transition-colors flex items-center justify-center gap-2"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Revenir a la semaine en cours
+        </button>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

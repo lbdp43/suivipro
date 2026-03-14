@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   MapPin, Save, Edit2, RefreshCw, ChevronDown, ChevronRight,
-  User, Loader2, Info, Calendar,
+  User, Loader2, Info, Calendar, ArrowLeft, ArrowRight, ChevronLeft,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -51,6 +51,7 @@ export default function TourneesPage() {
   const [editWeekPattern, setEditWeekPattern] = useState('every');
   const [saving, setSaving] = useState(false);
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const token = localStorage.getItem('suivipro_token');
   const isAdmin = state.currentUser?.role === 'admin';
@@ -139,11 +140,24 @@ export default function TourneesPage() {
     });
   };
 
-  // Get current week number to highlight paire/impaire
+  // Get week number for target week (current + offset)
+  const targetDate = new Date();
+  targetDate.setDate(targetDate.getDate() + weekOffset * 7);
+  const dayOfWeekT = targetDate.getDay() || 7;
+  const targetMonday = new Date(targetDate);
+  targetMonday.setDate(targetDate.getDate() - dayOfWeekT + 1);
   const currentWeekNum = Math.ceil(
-    (Math.floor((new Date().getTime() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000) + 1) / 7
+    (Math.floor((targetMonday.getTime() - new Date(targetMonday.getFullYear(), 0, 1).getTime()) / 86400000) + 1) / 7
   );
   const isEvenWeek = currentWeekNum % 2 === 0;
+  const isCurrentWeek = weekOffset === 0;
+
+  const formatWeekRange = () => {
+    const end = new Date(targetMonday);
+    end.setDate(targetMonday.getDate() + 6);
+    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+    return `${targetMonday.toLocaleDateString('fr-FR', opts)} - ${end.toLocaleDateString('fr-FR', opts)}`;
+  };
 
   if (loading) {
     return (
@@ -275,9 +289,6 @@ export default function TourneesPage() {
             <MapPin className="w-5 h-5 sm:w-6 sm:h-6" />
             Tournees
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            Planning des tournees par commercial — Semaine {currentWeekNum} ({isEvenWeek ? 'paire' : 'impaire'})
-          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
@@ -293,6 +304,54 @@ export default function TourneesPage() {
           )}
         </div>
       </div>
+
+      {/* Week navigator */}
+      <div className="bg-white rounded-xl border border-gray-200 p-3 flex items-center justify-between gap-2">
+        <button
+          onClick={() => setWeekOffset(prev => prev - 1)}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Semaine precedente"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        <div className="flex-1 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <p className="font-semibold text-gray-900 text-sm sm:text-base">
+              Semaine {currentWeekNum}
+            </p>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+              {isEvenWeek ? 'paire' : 'impaire'}
+            </span>
+            {isCurrentWeek && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brewery-100 text-brewery-700 font-medium">
+                Cette semaine
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {formatWeekRange()}
+          </p>
+        </div>
+
+        <button
+          onClick={() => setWeekOffset(prev => prev + 1)}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Semaine suivante"
+        >
+          <ArrowRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      {!isCurrentWeek && (
+        <button
+          onClick={() => setWeekOffset(0)}
+          className="w-full py-2 text-sm font-medium text-brewery-600 bg-brewery-50 hover:bg-brewery-100 rounded-lg border border-brewery-200 transition-colors flex items-center justify-center gap-2"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Revenir a la semaine en cours
+        </button>
+      )}
 
       {/* My tournée edit form */}
       {editing && (

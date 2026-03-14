@@ -2044,15 +2044,15 @@ router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
 
 router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.user.id;
+  const weekOffset = parseInt(req.query.week_offset) || 0;
   const now = new Date();
   const today = now.toISOString().split('T')[0];
 
-  // Get Monday of current week
+  // Get Monday of target week (current + offset)
   const dayOfWeek = now.getDay() || 7;
   const monday = new Date(now);
-  monday.setDate(now.getDate() - dayOfWeek + 1);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  monday.setDate(now.getDate() - dayOfWeek + 1 + (weekOffset * 7));
+  monday.setHours(0, 0, 0, 0);
 
   // My clients
   const clients = await db.query(
@@ -2069,9 +2069,9 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
   const config = tc ? JSON.parse(tc.config || '{}') : {};
   const weekPattern = tc?.week_pattern || 'every';
 
-  // Current week number
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  // Week number for target week
+  const startOfYear = new Date(monday.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((monday - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
   const isEvenWeek = weekNum % 2 === 0;
 
   // Check if tournée is active this week
@@ -2095,7 +2095,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
 
     // Clients with next_visit on this date (not already in tournée list)
     const visitClients = clients.rows.filter(c =>
-      c.next_visit === dateStr && !tourneeClients.find(tc => tc.id === c.id)
+      c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
     );
 
     weekDays.push({
@@ -2110,8 +2110,9 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
   }
 
   // Late clients (next_visit before this week's Monday)
+  const mondayStr = monday.toISOString().split('T')[0];
   const lateClients = clients.rows.filter(c =>
-    c.next_visit && c.next_visit < monday.toISOString().split('T')[0]
+    c.next_visit && c.next_visit < mondayStr
   );
 
   res.json({
@@ -2120,6 +2121,8 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     week_number: weekNum,
     is_even_week: isEvenWeek,
     week_pattern: weekPattern,
+    week_offset: weekOffset,
+    week_start: mondayStr,
     tournee_active: isTourneeActive,
     total_active_clients: clients.rows.length,
   });
