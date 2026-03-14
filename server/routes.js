@@ -1969,14 +1969,22 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
       "SELECT COUNT(*) as count FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' AND next_visit = $2",
       [com.id, today]
     );
-    // Visits this week
+    // Visits this week (with type breakdown)
     const visitsWeek = await db.query(
       "SELECT COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2",
       [com.id, weekStart]
     );
-    // Visits this month
+    const visitsWeekByType = await db.query(
+      "SELECT type, COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2 GROUP BY type",
+      [com.id, weekStart]
+    );
+    // Visits this month (with type breakdown)
     const visitsMonth = await db.query(
       "SELECT COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2",
+      [com.id, monthStart]
+    );
+    const visitsMonthByType = await db.query(
+      "SELECT type, COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2 GROUP BY type",
       [com.id, monthStart]
     );
     // Tasks pending
@@ -1995,6 +2003,11 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
       [com.id, monthStart]
     );
 
+    const weekByType = {};
+    visitsWeekByType.rows.forEach(r => { weekByType[r.type] = parseInt(r.count); });
+    const monthByType = {};
+    visitsMonthByType.rows.forEach(r => { monthByType[r.type] = parseInt(r.count); });
+
     stats.push({
       commercial: { id: com.id, prenom: com.prenom, nom: com.nom, role: com.role },
       clients_total: parseInt(clientsResult.rows[0].total),
@@ -2003,6 +2016,8 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
       clients_aujourd_hui: parseInt(todayResult.rows[0].count),
       visites_semaine: parseInt(visitsWeek.rows[0].count),
       visites_mois: parseInt(visitsMonth.rows[0].count),
+      visites_semaine_par_type: weekByType,
+      visites_mois_par_type: monthByType,
       taches_en_cours: parseInt(tasksPending.rows[0].count),
       taches_en_retard: parseInt(tasksOverdue.rows[0].count),
       taches_terminees_mois: parseInt(tasksCompleted.rows[0].count),
@@ -2026,6 +2041,18 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
     "SELECT COUNT(*) as count FROM interactions WHERE date >= $1",
     [monthStart]
   );
+  const totalVisitsWeekByType = await db.query(
+    "SELECT type, COUNT(*) as count FROM interactions WHERE date >= $1 GROUP BY type",
+    [weekStart]
+  );
+  const totalVisitsMonthByType = await db.query(
+    "SELECT type, COUNT(*) as count FROM interactions WHERE date >= $1 GROUP BY type",
+    [monthStart]
+  );
+  const globalWeekByType = {};
+  totalVisitsWeekByType.rows.forEach(r => { globalWeekByType[r.type] = parseInt(r.count); });
+  const globalMonthByType = {};
+  totalVisitsMonthByType.rows.forEach(r => { globalMonthByType[r.type] = parseInt(r.count); });
 
   res.json({
     global: {
@@ -2033,6 +2060,8 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
       clients_aujourd_hui: parseInt(totalToday.rows[0].count),
       visites_semaine: parseInt(totalVisitsWeek.rows[0].count),
       visites_mois: parseInt(totalVisitsMonth.rows[0].count),
+      visites_semaine_par_type: globalWeekByType,
+      visites_mois_par_type: globalMonthByType,
     },
     par_commercial: stats,
   });
@@ -2413,6 +2442,21 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     [userId]
   );
 
+  // Interaction type stats
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const interactionsWeekByType = await db.query(
+    "SELECT type, COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2 GROUP BY type",
+    [userId, weekStart]
+  );
+  const interactionsMonthByType = await db.query(
+    "SELECT type, COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2 GROUP BY type",
+    [userId, monthStart]
+  );
+  const weekByType = {};
+  interactionsWeekByType.rows.forEach(r => { weekByType[r.type] = parseInt(r.count); });
+  const monthByType = {};
+  interactionsMonthByType.rows.forEach(r => { monthByType[r.type] = parseInt(r.count); });
+
   // Pending tasks
   const tasks = await db.query(
     "SELECT t.*, c.nom as client_nom FROM tasks_client t LEFT JOIN clients c ON t.client_id = c.id WHERE t.commercial_id = $1 AND t.statut != 'TERMINEE' ORDER BY t.date_echeance ASC NULLS LAST LIMIT 10",
@@ -2428,6 +2472,8 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     recent_interactions: recentInteractions.rows,
     pending_tasks: tasks.rows,
     total_clients: clients.rows.length,
+    interactions_semaine_par_type: weekByType,
+    interactions_mois_par_type: monthByType,
   });
 }));
 

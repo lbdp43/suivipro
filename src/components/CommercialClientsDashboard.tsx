@@ -53,6 +53,8 @@ interface DashboardData {
   recent_interactions: InteractionInfo[];
   pending_tasks: TaskInfo[];
   total_clients: number;
+  interactions_semaine_par_type?: Record<string, number>;
+  interactions_mois_par_type?: Record<string, number>;
 }
 
 function formatDateShort(dateStr: string) {
@@ -174,6 +176,49 @@ export default function CommercialClientsDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Interaction type breakdown */}
+      {(data.interactions_semaine_par_type || data.interactions_mois_par_type) && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Mes interactions par type</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Cette semaine</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center p-2 bg-green-50 rounded-lg">
+                  <p className="text-lg font-bold text-green-700">{data.interactions_semaine_par_type?.VISITE || 0}</p>
+                  <p className="text-[10px] text-green-600">Visites</p>
+                </div>
+                <div className="text-center p-2 bg-blue-50 rounded-lg">
+                  <p className="text-lg font-bold text-blue-700">{data.interactions_semaine_par_type?.APPEL || 0}</p>
+                  <p className="text-[10px] text-blue-600">Appels</p>
+                </div>
+                <div className="text-center p-2 bg-purple-50 rounded-lg">
+                  <p className="text-lg font-bold text-purple-700">{data.interactions_semaine_par_type?.RDV_PLANIFIE || 0}</p>
+                  <p className="text-[10px] text-purple-600">RDV</p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Ce mois</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center p-2 bg-green-50 rounded-lg">
+                  <p className="text-lg font-bold text-green-700">{data.interactions_mois_par_type?.VISITE || 0}</p>
+                  <p className="text-[10px] text-green-600">Visites</p>
+                </div>
+                <div className="text-center p-2 bg-blue-50 rounded-lg">
+                  <p className="text-lg font-bold text-blue-700">{data.interactions_mois_par_type?.APPEL || 0}</p>
+                  <p className="text-[10px] text-blue-600">Appels</p>
+                </div>
+                <div className="text-center p-2 bg-purple-50 rounded-lg">
+                  <p className="text-lg font-bold text-purple-700">{data.interactions_mois_par_type?.RDV_PLANIFIE || 0}</p>
+                  <p className="text-[10px] text-purple-600">RDV</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Late clients alert (expandable) */}
       {showLateClients && data.late_clients.length > 0 && (

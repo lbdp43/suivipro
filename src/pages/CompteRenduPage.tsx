@@ -85,8 +85,18 @@ export default function CompteRenduPage() {
   const [visitRdvLieu, setVisitRdvLieu] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [selectedCommercialId, setSelectedCommercialId] = useState<string>('');
 
+  const isAdmin = state.currentUser?.role === 'admin';
   const userId = state.currentUser?.id;
+
+  // For admin: determine which commercial(s) to show
+  // '' = current user, 'all' = everyone, otherwise specific user id
+  const effectiveUserIds = useMemo(() => {
+    if (!isAdmin || selectedCommercialId === '') return userId ? [userId] : [];
+    if (selectedCommercialId === 'all') return state.commerciaux.map((c: any) => c.id);
+    return [selectedCommercialId];
+  }, [isAdmin, selectedCommercialId, userId, state.commerciaux]);
 
   // Week navigation
   const currentMonday = useMemo(() => {
@@ -96,15 +106,23 @@ export default function CompteRenduPage() {
   }, [weekOffset]);
   const weekDays = useMemo(() => getWeekDaysFrom(currentMonday), [currentMonday]);
 
-  // Tournee config
-  const myTourneeConfig = state.tourneeConfigs?.find((tc: any) => tc.commercial_id === userId);
+  // Tournee config - merge configs for all effective users
   const parsedConfig = useMemo(() => {
-    if (!myTourneeConfig?.config) return {};
-    if (typeof myTourneeConfig.config === 'string') {
-      try { return JSON.parse(myTourneeConfig.config); } catch { return {}; }
+    const merged: Record<string, string[]> = {};
+    for (const uid of effectiveUserIds) {
+      const tc = state.tourneeConfigs?.find((t: any) => t.commercial_id === uid);
+      if (!tc?.config) continue;
+      const cfg = typeof tc.config === 'string' ? (() => { try { return JSON.parse(tc.config); } catch { return {}; } })() : tc.config;
+      for (const [dow, zones] of Object.entries(cfg)) {
+        if (!Array.isArray(zones)) continue;
+        if (!merged[dow]) merged[dow] = [];
+        for (const z of zones as string[]) {
+          if (!merged[dow].includes(z)) merged[dow].push(z);
+        }
+      }
     }
-    return myTourneeConfig.config;
-  }, [myTourneeConfig?.config]);
+    return merged;
+  }, [effectiveUserIds, state.tourneeConfigs]);
 
   const getZonesForDate = (dateStr: string): string[] => {
     const dow = new Date(dateStr + 'T12:00:00').getDay().toString();
@@ -134,30 +152,37 @@ export default function CompteRenduPage() {
 
   // RDVs in range
   const rangeAppointments = useMemo(() => {
+    const uids = new Set(effectiveUserIds);
     return state.appointments.filter((a: Appointment) =>
       a.date >= dateRange.start && a.date <= dateRange.end &&
-      (a.commercial_id === userId || a.prospecteur_id === userId)
+      (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
     ).sort((a: Appointment, b: Appointment) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || ''));
-  }, [state.appointments, dateRange, userId]);
+  }, [state.appointments, dateRange, effectiveUserIds]);
 
   // Interactions in range
   const rangeInteractions = useMemo(() => {
+    const uids = new Set(effectiveUserIds);
     return state.interactions.filter((i: Interaction) =>
       i.date.substring(0, 10) >= dateRange.start && i.date.substring(0, 10) <= dateRange.end &&
-      i.commercial_id === userId
+      uids.has(i.commercial_id)
     );
-  }, [state.interactions, dateRange, userId]);
+  }, [state.interactions, dateRange, effectiveUserIds]);
 
   // Stats
   const stats = useMemo(() => {
     const totalRdv = rangeAppointments.length;
     const rdvWithCR = rangeAppointments.filter(a => !!a.compte_rendu).length;
     const totalVisites = rangeInteractions.length;
+    const visitesParType = {
+      VISITE: rangeInteractions.filter(i => i.type === 'VISITE').length,
+      APPEL: rangeInteractions.filter(i => i.type === 'APPEL').length,
+      RDV_PLANIFIE: rangeInteractions.filter(i => i.type === 'RDV_PLANIFIE').length,
+    };
     const resultCounts: Record<string, number> = {};
     rangeAppointments.forEach(a => {
       if (a.compte_rendu) resultCounts[a.compte_rendu] = (resultCounts[a.compte_rendu] || 0) + 1;
     });
-    return { totalRdv, rdvWithCR, totalVisites, resultCounts };
+    return { totalRdv, rdvWithCR, totalVisites, visitesParType, resultCounts };
   }, [rangeAppointments, rangeInteractions]);
 
   // Group by day for week/month/period views
@@ -185,24 +210,27 @@ export default function CompteRenduPage() {
   const dayZones = getZonesForDate(selectedDate);
 
   const dayAppointments = useMemo(() => {
+    const uids = new Set(effectiveUserIds);
     return state.appointments.filter((a: Appointment) =>
       a.date === selectedDate &&
-      (a.commercial_id === userId || a.prospecteur_id === userId)
+      (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
     ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
-  }, [state.appointments, selectedDate, userId]);
+  }, [state.appointments, selectedDate, effectiveUserIds]);
 
   const clientsToVisit = useMemo(() => {
     if (dayZones.length === 0) return [];
+    const uids = new Set(effectiveUserIds);
     return state.clients.filter((c: Client) =>
-      c.commercial_id === userId && c.statut === 'ACTIF' && dayZones.includes(c.tournee)
+      uids.has(c.commercial_id) && c.statut === 'ACTIF' && dayZones.includes(c.tournee)
     ).sort((a: Client, b: Client) => a.nom.localeCompare(b.nom));
-  }, [state.clients, dayZones, userId]);
+  }, [state.clients, dayZones, effectiveUserIds]);
 
   const todayInteractions = useMemo(() => {
+    const uids = new Set(effectiveUserIds);
     return state.interactions.filter((i: Interaction) =>
-      i.date.startsWith(selectedDate) && i.commercial_id === userId
+      i.date.startsWith(selectedDate) && uids.has(i.commercial_id)
     );
-  }, [state.interactions, selectedDate, userId]);
+  }, [state.interactions, selectedDate, effectiveUserIds]);
 
   const visitedClientIds = new Set(todayInteractions.map((i: Interaction) => i.client_id));
 
@@ -548,8 +576,27 @@ export default function CompteRenduPage() {
             <ClipboardCheck className="w-7 h-7 text-brewery-600" />
             Rapport Journalier
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Faites le bilan de votre activite</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isAdmin && selectedCommercialId === 'all'
+              ? 'Vue globale de toute l\'equipe'
+              : isAdmin && selectedCommercialId && selectedCommercialId !== ''
+              ? `Rapport de ${state.commerciaux.find((c: any) => c.id === selectedCommercialId)?.prenom || ''} ${state.commerciaux.find((c: any) => c.id === selectedCommercialId)?.nom || ''}`
+              : 'Faites le bilan de votre activite'}
+          </p>
         </div>
+        {isAdmin && (
+          <select
+            value={selectedCommercialId}
+            onChange={e => setSelectedCommercialId(e.target.value)}
+            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+          >
+            <option value="">Mon activite</option>
+            <option value="all">Toute l'equipe</option>
+            {state.commerciaux.map((c: any) => (
+              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* View mode tabs */}
@@ -653,15 +700,11 @@ export default function CompteRenduPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-indigo-600">{stats.totalRdv}</p>
-            <p className="text-[10px] text-gray-500">RDV total</p>
+            <p className="text-[10px] text-gray-500">RDV (prospects)</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-green-600">{stats.rdvWithCR}</p>
             <p className="text-[10px] text-gray-500">Comptes rendus</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
-            <p className="text-2xl font-bold text-cyan-600">{stats.totalVisites}</p>
-            <p className="text-[10px] text-gray-500">Visites clients</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-orange-600">
@@ -669,6 +712,39 @@ export default function CompteRenduPage() {
             </p>
             <p className="text-[10px] text-gray-500">Taux CR</p>
           </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
+            <p className="text-2xl font-bold text-cyan-600">{stats.totalVisites}</p>
+            <p className="text-[10px] text-gray-500">Interactions clients</p>
+          </div>
+
+          {/* Breakdown by interaction type */}
+          <div className="col-span-2 sm:col-span-4 bg-white rounded-xl border border-gray-200 p-3">
+            <p className="text-xs font-medium text-gray-600 mb-2">Detail des interactions clients</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50">
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                <div>
+                  <p className="text-lg font-bold text-green-700">{stats.visitesParType.VISITE}</p>
+                  <p className="text-[10px] text-green-600">Visites</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50">
+                <PhoneCall className="w-4 h-4 text-blue-600" />
+                <div>
+                  <p className="text-lg font-bold text-blue-700">{stats.visitesParType.APPEL}</p>
+                  <p className="text-[10px] text-blue-600">Appels</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-50">
+                <Calendar className="w-4 h-4 text-purple-600" />
+                <div>
+                  <p className="text-lg font-bold text-purple-700">{stats.visitesParType.RDV_PLANIFIE}</p>
+                  <p className="text-[10px] text-purple-600">RDV planifies</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Result breakdown */}
           {Object.keys(stats.resultCounts).length > 0 && (
             <div className="col-span-2 sm:col-span-4 bg-white rounded-xl border border-gray-200 p-3">
@@ -778,14 +854,21 @@ export default function CompteRenduPage() {
                         <div className="space-y-1.5">
                           {group.visites.map(v => {
                             const clientName = getClientName(v.client_id);
+                            const commercialName = selectedCommercialId === 'all' ? state.commerciaux.find((c: any) => c.id === v.commercial_id) : null;
+                            const typeColor = v.type === 'VISITE' ? 'bg-green-50' : v.type === 'APPEL' ? 'bg-blue-50' : 'bg-purple-50';
+                            const typeTextColor = v.type === 'VISITE' ? 'text-green-600' : v.type === 'APPEL' ? 'text-blue-600' : 'text-purple-600';
+                            const typeIconColor = v.type === 'VISITE' ? 'text-green-500' : v.type === 'APPEL' ? 'text-blue-500' : 'text-purple-500';
                             return (
-                              <div key={v.id} className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg">
-                                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                              <div key={v.id} className={`flex items-center gap-2 px-3 py-2 ${typeColor} rounded-lg`}>
+                                {v.type === 'VISITE' ? <CheckCircle2 className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />
+                                  : v.type === 'APPEL' ? <PhoneCall className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />
+                                  : <Calendar className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />}
                                 <div className="flex-1 min-w-0">
                                   <span className="text-sm font-medium text-gray-800">{clientName || v.client_id}</span>
+                                  {commercialName && <span className="text-xs text-gray-500 ml-1">({commercialName.prenom})</span>}
                                   {v.comment && <p className="text-xs text-gray-500 truncate">{v.comment}</p>}
                                 </div>
-                                <span className="text-[10px] text-gray-400">{v.type}</span>
+                                <span className={`text-[10px] font-medium ${typeTextColor}`}>{INTERACTION_TYPE_LABELS[v.type as InteractionType] || v.type}</span>
                               </div>
                             );
                           })}
