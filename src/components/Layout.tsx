@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
-  MessageCircle,
+  MessageCircle, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -27,6 +27,7 @@ export default function Layout() {
     { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
     { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
+    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
     { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
     { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false },

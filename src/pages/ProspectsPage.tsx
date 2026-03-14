@@ -4,17 +4,19 @@ import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
   CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
-  Camera, Loader2,
+  Camera, Loader2, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { ocrProspect } from '../api/client';
+import { ocrProspect, convertProspectToClient } from '../api/client';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
   APPOINTMENT_RESULT_LABELS,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
+  CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
+  ClientType,
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
@@ -47,6 +49,14 @@ export default function ProspectsPage() {
   const [reminderMessage, setReminderMessage] = useState('');
   const [reminderDate, setReminderDate] = useState('');
   const [reminderHeure, setReminderHeure] = useState('09:00');
+
+  // Convert to client
+  const [convertProspect, setConvertProspect] = useState<Prospect | null>(null);
+  const [convertType, setConvertType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
+  const [convertTournee, setConvertTournee] = useState('');
+  const [convertCustomRecurrence, setConvertCustomRecurrence] = useState<number | null>(null);
+  const [converting, setConverting] = useState(false);
+  const alreadyConvertedIds = useMemo(() => new Set(state.clients.map(c => c.prospect_id).filter(Boolean)), [state.clients]);
 
   // Tag management in form
   const [showTagManager, setShowTagManager] = useState(false);
@@ -745,16 +755,17 @@ export default function ProspectsPage() {
                       <Mail className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {p.etape_pipeline !== 'client_gagne' && p.etape_pipeline !== 'perdu' && (
+                  {!alreadyConvertedIds.has(p.id) && p.etape_pipeline !== 'perdu' && (
                     <button
                       className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
                       onClick={e => {
                         e.stopPropagation();
-                        if (confirm(`Valider "${p.nom_etablissement}" comme client et le passer en "Gagne" ?`)) {
-                          dispatch({ type: 'UPDATE_PROSPECT', payload: { ...p, etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() } });
-                        }
+                        setConvertType('BAR_RESTAURANT_GENERAL');
+                        setConvertTournee('');
+                        setConvertCustomRecurrence(null);
+                        setConvertProspect(p);
                       }}
-                      title="Valider comme client (Gagne)"
+                      title="Convertir en client"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
                     </button>
@@ -979,6 +990,25 @@ export default function ProspectsPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  {!alreadyConvertedIds.has(selectedProspect.id) && (
+                    <button
+                      className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                      onClick={() => {
+                        setConvertType('BAR_RESTAURANT_GENERAL');
+                        setConvertTournee('');
+                        setConvertCustomRecurrence(null);
+                        setConvertProspect(selectedProspect);
+                      }}
+                      title="Convertir en client"
+                    >
+                      <Building2 className="w-4 h-4 text-emerald-600" />
+                    </button>
+                  )}
+                  {alreadyConvertedIds.has(selectedProspect.id) && (
+                    <span className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-medium flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" /> Client
+                    </span>
+                  )}
                   <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => openEditForm(selectedProspect)}>
                     <Edit2 className="w-4 h-4 text-gray-600" />
                   </button>
@@ -1145,6 +1175,122 @@ export default function ProspectsPage() {
           <div className="text-center text-gray-400">
             <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">Selectionnez un prospect pour voir ses details</p>
+          </div>
+        </div>
+      )}
+
+      {/* Convert to client modal */}
+      {convertProspect && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                <Building2 className="w-4 h-4 text-emerald-600" /> Convertir en client
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setConvertProspect(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-gray-900">{convertProspect.nom_etablissement}</p>
+                <p className="text-xs text-gray-500">{convertProspect.ville} - {convertProspect.nom_contact}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Type de client *</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  value={convertType}
+                  onChange={e => setConvertType(e.target.value as ClientType)}
+                >
+                  {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                    <optgroup key={key} label={family.label}>
+                      {family.types.map(t => (
+                        <option key={t} value={t}>
+                          {CLIENT_TYPE_LABELS[t]}
+                          {CLIENT_VISIT_FREQUENCIES[t] ? ` (visite tous les ${CLIENT_VISIT_FREQUENCIES[t]}j)` : ' (pas de recurrence)'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tournee</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  placeholder="Ex: Lundi Nord, Mardi Sud..."
+                  value={convertTournee}
+                  onChange={e => setConvertTournee(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Recurrence personnalisee (jours)
+                  <span className="text-gray-400 font-normal ml-1">- laissez vide pour utiliser la valeur par defaut</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  placeholder={CLIENT_VISIT_FREQUENCIES[convertType] ? `${CLIENT_VISIT_FREQUENCIES[convertType]} jours (par defaut)` : 'Aucune recurrence'}
+                  value={convertCustomRecurrence ?? ''}
+                  onChange={e => setConvertCustomRecurrence(e.target.value ? parseInt(e.target.value) : null)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setConvertProspect(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+                disabled={converting}
+                onClick={async () => {
+                  setConverting(true);
+                  try {
+                    const result = await convertProspectToClient({
+                      prospect_id: convertProspect.id,
+                      type_client: convertType,
+                      tournee: convertTournee,
+                      custom_recurrence: convertCustomRecurrence,
+                    });
+                    if (result?.client_id) {
+                      // Update prospect stage to client_gagne
+                      dispatch({
+                        type: 'UPDATE_PROSPECT',
+                        payload: {
+                          ...convertProspect,
+                          etape_pipeline: 'client_gagne' as PipelineStage,
+                          date_modification: new Date().toISOString(),
+                        },
+                      });
+                      // Reload state to get the new client
+                      window.location.reload();
+                    }
+                  } catch (err) {
+                    console.error('Conversion error:', err);
+                    alert(`Erreur lors de la conversion: ${(err as Error).message}`);
+                  } finally {
+                    setConverting(false);
+                    setConvertProspect(null);
+                  }
+                }}
+              >
+                {converting ? (
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Conversion...</>
+                ) : (
+                  <><Building2 className="w-4 h-4" /> Convertir</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

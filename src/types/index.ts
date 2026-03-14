@@ -355,6 +355,152 @@ export interface PipelineColumn {
   color: string;
 }
 
+// ============================================
+// Client Types (CRM Client Management)
+// ============================================
+
+export type ClientType =
+  | 'BAR_RESTAURANT_GENERAL'
+  | 'BAR_RESTAURANT_2024'
+  | 'CAVE_EPICERIE'
+  | 'CAVE_EPICERIE_2024'
+  | 'SOUCHON'
+  | 'SOUCHON_HORS_DROIT'
+  | 'CLIENT_SOUCHON'
+  | 'GRAND_PUBLIC'
+  | 'GRAND_PUBLIC_2024'
+  | 'COMITE_ENTREPRISE'
+  | 'DISTRIBUTEUR'
+  | 'EXPORT'
+  | 'MARIAGE'
+  | 'PICOLOGIE';
+
+export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
+  BAR_RESTAURANT_GENERAL: 'Bar Restaurant',
+  BAR_RESTAURANT_2024: 'Bar Restaurant 2024',
+  CAVE_EPICERIE: 'Cave Epicerie',
+  CAVE_EPICERIE_2024: 'Cave Epicerie 2024',
+  SOUCHON: 'Souchon',
+  SOUCHON_HORS_DROIT: 'Hors Droit Souchon',
+  CLIENT_SOUCHON: 'Client Souchon',
+  GRAND_PUBLIC: 'Grand Public',
+  GRAND_PUBLIC_2024: 'Grand Public 2024',
+  COMITE_ENTREPRISE: 'Comite Entreprise',
+  DISTRIBUTEUR: 'Distributeur',
+  EXPORT: 'Export',
+  MARIAGE: 'Mariage',
+  PICOLOGIE: 'Picologie',
+};
+
+export const CLIENT_TYPE_FAMILIES: Record<string, { label: string; icon: string; types: ClientType[] }> = {
+  bar_restaurant: { label: 'Bar / Restaurant', icon: 'UtensilsCrossed', types: ['BAR_RESTAURANT_GENERAL', 'BAR_RESTAURANT_2024'] },
+  cave_epicerie: { label: 'Cave / Epicerie', icon: 'Wine', types: ['CAVE_EPICERIE', 'CAVE_EPICERIE_2024'] },
+  souchon: { label: 'Souchon', icon: 'Handshake', types: ['SOUCHON', 'SOUCHON_HORS_DROIT', 'CLIENT_SOUCHON'] },
+  grand_public: { label: 'Grand Public', icon: 'Users', types: ['GRAND_PUBLIC', 'GRAND_PUBLIC_2024'] },
+  autres: { label: 'Autres', icon: 'Package', types: ['COMITE_ENTREPRISE', 'DISTRIBUTEUR', 'EXPORT', 'MARIAGE', 'PICOLOGIE'] },
+};
+
+export const CLIENT_VISIT_FREQUENCIES: Record<ClientType, number | null> = {
+  BAR_RESTAURANT_GENERAL: 15,
+  BAR_RESTAURANT_2024: 15,
+  CAVE_EPICERIE: 30,
+  CAVE_EPICERIE_2024: 30,
+  SOUCHON: 30,
+  SOUCHON_HORS_DROIT: 30,
+  CLIENT_SOUCHON: 30,
+  GRAND_PUBLIC: null,
+  GRAND_PUBLIC_2024: null,
+  COMITE_ENTREPRISE: 60,
+  DISTRIBUTEUR: 45,
+  EXPORT: 90,
+  MARIAGE: null,
+  PICOLOGIE: 30,
+};
+
+export type ClientStatus = 'ACTIF' | 'INACTIF';
+
+export type InteractionType = 'VISITE' | 'APPEL' | 'RDV_PLANIFIE';
+
+export const INTERACTION_TYPE_LABELS: Record<InteractionType, string> = {
+  VISITE: 'Visite',
+  APPEL: 'Appel',
+  RDV_PLANIFIE: 'RDV planifie',
+};
+
+export type TaskClientStatus = 'A_FAIRE' | 'EN_COURS' | 'TERMINEE';
+
+export const TASK_CLIENT_STATUS_LABELS: Record<TaskClientStatus, string> = {
+  A_FAIRE: 'A faire',
+  EN_COURS: 'En cours',
+  TERMINEE: 'Terminee',
+};
+
+export type TaskClientPriority = 'BASSE' | 'MOYENNE' | 'HAUTE';
+
+export const TASK_CLIENT_PRIORITY_LABELS: Record<TaskClientPriority, string> = {
+  BASSE: 'Basse',
+  MOYENNE: 'Moyenne',
+  HAUTE: 'Haute',
+};
+
+export interface Client {
+  id: string;
+  nom: string;
+  ville: string;
+  adresse: string;
+  code_postal: string;
+  telephone: string;
+  telephone_mobile: string;
+  email: string;
+  contact: string;
+  type_client: ClientType;
+  statut: ClientStatus;
+  commercial_id: string;
+  next_visit: string | null;
+  last_visit: string | null;
+  notes: string;
+  custom_recurrence: number | null;
+  latitude: number;
+  longitude: number;
+  siret: string;
+  tournee: string;
+  prospect_id: string | null;
+  date_creation: string;
+  date_modification: string;
+}
+
+export interface Interaction {
+  id: string;
+  client_id: string;
+  commercial_id: string;
+  type: InteractionType;
+  date: string;
+  comment: string;
+  date_creation: string;
+}
+
+export interface TaskClient {
+  id: string;
+  titre: string;
+  description: string;
+  statut: TaskClientStatus;
+  priorite: TaskClientPriority;
+  date_echeance: string | null;
+  commercial_id: string | null;
+  client_id: string | null;
+  date_creation: string;
+  completed_at: string | null;
+}
+
+export interface TourneeConfig {
+  commercial_id: string;
+  config: string; // JSON string of { "1": ["Zone A"], "2": ["Zone B"], ... }
+  notes: string;
+  updated_at: string;
+}
+
+export type VisitStatus = 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF';
+
 export type DocumentCategory = 'bar_restaurant' | 'prix_ce' | 'cave_epicerie' | 'grand_public' | 'autre';
 
 export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
@@ -392,4 +538,8 @@ export interface AppState {
   currentUser: Commercial | null;
   pipelineColumns: PipelineColumn[];
   documents: Document[];
+  clients: Client[];
+  interactions: Interaction[];
+  tasksClient: TaskClient[];
+  tourneeConfigs: TourneeConfig[];
 }

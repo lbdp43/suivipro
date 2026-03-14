@@ -262,9 +262,51 @@ export function syncAction(type: string, payload: unknown) {
     case 'DELETE_DOCUMENT':
       return del(`/documents/${payload}`);
 
+    // Clients
+    case 'ADD_CLIENT':
+      return post('/clients', payload);
+    case 'UPDATE_CLIENT':
+      return put(`/clients/${p.id}`, payload);
+    case 'DELETE_CLIENT':
+      return del(`/clients/${payload}`);
+
+    // Interactions
+    case 'ADD_INTERACTION':
+      return post('/interactions', payload);
+    case 'DELETE_INTERACTION':
+      return del(`/interactions/${payload}`);
+
+    // Tasks Client
+    case 'ADD_TASK_CLIENT':
+      return post('/tasks-client', payload);
+    case 'UPDATE_TASK_CLIENT':
+      return put(`/tasks-client/${p.id}`, payload);
+    case 'DELETE_TASK_CLIENT':
+      return del(`/tasks-client/${payload}`);
+
+    // Tournee Config
+    case 'SAVE_TOURNEE_CONFIG':
+      return post(`/tournee-config/${p.commercial_id}`, { config: p.config, notes: p.notes });
+
     default:
       break;
   }
+}
+
+// ============================================
+// Convert Prospect to Client
+// ============================================
+
+export async function convertProspectToClient(data: {
+  prospect_id: string;
+  type_client?: string;
+  tournee?: string;
+  custom_recurrence?: number | null;
+}): Promise<{ ok: boolean; client_id: string }> {
+  return request('/convert-prospect-to-client', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // ============================================

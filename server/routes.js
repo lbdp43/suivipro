@@ -156,7 +156,7 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // All users see all data
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -166,6 +166,10 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
     db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
+    db.query('SELECT * FROM clients ORDER BY date_modification DESC'),
+    db.query('SELECT * FROM interactions ORDER BY date DESC'),
+    db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
+    db.query('SELECT * FROM tournee_config'),
   ]);
 
   res.json({
@@ -178,6 +182,10 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     emailTemplates: emailTemplates.rows,
     pipelineColumns: pipelineColumns.rows,
     documents: documents.rows,
+    clients: clients.rows,
+    interactions: interactions.rows,
+    tasksClient: tasksClient.rows,
+    tourneeConfigs: tourneeConfigs.rows,
   });
 }));
 
@@ -868,6 +876,257 @@ router.get('/hub/channels', authMiddleware, async (req, res) => {
     res.status(502).json({ error: 'Impossible de contacter le Hub' });
   }
 });
+
+// ============================================
+// Clients (CRM) CRUD
+// ============================================
+
+const CLIENT_VISIT_FREQUENCIES = {
+  BAR_RESTAURANT_GENERAL: 15,
+  BAR_RESTAURANT_2024: 15,
+  CAVE_EPICERIE: 30,
+  CAVE_EPICERIE_2024: 30,
+  SOUCHON: 30,
+  SOUCHON_HORS_DROIT: 30,
+  CLIENT_SOUCHON: 30,
+  GRAND_PUBLIC: null,
+  GRAND_PUBLIC_2024: null,
+  COMITE_ENTREPRISE: 60,
+  DISTRIBUTEUR: 45,
+  EXPORT: 90,
+  MARIAGE: null,
+  PICOLOGIE: 30,
+};
+
+function calculateNextVisit(typeClient, customRecurrence, lastVisitStr) {
+  const frequency = customRecurrence || CLIENT_VISIT_FREQUENCIES[typeClient];
+  if (!frequency) return null;
+  const base = lastVisitStr ? new Date(lastVisitStr) : new Date();
+  base.setDate(base.getDate() + frequency);
+  return base.toISOString().split('T')[0];
+}
+
+function validateClient(body) {
+  const errors = [];
+  if (!body.nom || typeof body.nom !== 'string' || body.nom.trim().length === 0) {
+    errors.push('nom est requis');
+  }
+  if (body.email && !EMAIL_RE.test(body.email)) {
+    errors.push('Format email invalide');
+  }
+  if (body.telephone && !PHONE_RE.test(body.telephone)) {
+    errors.push('Format telephone invalide');
+  }
+  return errors;
+}
+
+router.get('/clients', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM clients ORDER BY date_modification DESC');
+  res.json(result.rows);
+}));
+
+router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
+  const c = req.body;
+  const errors = validateClient(c);
+  if (errors.length > 0) return validationError(res, errors);
+
+  const commercialId = isAdmin(req) ? (c.commercial_id || req.user.id) : req.user.id;
+  const now = new Date().toISOString();
+  const nextVisit = c.next_visit || calculateNextVisit(c.type_client, c.custom_recurrence, null);
+
+  await db.query(
+    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
+     type_client, statut, commercial_id, next_visit, last_visit, notes, custom_recurrence,
+     latitude, longitude, siret, tournee, prospect_id, date_creation, date_modification)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+    [c.id, c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
+     c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
+     c.statut || 'ACTIF', commercialId, nextVisit || null, c.last_visit || null,
+     c.notes || '', c.custom_recurrence || null, c.latitude || 0, c.longitude || 0,
+     c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
+  );
+  res.json({ ok: true });
+}));
+
+router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const c = req.body;
+  const errors = validateClient(c);
+  if (errors.length > 0) return validationError(res, errors);
+
+  const now = new Date().toISOString();
+  await db.query(
+    `UPDATE clients SET nom=$1, ville=$2, adresse=$3, code_postal=$4, telephone=$5, telephone_mobile=$6,
+     email=$7, contact=$8, type_client=$9, statut=$10, commercial_id=$11, next_visit=$12, last_visit=$13,
+     notes=$14, custom_recurrence=$15, latitude=$16, longitude=$17, siret=$18, tournee=$19,
+     date_modification=$20 WHERE id=$21`,
+    [c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
+     c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
+     c.statut || 'ACTIF', c.commercial_id || req.user.id, c.next_visit || null, c.last_visit || null,
+     c.notes || '', c.custom_recurrence || null, c.latitude || 0, c.longitude || 0,
+     c.siret || '', c.tournee || '', c.date_modification || now, req.params.id]
+  );
+  res.json({ ok: true });
+}));
+
+router.delete('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM clients WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Interactions (Client visits/calls)
+// ============================================
+
+router.get('/interactions', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM interactions ORDER BY date DESC');
+  res.json(result.rows);
+}));
+
+router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
+  const i = req.body;
+  if (!i.client_id) return validationError(res, ['client_id est requis']);
+  if (!i.type) return validationError(res, ['type est requis']);
+
+  const now = new Date().toISOString();
+  const commercialId = i.commercial_id || req.user.id;
+
+  await db.query(
+    `INSERT INTO interactions (id, client_id, commercial_id, type, date, comment, date_creation)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [i.id, i.client_id, commercialId, i.type, i.date || now, i.comment || '', i.date_creation || now]
+  );
+
+  // Update client's last_visit and calculate next_visit
+  const clientResult = await db.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [i.client_id]);
+  if (clientResult.rows.length > 0) {
+    const client = clientResult.rows[0];
+    const visitDate = i.date || now;
+    let nextVisit = null;
+    if (client.statut === 'ACTIF') {
+      nextVisit = calculateNextVisit(client.type_client, client.custom_recurrence, visitDate);
+    }
+    await db.query(
+      'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
+      [visitDate.split('T')[0], nextVisit, now, i.client_id]
+    );
+  }
+
+  res.json({ ok: true });
+}));
+
+router.delete('/interactions/:id', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM interactions WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Tasks (Client tasks)
+// ============================================
+
+router.get('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC');
+  res.json(result.rows);
+}));
+
+router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
+  const t = req.body;
+  if (!t.titre) return validationError(res, ['titre est requis']);
+
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO tasks_client (id, titre, description, statut, priorite, date_echeance, commercial_id, client_id, date_creation, completed_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [t.id, t.titre, t.description || '', t.statut || 'A_FAIRE', t.priorite || 'MOYENNE',
+     t.date_echeance || null, t.commercial_id || req.user.id, t.client_id || null,
+     t.date_creation || now, t.completed_at || null]
+  );
+  res.json({ ok: true });
+}));
+
+router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const t = req.body;
+  if (!t.titre) return validationError(res, ['titre est requis']);
+
+  await db.query(
+    `UPDATE tasks_client SET titre=$1, description=$2, statut=$3, priorite=$4, date_echeance=$5,
+     commercial_id=$6, client_id=$7, completed_at=$8 WHERE id=$9`,
+    [t.titre, t.description || '', t.statut || 'A_FAIRE', t.priorite || 'MOYENNE',
+     t.date_echeance || null, t.commercial_id || null, t.client_id || null,
+     t.completed_at || null, req.params.id]
+  );
+  res.json({ ok: true });
+}));
+
+router.delete('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM tasks_client WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Tournee Config
+// ============================================
+
+router.get('/tournee-config', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM tournee_config');
+  res.json(result.rows);
+}));
+
+router.get('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM tournee_config WHERE commercial_id = $1', [req.params.commercialId]);
+  if (result.rows.length === 0) {
+    return res.json({ commercial_id: req.params.commercialId, config: '{}', notes: '', updated_at: new Date().toISOString() });
+  }
+  res.json(result.rows[0]);
+}));
+
+router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (req, res) => {
+  const { config, notes } = req.body;
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO tournee_config (commercial_id, config, notes, updated_at)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (commercial_id) DO UPDATE SET config = $2, notes = $3, updated_at = $4`,
+    [req.params.commercialId, JSON.stringify(config || {}), notes || '', now]
+  );
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Convert Prospect to Client
+// ============================================
+
+router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (req, res) => {
+  const { prospect_id, type_client, tournee, custom_recurrence } = req.body;
+  if (!prospect_id) return validationError(res, ['prospect_id est requis']);
+
+  const pResult = await db.query('SELECT * FROM prospects WHERE id = $1', [prospect_id]);
+  if (pResult.rows.length === 0) return res.status(404).json({ error: 'Prospect non trouve' });
+
+  const p = pResult.rows[0];
+  const now = new Date().toISOString();
+  const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
+  const nextVisit = calculateNextVisit(clientType, custom_recurrence || null, null);
+  const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+  await db.query(
+    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
+     type_client, statut, commercial_id, next_visit, notes, custom_recurrence,
+     latitude, longitude, tournee, prospect_id, date_creation, date_modification)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+    [clientId, p.nom_etablissement, p.ville || '', p.adresse || '', p.code_postal || '',
+     p.telephone || '', p.email || '', p.nom_contact || '', clientType, 'ACTIF',
+     p.commercial_id, nextVisit || null, p.notes || '', custom_recurrence || null,
+     p.latitude || 0, p.longitude || 0, tournee || '', prospect_id, now, now]
+  );
+
+  // Move prospect to client_gagne stage
+  await db.query(
+    'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
+    ['client_gagne', now, prospect_id]
+  );
+
+  res.json({ ok: true, client_id: clientId });
+}));
 
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
 router.use(hubBridgeRouter);

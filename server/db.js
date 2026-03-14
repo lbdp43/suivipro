@@ -175,6 +175,69 @@ async function initDatabase(attempt = 1) {
         date_creation TEXT NOT NULL,
         FOREIGN KEY (uploaded_by) REFERENCES commerciaux(id)
       );
+
+      CREATE TABLE IF NOT EXISTS clients (
+        id TEXT PRIMARY KEY,
+        nom TEXT NOT NULL,
+        ville TEXT DEFAULT '',
+        adresse TEXT DEFAULT '',
+        code_postal TEXT DEFAULT '',
+        telephone TEXT DEFAULT '',
+        telephone_mobile TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        contact TEXT DEFAULT '',
+        type_client TEXT NOT NULL DEFAULT 'BAR_RESTAURANT_GENERAL',
+        statut TEXT NOT NULL DEFAULT 'ACTIF',
+        commercial_id TEXT NOT NULL,
+        next_visit TEXT,
+        last_visit TEXT,
+        notes TEXT DEFAULT '',
+        custom_recurrence INTEGER,
+        latitude DOUBLE PRECISION DEFAULT 0,
+        longitude DOUBLE PRECISION DEFAULT 0,
+        siret TEXT DEFAULT '',
+        tournee TEXT DEFAULT '',
+        prospect_id TEXT,
+        date_creation TEXT NOT NULL,
+        date_modification TEXT NOT NULL,
+        FOREIGN KEY (commercial_id) REFERENCES commerciaux(id),
+        FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS interactions (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        commercial_id TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'VISITE',
+        date TEXT NOT NULL,
+        comment TEXT DEFAULT '',
+        date_creation TEXT NOT NULL,
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+        FOREIGN KEY (commercial_id) REFERENCES commerciaux(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS tasks_client (
+        id TEXT PRIMARY KEY,
+        titre TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        statut TEXT NOT NULL DEFAULT 'A_FAIRE',
+        priorite TEXT DEFAULT 'MOYENNE',
+        date_echeance TEXT,
+        commercial_id TEXT,
+        client_id TEXT,
+        date_creation TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE SET NULL,
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS tournee_config (
+        commercial_id TEXT PRIMARY KEY,
+        config TEXT NOT NULL DEFAULT '{}',
+        notes TEXT DEFAULT '',
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+      );
     `);
 
     // ============================================

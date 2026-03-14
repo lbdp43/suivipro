@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, ReactNode, use
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
+  Client, Interaction, TaskClient, TourneeConfig,
 } from '../types';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
 
@@ -40,7 +41,16 @@ type Action =
   | { type: 'ADD_PIPELINE_COLUMN'; payload: PipelineColumn }
   | { type: 'REORDER_PIPELINE_COLUMNS'; payload: PipelineColumn[] }
   | { type: 'ADD_DOCUMENT'; payload: Document }
-  | { type: 'DELETE_DOCUMENT'; payload: string };
+  | { type: 'DELETE_DOCUMENT'; payload: string }
+  | { type: 'ADD_CLIENT'; payload: Client }
+  | { type: 'UPDATE_CLIENT'; payload: Client }
+  | { type: 'DELETE_CLIENT'; payload: string }
+  | { type: 'ADD_INTERACTION'; payload: Interaction }
+  | { type: 'DELETE_INTERACTION'; payload: string }
+  | { type: 'ADD_TASK_CLIENT'; payload: TaskClient }
+  | { type: 'UPDATE_TASK_CLIENT'; payload: TaskClient }
+  | { type: 'DELETE_TASK_CLIENT'; payload: string }
+  | { type: 'SAVE_TOURNEE_CONFIG'; payload: TourneeConfig };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -130,6 +140,50 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, documents: [action.payload, ...state.documents] };
     case 'DELETE_DOCUMENT':
       return { ...state, documents: state.documents.filter(d => d.id !== action.payload) };
+    // Clients
+    case 'ADD_CLIENT':
+      return { ...state, clients: [action.payload, ...state.clients] };
+    case 'UPDATE_CLIENT':
+      return { ...state, clients: state.clients.map(c => c.id === action.payload.id ? action.payload : c) };
+    case 'DELETE_CLIENT':
+      return { ...state, clients: state.clients.filter(c => c.id !== action.payload) };
+    // Interactions
+    case 'ADD_INTERACTION': {
+      const newInteractions = [action.payload, ...state.interactions];
+      // Also update the client's last_visit and next_visit
+      const updatedClients = state.clients.map(c => {
+        if (c.id === action.payload.client_id) {
+          const visitDate = action.payload.date.split('T')[0];
+          const freq = c.custom_recurrence || null;
+          let nextVisit: string | null = null;
+          if (c.statut === 'ACTIF' && freq) {
+            const d = new Date(visitDate);
+            d.setDate(d.getDate() + freq);
+            nextVisit = d.toISOString().split('T')[0];
+          }
+          return { ...c, last_visit: visitDate, next_visit: nextVisit, date_modification: new Date().toISOString() };
+        }
+        return c;
+      });
+      return { ...state, interactions: newInteractions, clients: updatedClients };
+    }
+    case 'DELETE_INTERACTION':
+      return { ...state, interactions: state.interactions.filter(i => i.id !== action.payload) };
+    // Tasks Client
+    case 'ADD_TASK_CLIENT':
+      return { ...state, tasksClient: [action.payload, ...state.tasksClient] };
+    case 'UPDATE_TASK_CLIENT':
+      return { ...state, tasksClient: state.tasksClient.map(t => t.id === action.payload.id ? action.payload : t) };
+    case 'DELETE_TASK_CLIENT':
+      return { ...state, tasksClient: state.tasksClient.filter(t => t.id !== action.payload) };
+    // Tournee Config
+    case 'SAVE_TOURNEE_CONFIG': {
+      const exists = state.tourneeConfigs.some(tc => tc.commercial_id === action.payload.commercial_id);
+      if (exists) {
+        return { ...state, tourneeConfigs: state.tourneeConfigs.map(tc => tc.commercial_id === action.payload.commercial_id ? action.payload : tc) };
+      }
+      return { ...state, tourneeConfigs: [...state.tourneeConfigs, action.payload] };
+    }
     default:
       return state;
   }
@@ -169,6 +223,10 @@ interface AppContextType {
   getProspectsForCommercial: (commercialId: string) => Prospect[];
   getCommercial: (id: string) => Commercial | undefined;
   getTag: (id: string) => Tag | undefined;
+  getClient: (id: string) => Client | undefined;
+  getInteractionsForClient: (clientId: string) => Interaction[];
+  getTasksForClient: (clientId: string) => TaskClient[];
+  getClientsForCommercial: (commercialId: string) => Client[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -184,6 +242,10 @@ const emptyState: AppState = {
   currentUser: null,
   pipelineColumns: defaultPipelineColumns,
   documents: [],
+  clients: [],
+  interactions: [],
+  tasksClient: [],
+  tourneeConfigs: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -298,6 +360,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getProspectsForCommercial = useCallback((cid: string) => state.prospects.filter(p => p.commercial_id === cid), [state.prospects]);
   const getCommercial = useCallback((id: string) => state.commerciaux.find(c => c.id === id), [state.commerciaux]);
   const getTag = useCallback((id: string) => state.tags.find(t => t.id === id), [state.tags]);
+  const getClient = useCallback((id: string) => state.clients.find(c => c.id === id), [state.clients]);
+  const getInteractionsForClient = useCallback((cid: string) => state.interactions.filter(i => i.client_id === cid), [state.interactions]);
+  const getTasksForClient = useCallback((cid: string) => state.tasksClient.filter(t => t.client_id === cid), [state.tasksClient]);
+  const getClientsForCommercial = useCallback((cid: string) => state.clients.filter(c => c.commercial_id === cid), [state.clients]);
 
   const contextValue = useMemo(() => ({
     state,
@@ -316,7 +382,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getProspectsForCommercial,
     getCommercial,
     getTag,
-  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag]);
+    getClient,
+    getInteractionsForClient,
+    getTasksForClient,
+    getClientsForCommercial,
+  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial]);
 
   return (
     <AppContext.Provider value={contextValue}>
