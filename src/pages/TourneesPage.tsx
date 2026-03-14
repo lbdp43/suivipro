@@ -135,6 +135,113 @@ function ZoneDayPicker({ label, selected, allZones, onAdd, onRemove }: {
   );
 }
 
+function ProspectionZonePicker({ entries, allZones, onAdd, onRemove, onSlotsChange }: {
+  entries: { zone: string; slots: number }[];
+  allZones: string[];
+  onAdd: (zone: string) => void;
+  onRemove: (zone: string) => void;
+  onSlotsChange: (zone: string, slots: number) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selectedZones = entries.map(e => e.zone);
+  const filtered = allZones.filter(z =>
+    !selectedZones.includes(z) && z.toLowerCase().includes(input.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleAdd = (zone: string) => {
+    onAdd(zone);
+    setInput('');
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} className="space-y-2">
+      {/* Chips with slot counter */}
+      {entries.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {entries.map(({ zone, slots }) => (
+            <div key={zone} className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 border border-green-300 rounded-lg text-xs font-medium text-green-800">
+              <span className="mr-1">{zone}</span>
+              <button
+                type="button"
+                onClick={() => onSlotsChange(zone, Math.max(1, slots - 1))}
+                className="w-4 h-4 flex items-center justify-center rounded hover:bg-green-200 text-green-700 font-bold"
+              >
+                −
+              </button>
+              <span className="min-w-[1.5rem] text-center font-bold text-green-900">
+                {slots}
+              </span>
+              <button
+                type="button"
+                onClick={() => onSlotsChange(zone, slots + 1)}
+                className="w-4 h-4 flex items-center justify-center rounded hover:bg-green-200 text-green-700 font-bold"
+              >
+                +
+              </button>
+              <span className="text-green-600 text-[10px] ml-0.5">RDV</span>
+              <button
+                type="button"
+                onClick={() => onRemove(zone)}
+                className="ml-1 hover:text-red-600 text-green-600"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Input + dropdown */}
+      <div className="relative">
+        <input
+          type="text"
+          className="w-full px-2.5 py-1.5 border border-green-200 bg-white rounded-lg text-xs focus:ring-2 focus:ring-green-400 focus:border-green-400"
+          placeholder="Ajouter un secteur..."
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => { if (e.key === 'Enter' && input.trim()) handleAdd(input.trim()); }}
+        />
+        {open && (filtered.length > 0 || input.trim()) && (
+          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+            {filtered.map(zone => (
+              <button
+                key={zone}
+                type="button"
+                onMouseDown={() => handleAdd(zone)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-gray-700 flex items-center gap-1.5"
+              >
+                <Plus className="w-3 h-3 text-green-500 flex-shrink-0" />
+                {zone}
+              </button>
+            ))}
+            {input.trim() && !allZones.includes(input.trim()) && !selectedZones.includes(input.trim()) && (
+              <button
+                type="button"
+                onMouseDown={() => handleAdd(input.trim())}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-green-700 flex items-center gap-1.5 border-t border-gray-100"
+              >
+                <Plus className="w-3 h-3 flex-shrink-0" />
+                Créer "{input.trim()}"
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TourneesPage() {
   const { state } = useApp();
   const toast = useToast();
@@ -148,7 +255,7 @@ export default function TourneesPage() {
   const [saving, setSaving] = useState(false);
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
   const [weekOffset, setWeekOffset] = useState(0);
-  const [editProspectionZones, setEditProspectionZones] = useState<string[]>([]);
+  const [editProspectionZones, setEditProspectionZones] = useState<{ zone: string; slots: number }[]>([]);
 
   // Unique zones from clients
   const allZones = useMemo(() => {
@@ -194,7 +301,11 @@ export default function TourneesPage() {
     // Extract prospection zones separately, keep day config clean
     const { prospection: prospZones, ...dayConfig } = fullConfig as any;
     setEditConfig(dayConfig);
-    setEditProspectionZones(Array.isArray(prospZones) ? prospZones : []);
+    // Support both old string[] format and new { zone, slots }[] format
+    const parsed: { zone: string; slots: number }[] = Array.isArray(prospZones)
+      ? prospZones.map((p: any) => typeof p === 'string' ? { zone: p, slots: 1 } : p)
+      : [];
+    setEditProspectionZones(parsed);
     setEditNotes(myConfig?.notes || '');
     setEditInfo(myConfig?.tournee_info || '');
     setEditWeekPattern(myConfig?.week_pattern || 'every');
@@ -348,29 +459,6 @@ export default function TourneesPage() {
               </div>
             )}
 
-            {/* Prospection priority zones banner */}
-            {(() => {
-              const prospZones: string[] = Array.isArray((config?.config as any)?.prospection)
-                ? (config?.config as any).prospection
-                : [];
-              if (prospZones.length === 0) return null;
-              return (
-                <div className="flex items-start gap-2 p-2 sm:p-3 bg-green-50 border border-green-200 rounded-lg mb-3">
-                  <div className="w-3 h-3 mt-0.5 rounded-full bg-green-500 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs font-semibold text-green-800 mb-1">Zones ouvertes a la prospection :</p>
-                    <div className="flex flex-wrap gap-1">
-                      {prospZones.map((z: string) => (
-                        <span key={z} className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full border border-green-300 font-medium">
-                          {z}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
             {hasConfig ? (
               <>
                 {/* Mobile: vertical list */}
@@ -415,6 +503,33 @@ export default function TourneesPage() {
             ) : (
               <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>
             )}
+
+            {/* Prospection priority zones banner — after the day grid to avoid visual duplication */}
+            {(() => {
+              const raw = (config?.config as any)?.prospection;
+              const prospZones: { zone: string; slots: number }[] = Array.isArray(raw)
+                ? raw.map((p: any) => typeof p === 'string' ? { zone: p, slots: 1 } : p)
+                : [];
+              if (prospZones.length === 0) return null;
+              return (
+                <div className="flex items-start gap-2 p-2 sm:p-3 bg-green-50 border border-green-200 rounded-lg mt-3">
+                  <div className="w-3 h-3 mt-0.5 rounded-full bg-green-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-green-800 mb-1">Zones ouvertes a la prospection :</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {prospZones.map(({ zone, slots }) => (
+                        <span key={zone} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full border border-green-300 font-medium">
+                          {zone}
+                          <span className="bg-green-600 text-white text-[10px] font-bold px-1.5 py-0 rounded-full ml-0.5">
+                            {slots} RDV
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -571,12 +686,16 @@ export default function TourneesPage() {
             <p className="text-[11px] text-green-700 mb-2.5">
               Indiquez les secteurs ou vous souhaitez que la prospection vous cale des rendez-vous.
             </p>
-            <ZoneDayPicker
-              label=""
-              selected={editProspectionZones}
+            <ProspectionZonePicker
+              entries={editProspectionZones}
               allZones={allZones}
-              onAdd={zone => setEditProspectionZones(prev => prev.includes(zone) ? prev : [...prev, zone])}
-              onRemove={zone => setEditProspectionZones(prev => prev.filter(z => z !== zone))}
+              onAdd={zone => setEditProspectionZones(prev =>
+                prev.find(p => p.zone === zone) ? prev : [...prev, { zone, slots: 1 }]
+              )}
+              onRemove={zone => setEditProspectionZones(prev => prev.filter(p => p.zone !== zone))}
+              onSlotsChange={(zone, slots) => setEditProspectionZones(prev =>
+                prev.map(p => p.zone === zone ? { ...p, slots } : p)
+              )}
             />
           </div>
 
