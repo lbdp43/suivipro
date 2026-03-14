@@ -46,6 +46,7 @@ export default function ClientsPage() {
   const [filterTournee, setFilterTournee] = useState<string>('');
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [forceCreate, setForceCreate] = useState(false);
   const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(0);
@@ -84,6 +85,7 @@ export default function ClientsPage() {
   const openNewForm = () => {
     setEditingClient(null);
     setFormData(emptyForm());
+    setForceCreate(false);
     setShowForm(true);
   };
 
@@ -95,6 +97,7 @@ export default function ClientsPage() {
 
   const saveClient = () => {
     if (!formData.nom?.trim()) return;
+    if (!editingClient && !forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0)) return;
     const now = new Date().toISOString();
 
     if (editingClient) {
@@ -301,6 +304,30 @@ export default function ClientsPage() {
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const lateCount = state.clients.filter(c => getVisitStatus(c) === 'LATE').length;
+
+  // Duplicate detection
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
+
+  const duplicateClients = useMemo(() => {
+    if (!showForm || editingClient) return [];
+    const q = normalize(formData.nom || '');
+    if (q.length < 3) return [];
+    return state.clients.filter(c => {
+      const n = normalize(c.nom);
+      return n.includes(q) || q.includes(n);
+    });
+  }, [formData.nom, showForm, editingClient, state.clients]);
+
+  const duplicateProspects = useMemo(() => {
+    if (!showForm || editingClient) return [];
+    const q = normalize(formData.nom || '');
+    if (q.length < 3) return [];
+    return state.prospects.filter(p => {
+      const n = normalize(p.nom_etablissement);
+      return n.includes(q) || q.includes(n);
+    });
+  }, [formData.nom, showForm, editingClient, state.prospects]);
 
   // Selected client detail
   const selectedClient = selectedId ? state.clients.find(c => c.id === selectedId) : null;
@@ -821,10 +848,42 @@ export default function ClientsPage() {
                 <input
                   type="text"
                   value={formData.nom || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, nom: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+                  onChange={e => { setFormData(prev => ({ ...prev, nom: e.target.value })); setForceCreate(false); }}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500 ${
+                    !forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0) ? 'border-orange-300' : 'border-gray-200'
+                  }`}
                   placeholder="Nom du client"
+                  autoFocus
                 />
+                {!forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0) && (
+                  <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p className="text-xs font-semibold text-orange-700 mb-1.5 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Doublons potentiels detectes
+                    </p>
+                    <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
+                      {duplicateClients.map(c => (
+                        <div key={c.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-orange-200 text-xs">
+                          <span className="font-medium text-gray-800">{c.nom}</span>
+                          <span className="text-orange-500 ml-2">{c.ville && `${c.ville} · `}Client</span>
+                        </div>
+                      ))}
+                      {duplicateProspects.map(p => (
+                        <div key={p.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200 text-xs">
+                          <span className="font-medium text-gray-800">{p.nom_etablissement}</span>
+                          <span className="text-amber-600 ml-2">{p.ville && `${p.ville} · `}Prospect</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                      onClick={() => setForceCreate(true)}
+                    >
+                      Creer quand meme
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Type & Status */}

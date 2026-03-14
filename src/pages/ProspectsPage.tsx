@@ -393,10 +393,26 @@ export default function ProspectsPage() {
     });
   }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.prospects]);
 
+  // Also check existing clients
+  const liveClientDuplicates = useMemo(() => {
+    if (!showForm || editingProspect) return [];
+    const nom = (formData.nom_etablissement || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tel = (formData.telephone || '').trim();
+    const email = (formData.email || '').trim().toLowerCase();
+    if (nom.length < 3 && tel.length < 4 && email.length < 5) return [];
+    return state.clients.filter(c => {
+      const cn = c.nom.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (nom.length >= 3 && (cn.includes(nom) || nom.includes(cn))) return true;
+      if (tel.length >= 4 && c.telephone && c.telephone.trim().includes(tel)) return true;
+      if (email.length >= 5 && c.email && c.email.trim().toLowerCase().includes(email)) return true;
+      return false;
+    });
+  }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
+
   const saveProspect = async () => {
     if (!formData.nom_etablissement) return;
     // Block save if duplicates found and user hasn't forced creation
-    if (!editingProspect && !forceCreate && liveDuplicates.length > 0) {
+    if (!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0)) {
       return;
     }
     setSaving(true);
@@ -1491,18 +1507,19 @@ export default function ProspectsPage() {
               </div>
 
               {/* Live duplicate warning */}
-              {!editingProspect && !forceCreate && liveDuplicates.length > 0 && (
+              {!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0) && (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
-                  <p className="text-xs font-semibold text-amber-800 mb-2">
-                    Attention - Prospect(s) similaire(s) existant(s) :
+                  <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1">
+                    ⚠️ Doublons potentiels detectes
                   </p>
-                  <div className="space-y-1.5 mb-3 max-h-32 overflow-y-auto">
+                  <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
                     {liveDuplicates.slice(0, 5).map(dup => (
                       <div key={dup.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200">
                         <div className="text-xs text-gray-700 min-w-0">
                           <span className="font-medium">{dup.nom_etablissement}</span>
                           {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
                           {dup.ville && <span className="text-gray-400 ml-1">({dup.ville})</span>}
+                          <span className="ml-1.5 text-[10px] text-amber-600 font-medium">Prospect</span>
                         </div>
                         <button
                           type="button"
@@ -1513,8 +1530,18 @@ export default function ProspectsPage() {
                         </button>
                       </div>
                     ))}
-                    {liveDuplicates.length > 5 && (
-                      <p className="text-[10px] text-amber-600">+ {liveDuplicates.length - 5} autre(s)...</p>
+                    {liveClientDuplicates.slice(0, 5).map(c => (
+                      <div key={c.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-orange-200">
+                        <div className="text-xs text-gray-700 min-w-0">
+                          <span className="font-medium">{c.nom}</span>
+                          {c.telephone && <span className="text-gray-500 ml-2">{c.telephone}</span>}
+                          {c.ville && <span className="text-gray-400 ml-1">({c.ville})</span>}
+                          <span className="ml-1.5 text-[10px] text-orange-600 font-medium">Client existant</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(liveDuplicates.length + liveClientDuplicates.length) > 5 && (
+                      <p className="text-[10px] text-amber-600">+ {liveDuplicates.length + liveClientDuplicates.length - 5} autre(s)...</p>
                     )}
                   </div>
                   <button
