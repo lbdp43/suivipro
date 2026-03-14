@@ -8,6 +8,27 @@ import hubBridgeRouter from './hub-bridge.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
+
+// Geocoding helper using api-adresse.data.gouv.fr
+async function geocodeServer(adresse) {
+  if (!adresse || adresse.trim().length < 3) return null;
+  try {
+    const params = new URLSearchParams({ q: adresse, limit: '1' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`https://api-adresse.data.gouv.fr/search/?${params}`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.features && data.features.length > 0) {
+      const [lng, lat] = data.features[0].geometry.coordinates;
+      return { latitude: lat, longitude: lng };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 if (!JWT_SECRET) {
   console.error('FATAL: JWT_SECRET environment variable is required. Set it before starting the server.');
   process.exit(1);
@@ -1640,6 +1661,14 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const nextVisit = await calculateNextVisit(clientType, null, null);
   const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+  // Geocode if no coordinates
+  let lat = eb.latitude || 0;
+  let lng = eb.longitude || 0;
+  if ((!lat || !lng) && (eb.address || eb.city)) {
+    const geo = await geocodeServer([eb.address, eb.postal_code, eb.city].filter(Boolean).join(' '));
+    if (geo) { lat = geo.latitude; lng = geo.longitude; }
+  }
+
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
      type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, date_creation, date_modification)
@@ -1647,7 +1676,7 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
     [clientId, eb.name, eb.city || '', eb.address || '', eb.postal_code || '',
      eb.phone || '', eb.phone_mobile || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
      commercial_id || req.user.id, nextVisit || null, eb.notes || '', eb.siret || '',
-     tournee || eb.tournee || '', eb.latitude || 0, eb.longitude || 0, now, now]
+     tournee || eb.tournee || '', lat, lng, now, now]
   );
 
   await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, req.params.id]);
@@ -1783,6 +1812,25 @@ router.delete('/assignment-rules/:id', authMiddleware, asyncHandler(async (req, 
 router.get('/webhooks', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 50');
   res.json(result.rows);
+}));
+
+// Geocode all clients missing coordinates
+router.post('/clients/geocode-missing', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    "SELECT id, adresse, code_postal, ville FROM clients WHERE (latitude IS NULL OR longitude IS NULL OR (latitude = 0 AND longitude = 0)) AND (adresse != '' OR ville != '')"
+  );
+  let geocoded = 0;
+  for (const client of result.rows) {
+    const fullAddress = [client.adresse, client.code_postal, client.ville].filter(Boolean).join(' ');
+    const geo = await geocodeServer(fullAddress);
+    if (geo) {
+      await db.query('UPDATE clients SET latitude = $1, longitude = $2 WHERE id = $3', [geo.latitude, geo.longitude, client.id]);
+      geocoded++;
+    }
+    // Rate limit: 50ms between requests
+    await new Promise(r => setTimeout(r, 50));
+  }
+  res.json({ ok: true, total: result.rows.length, geocoded });
 }));
 
 // Import clients from Excel (bulk)

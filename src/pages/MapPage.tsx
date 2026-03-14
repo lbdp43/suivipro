@@ -180,7 +180,9 @@ export default function MapPage() {
   const filteredClients = useMemo(() => {
     if (!showClients) return [];
     return state.clients.filter(c => {
-      if (c.latitude == null || c.longitude == null || (c.latitude === 0 && c.longitude === 0)) return false;
+      const lat = Number(c.latitude);
+      const lng = Number(c.longitude);
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return false;
       if (c.statut === 'INACTIF') return false;
       if (mapFilterCommercial && c.commercial_id !== mapFilterCommercial) return false;
       if (searchTerm) {
@@ -194,6 +196,15 @@ export default function MapPage() {
       return true;
     });
   }, [state.clients, showClients, searchTerm, mapFilterCommercial]);
+
+  // Clients sans coordonnees GPS
+  const clientsWithoutGPS = useMemo(() => {
+    return state.clients.filter(c => {
+      const lat = Number(c.latitude);
+      const lng = Number(c.longitude);
+      return c.statut !== 'INACTIF' && (!lat || !lng || isNaN(lat) || isNaN(lng));
+    }).length;
+  }, [state.clients]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -350,9 +361,14 @@ export default function MapPage() {
                   {maxMarkers === 0 ? filteredProspects.length : Math.min(filteredProspects.length, maxMarkers)}{maxMarkers > 0 && filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
                   <span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
                 </span>
-                {showClients && filteredClients.length > 0 && (
+                {showClients && (
                   <span className="text-emerald-600 font-medium">
                     + {filteredClients.length} client{filteredClients.length > 1 ? 's' : ''}
+                    {clientsWithoutGPS > 0 && (
+                      <span className="text-amber-500 text-[10px] ml-1" title={`${clientsWithoutGPS} client(s) sans coordonnees GPS`}>
+                        ({clientsWithoutGPS} sans GPS)
+                      </span>
+                    )}
                   </span>
                 )}
               </>
@@ -373,7 +389,7 @@ export default function MapPage() {
           </button>
           {state.commerciaux.map(c => {
             const prospectCount = state.prospects.filter(p => p.commercial_id === c.id && p.latitude && p.longitude).length;
-            const clientCount = state.clients.filter(cl => cl.commercial_id === c.id && cl.latitude != null && cl.longitude != null && !(cl.latitude === 0 && cl.longitude === 0) && cl.statut !== 'INACTIF').length;
+            const clientCount = state.clients.filter(cl => cl.commercial_id === c.id && Number(cl.latitude) && Number(cl.longitude) && cl.statut !== 'INACTIF').length;
             const isActive = mapFilterCommercial === c.id;
             return (
               <button
@@ -867,7 +883,7 @@ export default function MapPage() {
           {showClients && filteredClients.map(client => (
             <Marker
               key={`cli-${client.id}`}
-              position={[client.latitude, client.longitude]}
+              position={[Number(client.latitude), Number(client.longitude)]}
               icon={createMarkerIcon('#10b981')}
             >
               <Popup>
