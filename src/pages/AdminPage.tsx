@@ -122,6 +122,23 @@ export default function AdminPage() {
     } catch { toast.error('Erreur lors de l\'import'); }
   };
 
+  const syncEbClient = async (ebId: number) => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch(`/api/easybeer/pending-clients/${ebId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Synchronise: ${data.name || 'OK'}`);
+        loadEasyBeerData();
+      } else {
+        toast.error(data.message || 'Echec de la synchronisation');
+      }
+    } catch { toast.error('Erreur de synchronisation'); }
+  };
+
   const dismissEbClient = async (ebId: number) => {
     try {
       const token = localStorage.getItem('suivipro_token');
@@ -995,14 +1012,25 @@ export default function AdminPage() {
                 {ebPending.map(client => (
                   <div key={client.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{client.name}</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {client.name || `Client EasyBeer #${client.easybeer_id}`}
+                      </p>
                       <p className="text-xs text-gray-500 truncate">
-                        {[client.city, client.phone, client.email].filter(Boolean).join(' - ')}
+                        {[client.city, client.phone, client.email].filter(Boolean).join(' - ') || `ID: ${client.easybeer_id} — En attente de synchronisation`}
                       </p>
                       {client.commercial_email && (
                         <p className="text-[10px] text-gray-400">Commercial: {client.commercial_email}</p>
                       )}
                     </div>
+                    {!client.name && (
+                      <button
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium"
+                        onClick={() => syncEbClient(client.id)}
+                        title="Recuperer les infos depuis EasyBeer"
+                      >
+                        Sync
+                      </button>
+                    )}
                     <button
                       className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs font-medium"
                       onClick={() => importEbClient(client.id)}

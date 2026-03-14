@@ -1395,6 +1395,58 @@ router.delete('/easybeer/pending-clients/:id', authMiddleware, asyncHandler(asyn
   res.json({ ok: true });
 }));
 
+// Re-sync a pending client from EasyBeer API
+router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(async (req, res) => {
+  const ebClient = await db.query('SELECT * FROM easybeer_clients WHERE id = $1', [req.params.id]);
+  if (ebClient.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
+  const eb = ebClient.rows[0];
+  const ebId = eb.easybeer_id;
+
+  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  const config = configResult.rows[0];
+  if (!config?.username || !config?.api_url) {
+    return res.json({ ok: false, message: 'Configuration EasyBeer incomplete' });
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+  const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+  const pathsToTry = [`/tiers/${ebId}`, `/clients/${ebId}`, `/api/tiers/${ebId}`, `/api/clients/${ebId}`];
+
+  for (const path of pathsToTry) {
+    try {
+      const resp = await fetch(`${apiBase}${path}`, {
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const clientName = data.nom || data.libelle || data.raisonSociale || '';
+        const now = new Date().toISOString();
+        await db.query(
+          `UPDATE easybeer_clients SET
+            name = COALESCE(NULLIF($2, ''), name),
+            type = COALESCE(NULLIF($3, ''), type),
+            contact_name = COALESCE(NULLIF($4, ''), contact_name),
+            phone = COALESCE(NULLIF($5, ''), phone),
+            email = COALESCE(NULLIF($6, ''), email),
+            city = COALESCE(NULLIF($7, ''), city),
+            address = COALESCE(NULLIF($8, ''), address),
+            postal_code = COALESCE(NULLIF($9, ''), postal_code),
+            notes = COALESCE(NULLIF($10, ''), notes),
+            commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
+            raw_data = $12, updated_at = $13
+          WHERE id = $1`,
+          [req.params.id, clientName, data.type || '', data.contact || '', data.phone || data.mobile || '', data.email || '',
+           data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '', data.notes || '',
+           data.commercialEmail || '', JSON.stringify(data), now]
+        );
+        return res.json({ ok: true, message: `Synchronise via ${path}`, name: clientName });
+      }
+    } catch { /* try next */ }
+  }
+  return res.json({ ok: false, message: `Impossible de recuperer le client ${ebId} depuis l'API EasyBeer` });
+}));
+
 // Assignment rules
 router.get('/assignment-rules', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM assignment_rules ORDER BY created_at');
