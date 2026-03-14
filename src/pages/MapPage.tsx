@@ -63,6 +63,7 @@ export default function MapPage() {
   const [rdvFilterCommercial, setRdvFilterCommercial] = usePersistedState<string>('map_rdv_commercial', '');
   const [maxMarkers, setMaxMarkers] = usePersistedState<number>('map_max_markers', 200);
   const [showClients, setShowClients] = usePersistedState<boolean>('map_show_clients', false);
+  const [mapFilterCommercial, setMapFilterCommercial] = usePersistedState<string>('map_filter_commercial', '');
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
   const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
@@ -149,6 +150,7 @@ export default function MapPage() {
       if (showRdvPanel) {
         return rdvProspectIds.has(p.id);
       }
+      if (mapFilterCommercial && p.commercial_id !== mapFilterCommercial) return false;
       if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
@@ -171,7 +173,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds, mapFilterCommercial]);
 
   // Filtered clients for map
   const filteredClients = useMemo(() => {
@@ -179,6 +181,7 @@ export default function MapPage() {
     return state.clients.filter(c => {
       if (!c.latitude || !c.longitude) return false;
       if (c.statut === 'INACTIF') return false;
+      if (mapFilterCommercial && c.commercial_id !== mapFilterCommercial) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -189,7 +192,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.clients, showClients, searchTerm]);
+  }, [state.clients, showClients, searchTerm, mapFilterCommercial]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
@@ -337,6 +340,40 @@ export default function MapPage() {
               </>
             )}
           </div>
+        </div>
+
+        {/* Filtre par commercial sur la carte */}
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:flex-wrap sm:pb-0">
+          <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1 flex-shrink-0">
+            <Users className="w-3 h-3" /> Commercial :
+          </span>
+          <button
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex-shrink-0 ${!mapFilterCommercial ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            onClick={() => setMapFilterCommercial('')}
+          >
+            Tous
+          </button>
+          {state.commerciaux.map(c => {
+            const prospectCount = state.prospects.filter(p => p.commercial_id === c.id && p.latitude && p.longitude).length;
+            const clientCount = showClients ? state.clients.filter(cl => cl.commercial_id === c.id && cl.latitude && cl.longitude && cl.statut !== 'INACTIF').length : 0;
+            const total = prospectCount + clientCount;
+            return (
+              <button
+                key={c.id}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
+                  mapFilterCommercial === c.id ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => setMapFilterCommercial(mapFilterCommercial === c.id ? '' : c.id)}
+              >
+                {c.prenom}
+                <span className={`text-[9px] rounded-full w-4 h-4 flex items-center justify-center ${
+                  mapFilterCommercial === c.id ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {total}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Legende couleurs pipeline - cachee sur mobile */}
