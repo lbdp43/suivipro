@@ -531,8 +531,7 @@ export default function VisitesPage() {
         const isPast = day.is_past && !day.is_today;
         return (
           <div key={expandKey} className={`rounded-xl border overflow-hidden transition-shadow ${
-            day.is_today ? 'border-brewery-300 bg-brewery-50/30 shadow-sm'
-              : isPast ? 'border-gray-200 bg-gray-50/50 opacity-60' : 'border-gray-200 bg-white'
+            day.is_today ? 'border-brewery-300 bg-brewery-50/30 shadow-sm' : 'border-gray-200 bg-white'
           }`}>
             <button
               onClick={() => {
