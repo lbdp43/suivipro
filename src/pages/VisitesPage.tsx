@@ -340,7 +340,7 @@ export default function VisitesPage() {
         } else if (d.view === 'single') {
           const expanded = new Set<string>();
           d.week_days.forEach(wd => {
-            if (wd.is_today || wd.clients.length > 0) expanded.add(wd.day_key);
+            if (wd.is_today) expanded.add(wd.day_key);
           });
           setExpandedDays(expanded);
         } else {
