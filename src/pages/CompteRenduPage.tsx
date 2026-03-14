@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
-  StickyNote, X,
+  StickyNote, X, FileText, Bell, Users2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -75,11 +75,7 @@ export default function CompteRenduPage() {
     return `${d.getFullYear()}-01-01`;
   });
   const [periodeEnd, setPeriodeEnd] = useState(todayStr);
-  const [expandedRdv, setExpandedRdv] = useState<string | null>(null);
-  const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
   const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
-  const [visitComments, setVisitComments] = useState<Record<string, string>>({});
-  const [visitTypes, setVisitTypes] = useState<Record<string, InteractionType>>({});
   const [visitRdvDate, setVisitRdvDate] = useState<Record<string, string>>({});
   const [visitRdvHeureDebut, setVisitRdvHeureDebut] = useState<Record<string, string>>({});
   const [visitRdvHeureFin, setVisitRdvHeureFin] = useState<Record<string, string>>({});
@@ -91,6 +87,21 @@ export default function CompteRenduPage() {
   const [showRdvSection, setShowRdvSection] = useState(true);
   const [showVisitesSection, setShowVisitesSection] = useState(true);
   const [expandedResult, setExpandedResult] = useState<string | null>(null);
+
+  // Modal states
+  const [crModalRdv, setCrModalRdv] = useState<Appointment | null>(null); // Compte-rendu modal
+  const [visitModalClient, setVisitModalClient] = useState<Client | null>(null); // Visite/Appel modal
+  const [visitModalType, setVisitModalType] = useState<InteractionType>('VISITE'); // Type for visit modal
+  const [rdvModalClient, setRdvModalClient] = useState<Client | null>(null); // Planifier RDV modal
+  const [rdvModalComment, setRdvModalComment] = useState('');
+  const [rdvModalCommercialId, setRdvModalCommercialId] = useState('');
+  const [crModalNotes, setCrModalNotes] = useState('');
+  const [visitModalComment, setVisitModalComment] = useState('');
+
+  // Reminder state for CR modal
+  const [showRappelSection, setShowRappelSection] = useState(false);
+  const [rappelDate, setRappelDate] = useState('');
+  const [rappelMessage, setRappelMessage] = useState('');
 
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
@@ -305,81 +316,7 @@ export default function CompteRenduPage() {
 
   const visitedClientIds = new Set(todayInteractions.map((i: Interaction) => i.client_id));
 
-  // Actions
-  const saveCompteRendu = async (rdv: Appointment) => {
-    const form = crForms[rdv.id];
-    if (!form) return;
-    setSaving(rdv.id);
-    try {
-      const updated = { ...rdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
-      const token = localStorage.getItem('suivipro_token');
-      const res = await fetch(`/api/appointments/${rdv.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated),
-      });
-      if (res.ok) {
-        dispatch({ type: 'UPDATE_APPOINTMENT', payload: updated });
-        toast.success('Compte rendu enregistre');
-        setExpandedRdv(null);
-      }
-    } catch { toast.error('Erreur lors de la sauvegarde'); }
-    finally { setSaving(null); }
-  };
-
-  const logVisit = async (client: Client) => {
-    const type = visitTypes[client.id] || 'VISITE';
-    const comment = visitComments[client.id] || '';
-    if (!comment.trim()) { toast.error('Ajoutez un commentaire'); return; }
-    setSaving(client.id);
-    try {
-      const now = new Date().toISOString();
-      const token = localStorage.getItem('suivipro_token');
-
-      // Create interaction
-      const interaction = {
-        id: generateId(), client_id: client.id, commercial_id: userId!,
-        type, date: type === 'RDV_PLANIFIE' && visitRdvDate[client.id] ? new Date(visitRdvDate[client.id]).toISOString() : now,
-        comment: comment.trim(), date_creation: now,
-      };
-      const res = await fetch('/api/interactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) throw new Error();
-      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
-
-      // If RDV_PLANIFIE, also create an appointment
-      if (type === 'RDV_PLANIFIE' && visitRdvDate[client.id]) {
-        const rdvId = generateId();
-        const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
-        const rdv = {
-          id: rdvId, prospect_id: '', client_id: client.id,
-          commercial_id: userId!, prospecteur_id: userId!,
-          date: visitRdvDate[client.id],
-          heure_debut: visitRdvHeureDebut[client.id] || '10:00',
-          heure_fin: visitRdvHeureFin[client.id] || '11:00',
-          lieu: visitRdvLieu[client.id] || addr,
-          notes: comment.trim(), statut: 'planifie' as const,
-          created_at: now,
-        };
-        const rdvRes = await fetch('/api/appointments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(rdv),
-        });
-        if (rdvRes.ok) dispatch({ type: 'ADD_APPOINTMENT', payload: rdv });
-        toast.success(`RDV planifie pour ${client.nom}`);
-      } else {
-        toast.success(type === 'VISITE' ? `Visite enregistree pour ${client.nom}` : `Appel enregistre pour ${client.nom}`);
-      }
-      setExpandedVisit(null);
-      setVisitComments(prev => ({ ...prev, [client.id]: '' }));
-      setVisitTypes(prev => ({ ...prev, [client.id]: 'VISITE' }));
-    } catch { toast.error('Erreur lors de la sauvegarde'); }
-    finally { setSaving(null); }
-  };
+  // Actions (moved to modal handlers above)
 
   const getProspectName = (id: string) => state.prospects.find((p: any) => p.id === id)?.nom_etablissement || '';
   const getClientName = (id: string) => state.clients.find((c: Client) => c.id === id)?.nom || '';
@@ -415,72 +352,191 @@ export default function CompteRenduPage() {
     finally { setNoteSaving(false); }
   };
 
-  // RDV card (reusable for day and expanded day views)
+  // Open CR modal for an RDV
+  const openCrModal = (rdv: Appointment) => {
+    setCrModalRdv(rdv);
+    if (!crForms[rdv.id]) {
+      setCrForms(prev => ({ ...prev, [rdv.id]: { compte_rendu: (rdv.compte_rendu || '') as AppointmentResult, notes: rdv.notes_compte_rendu || '' } }));
+    }
+    setCrModalNotes(rdv.notes_compte_rendu || '');
+    setShowRappelSection(false);
+    setRappelDate('');
+    setRappelMessage('');
+  };
+
+  // Open visit modal
+  const openVisitModal = (client: Client, type: InteractionType = 'VISITE') => {
+    setVisitModalClient(client);
+    setVisitModalType(type);
+    setVisitModalComment('');
+  };
+
+  // Open RDV planification modal
+  const openRdvModal = (client: Client) => {
+    const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
+    setRdvModalClient(client);
+    setRdvModalComment('');
+    setRdvModalCommercialId(userId || '');
+    setVisitRdvDate(prev => ({ ...prev, [client.id]: todayStr }));
+    setVisitRdvLieu(prev => ({ ...prev, [client.id]: addr }));
+    setVisitRdvHeureDebut(prev => ({ ...prev, [client.id]: '10:00' }));
+    setVisitRdvHeureFin(prev => ({ ...prev, [client.id]: '11:00' }));
+  };
+
+  // Save from visit modal
+  const saveVisitModal = async () => {
+    if (!visitModalClient || !visitModalComment.trim()) { toast.error('Le commentaire est obligatoire'); return; }
+    setSaving(visitModalClient.id);
+    try {
+      const now = new Date().toISOString();
+      const token = localStorage.getItem('suivipro_token');
+      const interaction = {
+        id: generateId(), client_id: visitModalClient.id, commercial_id: userId!,
+        type: visitModalType, date: now, comment: visitModalComment.trim(), date_creation: now,
+      };
+      const res = await fetch('/api/interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(interaction),
+      });
+      if (!res.ok) throw new Error();
+      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+      toast.success(visitModalType === 'VISITE' ? `Visite enregistree pour ${visitModalClient.nom}` : `Appel enregistre pour ${visitModalClient.nom}`);
+      setVisitModalClient(null);
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setSaving(null); }
+  };
+
+  // Save from RDV modal
+  const saveRdvModal = async () => {
+    if (!rdvModalClient || !rdvModalComment.trim()) { toast.error('Le commentaire est obligatoire'); return; }
+    if (!visitRdvDate[rdvModalClient.id]) { toast.error('La date est obligatoire'); return; }
+    setSaving(rdvModalClient.id);
+    try {
+      const now = new Date().toISOString();
+      const token = localStorage.getItem('suivipro_token');
+      const addr = [rdvModalClient.adresse, rdvModalClient.ville].filter(Boolean).join(', ');
+
+      // Create interaction
+      const interaction = {
+        id: generateId(), client_id: rdvModalClient.id, commercial_id: userId!,
+        type: 'RDV_PLANIFIE' as InteractionType,
+        date: new Date(visitRdvDate[rdvModalClient.id]).toISOString(),
+        comment: rdvModalComment.trim(), date_creation: now,
+      };
+      const res = await fetch('/api/interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(interaction),
+      });
+      if (!res.ok) throw new Error();
+      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+
+      // Create appointment
+      const rdvId = generateId();
+      const assignCommercialId = rdvModalCommercialId || userId!;
+      const rdv = {
+        id: rdvId, prospect_id: '', client_id: rdvModalClient.id,
+        commercial_id: assignCommercialId, prospecteur_id: assignCommercialId,
+        date: visitRdvDate[rdvModalClient.id],
+        heure_debut: visitRdvHeureDebut[rdvModalClient.id] || '10:00',
+        heure_fin: visitRdvHeureFin[rdvModalClient.id] || '11:00',
+        lieu: visitRdvLieu[rdvModalClient.id] || addr,
+        notes: rdvModalComment.trim(), statut: 'planifie' as const,
+        created_at: now,
+      };
+      const rdvRes = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(rdv),
+      });
+      if (rdvRes.ok) dispatch({ type: 'ADD_APPOINTMENT', payload: rdv });
+      toast.success(`RDV planifie pour ${rdvModalClient.nom}`);
+      setRdvModalClient(null);
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setSaving(null); }
+  };
+
+  // Save CR from modal
+  const saveCrModal = async () => {
+    if (!crModalRdv) return;
+    const form = crForms[crModalRdv.id];
+    if (!form?.compte_rendu) { toast.error('Selectionnez un resultat'); return; }
+    if (!form.notes?.trim()) { toast.error('Les notes sont obligatoires'); return; }
+    setSaving(crModalRdv.id);
+    try {
+      const updated = { ...crModalRdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch(`/api/appointments/${crModalRdv.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        dispatch({ type: 'UPDATE_APPOINTMENT', payload: updated });
+        toast.success('Compte rendu enregistre');
+        setCrModalRdv(null);
+      }
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setSaving(null); }
+  };
+
+  // RDV card - compact fiche with action buttons
   const renderRdvCard = (rdv: Appointment) => {
-    const isExpanded = expandedRdv === rdv.id;
     const hasCR = !!rdv.compte_rendu;
     const entityName = getEntityName(rdv);
     const rdvOwner = isTeamView ? getCommercialName(rdv.commercial_id) : '';
     return (
-      <div key={rdv.id} className={`bg-white rounded-xl border ${hasCR ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} overflow-hidden`}>
-        <button
-          onClick={() => {
-            setExpandedRdv(isExpanded ? null : rdv.id);
-            if (!isExpanded && !crForms[rdv.id]) {
-              setCrForms(prev => ({ ...prev, [rdv.id]: { compte_rendu: (rdv.compte_rendu || '') as AppointmentResult, notes: rdv.notes_compte_rendu || '' } }));
-            }
-          }}
-          className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50"
-        >
-          {hasCR ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0" />}
+      <div key={rdv.id} className={`bg-white rounded-xl border ${hasCR ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} p-3`}>
+        <div className="flex items-start gap-3">
+          {hasCR ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm text-gray-800 truncate">{entityName}</span>
+              <span className="font-semibold text-sm text-gray-800">{entityName}</span>
               {rdvOwner && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{rdvOwner}</span>
               )}
               {hasCR && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+            <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
               {rdv.heure_debut && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>}
               {rdv.lieu && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{rdv.lieu}</span>}
             </div>
+            {rdv.notes && <p className="text-[10px] text-gray-400 mt-1 italic line-clamp-1">{rdv.notes}</p>}
+            {hasCR && rdv.notes_compte_rendu && <p className="text-[10px] text-green-600 mt-1 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
           </div>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-        </button>
-        {isExpanded && (
-          <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
-            {rdv.notes && <p className="text-xs text-gray-500 italic bg-gray-50 rounded-lg p-2">{rdv.notes}</p>}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Resultat du RDV</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
-                  const sel = crForms[rdv.id]?.compte_rendu === key;
-                  const colors: Record<string, string> = {
-                    client: 'border-green-300 bg-green-50 text-green-700', mail_envoye: 'border-blue-300 bg-blue-50 text-blue-700',
-                    commande_plus_tard: 'border-yellow-300 bg-yellow-50 text-yellow-700', a_relancer: 'border-orange-300 bg-orange-50 text-orange-700',
-                    pas_interesse: 'border-red-300 bg-red-50 text-red-700',
-                  };
-                  return (
-                    <button key={key}
-                      onClick={() => setCrForms(prev => ({ ...prev, [rdv.id]: { ...prev[rdv.id], compte_rendu: key as AppointmentResult } }))}
-                      className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${sel ? colors[key] || 'border-gray-300 bg-gray-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                    >{label}</button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Notes</label>
-              <textarea value={crForms[rdv.id]?.notes || ''} onChange={e => setCrForms(prev => ({ ...prev, [rdv.id]: { ...prev[rdv.id], notes: e.target.value } }))}
-                placeholder="Notes sur le RDV..." className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none h-20" />
-            </div>
-            <button onClick={() => saveCompteRendu(rdv)} disabled={saving === rdv.id || !crForms[rdv.id]?.compte_rendu}
-              className="w-full py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" />{saving === rdv.id ? 'Enregistrement...' : 'Enregistrer le compte rendu'}
+        </div>
+        {/* Quick action buttons */}
+        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-gray-100">
+          {!hasCR ? (
+            <button
+              onClick={() => openCrModal(rdv)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" /> Compte-rendu
             </button>
-          </div>
-        )}
+          ) : (
+            <button
+              onClick={() => openCrModal(rdv)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" /> Modifier le CR
+            </button>
+          )}
+          {(rdv.client_id || rdv.prospect_id) && (
+            <a
+              href={`tel:${(() => {
+                if (rdv.client_id) { const c = getClient(rdv.client_id); return c?.telephone_mobile || c?.telephone || ''; }
+                return '';
+              })()}`}
+              onClick={e => e.stopPropagation()}
+              className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+              title="Appeler"
+            >
+              <Phone className="w-4 h-4" />
+            </a>
+          )}
+        </div>
       </div>
     );
   };
@@ -523,35 +579,20 @@ export default function CompteRenduPage() {
     );
   };
 
+  // Client visit card - compact fiche with action buttons
   const renderClientCard = (client: Client) => {
     const visited = visitedClientIds.has(client.id);
-    const isExpanded = expandedVisit === client.id;
     const interaction = todayInteractions.find((i: Interaction) => i.client_id === client.id);
-    const currentType = visitTypes[client.id] || 'VISITE';
-    const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
     const clientOwner = isTeamView ? getCommercialName(client.commercial_id) : '';
-    // Calculate days late
     const isLate = client.next_visit && client.next_visit < selectedDate;
     const daysLate = isLate ? Math.floor((new Date(selectedDate + 'T12:00:00').getTime() - new Date(client.next_visit + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)) : 0;
     return (
-      <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : isLate ? 'border-red-200 bg-red-50/20' : 'border-gray-200'} overflow-hidden`}>
-        <button onClick={() => {
-          if (!visited) {
-            setExpandedVisit(isExpanded ? null : client.id);
-            if (!isExpanded) {
-              // Init RDV fields with defaults
-              if (!visitRdvDate[client.id]) setVisitRdvDate(prev => ({ ...prev, [client.id]: todayStr }));
-              if (!visitRdvLieu[client.id]) setVisitRdvLieu(prev => ({ ...prev, [client.id]: addr }));
-              if (!visitRdvHeureDebut[client.id]) setVisitRdvHeureDebut(prev => ({ ...prev, [client.id]: '10:00' }));
-              if (!visitRdvHeureFin[client.id]) setVisitRdvHeureFin(prev => ({ ...prev, [client.id]: '11:00' }));
-            }
-          }
-        }}
-          className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
-          {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : isLate ? <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />}
+      <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : isLate ? 'border-red-200 bg-red-50/20' : 'border-gray-200'} p-3`}>
+        <div className="flex items-start gap-3">
+          {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" /> : isLate ? <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" /> : <Building2 className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm text-gray-800">{client.nom}</span>
+              <span className="font-semibold text-sm text-gray-800">{client.nom}</span>
               {clientOwner && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{clientOwner}</span>
               )}
@@ -588,148 +629,53 @@ export default function CompteRenduPage() {
               </div>
             )}
           </div>
+        </div>
+        {/* Quick action buttons */}
+        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-gray-100">
+          {!visited ? (
+            <>
+              <button
+                onClick={() => openVisitModal(client, 'VISITE')}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Visite
+              </button>
+              <button
+                onClick={() => openVisitModal(client, 'APPEL')}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                <PhoneCall className="w-3.5 h-3.5" /> Appel
+              </button>
+              <button
+                onClick={() => openRdvModal(client)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+              >
+                <Calendar className="w-3.5 h-3.5" /> RDV
+              </button>
+            </>
+          ) : (
+            <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Fait
+            </span>
+          )}
           <button
-            onClick={(e) => { e.stopPropagation(); openQuickNote(client.id); }}
-            className="p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors flex-shrink-0"
+            onClick={() => openQuickNote(client.id)}
+            className="p-2 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors flex-shrink-0"
             title="Note rapide"
           >
-            <StickyNote className="w-4 h-4" />
+            <StickyNote className="w-3.5 h-3.5" />
           </button>
-          {!visited && <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />}
-        </button>
-        {isExpanded && !visited && (
-          <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
-            {/* Type selector */}
-            <div className="grid grid-cols-3 gap-2">
-              {(['VISITE', 'APPEL', 'RDV_PLANIFIE'] as InteractionType[]).map(type => {
-                const sel = currentType === type;
-                const typeConfig = {
-                  VISITE: { color: sel ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200', icon: CheckCircle2 },
-                  APPEL: { color: sel ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200', icon: PhoneCall },
-                  RDV_PLANIFIE: { color: sel ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200', icon: Calendar },
-                };
-                const cfg = typeConfig[type];
-                const Icon = cfg.icon;
-                return (
-                  <button key={type} onClick={() => setVisitTypes(prev => ({ ...prev, [client.id]: type }))}
-                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-colors ${cfg.color}`}>
-                    <Icon className="w-4 h-4" />
-                    {INTERACTION_TYPE_LABELS[type]}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* RDV fields */}
-            {currentType === 'RDV_PLANIFIE' && (
-              <div className="space-y-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
-                {/* RDV existants ce jour */}
-                {(() => {
-                  const rdvDate = visitRdvDate[client.id] || todayStr;
-                  const existingRdvs = state.appointments.filter((a: Appointment) =>
-                    a.date === rdvDate && (a.commercial_id === userId || a.prospecteur_id === userId) && a.statut !== 'annule'
-                  ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
-                  if (existingRdvs.length === 0) return null;
-                  return (
-                    <div className="p-2 bg-white/60 border border-purple-200 rounded-lg mb-1">
-                      <p className="text-[10px] font-medium text-purple-700 mb-1">RDV deja prevus ce jour :</p>
-                      {existingRdvs.map((r: Appointment) => {
-                        const name = (r.client_id ? getClientName(r.client_id) : '') || (r.prospect_id ? getProspectName(r.prospect_id) : '') || 'RDV';
-                        return (
-                          <p key={r.id} className="text-[10px] text-purple-600">
-                            {r.heure_debut || '?'}-{r.heure_fin || '?'} : {name} {r.lieu ? `(${r.lieu})` : ''}
-                          </p>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Date du RDV</label>
-                    <input type="date" value={visitRdvDate[client.id] || todayStr}
-                      onChange={e => setVisitRdvDate(prev => ({ ...prev, [client.id]: e.target.value }))}
-                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Lieu</label>
-                    <input type="text" value={visitRdvLieu[client.id] || ''} placeholder="Adresse..."
-                      onChange={e => setVisitRdvLieu(prev => ({ ...prev, [client.id]: e.target.value }))}
-                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Debut</label>
-                    <input type="time" value={visitRdvHeureDebut[client.id] || '10:00'}
-                      onChange={e => setVisitRdvHeureDebut(prev => ({ ...prev, [client.id]: e.target.value }))}
-                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Fin</label>
-                    <input type="time" value={visitRdvHeureFin[client.id] || '11:00'}
-                      onChange={e => setVisitRdvHeureFin(prev => ({ ...prev, [client.id]: e.target.value }))}
-                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
-                  </div>
-                </div>
-
-                {/* Conflits horaires */}
-                {(() => {
-                  const conflicts = detectConflicts(
-                    state.appointments,
-                    userId || '',
-                    visitRdvDate[client.id] || todayStr,
-                    visitRdvHeureDebut[client.id] || '10:00',
-                    visitRdvHeureFin[client.id] || '11:00'
-                  );
-                  if (conflicts.length === 0) return null;
-                  return (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
-                      </p>
-                      {conflicts.map(c => {
-                        const cp = c.prospect_id ? state.prospects.find((p: any) => p.id === c.prospect_id) : null;
-                        const cc = c.client_id ? state.clients.find((cl: Client) => cl.id === c.client_id) : null;
-                        return (
-                          <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
-                            {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
-                          </p>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Comment */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                {currentType === 'VISITE' ? 'Commentaire de visite' : currentType === 'APPEL' ? 'Notes de l\'appel' : 'Notes du RDV'}
-              </label>
-              <textarea value={visitComments[client.id] || ''} onChange={e => setVisitComments(prev => ({ ...prev, [client.id]: e.target.value }))}
-                placeholder={currentType === 'VISITE' ? 'Comment s\'est passee la visite...' : currentType === 'APPEL' ? 'Resume de l\'appel...' : 'Objet du rendez-vous...'}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none h-20" />
-            </div>
-
-            {/* Submit */}
-            <button onClick={() => logVisit(client)} disabled={saving === client.id || !visitComments[client.id]?.trim()}
-              className={`w-full py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2 transition-colors ${
-                currentType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
-                : currentType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'
-                : 'bg-purple-600 hover:bg-purple-700'
-              }`}>
-              {currentType === 'VISITE' && <CheckCircle2 className="w-4 h-4" />}
-              {currentType === 'APPEL' && <PhoneCall className="w-4 h-4" />}
-              {currentType === 'RDV_PLANIFIE' && <Calendar className="w-4 h-4" />}
-              {saving === client.id ? 'Enregistrement...'
-                : currentType === 'VISITE' ? 'Enregistrer la visite'
-                : currentType === 'APPEL' ? 'Enregistrer l\'appel'
-                : 'Planifier le RDV'}
-            </button>
-          </div>
-        )}
+          {(client.telephone_mobile || client.telephone) && (
+            <a
+              href={`tel:${client.telephone_mobile || client.telephone}`}
+              onClick={e => e.stopPropagation()}
+              className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors flex-shrink-0"
+              title="Appeler"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </a>
+          )}
+        </div>
       </div>
     );
   };
@@ -1179,6 +1125,310 @@ export default function CompteRenduPage() {
           })}
         </div>
       )}
+      {/* Compte-rendu RDV modal */}
+      {crModalRdv && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setCrModalRdv(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+                  Compte-rendu du RDV
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">{getEntityName(crModalRdv)} - {crModalRdv.date}</p>
+              </div>
+              <button onClick={() => setCrModalRdv(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Resultat */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Resultat du rendez-vous</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+                    const sel = crForms[crModalRdv.id]?.compte_rendu === key;
+                    const icons: Record<string, string> = {
+                      client: 'text-green-600', mail_envoye: 'text-blue-600',
+                      commande_plus_tard: 'text-yellow-600', a_relancer: 'text-orange-600',
+                      pas_interesse: 'text-red-600',
+                    };
+                    return (
+                      <button key={key}
+                        onClick={() => setCrForms(prev => ({ ...prev, [crModalRdv.id]: { ...prev[crModalRdv.id], compte_rendu: key as AppointmentResult } }))}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-all ${sel ? 'border-indigo-300 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-200' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                      >
+                        <span className={icons[key] || ''}>{key === 'client' ? '👥' : key === 'mail_envoye' ? '📧' : key === 'commande_plus_tard' ? '🛒' : key === 'a_relancer' ? '🔄' : '🚫'}</span>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Notes du compte-rendu *</label>
+                <textarea
+                  value={crForms[crModalRdv.id]?.notes || ''}
+                  onChange={e => setCrForms(prev => ({ ...prev, [crModalRdv.id]: { ...prev[crModalRdv.id], notes: e.target.value } }))}
+                  placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
+                  className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-24 focus:ring-2 focus:ring-indigo-300 ${!crForms[crModalRdv.id]?.notes?.trim() ? 'border-red-300' : 'border-gray-300'}`}
+                  autoFocus
+                />
+                {!crForms[crModalRdv.id]?.notes?.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Les notes sont obligatoires pour valider le compte-rendu</p>
+                )}
+              </div>
+
+              {/* Programmer un rappel */}
+              <button
+                onClick={() => setShowRappelSection(!showRappelSection)}
+                className="w-full py-2.5 border-2 border-dashed border-yellow-300 rounded-lg text-sm font-medium text-yellow-600 hover:bg-yellow-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <Bell className="w-4 h-4" /> Programmer un rappel
+              </button>
+              {showRappelSection && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-yellow-700 block mb-0.5">Date du rappel</label>
+                    <input type="date" value={rappelDate} onChange={e => setRappelDate(e.target.value)}
+                      className="w-full text-sm border border-yellow-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-yellow-700 block mb-0.5">Message</label>
+                    <input type="text" value={rappelMessage} onChange={e => setRappelMessage(e.target.value)}
+                      placeholder="Rappel pour..." className="w-full text-sm border border-yellow-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setCrModalRdv(null)}>Annuler</button>
+              <button
+                className="px-5 py-2.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                onClick={saveCrModal}
+                disabled={saving === crModalRdv.id || !crForms[crModalRdv.id]?.compte_rendu || !crForms[crModalRdv.id]?.notes?.trim()}
+              >
+                <ClipboardCheck className="w-4 h-4" /> {saving === crModalRdv.id ? 'Enregistrement...' : 'Valider le compte-rendu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Marquer visite/Appel modal */}
+      {visitModalClient && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setVisitModalClient(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-bold text-gray-800">
+                  {visitModalType === 'VISITE' ? 'Marquer une visite' : 'Marquer un appel'}
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">{visitModalClient.nom}</p>
+              </div>
+              <button onClick={() => setVisitModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Type */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['VISITE', 'APPEL'] as const).map(type => {
+                    const sel = visitModalType === type;
+                    const cfg = {
+                      VISITE: { color: sel ? 'bg-green-100 border-green-300 text-green-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50', icon: CheckCircle2 },
+                      APPEL: { color: sel ? 'bg-blue-100 border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50', icon: PhoneCall },
+                    };
+                    const c = cfg[type];
+                    const Icon = c.icon;
+                    return (
+                      <button key={type} onClick={() => setVisitModalType(type)}
+                        className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border transition-all ${c.color}`}>
+                        <Icon className="w-4 h-4" /> {INTERACTION_TYPE_LABELS[type]}
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => { setVisitModalClient(null); openRdvModal(visitModalClient); }}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all">
+                    <Calendar className="w-4 h-4" /> {INTERACTION_TYPE_LABELS['RDV_PLANIFIE']}
+                  </button>
+                </div>
+              </div>
+
+              {/* Commentaire */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Commentaire *</label>
+                <textarea
+                  value={visitModalComment}
+                  onChange={e => setVisitModalComment(e.target.value)}
+                  placeholder="Notes sur cette interaction... (obligatoire)"
+                  className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-28 focus:ring-2 ${visitModalType === 'VISITE' ? 'focus:ring-green-300' : 'focus:ring-blue-300'} ${!visitModalComment.trim() ? 'border-red-300' : 'border-gray-300'}`}
+                  autoFocus
+                />
+                {!visitModalComment.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Le commentaire est obligatoire</p>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setVisitModalClient(null)}>Annuler</button>
+              <button
+                className={`px-5 py-2.5 text-sm text-white rounded-lg flex items-center gap-2 disabled:opacity-50 font-medium ${
+                  visitModalType === 'VISITE' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+                onClick={saveVisitModal}
+                disabled={saving === visitModalClient.id || !visitModalComment.trim()}
+              >
+                <CheckCircle2 className="w-4 h-4" /> {saving === visitModalClient.id ? 'Enregistrement...' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Planifier RDV modal */}
+      {rdvModalClient && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setRdvModalClient(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-bold text-gray-800">Planifier un RDV</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{rdvModalClient.nom}</p>
+              </div>
+              <button onClick={() => setRdvModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Type header */}
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => { setRdvModalClient(null); openVisitModal(rdvModalClient, 'VISITE'); }}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">
+                  <CheckCircle2 className="w-4 h-4" /> Visite
+                </button>
+                <button onClick={() => { setRdvModalClient(null); openVisitModal(rdvModalClient, 'APPEL'); }}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">
+                  <PhoneCall className="w-4 h-4" /> Appel
+                </button>
+                <button className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium bg-purple-100 border border-purple-300 text-purple-700">
+                  <Calendar className="w-4 h-4" /> RDV planifie
+                </button>
+              </div>
+
+              {/* RDV details */}
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-purple-700">
+                  <Calendar className="w-4 h-4" /> Rendez-vous
+                </div>
+
+                {/* Commercial assign */}
+                {isAdmin && (
+                  <div>
+                    <label className="text-xs font-medium text-purple-600 mb-0.5 flex items-center gap-1 block">
+                      <Users2 className="w-3 h-3" /> Commercial assigne au RDV
+                    </label>
+                    <select
+                      value={rdvModalCommercialId}
+                      onChange={e => setRdvModalCommercialId(e.target.value)}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5 bg-white"
+                    >
+                      {state.commerciaux.map((c: any) => (
+                        <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Date + hours */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Date *</label>
+                    <input type="date" value={visitRdvDate[rdvModalClient.id] || todayStr}
+                      onChange={e => setVisitRdvDate(prev => ({ ...prev, [rdvModalClient.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Debut</label>
+                    <input type="time" value={visitRdvHeureDebut[rdvModalClient.id] || '10:00'}
+                      onChange={e => setVisitRdvHeureDebut(prev => ({ ...prev, [rdvModalClient.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Fin</label>
+                    <input type="time" value={visitRdvHeureFin[rdvModalClient.id] || '11:00'}
+                      onChange={e => setVisitRdvHeureFin(prev => ({ ...prev, [rdvModalClient.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                </div>
+
+                {/* Lieu */}
+                <div>
+                  <input type="text" value={visitRdvLieu[rdvModalClient.id] || ''} placeholder="Adresse..."
+                    onChange={e => setVisitRdvLieu(prev => ({ ...prev, [rdvModalClient.id]: e.target.value }))}
+                    className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2" />
+                </div>
+
+                {/* Notes RDV */}
+                <div>
+                  <input type="text" placeholder="Notes du RDV (optionnel)..."
+                    className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 text-gray-500" />
+                </div>
+
+                {/* Conflits horaires */}
+                {(() => {
+                  const conflicts = detectConflicts(
+                    state.appointments,
+                    rdvModalCommercialId || userId || '',
+                    visitRdvDate[rdvModalClient.id] || todayStr,
+                    visitRdvHeureDebut[rdvModalClient.id] || '10:00',
+                    visitRdvHeureFin[rdvModalClient.id] || '11:00'
+                  );
+                  if (conflicts.length === 0) return null;
+                  return (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
+                      </p>
+                      {conflicts.map(c => {
+                        const cp = c.prospect_id ? state.prospects.find((p: any) => p.id === c.prospect_id) : null;
+                        const cc = c.client_id ? state.clients.find((cl: Client) => cl.id === c.client_id) : null;
+                        return (
+                          <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
+                            {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Commentaire */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Commentaire *</label>
+                <textarea
+                  value={rdvModalComment}
+                  onChange={e => setRdvModalComment(e.target.value)}
+                  placeholder="Notes sur cette interaction... (obligatoire)"
+                  className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-24 focus:ring-2 focus:ring-purple-300 ${!rdvModalComment.trim() ? 'border-red-300' : 'border-gray-300'}`}
+                />
+                {!rdvModalComment.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Le commentaire est obligatoire</p>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setRdvModalClient(null)}>Annuler</button>
+              <button
+                className="px-5 py-2.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                onClick={saveRdvModal}
+                disabled={saving === rdvModalClient.id || !rdvModalComment.trim()}
+              >
+                <CheckCircle2 className="w-4 h-4" /> {saving === rdvModalClient.id ? 'Enregistrement...' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Quick note modal */}
       {noteClientId && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setNoteClientId(null)}>
