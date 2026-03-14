@@ -1200,82 +1200,110 @@ async function handleEasyBeerWebhook(req, res) {
     console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name=${directName || '(depuis webhook)'}`);
   }
 
+  // Helper to extract fields from EasyBeer data (English field names per docs)
+  const extractEbFields = (d) => ({
+    name: d.name || d.nom || d.libelle || d.raisonSociale || '',
+    type: d.type || '',
+    contact_name: d.contact_name || d.contactName || d.contact || '',
+    phone: d.phone || d.telephone || d.mobile || d.tel || '',
+    email: d.email || d.mail || '',
+    city: d.city || d.ville || '',
+    address: d.address || d.adresse || d.rue || '',
+    postal_code: d.postal_code || d.postalCode || d.codePostal || d.cp || '',
+    notes: d.notes || d.commentaire || '',
+    commercial_email: d.commercial_email || d.commercialEmail || d.emailCommercial || '',
+  });
+
   // Try to enrich with EasyBeer API data in background
   if (id && config?.username && config?.api_url) {
     setTimeout(async () => {
-      const delays = [0, 15000, 30000];
-      let fetched = false;
-      for (let attempt = 0; attempt < delays.length && !fetched; attempt++) {
-        if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
-        try {
-          const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
-          const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
-          const pathsToTry = [`/tiers/${id}`, `/clients/${id}`, `/api/tiers/${id}`, `/api/clients/${id}`];
-          let data = null;
-          for (const path of pathsToTry) {
-            try {
-              const resp = await fetch(`${apiBase}${path}`, {
-                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                signal: AbortSignal.timeout(10000),
-              });
-              if (resp.ok) {
-                data = await resp.json();
-                console.log(`[EasyBeer Webhook] Fetch reussi via ${path}`);
-                break;
-              }
-            } catch { /* try next path */ }
-          }
-          if (data) {
-            const clientName = data.nom || data.libelle || data.raisonSociale || '';
-            const clientNow = new Date().toISOString();
-            await db.query(
-              `UPDATE easybeer_clients SET
-                name = COALESCE(NULLIF($2, ''), name),
-                type = COALESCE(NULLIF($3, ''), type),
-                contact_name = COALESCE(NULLIF($4, ''), contact_name),
-                phone = COALESCE(NULLIF($5, ''), phone),
-                email = COALESCE(NULLIF($6, ''), email),
-                city = COALESCE(NULLIF($7, ''), city),
-                address = COALESCE(NULLIF($8, ''), address),
-                postal_code = COALESCE(NULLIF($9, ''), postal_code),
-                notes = COALESCE(NULLIF($10, ''), notes),
-                commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
-                raw_data = $12, updated_at = $13
-              WHERE easybeer_id = $1`,
-              [id, clientName, data.type || '', data.contact || '', data.phone || data.mobile || '', data.email || '',
-               data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '', data.notes || '',
-               data.commercialEmail || '', JSON.stringify(data), clientNow]
-            );
+      try {
+        const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+        const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+        const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
-            // Auto-import if assignment rule exists
-            const commercialEmail = (data.commercialEmail || '').toLowerCase();
-            if (commercialEmail) {
-              const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [commercialEmail]);
-              if (ruleResult.rows.length > 0) {
-                const rule = ruleResult.rows[0];
-                const clientType = 'BAR_RESTAURANT_GENERAL';
-                const nextVisit = calculateNextVisit(clientType, null, null);
-                const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-                await db.query(
-                  `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
-                   type_client, statut, commercial_id, next_visit, notes, latitude, longitude, date_creation, date_modification)
-                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-                  [clientId, clientName, data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '',
-                   data.phone || data.mobile || '', data.email || '', data.contact || '', clientType, 'ACTIF',
-                   rule.commercial_id, nextVisit || null, data.notes || '', data.latitude || 0, data.longitude || 0, clientNow, clientNow]
-                );
-                await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
-              }
+        let found = null;
+
+        // Strategy 1: Direct lookup
+        for (const path of [`/tiers/${id}`, `/clients/${id}`]) {
+          try {
+            const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(10000) });
+            if (resp.ok) {
+              found = await resp.json();
+              if (Array.isArray(found)) found = found.find(d => String(d.id) === String(id)) || found[0];
+              console.log(`[EasyBeer Webhook] Fetch reussi via ${path}`);
+              break;
             }
-            fetched = true;
-          } else {
-            console.log(`[EasyBeer Webhook] Impossible de recuperer les details pour id=${id} apres ${delays.length} tentatives`);
-          }
-        } catch (err) {
-          console.error(`[EasyBeer Webhook] Tentative ${attempt + 1} echouee:`, err.message);
+          } catch { /* next */ }
         }
+
+        // Strategy 2: List and search
+        if (!found) {
+          for (const path of ['/tiers', '/clients']) {
+            try {
+              const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+              if (resp.ok) {
+                let list = await resp.json();
+                if (!Array.isArray(list)) list = list.results || list.data || list.items || [];
+                if (Array.isArray(list)) {
+                  found = list.find(d => String(d.id) === String(id));
+                  if (found) {
+                    console.log(`[EasyBeer Webhook] Trouve dans liste ${path}`);
+                    break;
+                  }
+                }
+              }
+            } catch { /* next */ }
+          }
+        }
+
+        if (found) {
+          const f = extractEbFields(found);
+          const clientNow = new Date().toISOString();
+          await db.query(
+            `UPDATE easybeer_clients SET
+              name = COALESCE(NULLIF($2, ''), name),
+              type = COALESCE(NULLIF($3, ''), type),
+              contact_name = COALESCE(NULLIF($4, ''), contact_name),
+              phone = COALESCE(NULLIF($5, ''), phone),
+              email = COALESCE(NULLIF($6, ''), email),
+              city = COALESCE(NULLIF($7, ''), city),
+              address = COALESCE(NULLIF($8, ''), address),
+              postal_code = COALESCE(NULLIF($9, ''), postal_code),
+              notes = COALESCE(NULLIF($10, ''), notes),
+              commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
+              raw_data = $12, updated_at = $13
+            WHERE easybeer_id = $1`,
+            [id, f.name, f.type, f.contact_name, f.phone, f.email,
+             f.city, f.address, f.postal_code, f.notes, f.commercial_email, JSON.stringify(found), clientNow]
+          );
+
+          // Auto-import if assignment rule exists
+          if (f.commercial_email) {
+            const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [f.commercial_email.toLowerCase()]);
+            if (ruleResult.rows.length > 0) {
+              const rule = ruleResult.rows[0];
+              const clientType = 'BAR_RESTAURANT_GENERAL';
+              const nextVisit = calculateNextVisit(clientType, null, null);
+              const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+              await db.query(
+                `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
+                 type_client, statut, commercial_id, next_visit, notes, latitude, longitude, date_creation, date_modification)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                [clientId, f.name, f.city, f.address, f.postal_code,
+                 f.phone, f.email, f.contact_name, clientType, 'ACTIF',
+                 rule.commercial_id, nextVisit || null, f.notes, 0, 0, clientNow, clientNow]
+              );
+              await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
+            }
+          }
+        } else {
+          console.log(`[EasyBeer Webhook] Impossible de recuperer les details pour id=${id}`);
+        }
+      } catch (err) {
+        console.error(`[EasyBeer Webhook] Enrichissement echoue:`, err.message);
       }
-    }, 3000); // Reduced initial delay to 3s
+    }, 3000);
   }
 
   res.json({ ok: true, received: { type, id } });
@@ -1412,9 +1440,23 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
+  // Helper to extract fields from EasyBeer data (fields are in English per EasyBeer docs)
+  const extractFields = (data) => ({
+    name: data.name || data.nom || data.libelle || data.raisonSociale || '',
+    type: data.type || '',
+    contact_name: data.contact_name || data.contactName || data.contact || '',
+    phone: data.phone || data.telephone || data.mobile || data.tel || '',
+    email: data.email || data.mail || '',
+    city: data.city || data.ville || '',
+    address: data.address || data.adresse || data.rue || '',
+    postal_code: data.postal_code || data.postalCode || data.codePostal || data.cp || '',
+    notes: data.notes || data.commentaire || '',
+    commercial_email: data.commercial_email || data.commercialEmail || data.emailCommercial || '',
+  });
+
   // Helper to update client from data
   const updateFromData = async (data, path) => {
-    const clientName = data.nom || data.libelle || data.raisonSociale || data.name || '';
+    const f = extractFields(data);
     const now = new Date().toISOString();
     await db.query(
       `UPDATE easybeer_clients SET
@@ -1430,14 +1472,10 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
         commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
         raw_data = $12, updated_at = $13
       WHERE id = $1`,
-      [req.params.id, clientName, data.type || '', data.contact || data.contactNom || '',
-       data.phone || data.telephone || data.mobile || data.tel || '',
-       data.email || data.mail || '',
-       data.ville || data.city || '', data.rue || data.adresse || data.address || '',
-       data.codePostal || data.cp || data.postal_code || '', data.notes || data.commentaire || '',
-       data.commercialEmail || data.commercial_email || data.emailCommercial || '', JSON.stringify(data), now]
+      [req.params.id, f.name, f.type, f.contact_name, f.phone, f.email,
+       f.city, f.address, f.postal_code, f.notes, f.commercial_email, JSON.stringify(data), now]
     );
-    return res.json({ ok: true, message: `Synchronise via ${path}`, name: clientName });
+    return res.json({ ok: true, message: `Synchronise via ${path}`, name: f.name });
   };
 
   // Strategy 1: Try direct ID lookup
