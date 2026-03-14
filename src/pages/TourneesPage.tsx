@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   MapPin, Save, Edit2, RefreshCw, ChevronDown, ChevronRight,
   User, Loader2, Info, Calendar, ArrowLeft, ArrowRight, ChevronLeft,
+  X, Plus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -38,6 +39,102 @@ const WEEK_PATTERN_LABELS: Record<string, string> = {
   odd: 'Semaines impaires',
 };
 
+function ZoneDayPicker({ label, selected, allZones, onAdd, onRemove }: {
+  label: string;
+  selected: string[];
+  allZones: string[];
+  onAdd: (zone: string) => void;
+  onRemove: (zone: string) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const filtered = allZones.filter(z =>
+    !selected.includes(z) && z.toLowerCase().includes(input.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleAdd = (zone: string) => {
+    onAdd(zone);
+    setInput('');
+    setOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && input.trim()) {
+      handleAdd(input.trim());
+    }
+  };
+
+  return (
+    <div ref={ref}>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      {/* Selected zones as chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {selected.map(z => (
+            <span key={z} className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
+              {z}
+              <button
+                type="button"
+                onClick={() => onRemove(z)}
+                className="hover:text-indigo-900 ml-0.5"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Input + dropdown */}
+      <div className="relative">
+        <input
+          type="text"
+          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+          placeholder="Ajouter une zone..."
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+        />
+        {open && (filtered.length > 0 || input.trim()) && (
+          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+            {filtered.map(zone => (
+              <button
+                key={zone}
+                type="button"
+                onMouseDown={() => handleAdd(zone)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-gray-700 flex items-center gap-1.5"
+              >
+                <Plus className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                {zone}
+              </button>
+            ))}
+            {input.trim() && !allZones.includes(input.trim()) && !selected.includes(input.trim()) && (
+              <button
+                type="button"
+                onMouseDown={() => handleAdd(input.trim())}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-green-700 flex items-center gap-1.5 border-t border-gray-100"
+              >
+                <Plus className="w-3 h-3 flex-shrink-0" />
+                Créer "{input.trim()}"
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TourneesPage() {
   const { state } = useApp();
   const toast = useToast();
@@ -52,6 +149,13 @@ export default function TourneesPage() {
   const [saving, setSaving] = useState(false);
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // Unique zones from clients
+  const allZones = useMemo(() => {
+    const set = new Set<string>();
+    state.clients.forEach(c => { if (c.tournee) set.add(c.tournee); });
+    return Array.from(set).sort();
+  }, [state.clients]);
 
   const token = localStorage.getItem('suivipro_token');
   const isAdmin = state.currentUser?.role === 'admin';
@@ -130,6 +234,23 @@ export default function TourneesPage() {
   const updateDayTournees = (day: string, value: string) => {
     const tournees = value.split(',').map(s => s.trim()).filter(Boolean);
     setEditConfig(prev => ({ ...prev, [day]: tournees }));
+  };
+
+  const addZoneToDay = (day: string, zone: string) => {
+    const trimmed = zone.trim();
+    if (!trimmed) return;
+    setEditConfig(prev => {
+      const current = prev[day] || [];
+      if (current.includes(trimmed)) return prev;
+      return { ...prev, [day]: [...current, trimmed] };
+    });
+  };
+
+  const removeZoneFromDay = (day: string, zone: string) => {
+    setEditConfig(prev => ({
+      ...prev,
+      [day]: (prev[day] || []).filter(z => z !== zone),
+    }));
   };
 
   const toggleCommercial = (id: string) => {
@@ -394,18 +515,28 @@ export default function TourneesPage() {
           </div>
 
           {/* Day config */}
+          {allZones.length > 0 && (
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <p className="text-xs font-medium text-blue-700 mb-2">Zones existantes dans vos clients :</p>
+              <div className="flex flex-wrap gap-1.5">
+                {allZones.map(zone => (
+                  <span key={zone} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full border border-blue-200 font-medium">
+                    {zone}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {DAY_KEYS.map(day => (
-              <div key={day}>
-                <label className="block text-xs font-medium text-gray-600 mb-1">{DAY_LABELS[day]}</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                  value={(editConfig[day] || []).join(', ')}
-                  onChange={e => updateDayTournees(day, e.target.value)}
-                  placeholder="Zone 1, Zone 2..."
-                />
-              </div>
+              <ZoneDayPicker
+                key={day}
+                label={DAY_LABELS[day]}
+                selected={editConfig[day] || []}
+                allZones={allZones}
+                onAdd={zone => addZoneToDay(day, zone)}
+                onRemove={zone => removeZoneFromDay(day, zone)}
+              />
             ))}
           </div>
 
