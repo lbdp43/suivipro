@@ -1141,59 +1141,116 @@ async function handleEasyBeerWebhook(req, res) {
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
   const config = configResult.rows[0];
   if (config?.webhook_secret && webhookSecret !== config.webhook_secret) {
+    console.log('[EasyBeer Webhook] Secret invalide recu:', webhookSecret?.substring(0, 8) + '...');
     return res.status(403).json({ error: 'Invalid webhook secret' });
   }
 
-  const { type, id } = req.body;
+  const body = req.body || {};
   const now = new Date().toISOString();
+
+  // Extract type and id flexibly from various EasyBeer payload formats
+  const type = body.type || body.event || body.eventType || body.action || '';
+  const id = String(body.id || body.clientId || body.client_id || body.tiersId || body.tiers_id || body.externalId || '');
+
+  console.log(`[EasyBeer Webhook] Recu: type=${type}, id=${id}, body keys=${Object.keys(body).join(',')}`);
 
   // Log webhook
   await db.query(
     'INSERT INTO webhooks (source, type, external_id, payload, received_at) VALUES ($1,$2,$3,$4,$5)',
-    ['easybeer', type || '', String(id || ''), JSON.stringify(req.body), now]
+    ['easybeer', type, id, JSON.stringify(body), now]
   );
 
   // Keep only last 100 webhooks
   await db.query(`DELETE FROM webhooks WHERE id NOT IN (SELECT id FROM webhooks ORDER BY received_at DESC LIMIT 100)`);
 
-  // Handle EasyBeer event types: CLIENT_CREATION, client.created, etc.
-  const isClientCreation = type === 'CLIENT_CREATION' || type === 'client.created' || type === 'CLIENT_CREATED';
-  if (isClientCreation && id && config?.username && config?.api_url) {
-    // Background fetch with retry
+  // Handle EasyBeer event types
+  const typeLower = type.toLowerCase().replace(/[_.-]/g, '');
+  const isClientCreation = ['clientcreation', 'clientcreated', 'newclient', 'tiercreation', 'tiercreated', 'newtier'].includes(typeLower)
+    || type.includes('CLIENT') || type.includes('client') || type.includes('TIER') || type.includes('tier');
+
+  // Always create a pending entry when we receive a webhook with an id, even if we can't fetch details
+  if (id) {
+    // Extract any name/info directly from the webhook payload
+    const directName = body.nom || body.name || body.libelle || body.raisonSociale || body.raison_sociale || '';
+    const directEmail = body.email || '';
+    const directPhone = body.phone || body.telephone || body.mobile || '';
+    const directCity = body.ville || body.city || '';
+    const directAddress = body.adresse || body.address || body.rue || '';
+    const directPostalCode = body.codePostal || body.code_postal || body.cp || body.postal_code || '';
+    const directContact = body.contact || body.contactName || body.contact_name || '';
+
+    // Insert/update pending client with whatever info we have from the payload
+    await db.query(
+      `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, raw_data, status, synced_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      ON CONFLICT (easybeer_id) DO UPDATE SET
+        name = CASE WHEN $2 != '' THEN $2 ELSE easybeer_clients.name END,
+        type = CASE WHEN $3 != '' THEN $3 ELSE easybeer_clients.type END,
+        contact_name = CASE WHEN $4 != '' THEN $4 ELSE easybeer_clients.contact_name END,
+        phone = CASE WHEN $5 != '' THEN $5 ELSE easybeer_clients.phone END,
+        email = CASE WHEN $6 != '' THEN $6 ELSE easybeer_clients.email END,
+        city = CASE WHEN $7 != '' THEN $7 ELSE easybeer_clients.city END,
+        address = CASE WHEN $8 != '' THEN $8 ELSE easybeer_clients.address END,
+        postal_code = CASE WHEN $9 != '' THEN $9 ELSE easybeer_clients.postal_code END,
+        raw_data = $12, updated_at = $15`,
+      [id, directName, body.type || '', directContact, directPhone, directEmail,
+       directCity, directAddress, directPostalCode, body.notes || '',
+       body.commercialEmail || body.commercial_email || '', JSON.stringify(body), 'pending', now, now]
+    );
+    console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name=${directName || '(depuis webhook)'}`);
+  }
+
+  // Try to enrich with EasyBeer API data in background
+  if (id && config?.username && config?.api_url) {
     setTimeout(async () => {
-      const delays = [0, 15000, 30000, 30000, 30000];
+      const delays = [0, 15000, 30000];
       let fetched = false;
       for (let attempt = 0; attempt < delays.length && !fetched; attempt++) {
         if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
         try {
           const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
           const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
-          // Try /tiers/:id first (EasyBeer uses "tiers" for clients), fallback to /clients/:id
-          let resp = await fetch(`${apiBase}/tiers/${id}`, {
-            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          });
-          if (!resp.ok) {
-            resp = await fetch(`${apiBase}/clients/${id}`, {
-              headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            });
+          const pathsToTry = [`/tiers/${id}`, `/clients/${id}`, `/api/tiers/${id}`, `/api/clients/${id}`];
+          let data = null;
+          for (const path of pathsToTry) {
+            try {
+              const resp = await fetch(`${apiBase}${path}`, {
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(10000),
+              });
+              if (resp.ok) {
+                data = await resp.json();
+                console.log(`[EasyBeer Webhook] Fetch reussi via ${path}`);
+                break;
+              }
+            } catch { /* try next path */ }
           }
-          if (resp.ok) {
-            const data = await resp.json();
+          if (data) {
             const clientName = data.nom || data.libelle || data.raisonSociale || '';
             const clientNow = new Date().toISOString();
             await db.query(
-              `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, raw_data, status, synced_at, updated_at)
-              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-              ON CONFLICT (easybeer_id) DO UPDATE SET name=$2, type=$3, contact_name=$4, phone=$5, email=$6, city=$7, address=$8, postal_code=$9, notes=$10, commercial_email=$11, raw_data=$12, updated_at=$15`,
+              `UPDATE easybeer_clients SET
+                name = COALESCE(NULLIF($2, ''), name),
+                type = COALESCE(NULLIF($3, ''), type),
+                contact_name = COALESCE(NULLIF($4, ''), contact_name),
+                phone = COALESCE(NULLIF($5, ''), phone),
+                email = COALESCE(NULLIF($6, ''), email),
+                city = COALESCE(NULLIF($7, ''), city),
+                address = COALESCE(NULLIF($8, ''), address),
+                postal_code = COALESCE(NULLIF($9, ''), postal_code),
+                notes = COALESCE(NULLIF($10, ''), notes),
+                commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
+                raw_data = $12, updated_at = $13
+              WHERE easybeer_id = $1`,
               [id, clientName, data.type || '', data.contact || '', data.phone || data.mobile || '', data.email || '',
                data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '', data.notes || '',
-               data.commercialEmail || '', JSON.stringify(data), 'pending', clientNow, clientNow]
+               data.commercialEmail || '', JSON.stringify(data), clientNow]
             );
 
             // Auto-import if assignment rule exists
-            const commercialEmail = data.commercialEmail || '';
+            const commercialEmail = (data.commercialEmail || '').toLowerCase();
             if (commercialEmail) {
-              const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [commercialEmail.toLowerCase()]);
+              const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [commercialEmail]);
               if (ruleResult.rows.length > 0) {
                 const rule = ruleResult.rows[0];
                 const clientType = 'BAR_RESTAURANT_GENERAL';
@@ -1211,15 +1268,17 @@ async function handleEasyBeerWebhook(req, res) {
               }
             }
             fetched = true;
+          } else {
+            console.log(`[EasyBeer Webhook] Impossible de recuperer les details pour id=${id} apres ${delays.length} tentatives`);
           }
         } catch (err) {
-          console.error(`EasyBeer fetch attempt ${attempt + 1} failed:`, err.message);
+          console.error(`[EasyBeer Webhook] Tentative ${attempt + 1} echouee:`, err.message);
         }
       }
-    }, 10000); // Initial 10s delay
+    }, 3000); // Reduced initial delay to 3s
   }
 
-  res.json({ ok: true });
+  res.json({ ok: true, received: { type, id } });
 }
 
 // Register webhook routes (two separate routes for Express 5 compatibility)
@@ -1293,6 +1352,12 @@ router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req
   } catch (err) {
     return res.json({ ok: false, message: `Impossible de joindre ${baseUrl}: ${err.message}` });
   }
+}));
+
+// Webhook logs
+router.get('/easybeer/webhook-logs', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 20');
+  res.json(result.rows);
 }));
 
 // Pending clients from EasyBeer

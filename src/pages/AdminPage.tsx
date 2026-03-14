@@ -50,6 +50,7 @@ export default function AdminPage() {
   const [newRuleCommercial, setNewRuleCommercial] = useState('');
   const [ebImportType, setEbImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
   const [ebImportCommercial, setEbImportCommercial] = useState('');
+  const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
 
   const loadEasyBeerData = async () => {
     try {
@@ -57,10 +58,11 @@ export default function AdminPage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const [configRes, pendingRes, rulesRes] = await Promise.all([
+      const [configRes, pendingRes, rulesRes, logsRes] = await Promise.all([
         fetch('/api/easybeer/config', { headers }),
         fetch('/api/easybeer/pending-clients', { headers }),
         fetch('/api/assignment-rules', { headers }),
+        fetch('/api/easybeer/webhook-logs', { headers }),
       ]);
       if (configRes.ok) {
         const config = await configRes.json();
@@ -68,6 +70,7 @@ export default function AdminPage() {
       }
       if (pendingRes.ok) setEbPending(await pendingRes.json());
       if (rulesRes.ok) setAssignmentRules(await rulesRes.json());
+      if (logsRes.ok) setWebhookLogs(await logsRes.json());
       setEbConfigLoaded(true);
     } catch { /* ignore */ }
   };
@@ -1015,6 +1018,51 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Journal des webhooks */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <RefreshCw className="w-4 h-4" /> Journal des webhooks ({webhookLogs.length})
+              </h3>
+              <button
+                className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
+                onClick={loadEasyBeerData}
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
+              </button>
+            </div>
+            {webhookLogs.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-6">Aucun webhook recu</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {webhookLogs.map(log => {
+                  let payload: Record<string, unknown> = {};
+                  try { payload = JSON.parse(log.payload || '{}'); } catch { /* ignore */ }
+                  const date = log.received_at ? new Date(log.received_at) : null;
+                  return (
+                    <div key={log.id} className="p-3 bg-gray-50 rounded-lg text-xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono">{log.type || 'N/A'}</span>
+                          {log.external_id && <span className="text-gray-500">ID: {log.external_id}</span>}
+                        </div>
+                        <span className="text-gray-400">
+                          {date ? date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR') : ''}
+                        </span>
+                      </div>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Voir le payload</summary>
+                        <pre className="mt-1 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600">
+                          {JSON.stringify(payload, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
