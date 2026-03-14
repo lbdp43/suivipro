@@ -51,8 +51,17 @@ export default function Layout() {
   const notifRef = useRef<HTMLDivElement>(null);
   const { state, logout } = useApp();
   const today = new Date().toISOString().split('T')[0];
-  // Badge = seulement les rappels du jour + en retard (pas les "a venir")
-  const urgentReminders = state.reminders.filter(r => r.statut === 'actif' && r.date <= today).length;
+  // Badge = rappels en retard de l'utilisateur connecté uniquement
+  // Exception: Louis Lucas partage ses rappels avec l'utilisateur connecté
+  const currentUserId = state.currentUser?.id;
+  const louisLucas = state.commerciaux.find(c => c.prenom === 'Louis' && c.nom === 'Lucas');
+  const myReminderIds = new Set<string>([
+    ...(currentUserId ? [currentUserId] : []),
+    ...(louisLucas ? [louisLucas.id] : []),
+  ]);
+  const urgentReminders = state.reminders.filter(r =>
+    r.statut === 'actif' && r.date <= today && myReminderIds.has(r.commercial_id)
+  ).length;
   const isAdmin = state.currentUser?.role === 'admin';
 
   const token = localStorage.getItem('suivipro_token');
