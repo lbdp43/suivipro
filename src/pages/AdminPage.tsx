@@ -1166,7 +1166,7 @@ export default function AdminPage() {
             ) : (
               <div className="space-y-2">
                 {ebPending.map(client => (
-                  <div key={client.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div key={client.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 bg-gray-50 rounded-lg">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {client.name || `Client EasyBeer #${client.easybeer_id}`}
@@ -1174,9 +1174,23 @@ export default function AdminPage() {
                       <p className="text-xs text-gray-500 truncate">
                         {[client.city, client.phone, client.email].filter(Boolean).join(' - ') || `ID: ${client.easybeer_id} — En attente de synchronisation`}
                       </p>
-                      {client.commercial_email && (
-                        <p className="text-[10px] text-gray-400">Commercial: {client.commercial_email}</p>
-                      )}
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        {client.commercial_email && (
+                          <p className="text-[10px] text-gray-400">Commercial: {client.commercial_email}</p>
+                        )}
+                        {client.tournee && (
+                          <p className="text-[10px] text-indigo-500">Tournee: {client.tournee}</p>
+                        )}
+                        {client.phone_mobile && (
+                          <p className="text-[10px] text-gray-400">Mobile: {client.phone_mobile}</p>
+                        )}
+                        {(client.latitude > 0 || client.longitude > 0) && (
+                          <p className="text-[10px] text-green-500">GPS OK</p>
+                        )}
+                        {client.siret && (
+                          <p className="text-[10px] text-gray-400">SIRET: {client.siret}</p>
+                        )}
+                      </div>
                     </div>
                     {!client.name && (
                       <button

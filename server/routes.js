@@ -1178,6 +1178,111 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
 // EasyBeer Integration
 // ============================================
 
+// Shared function to extract fields from EasyBeer API data
+// Handles nested structures: adresses[], contacts[], GPS, tournee, siret, etc.
+function extractEbFieldsSync(data) {
+  // ========== ADRESSE ==========
+  let adresse = '', ville = '', codePostal = '';
+  let adresseObj = null;
+  if (data.adresses && Array.isArray(data.adresses) && data.adresses.length > 0) {
+    adresseObj = data.adresses.find(a => a.type === 'Facturation' || a.type === 'facturation' || a.principale) || data.adresses[0];
+  } else if (data.adresse && typeof data.adresse === 'object') {
+    adresseObj = data.adresse;
+  } else if (data.adresseFacturation && typeof data.adresseFacturation === 'object') {
+    adresseObj = data.adresseFacturation;
+  }
+  if (adresseObj) {
+    if (adresseObj.numero && adresseObj.rue) adresse = `${adresseObj.numero} ${adresseObj.rue}`.trim();
+    else if (adresseObj.rue) adresse = adresseObj.rue;
+    else {
+      const lignes = [
+        adresseObj.ligne1 || adresseObj.adresse1 || adresseObj.adresse,
+        adresseObj.ligne2 || adresseObj.adresse2 || adresseObj.complement,
+        adresseObj.ligne3, adresseObj.ligne4
+      ].filter(l => l && String(l).trim());
+      adresse = lignes.join(', ');
+      if (!adresse && (adresseObj.complete || adresseObj.libelle || adresseObj.adresseComplete)) {
+        adresse = adresseObj.complete || adresseObj.libelle || adresseObj.adresseComplete;
+      }
+    }
+    ville = adresseObj.ville || adresseObj.commune || adresseObj.city || '';
+    codePostal = adresseObj.codePostal || adresseObj.cp || adresseObj.zipCode || adresseObj.code_postal || '';
+  }
+  // ========== CONTACTS ==========
+  let contactName = '', contactEmail = '', contactTel = '', contactMobile = '';
+  let contactObj = null;
+  if (data.contacts && Array.isArray(data.contacts) && data.contacts.length > 0) {
+    contactObj = data.contacts.find(c => c.type === 'Principal' || c.type === 'principal' || c.principal) || data.contacts[0];
+  } else if (data.listeContacts && Array.isArray(data.listeContacts) && data.listeContacts.length > 0) {
+    contactObj = data.listeContacts.find(c => c.type === 'Principal' || c.principal) || data.listeContacts[0];
+  } else if (data.contactPrincipal && typeof data.contactPrincipal === 'object') {
+    contactObj = data.contactPrincipal;
+  }
+  if (contactObj && typeof contactObj === 'object') {
+    contactName = contactObj.denomination || contactObj.libelle || `${contactObj.prenom || ''} ${contactObj.nom || ''}`.trim();
+    contactEmail = contactObj.email || contactObj.emailPrincipal || contactObj.mail || '';
+    contactTel = contactObj.telephone || contactObj.telephonePrincipal || contactObj.tel || contactObj.phone || '';
+    contactMobile = contactObj.mobile || contactObj.portable || contactObj.gsm || contactObj.telephoneMobile || '';
+  }
+  // ========== TELEPHONE ==========
+  const phoneFix = data.telephonePrincipal || data.telephone || contactTel || data.tel || '';
+  const phoneMobile = contactMobile || data.mobile || data.portable || '';
+  const phone = phoneMobile || phoneFix;
+  // ========== GPS ==========
+  let latitude = 0, longitude = 0;
+  if (adresseObj) {
+    if (adresseObj.latitude != null && adresseObj.longitude != null) {
+      latitude = parseFloat(adresseObj.latitude) || 0;
+      longitude = parseFloat(adresseObj.longitude) || 0;
+    } else if (adresseObj.lat != null && adresseObj.lng != null) {
+      latitude = parseFloat(adresseObj.lat) || 0;
+      longitude = parseFloat(adresseObj.lng) || 0;
+    } else if (adresseObj.coordonnees) {
+      latitude = parseFloat(adresseObj.coordonnees.latitude || adresseObj.coordonnees.lat) || 0;
+      longitude = parseFloat(adresseObj.coordonnees.longitude || adresseObj.coordonnees.lng) || 0;
+    }
+  }
+  if (!latitude && !longitude) {
+    if (data.latitude != null && data.longitude != null) {
+      latitude = parseFloat(data.latitude) || 0;
+      longitude = parseFloat(data.longitude) || 0;
+    } else if (data.coordonnees) {
+      latitude = parseFloat(data.coordonnees.latitude || data.coordonnees.lat) || 0;
+      longitude = parseFloat(data.coordonnees.longitude || data.coordonnees.lng) || 0;
+    } else if (data.geoloc) {
+      latitude = parseFloat(data.geoloc.latitude || data.geoloc.lat) || 0;
+      longitude = parseFloat(data.geoloc.longitude || data.geoloc.lng) || 0;
+    }
+  }
+  // ========== TOURNEE ==========
+  let tournee = '';
+  if (data.tournee) {
+    if (typeof data.tournee === 'string') tournee = data.tournee;
+    else tournee = data.tournee.libelle || data.tournee.nom || data.tournee.code || '';
+  }
+  // ========== TYPE ==========
+  let typeStr = data.type || '';
+  if (typeof typeStr === 'object' && typeStr) typeStr = typeStr.libelle || typeStr.code || '';
+
+  return {
+    name: data.nom || data.libelle || data.raisonSociale || data.name || '',
+    type: typeStr,
+    contact_name: contactName || data.contact_name || data.contact || '',
+    phone,
+    phone_mobile: phoneMobile,
+    email: data.emailPrincipal || data.email || contactEmail || data.mail || '',
+    city: ville || data.ville || data.city || '',
+    address: adresse || data.address || '',
+    postal_code: codePostal || data.postal_code || data.cp || '',
+    notes: data.notes || data.commentaire || data.observation || '',
+    commercial_email: data.commercial?.email || data.commercial?.emailPrincipal || data.commercial_email || data.commercialEmail || '',
+    siret: data.siret || data.siren || '',
+    tournee,
+    latitude,
+    longitude,
+  };
+}
+
 // Webhook endpoint (no auth, uses secret header)
 // EasyBeer webhook handler (shared by both routes)
 async function handleEasyBeerWebhook(req, res) {
@@ -1246,52 +1351,8 @@ async function handleEasyBeerWebhook(req, res) {
     console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name=${directName || '(depuis webhook)'}`);
   }
 
-  // Helper to extract fields from EasyBeer data (handles nested structures from /parametres/client/detail/)
-  const extractEbFields = (data) => {
-    // Handle nested adresses
-    let adresse = '', ville = '', codePostal = '';
-    let adresseObj = null;
-    if (data.adresses && Array.isArray(data.adresses) && data.adresses.length > 0) {
-      adresseObj = data.adresses.find(a => a.type === 'Facturation' || a.principale) || data.adresses[0];
-    } else if (data.adresse && typeof data.adresse === 'object') {
-      adresseObj = data.adresse;
-    }
-    if (adresseObj) {
-      if (adresseObj.numero && adresseObj.rue) adresse = `${adresseObj.numero} ${adresseObj.rue}`.trim();
-      else if (adresseObj.rue) adresse = adresseObj.rue;
-      else adresse = [adresseObj.ligne1 || adresseObj.adresse1, adresseObj.ligne2].filter(Boolean).join(', ');
-      ville = adresseObj.ville || adresseObj.commune || '';
-      codePostal = adresseObj.codePostal || adresseObj.cp || '';
-    }
-    // Handle nested contacts
-    let contactName = '', contactEmail = '', contactTel = '';
-    let contactObj = null;
-    if (data.contacts && Array.isArray(data.contacts) && data.contacts.length > 0) {
-      contactObj = data.contacts.find(c => c.type === 'Principal' || c.principal) || data.contacts[0];
-    } else if (data.listeContacts && Array.isArray(data.listeContacts) && data.listeContacts.length > 0) {
-      contactObj = data.listeContacts[0];
-    }
-    if (contactObj && typeof contactObj === 'object') {
-      contactName = contactObj.denomination || contactObj.libelle || `${contactObj.prenom || ''} ${contactObj.nom || ''}`.trim();
-      contactEmail = contactObj.email || contactObj.emailPrincipal || '';
-      contactTel = contactObj.telephone || contactObj.mobile || '';
-    }
-    let typeStr = data.type || '';
-    if (typeof typeStr === 'object' && typeStr) typeStr = typeStr.libelle || typeStr.code || '';
-
-    return {
-      name: data.nom || data.libelle || data.raisonSociale || data.name || '',
-      type: typeStr,
-      contact_name: contactName || data.contact_name || data.contact || '',
-      phone: data.telephonePrincipal || data.telephone || contactTel || data.mobile || data.tel || '',
-      email: data.emailPrincipal || data.email || contactEmail || data.mail || '',
-      city: ville || data.ville || data.city || '',
-      address: adresse || data.address || '',
-      postal_code: codePostal || data.postal_code || data.cp || '',
-      notes: data.notes || data.commentaire || data.observation || '',
-      commercial_email: data.commercial?.email || data.commercial?.emailPrincipal || data.commercial_email || data.commercialEmail || '',
-    };
-  };
+  // Use shared extractEbFieldsSync function (defined above)
+  const extractEbFields = extractEbFieldsSync;
 
   // Try to enrich with EasyBeer API data in background
   if (id && config?.username && config?.api_url) {
@@ -1350,17 +1411,24 @@ async function handleEasyBeerWebhook(req, res) {
               type = COALESCE(NULLIF($3, ''), type),
               contact_name = COALESCE(NULLIF($4, ''), contact_name),
               phone = COALESCE(NULLIF($5, ''), phone),
-              email = COALESCE(NULLIF($6, ''), email),
-              city = COALESCE(NULLIF($7, ''), city),
-              address = COALESCE(NULLIF($8, ''), address),
-              postal_code = COALESCE(NULLIF($9, ''), postal_code),
-              notes = COALESCE(NULLIF($10, ''), notes),
-              commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
-              raw_data = $12, updated_at = $13
+              phone_mobile = COALESCE(NULLIF($6, ''), phone_mobile),
+              email = COALESCE(NULLIF($7, ''), email),
+              city = COALESCE(NULLIF($8, ''), city),
+              address = COALESCE(NULLIF($9, ''), address),
+              postal_code = COALESCE(NULLIF($10, ''), postal_code),
+              notes = COALESCE(NULLIF($11, ''), notes),
+              commercial_email = COALESCE(NULLIF($12, ''), commercial_email),
+              siret = COALESCE(NULLIF($13, ''), siret),
+              tournee = COALESCE(NULLIF($14, ''), tournee),
+              latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
+              longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
+              raw_data = $17, updated_at = $18
             WHERE easybeer_id = $1`,
-            [id, f.name, f.type, f.contact_name, f.phone, f.email,
-             f.city, f.address, f.postal_code, f.notes, f.commercial_email, JSON.stringify(found), clientNow]
+            [id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
+             f.city, f.address, f.postal_code, f.notes, f.commercial_email,
+             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow]
           );
+          console.log(`[EasyBeer Webhook] Enrichi: ${f.name}, GPS=${f.latitude},${f.longitude}, tournee=${f.tournee}, mobile=${f.phone_mobile}`);
 
           // Auto-import if assignment rule exists
           if (f.commercial_email) {
@@ -1371,14 +1439,15 @@ async function handleEasyBeerWebhook(req, res) {
               const nextVisit = await calculateNextVisit(clientType, null, null);
               const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
               await db.query(
-                `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
-                 type_client, statut, commercial_id, next_visit, notes, latitude, longitude, date_creation, date_modification)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
+                 type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, date_creation, date_modification)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
                 [clientId, f.name, f.city, f.address, f.postal_code,
-                 f.phone, f.email, f.contact_name, clientType, 'ACTIF',
-                 rule.commercial_id, nextVisit || null, f.notes, 0, 0, clientNow, clientNow]
+                 f.phone, f.phone_mobile, f.email, f.contact_name, clientType, 'ACTIF',
+                 rule.commercial_id, nextVisit || null, f.notes, f.siret, f.tournee, f.latitude, f.longitude, clientNow, clientNow]
               );
               await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
+              console.log(`[EasyBeer Webhook] Auto-import: ${f.name} -> commercial ${rule.commercial_id}`);
             }
           }
         } else {
@@ -1496,12 +1565,13 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
   await db.query(
-    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
-     type_client, statut, commercial_id, next_visit, notes, tournee, date_creation, date_modification)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
+     type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, date_creation, date_modification)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [clientId, eb.name, eb.city || '', eb.address || '', eb.postal_code || '',
-     eb.phone || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
-     commercial_id || req.user.id, nextVisit || null, eb.notes || '', tournee || '', now, now]
+     eb.phone || '', eb.phone_mobile || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
+     commercial_id || req.user.id, nextVisit || null, eb.notes || '', eb.siret || '',
+     tournee || eb.tournee || '', eb.latitude || 0, eb.longitude || 0, now, now]
   );
 
   await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, req.params.id]);
@@ -1530,76 +1600,9 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
-  // Helper to extract fields from EasyBeer data (handles nested structures from /parametres/client/detail/)
-  const extractFields = (data) => {
-    // Handle nested adresses array or adresse object
-    let adresse = '', ville = '', codePostal = '';
-    let adresseObj = null;
-    if (data.adresses && Array.isArray(data.adresses) && data.adresses.length > 0) {
-      adresseObj = data.adresses.find(a => a.type === 'Facturation' || a.principale) || data.adresses[0];
-    } else if (data.adresse && typeof data.adresse === 'object') {
-      adresseObj = data.adresse;
-    } else if (data.adresseFacturation && typeof data.adresseFacturation === 'object') {
-      adresseObj = data.adresseFacturation;
-    }
-    if (adresseObj) {
-      if (adresseObj.numero && adresseObj.rue) {
-        adresse = `${adresseObj.numero} ${adresseObj.rue}`.trim();
-      } else if (adresseObj.rue) {
-        adresse = adresseObj.rue;
-      } else {
-        const lignes = [adresseObj.ligne1 || adresseObj.adresse1 || adresseObj.adresse,
-          adresseObj.ligne2 || adresseObj.adresse2, adresseObj.ligne3].filter(Boolean);
-        adresse = lignes.join(', ');
-      }
-      ville = adresseObj.ville || adresseObj.commune || '';
-      codePostal = adresseObj.codePostal || adresseObj.cp || adresseObj.code_postal || '';
-    }
-
-    // Handle nested contacts array
-    let contactName = '', contactEmail = '', contactTel = '';
-    let contactObj = null;
-    if (data.contacts && Array.isArray(data.contacts) && data.contacts.length > 0) {
-      contactObj = data.contacts.find(c => c.type === 'Principal' || c.principal) || data.contacts[0];
-    } else if (data.listeContacts && Array.isArray(data.listeContacts) && data.listeContacts.length > 0) {
-      contactObj = data.listeContacts[0];
-    } else if (data.contactPrincipal && typeof data.contactPrincipal === 'object') {
-      contactObj = data.contactPrincipal;
-    }
-    if (contactObj && typeof contactObj === 'object') {
-      const prenom = contactObj.prenom || '';
-      const nom = contactObj.nom || '';
-      contactName = contactObj.denomination || contactObj.libelle || `${prenom} ${nom}`.trim();
-      contactEmail = contactObj.email || contactObj.emailPrincipal || contactObj.mail || '';
-      contactTel = contactObj.telephone || contactObj.mobile || contactObj.portable || '';
-    }
-
-    // Type can be an object
-    let typeStr = data.type || '';
-    if (typeof typeStr === 'object' && typeStr) {
-      typeStr = typeStr.libelle || typeStr.code || '';
-    }
-
-    const finalPhone = data.telephonePrincipal || data.telephone || contactTel || data.mobile || data.tel || '';
-    const finalEmail = data.emailPrincipal || data.email || contactEmail || data.mail || '';
-
-    return {
-      name: data.nom || data.libelle || data.raisonSociale || data.name || '',
-      type: typeStr,
-      contact_name: contactName || data.contact_name || data.contact || '',
-      phone: finalPhone,
-      email: finalEmail,
-      city: ville || data.ville || data.city || '',
-      address: adresse || data.address || '',
-      postal_code: codePostal || data.postal_code || data.cp || '',
-      notes: data.notes || data.commentaire || data.observation || '',
-      commercial_email: data.commercial?.email || data.commercial?.emailPrincipal || data.commercial_email || data.commercialEmail || '',
-    };
-  };
-
-  // Helper to update client from data
+  // Helper to update client from data (uses shared extractEbFields from webhook handler)
   const updateFromData = async (data, path) => {
-    const f = extractFields(data);
+    const f = extractEbFieldsSync(data);
     const now = new Date().toISOString();
     await db.query(
       `UPDATE easybeer_clients SET
@@ -1607,16 +1610,22 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
         type = COALESCE(NULLIF($3, ''), type),
         contact_name = COALESCE(NULLIF($4, ''), contact_name),
         phone = COALESCE(NULLIF($5, ''), phone),
-        email = COALESCE(NULLIF($6, ''), email),
-        city = COALESCE(NULLIF($7, ''), city),
-        address = COALESCE(NULLIF($8, ''), address),
-        postal_code = COALESCE(NULLIF($9, ''), postal_code),
-        notes = COALESCE(NULLIF($10, ''), notes),
-        commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
-        raw_data = $12, updated_at = $13
+        phone_mobile = COALESCE(NULLIF($6, ''), phone_mobile),
+        email = COALESCE(NULLIF($7, ''), email),
+        city = COALESCE(NULLIF($8, ''), city),
+        address = COALESCE(NULLIF($9, ''), address),
+        postal_code = COALESCE(NULLIF($10, ''), postal_code),
+        notes = COALESCE(NULLIF($11, ''), notes),
+        commercial_email = COALESCE(NULLIF($12, ''), commercial_email),
+        siret = COALESCE(NULLIF($13, ''), siret),
+        tournee = COALESCE(NULLIF($14, ''), tournee),
+        latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
+        longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
+        raw_data = $17, updated_at = $18
       WHERE id = $1`,
-      [req.params.id, f.name, f.type, f.contact_name, f.phone, f.email,
-       f.city, f.address, f.postal_code, f.notes, f.commercial_email, JSON.stringify(data), now]
+      [req.params.id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
+       f.city, f.address, f.postal_code, f.notes, f.commercial_email,
+       f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(data), now]
     );
     return res.json({ ok: true, message: `Synchronise via ${path}`, name: f.name });
   };

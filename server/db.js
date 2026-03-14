@@ -264,12 +264,17 @@ async function initDatabase(attempt = 1) {
         type TEXT DEFAULT '',
         contact_name TEXT DEFAULT '',
         phone TEXT DEFAULT '',
+        phone_mobile TEXT DEFAULT '',
         email TEXT DEFAULT '',
         city TEXT DEFAULT '',
         address TEXT DEFAULT '',
         postal_code TEXT DEFAULT '',
         notes TEXT DEFAULT '',
         commercial_email TEXT DEFAULT '',
+        siret TEXT DEFAULT '',
+        tournee TEXT DEFAULT '',
+        latitude DOUBLE PRECISION DEFAULT 0,
+        longitude DOUBLE PRECISION DEFAULT 0,
         raw_data TEXT DEFAULT '{}',
         status TEXT DEFAULT 'pending',
         imported_client_id TEXT,
@@ -372,6 +377,13 @@ async function initDatabase(attempt = 1) {
         }
       }
     } catch (err) { console.error('Migration compte-rendu pipeline:', err); }
+
+    // Add new columns to easybeer_clients
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS phone_mobile TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS siret TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS tournee TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
 
     // Add tournee_info and week_pattern to tournee_config
     try {
