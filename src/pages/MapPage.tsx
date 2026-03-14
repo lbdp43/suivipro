@@ -63,6 +63,7 @@ export default function MapPage() {
   const [rdvFilterCommercial, setRdvFilterCommercial] = usePersistedState<string>('map_rdv_commercial', '');
   const [maxMarkers, setMaxMarkers] = usePersistedState<number>('map_max_markers', 200);
   const [showClients, setShowClients] = usePersistedState<boolean>('map_show_clients', false);
+  const [showProspects, setShowProspects] = usePersistedState<boolean>('map_show_prospects', true);
   const [mapFilterCommercial, setMapFilterCommercial] = usePersistedState<string>('map_filter_commercial', '');
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
@@ -277,12 +278,22 @@ export default function MapPage() {
               </span>
             )}
           </button>
+          {/* Bouton Prospects */}
+          <button
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
+              showProspects ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+            onClick={() => { setShowProspects(!showProspects); if (!showProspects === false && !showClients) setShowClients(true); }}
+          >
+            <MapPin className="w-4 h-4" />
+            <span className="hidden sm:inline">Prospects</span>
+          </button>
           {/* Bouton Clients */}
           <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
               showClients ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
             }`}
-            onClick={() => setShowClients(!showClients)}
+            onClick={() => { setShowClients(!showClients); if (!showClients === false && !showProspects) setShowProspects(true); }}
           >
             <Building2 className="w-4 h-4" />
             <span className="hidden sm:inline">Clients</span>
@@ -764,7 +775,7 @@ export default function MapPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {(maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)).map(prospect => {
+          {showProspects && (maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)).map(prospect => {
             const markerColor = showRdvPanel ? '#2563eb' : PIPELINE_COLORS[prospect.etape_pipeline];
             return (
               <Marker
