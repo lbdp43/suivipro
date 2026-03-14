@@ -469,9 +469,9 @@ export default function ClientsPage() {
                       isSelected ? 'bg-brewery-50 border-l-3 border-brewery-600' : ''
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       {/* Visit status dot */}
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusConfig.dot}`} title={statusConfig.label} />
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5 ${statusConfig.dot}`} title={statusConfig.label} />
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -482,24 +482,34 @@ export default function ClientsPage() {
                             {statusConfig.label}
                           </span>
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
+                          {client.contact && <span className="text-gray-500">{client.contact}</span>}
+                          {client.contact && (client.ville || CLIENT_TYPE_LABELS[client.type_client]) && <span>-</span>}
+                          <span>{CLIENT_TYPE_LABELS[client.type_client]}</span>
                           {client.ville && (
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3 h-3" />
                               {client.ville}
                             </span>
                           )}
-                          <span>{CLIENT_TYPE_LABELS[client.type_client]}</span>
-                          {client.tournee && <span className="text-brewery-600">{client.tournee}</span>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-400 flex-wrap">
+                          {client.tournee && <span className="text-brewery-600 font-medium">{client.tournee}</span>}
                           {isAdmin && commercial && (
                             <span className="flex items-center gap-1">
                               <User className="w-3 h-3" />
                               {commercial.prenom}
                             </span>
                           )}
+                          {(client.telephone || client.telephone_mobile) && (
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              {client.telephone_mobile || client.telephone}
+                            </span>
+                          )}
                         </div>
                         {client.next_visit && (
-                          <div className="flex items-center gap-1 mt-0.5 text-xs text-gray-400">
+                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-400">
                             <Calendar className="w-3 h-3" />
                             Prochaine visite : {formatDate(client.next_visit)}
                           </div>
@@ -507,22 +517,57 @@ export default function ClientsPage() {
                       </div>
 
                       {/* Quick actions */}
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      <div className="flex flex-col gap-1 flex-shrink-0">
+                        {(client.telephone || client.telephone_mobile) && (
+                          <a
+                            href={`tel:${client.telephone_mobile || client.telephone}`}
+                            onClick={e => e.stopPropagation()}
+                            className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                            title={`Appeler${client.telephone_mobile ? ` (mobile: ${client.telephone_mobile})` : ` (${client.telephone})`}`}
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        {client.email && (
+                          <a
+                            href={`mailto:${client.email}`}
+                            onClick={e => e.stopPropagation()}
+                            className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                            title={`Envoyer un email à ${client.email}`}
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                          </a>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
-                          className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                          title="Marquer visite"
+                          className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                          title="Enregistrer une visite"
                         >
-                          <CheckCircle2 className="w-4 h-4" />
+                          <CheckCircle2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('APPEL'); }}
-                          className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
-                          title="Marquer appel"
-                        >
-                          <PhoneCall className="w-4 h-4" />
-                        </button>
-                        <ChevronRight className="w-4 h-4 text-gray-300" />
+                        {(client.latitude && client.longitude) ? (
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                            title="Naviguer vers ce client"
+                          >
+                            <Navigation className="w-3.5 h-3.5" />
+                          </a>
+                        ) : client.adresse ? (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([client.adresse, client.ville].filter(Boolean).join(' '))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                            title="Voir sur la carte"
+                          >
+                            <Navigation className="w-3.5 h-3.5" />
+                          </a>
+                        ) : null}
                       </div>
                     </div>
                   </div>
