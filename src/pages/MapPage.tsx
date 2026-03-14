@@ -330,13 +330,20 @@ export default function MapPage() {
             <option value={15000}>15 000</option>
             <option value={0}>Tout voir</option>
           </select>
-          <div className="text-xs sm:text-sm text-gray-500 flex-shrink-0">
+          <div className="text-xs sm:text-sm text-gray-500 flex-shrink-0 flex items-center gap-1.5">
             {showRdvPanel ? (
               <span className="text-blue-600 font-medium">{filteredProspects.length} RDV</span>
             ) : (
               <>
-                {maxMarkers === 0 ? filteredProspects.length : Math.min(filteredProspects.length, maxMarkers)}{maxMarkers > 0 && filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
-                <span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
+                <span>
+                  {maxMarkers === 0 ? filteredProspects.length : Math.min(filteredProspects.length, maxMarkers)}{maxMarkers > 0 && filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
+                  <span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
+                </span>
+                {showClients && filteredClients.length > 0 && (
+                  <span className="text-emerald-600 font-medium">
+                    + {filteredClients.length} client{filteredClients.length > 1 ? 's' : ''}
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -355,22 +362,25 @@ export default function MapPage() {
           </button>
           {state.commerciaux.map(c => {
             const prospectCount = state.prospects.filter(p => p.commercial_id === c.id && p.latitude && p.longitude).length;
-            const clientCount = showClients ? state.clients.filter(cl => cl.commercial_id === c.id && cl.latitude && cl.longitude && cl.statut !== 'INACTIF').length : 0;
-            const total = prospectCount + clientCount;
+            const clientCount = state.clients.filter(cl => cl.commercial_id === c.id && cl.latitude && cl.longitude && cl.statut !== 'INACTIF').length;
+            const isActive = mapFilterCommercial === c.id;
             return (
               <button
                 key={c.id}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
-                  mapFilterCommercial === c.id ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  isActive ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
-                onClick={() => setMapFilterCommercial(mapFilterCommercial === c.id ? '' : c.id)}
+                onClick={() => setMapFilterCommercial(isActive ? '' : c.id)}
               >
                 {c.prenom}
-                <span className={`text-[9px] rounded-full w-4 h-4 flex items-center justify-center ${
-                  mapFilterCommercial === c.id ? 'bg-white/20' : 'bg-gray-200'
-                }`}>
-                  {total}
+                <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${isActive ? 'bg-white/20' : 'bg-gray-200'}`}>
+                  {prospectCount}P
                 </span>
+                {showClients && clientCount > 0 && (
+                  <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${isActive ? 'bg-emerald-400/30' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {clientCount}C
+                  </span>
+                )}
               </button>
             );
           })}
