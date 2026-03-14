@@ -142,6 +142,7 @@ export default function VisitesPage() {
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
+  const [modalClientNotes, setModalClientNotes] = useState('');
 
   const openInteractionModal = (client: VisitClient, type: InteractionType) => {
     setModalClient(client);
@@ -156,6 +157,13 @@ export default function VisitesPage() {
     setModalRdvNotes('');
     setModalShowConfirmation(false);
     setModalCreatedRdvId('');
+    const full = getClient(client.id);
+    setModalClientNotes(full?.notes || '');
+    // Trigger phone call when opening as APPEL
+    if (type === 'APPEL') {
+      const phone = client.telephone_mobile || client.telephone;
+      if (phone) window.open(`tel:${phone.replace(/\s/g, '')}`, '_self');
+    }
   };
 
   const resetModal = () => {
@@ -205,6 +213,7 @@ export default function VisitesPage() {
     setModalSubmitting(true);
     try {
       const now = new Date().toISOString();
+      const token = localStorage.getItem('suivipro_token');
       const interaction = {
         id: generateId('int'),
         client_id: modalClient.id,
@@ -215,6 +224,18 @@ export default function VisitesPage() {
         date_creation: now,
       };
       dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+
+      // Save client notes if changed
+      const full = getClient(modalClient.id);
+      if (full && modalClientNotes !== (full.notes || '')) {
+        const updated: Client = { ...full, notes: modalClientNotes, date_modification: now };
+        await fetch(`/api/clients/${modalClient.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(updated),
+        });
+        dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      }
 
       // For RDV_PLANIFIE, also create an appointment
       if (modalType === 'RDV_PLANIFIE' && modalDate) {
@@ -474,14 +495,13 @@ export default function VisitesPage() {
         {/* Quick actions - horizontal */}
         <div className="flex items-center gap-3 sm:gap-1.5 mt-2">
           {(client.telephone_mobile || client.telephone) && (
-            <a
-              href={`tel:${client.telephone_mobile || client.telephone}`}
-              onClick={e => e.stopPropagation()}
+            <button
+              onClick={e => { e.stopPropagation(); openInteractionModal(client, 'APPEL'); }}
               className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-              title="Appeler"
+              title="Appeler et enregistrer"
             >
               <Phone className="w-3.5 h-3.5" />
-            </a>
+            </button>
           )}
           <button
             onClick={() => openInteractionModal(client, 'VISITE')}
@@ -932,16 +952,16 @@ export default function VisitesPage() {
                     <X className="w-4 h-4 text-gray-400" />
                   </button>
                 </div>
-                {/* Client notes display */}
-                {(() => {
-                  const fullC = getClient(modalClient.id);
-                  return fullC?.notes ? (
-                    <div className="mx-5 mt-3 p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
-                      <p className="text-[10px] font-semibold text-yellow-800 mb-0.5">Notes client</p>
-                      <p className="text-xs text-gray-700 whitespace-pre-wrap">{fullC.notes}</p>
-                    </div>
-                  ) : null;
-                })()}
+                {/* Editable client notes */}
+                <div className="mx-5 mt-3 p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <label className="text-[10px] font-semibold text-yellow-800 mb-1 block">Notes client</label>
+                  <textarea
+                    value={modalClientNotes}
+                    onChange={e => setModalClientNotes(e.target.value)}
+                    placeholder="Notes sur le client..."
+                    className="w-full text-xs bg-white border border-yellow-300 rounded-lg px-2.5 py-1.5 resize-none h-16 focus:ring-2 focus:ring-yellow-300 focus:border-yellow-400"
+                  />
+                </div>
                 <div className="p-5 space-y-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>

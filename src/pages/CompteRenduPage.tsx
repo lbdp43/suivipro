@@ -97,6 +97,7 @@ export default function CompteRenduPage() {
   const [rdvModalCommercialId, setRdvModalCommercialId] = useState('');
   const [crModalNotes, setCrModalNotes] = useState('');
   const [visitModalComment, setVisitModalComment] = useState('');
+  const [visitModalNotes, setVisitModalNotes] = useState('');
 
   // Reminder state for CR modal
   const [showRappelSection, setShowRappelSection] = useState(false);
@@ -410,6 +411,13 @@ export default function CompteRenduPage() {
     setVisitModalClient(client);
     setVisitModalType(type);
     setVisitModalComment('');
+    const full = getClient(client.id);
+    setVisitModalNotes(full?.notes || '');
+    // Trigger phone call when opening as APPEL
+    if (type === 'APPEL') {
+      const phone = client.telephone_mobile || client.telephone;
+      if (phone) window.open(`tel:${phone.replace(/\s/g, '')}`, '_self');
+    }
   };
 
   // Open RDV planification modal
@@ -442,6 +450,19 @@ export default function CompteRenduPage() {
       });
       if (!res.ok) throw new Error();
       dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+
+      // Save client notes if changed
+      const full = getClient(visitModalClient.id);
+      if (full && visitModalNotes !== (full.notes || '')) {
+        const updated: Client = { ...full, notes: visitModalNotes, date_modification: now };
+        await fetch(`/api/clients/${visitModalClient.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(updated),
+        });
+        dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      }
+
       toast.success(visitModalType === 'VISITE' ? `Visite enregistree pour ${visitModalClient.nom}` : `Appel enregistre pour ${visitModalClient.nom}`);
       setVisitModalClient(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
@@ -564,19 +585,18 @@ export default function CompteRenduPage() {
               <FileText className="w-3.5 h-3.5" /> Modifier le CR
             </button>
           )}
-          {(rdv.client_id || rdv.prospect_id) && (
-            <a
-              href={`tel:${(() => {
-                if (rdv.client_id) { const c = getClient(rdv.client_id); return c?.telephone_mobile || c?.telephone || ''; }
-                return '';
-              })()}`}
-              onClick={e => e.stopPropagation()}
-              className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-              title="Appeler"
-            >
-              <Phone className="w-4 h-4" />
-            </a>
-          )}
+          {rdv.client_id && (() => {
+            const c = getClient(rdv.client_id);
+            return c && (c.telephone_mobile || c.telephone) ? (
+              <button
+                onClick={e => { e.stopPropagation(); openVisitModal(c, 'APPEL'); }}
+                className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                title="Appeler et enregistrer"
+              >
+                <Phone className="w-4 h-4" />
+              </button>
+            ) : null;
+          })()}
         </div>
       </div>
     );
@@ -707,14 +727,13 @@ export default function CompteRenduPage() {
             <StickyNote className="w-3.5 h-3.5" />
           </button>
           {(client.telephone_mobile || client.telephone) && (
-            <a
-              href={`tel:${client.telephone_mobile || client.telephone}`}
-              onClick={e => e.stopPropagation()}
+            <button
+              onClick={e => { e.stopPropagation(); openVisitModal(client, 'APPEL'); }}
               className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors flex-shrink-0"
-              title="Appeler"
+              title="Appeler et enregistrer"
             >
               <Phone className="w-3.5 h-3.5" />
-            </a>
+            </button>
           )}
         </div>
       </div>
@@ -1301,6 +1320,16 @@ export default function CompteRenduPage() {
               </div>
               <button onClick={() => setVisitModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
+            {/* Editable notes client */}
+            <div className="mx-4 mt-4 p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
+              <label className="text-[10px] font-semibold text-yellow-800 mb-1 block">Notes client</label>
+              <textarea
+                value={visitModalNotes}
+                onChange={e => setVisitModalNotes(e.target.value)}
+                placeholder="Notes sur le client..."
+                className="w-full text-xs bg-white border border-yellow-300 rounded-lg px-2.5 py-1.5 resize-none h-16 focus:ring-2 focus:ring-yellow-300 focus:border-yellow-400"
+              />
+            </div>
             <div className="p-4 space-y-4">
               {/* Type */}
               <div>
@@ -1334,7 +1363,7 @@ export default function CompteRenduPage() {
                 <textarea
                   value={visitModalComment}
                   onChange={e => setVisitModalComment(e.target.value)}
-                  placeholder="Notes sur cette interaction... (obligatoire)"
+                  placeholder="Comment s'est passe l'echange ?... (obligatoire)"
                   className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-28 focus:ring-2 ${visitModalType === 'VISITE' ? 'focus:ring-green-300' : 'focus:ring-blue-300'} ${!visitModalComment.trim() ? 'border-red-300' : 'border-gray-300'}`}
                   autoFocus
                 />
