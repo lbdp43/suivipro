@@ -754,28 +754,28 @@ export default function ProspectsPage() {
                   </div>
                 </div>
                 {/* Quick action buttons */}
-                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                <div className="flex flex-col gap-2.5 sm:gap-1.5 flex-shrink-0">
                   {p.telephone && (
                     <button
-                      className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                      className="p-3 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
                       onClick={e => { e.stopPropagation(); startCall(p.id); }}
                       title="Appeler"
                     >
-                      <Phone className="w-3.5 h-3.5" />
+                      <Phone className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
                     </button>
                   )}
                   {p.email && (
                     <button
-                      className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                      className="p-3 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
                       onClick={e => { e.stopPropagation(); setEmailProspect(p); }}
                       title="Envoyer un e-mail"
                     >
-                      <Mail className="w-3.5 h-3.5" />
+                      <Mail className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
                     </button>
                   )}
                   {!alreadyConvertedIds.has(p.id) && p.etape_pipeline !== 'perdu' && (
                     <button
-                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                      className="p-3 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
                       onClick={e => {
                         e.stopPropagation();
                         setConvertType('BAR_RESTAURANT_GENERAL');
@@ -785,18 +785,18 @@ export default function ProspectsPage() {
                       }}
                       title="Convertir en client"
                     >
-                      <UserCheck className="w-3.5 h-3.5" />
+                      <UserCheck className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
                     </button>
                   )}
                   <button
-                    className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                    className="p-3 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
                     onClick={e => openQuickNote(p, e)}
                     title="Notes rapides"
                   >
-                    <MessageSquare className="w-3.5 h-3.5" />
+                    <MessageSquare className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
                   </button>
                   <button
-                    className="p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+                    className="p-3 sm:p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
                     onClick={e => {
                       e.stopPropagation();
                       const in3days = new Date();
@@ -808,7 +808,7 @@ export default function ProspectsPage() {
                     }}
                     title="Memo / Rappel"
                   >
-                    <Bell className="w-3.5 h-3.5" />
+                    <Bell className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
                   </button>
                 </div>
               </div>

@@ -432,43 +432,43 @@ export default function VisitesPage() {
           </div>
         </div>
         {/* Quick actions - horizontal */}
-        <div className="flex items-center gap-1.5 mt-2">
+        <div className="flex items-center gap-3 sm:gap-1.5 mt-2">
           {(client.telephone_mobile || client.telephone) && (
             <a
               href={`tel:${client.telephone_mobile || client.telephone}`}
               onClick={e => e.stopPropagation()}
-              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+              className="p-3 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
               title="Appeler"
             >
-              <Phone className="w-3.5 h-3.5" />
+              <Phone className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
             </a>
           )}
           <button
             onClick={() => openInteractionModal(client, 'VISITE')}
-            className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+            className="p-3 sm:p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
             title="Marquer une visite"
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
+            <CheckCircle2 className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
           </button>
           <button
             onClick={() => openInteractionModal(client, 'RDV_PLANIFIE')}
-            className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+            className="p-3 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
             title="Planifier un RDV"
           >
-            <Calendar className="w-3.5 h-3.5" />
+            <Calendar className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
           </button>
           <button
             onClick={() => openEditClient(client)}
-            className="p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+            className="p-3 sm:p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
             title="Modifier le client"
           >
-            <Edit2 className="w-3.5 h-3.5" />
+            <Edit2 className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
           </button>
           {gmapsUrl && (
             <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+              className="p-3 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
               title="Itineraire Google Maps">
-              <Navigation className="w-3.5 h-3.5" />
+              <Navigation className="w-5 h-5 sm:w-3.5 sm:h-3.5" />
             </a>
           )}
         </div>
