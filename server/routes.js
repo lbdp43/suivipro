@@ -81,7 +81,7 @@ function validateCall(body) {
 
 function validateAppointment(body) {
   const errors = [];
-  if (!body.prospect_id) errors.push('prospect_id est requis');
+  if (!body.prospect_id && !body.client_id) errors.push('prospect_id ou client_id est requis');
   if (!body.commercial_id) errors.push('commercial_id est requis');
   if (!body.date) errors.push('date est requise');
   return errors;
@@ -349,8 +349,8 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
-    [a.id, a.prospect_id, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString()]
+    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu, created_at, client_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
+    [a.id, a.prospect_id || null, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString(), a.client_id || null]
   );
   res.json({ ok: true });
 }));
@@ -361,8 +361,8 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11 WHERE id=$12',
-    [a.prospect_id, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', req.params.id]
+    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11, client_id=$13 WHERE id=$12',
+    [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', req.params.id, a.client_id || null]
   );
   res.json({ ok: true });
 }));

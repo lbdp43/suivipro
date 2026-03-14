@@ -5,6 +5,7 @@ import {
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
   Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
   Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
+  Users, CalendarPlus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import {
@@ -12,7 +13,8 @@ import {
   ClientType, ClientStatus, Client, InteractionType,
   INTERACTION_TYPE_LABELS, TaskClient, TASK_CLIENT_STATUS_LABELS,
 } from '../types';
-import { generateId, formatDate } from '../utils/helpers';
+import { generateId, formatDate, detectConflicts, downloadICSClient } from '../utils/helpers';
+import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -57,6 +59,15 @@ export default function ClientsPage() {
   const [interactionType, setInteractionType] = useState<InteractionType>('VISITE');
   const [interactionComment, setInteractionComment] = useState('');
   const [interactionDate, setInteractionDate] = useState('');
+  // RDV fields
+  const [rdvHeureDebut, setRdvHeureDebut] = useState('10:00');
+  const [rdvHeureFin, setRdvHeureFin] = useState('11:00');
+  const [rdvLieu, setRdvLieu] = useState('');
+  const [rdvCommercialId, setRdvCommercialId] = useState('');
+  const [rdvNotes, setRdvNotes] = useState('');
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [showRdvConfirmation, setShowRdvConfirmation] = useState(false);
+  const [createdRdvId, setCreatedRdvId] = useState('');
 
   // Task modal
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -89,6 +100,42 @@ export default function ClientsPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Initialize rdvCommercialId when modal opens
+  useEffect(() => {
+    if (interactionClient && interactionType === 'RDV_PLANIFIE' && !rdvCommercialId) {
+      setRdvCommercialId(state.currentUser?.id || '');
+    }
+  }, [interactionClient, interactionType]);
+
+  // Google Calendar conflict detection for RDV
+  useEffect(() => {
+    if (interactionType !== 'RDV_PLANIFIE' || !rdvCommercialId || !interactionDate) {
+      setGoogleEvents([]);
+      return;
+    }
+    const dayStart = new Date(interactionDate + 'T00:00:00').toISOString();
+    const dayEnd = new Date(interactionDate + 'T23:59:59').toISOString();
+    getGoogleCalendarEvents(rdvCommercialId, dayStart, dayEnd)
+      .then(res => setGoogleEvents(res.connected ? res.events : []))
+      .catch(() => setGoogleEvents([]));
+  }, [interactionType, rdvCommercialId, interactionDate]);
+
+  // Internal RDV conflicts
+  const rdvConflicts = interactionType === 'RDV_PLANIFIE' && rdvCommercialId && interactionDate && rdvHeureDebut && rdvHeureFin
+    ? detectConflicts(state.appointments, rdvCommercialId, interactionDate, rdvHeureDebut, rdvHeureFin)
+    : [];
+
+  // Google Calendar conflicts for the chosen time slot
+  const googleConflicts = interactionType === 'RDV_PLANIFIE' && interactionDate && rdvHeureDebut && rdvHeureFin
+    ? googleEvents.filter(evt => {
+        if (evt.allDay) return true;
+        const evtStart = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
+        const evtEnd = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
+        if (!evtStart || !evtEnd) return false;
+        return rdvHeureDebut < evtEnd && evtStart < rdvHeureFin;
+      })
+    : [];
 
   const getEffectiveFrequency = (typeClient: string, customRecurrence: number | null): number | null => {
     if (customRecurrence) return customRecurrence;
@@ -252,10 +299,48 @@ export default function ClientsPage() {
       date_creation: now,
     };
     dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+
+    // For RDV_PLANIFIE, also create an appointment in the appointments table
+    if (interactionType === 'RDV_PLANIFIE' && interactionDate) {
+      const rdvId = generateId('rdv');
+      dispatch({
+        type: 'ADD_APPOINTMENT',
+        payload: {
+          id: rdvId,
+          prospect_id: '',
+          client_id: interactionClient.id,
+          commercial_id: rdvCommercialId || state.currentUser?.id || '',
+          prospecteur_id: state.currentUser?.id || '',
+          date: interactionDate,
+          heure_debut: rdvHeureDebut,
+          heure_fin: rdvHeureFin,
+          lieu: rdvLieu,
+          notes: rdvNotes || interactionComment.trim(),
+          statut: 'planifie',
+          created_at: now,
+        },
+      });
+      // Show confirmation screen
+      setCreatedRdvId(rdvId);
+      setShowRdvConfirmation(true);
+      return;
+    }
+
+    resetInteractionModal();
+  };
+
+  const resetInteractionModal = () => {
     setInteractionClient(null);
     setInteractionComment('');
     setInteractionDate('');
     setInteractionType('VISITE');
+    setRdvHeureDebut('10:00');
+    setRdvHeureFin('11:00');
+    setRdvLieu('');
+    setRdvCommercialId('');
+    setRdvNotes('');
+    setShowRdvConfirmation(false);
+    setCreatedRdvId('');
   };
 
   // Export clients
@@ -713,59 +798,73 @@ export default function ClientsPage() {
                         )}
                       </div>
 
-                      {/* Quick actions */}
-                      <div className="flex flex-col gap-1 flex-shrink-0">
-                        {(client.telephone || client.telephone_mobile) && (
-                          <a
-                            href={`tel:${client.telephone_mobile || client.telephone}`}
-                            onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                            title={`Appeler${client.telephone_mobile ? ` (mobile: ${client.telephone_mobile})` : ` (${client.telephone})`}`}
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                        {client.email && (
-                          <a
-                            href={`mailto:${client.email}`}
-                            onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
-                            title={`Envoyer un email à ${client.email}`}
-                          >
-                            <Mail className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
-                          className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                          title="Enregistrer une visite"
+                    </div>
+                    {/* Quick actions - horizontal */}
+                    <div className="flex items-center gap-1.5 mt-2 pl-5">
+                      {(client.telephone || client.telephone_mobile) && (
+                        <a
+                          href={`tel:${client.telephone_mobile || client.telephone}`}
+                          onClick={e => e.stopPropagation()}
+                          className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                          title={`Appeler${client.telephone_mobile ? ` (mobile: ${client.telephone_mobile})` : ` (${client.telephone})`}`}
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        </button>
-                        {(client.latitude && client.longitude) ? (
-                          <a
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
-                            title="Naviguer vers ce client"
-                          >
-                            <Navigation className="w-3.5 h-3.5" />
-                          </a>
-                        ) : client.adresse ? (
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([client.adresse, client.ville].filter(Boolean).join(' '))}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
-                            title="Voir sur la carte"
-                          >
-                            <Navigation className="w-3.5 h-3.5" />
-                          </a>
-                        ) : null}
-                      </div>
+                          <Phone className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      {client.email && (
+                        <a
+                          href={`mailto:${client.email}`}
+                          onClick={e => e.stopPropagation()}
+                          className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                          title={`Envoyer un email a ${client.email}`}
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
+                        className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                        title="Enregistrer une visite"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('RDV_PLANIFIE'); }}
+                        className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                        title="Planifier un RDV"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditForm(client); }}
+                        className="p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+                        title="Modifier le client"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      {(client.latitude && client.longitude) ? (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                          title="Naviguer vers ce client"
+                        >
+                          <Navigation className="w-3.5 h-3.5" />
+                        </a>
+                      ) : client.adresse ? (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([client.adresse, client.ville].filter(Boolean).join(' '))}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                          title="Voir sur la carte"
+                        >
+                          <Navigation className="w-3.5 h-3.5" />
+                        </a>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -1263,79 +1362,272 @@ export default function ClientsPage() {
 
       {/* Interaction Modal */}
       {interactionClient && (
-        <div className="modal-backdrop" onClick={() => setInteractionClient(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <div className="p-5 border-b border-gray-200">
-              <h2 className="text-lg font-bold text-gray-900">
-                {interactionType === 'VISITE' ? 'Marquer une visite' : interactionType === 'APPEL' ? 'Marquer un appel' : 'Planifier un RDV'}
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">{interactionClient.nom}</p>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-                <div className="flex gap-2">
-                  {(['VISITE', 'APPEL', 'RDV_PLANIFIE'] as InteractionType[]).map(type => (
+        <div className="modal-backdrop" onClick={() => resetInteractionModal()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            {/* RDV Confirmation Screen */}
+            {showRdvConfirmation ? (() => {
+              const createdRdv = state.appointments.find(a => a.id === createdRdvId);
+              const rdvCommercial = state.commerciaux.find(c => c.id === (createdRdv?.commercial_id || rdvCommercialId));
+              const dayRdvs = createdRdv ? state.appointments
+                .filter(a => a.commercial_id === createdRdv.commercial_id && a.date === createdRdv.date && a.statut !== 'annule')
+                .sort((a, b) => a.heure_debut.localeCompare(b.heure_debut)) : [];
+
+              return (
+                <div className="p-5 space-y-4">
+                  <div className="text-center">
+                    <div className="w-14 h-14 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
+                      <CheckCircle2 className="w-7 h-7 text-green-600" />
+                    </div>
+                    <h3 className="font-bold text-gray-900">RDV cree avec succes !</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {interactionClient.nom} - {formatDate(createdRdv?.date || '')}
+                    </p>
+                  </div>
+
+                  {createdRdv && (
+                    <div className="bg-blue-50 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs text-blue-700">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span className="font-medium">{formatDate(createdRdv.date)} de {createdRdv.heure_debut} a {createdRdv.heure_fin}</span>
+                      </div>
+                      {createdRdv.lieu && (
+                        <div className="flex items-center gap-2 text-xs text-blue-600">
+                          <MapPin className="w-3.5 h-3.5" />
+                          {createdRdv.lieu}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-xs text-blue-600">
+                        <Users className="w-3.5 h-3.5" />
+                        Commercial : {rdvCommercial?.prenom} {rdvCommercial?.nom}
+                      </div>
+                    </div>
+                  )}
+
+                  {dayRdvs.length > 1 && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase mb-2">
+                        Agenda de {rdvCommercial?.prenom} le {formatDate(createdRdv?.date || '')}
+                      </p>
+                      <div className="space-y-1">
+                        {dayRdvs.map(rdv => {
+                          const isCurrent = rdv.id === createdRdvId;
+                          const p = rdv.prospect_id ? state.prospects.find(pr => pr.id === rdv.prospect_id) : null;
+                          const cl = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : null;
+                          return (
+                            <div
+                              key={rdv.id}
+                              className={`flex items-center gap-2 text-xs py-1 px-2 rounded ${isCurrent ? 'bg-green-100 font-medium text-green-800' : 'text-gray-600'}`}
+                            >
+                              <span className="font-mono w-20 flex-shrink-0">{rdv.heure_debut}-{rdv.heure_fin}</span>
+                              <span className="truncate">{cl?.nom || p?.nom_etablissement || 'RDV'}</span>
+                              {isCurrent && <span className="text-[9px] text-green-600 ml-auto">Nouveau</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    {createdRdv && interactionClient && (
+                      <button
+                        className="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
+                        onClick={() => downloadICSClient(createdRdv, interactionClient)}
+                      >
+                        <CalendarPlus className="w-4 h-4" /> Ajouter a l'agenda
+                      </button>
+                    )}
                     <button
-                      key={type}
-                      onClick={() => setInteractionType(type)}
-                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
-                        interactionType === type
-                          ? type === 'VISITE' ? 'bg-green-100 text-green-700 border border-green-300'
-                            : type === 'APPEL' ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                            : 'bg-purple-100 text-purple-700 border border-purple-300'
-                          : 'bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200'
+                      className="flex-1 px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+                      onClick={() => resetInteractionModal()}
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : (
+              <>
+                <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      {interactionType === 'VISITE' ? 'Marquer une visite' : interactionType === 'APPEL' ? 'Marquer un appel' : 'Planifier un RDV'}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">{interactionClient.nom}</p>
+                  </div>
+                  <button className="p-1 rounded hover:bg-gray-100" onClick={() => resetInteractionModal()}>
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                    <div className="flex gap-2">
+                      {(['VISITE', 'APPEL', 'RDV_PLANIFIE'] as InteractionType[]).map(type => (
+                        <button
+                          key={type}
+                          onClick={() => setInteractionType(type)}
+                          className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
+                            interactionType === type
+                              ? type === 'VISITE' ? 'bg-green-100 text-green-700 border border-green-300'
+                                : type === 'APPEL' ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                                : 'bg-purple-100 text-purple-700 border border-purple-300'
+                              : 'bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200'
+                          }`}
+                        >
+                          {INTERACTION_TYPE_LABELS[type]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* RDV fields */}
+                  {interactionType === 'RDV_PLANIFIE' && (
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-purple-700 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" /> Rendez-vous
+                        </label>
+                      </div>
+
+                      {/* Commercial assigne */}
+                      <div>
+                        <label className="block text-[10px] text-purple-600 mb-0.5 flex items-center gap-1">
+                          <Users className="w-3 h-3" /> Commercial assigne au RDV
+                        </label>
+                        <select
+                          className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
+                          value={rdvCommercialId}
+                          onChange={e => setRdvCommercialId(e.target.value)}
+                        >
+                          {state.commerciaux.map(c => (
+                            <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Date + heures */}
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="block text-[10px] text-purple-600 mb-0.5">Date *</label>
+                          <input
+                            type="date"
+                            className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
+                            value={interactionDate}
+                            onChange={e => setInteractionDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="w-20">
+                          <label className="block text-[10px] text-purple-600 mb-0.5">Debut</label>
+                          <input
+                            type="time"
+                            className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
+                            value={rdvHeureDebut}
+                            onChange={e => setRdvHeureDebut(e.target.value)}
+                          />
+                        </div>
+                        <div className="w-20">
+                          <label className="block text-[10px] text-purple-600 mb-0.5">Fin</label>
+                          <input
+                            type="time"
+                            className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
+                            value={rdvHeureFin}
+                            onChange={e => setRdvHeureFin(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Internal RDV conflicts */}
+                      {rdvConflicts.length > 0 && (
+                        <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
+                          </p>
+                          {rdvConflicts.map(c => {
+                            const cp = c.prospect_id ? state.prospects.find(p => p.id === c.prospect_id) : null;
+                            const cc = c.client_id ? state.clients.find(cl => cl.id === c.client_id) : null;
+                            return (
+                              <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
+                                {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Google Calendar conflicts */}
+                      {googleConflicts.length > 0 && (
+                        <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — evenement(s) Google Agenda sur ce creneau
+                          </p>
+                          {googleConflicts.map(evt => {
+                            const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
+                            const end = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
+                            return (
+                              <p key={evt.id} className="text-[10px] text-amber-600 mt-0.5">
+                                {evt.allDay ? 'Journee entiere' : `${start}-${end}`} : {evt.summary}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Lieu */}
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white"
+                        placeholder="Lieu du RDV..."
+                        value={rdvLieu}
+                        onChange={e => setRdvLieu(e.target.value)}
+                      />
+
+                      {/* Notes RDV */}
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white"
+                        placeholder="Notes du RDV (optionnel)..."
+                        value={rdvNotes}
+                        onChange={e => setRdvNotes(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Commentaire <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={interactionComment}
+                      onChange={e => setInteractionComment(e.target.value)}
+                      className={`w-full border rounded-lg px-3 py-2 text-sm ${!interactionComment.trim() ? 'border-red-300' : 'border-gray-200'}`}
+                      rows={3}
+                      placeholder="Notes sur cette interaction... (obligatoire)"
+                    />
+                    {!interactionComment.trim() && (
+                      <p className="text-[10px] text-red-500 mt-1">Le commentaire est obligatoire</p>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => resetInteractionModal()} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+                      Annuler
+                    </button>
+                    <button
+                      onClick={submitInteraction}
+                      disabled={!interactionComment.trim() || (interactionType === 'RDV_PLANIFIE' && !interactionDate)}
+                      className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        interactionType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
+                          : interactionType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'
+                          : 'bg-purple-600 hover:bg-purple-700'
                       }`}
                     >
-                      {INTERACTION_TYPE_LABELS[type]}
+                      <CheckCircle2 className="w-4 h-4" />
+                      Confirmer
                     </button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-              {interactionType === 'RDV_PLANIFIE' && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Date du RDV</label>
-                  <input
-                    type="date"
-                    value={interactionDate}
-                    onChange={e => setInteractionDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Commentaire <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={interactionComment}
-                  onChange={e => setInteractionComment(e.target.value)}
-                  className={`w-full border rounded-lg px-3 py-2 text-sm ${!interactionComment.trim() ? 'border-red-300' : 'border-gray-200'}`}
-                  rows={3}
-                  placeholder="Notes sur cette interaction... (obligatoire)"
-                />
-                {!interactionComment.trim() && (
-                  <p className="text-[10px] text-red-500 mt-1">Le commentaire est obligatoire</p>
-                )}
-              </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setInteractionClient(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
-                  Annuler
-                </button>
-                <button
-                  onClick={submitInteraction}
-                  disabled={!interactionComment.trim()}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    interactionType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
-                      : interactionType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-purple-600 hover:bg-purple-700'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Confirmer
-                </button>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       )}

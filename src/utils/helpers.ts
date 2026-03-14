@@ -1,6 +1,6 @@
 import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Prospect, Call, Appointment, EmailTemplate } from '../types';
+import { Prospect, Call, Appointment, EmailTemplate, Client } from '../types';
 
 // ============================================
 // ID Generation
@@ -116,6 +116,31 @@ export function downloadICS(appointment: Appointment, prospect: Prospect) {
   const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   // Open directly so the OS calendar app handles it
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+export function generateICSClient(appointment: Appointment, client: Client): string {
+  const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
+  const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+
+  return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SuiviPro//La Brasserie des Plantes//FR
+BEGIN:VEVENT
+DTSTART:${dtStart}
+DTEND:${dtEnd}
+SUMMARY:RDV ${client.nom}
+DESCRIPTION:${appointment.notes}\\nContact: ${client.contact}\\nTel: ${client.telephone}
+LOCATION:${appointment.lieu || client.adresse || ''}
+END:VEVENT
+END:VCALENDAR`;
+}
+
+export function downloadICSClient(appointment: Appointment, client: Client) {
+  const ics = generateICSClient(appointment, client);
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

@@ -296,6 +296,7 @@ export interface Call {
 export interface Appointment {
   id: string;
   prospect_id: string;
+  client_id?: string;
   commercial_id: string;
   prospecteur_id?: string; // celui qui a pris le RDV (l'appelant)
   date: string;

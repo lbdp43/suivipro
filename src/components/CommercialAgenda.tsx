@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Calendar, MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial } from '../types';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial, Client } from '../types';
 import { formatDate, downloadICS } from '../utils/helpers';
 
 interface Props {
   appointments: Appointment[];
   commerciaux: Commercial[];
+  clients?: Client[];
   getProspect: (id: string) => Prospect | undefined;
   filterCommercial: string;
   weekOffset: number;
@@ -59,6 +60,7 @@ const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 export default function CommercialAgenda({
   appointments,
   commerciaux,
+  clients = [],
   getProspect,
   filterCommercial,
   weekOffset,
@@ -216,7 +218,9 @@ export default function CommercialAgenda({
                 const endMin = timeToMinutes(rdv.heure_fin);
                 const top = ((startMin / 60) - HOUR_START) * SLOT_HEIGHT;
                 const height = Math.max(((endMin - startMin) / 60) * SLOT_HEIGHT, 20);
-                const prospect = getProspect(rdv.prospect_id);
+                const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+                const agendaClient = rdv.client_id ? clients.find(c => c.id === rdv.client_id) : undefined;
+                const agendaName = agendaClient?.nom || prospect?.nom_etablissement || 'RDV';
                 const commercial = commerciaux.find(c => c.id === rdv.commercial_id);
                 const isConflict = conflictIds.has(rdv.id);
                 const sc = STATUS_COLORS[rdv.statut];
@@ -230,14 +234,14 @@ export default function CommercialAgenda({
                     } cursor-pointer hover:shadow-md transition-shadow overflow-hidden z-10 group`}
                     style={{ top: Math.max(top, 0), height }}
                     onClick={() => onEditRdv?.(rdv)}
-                    title={`${prospect?.nom_etablissement || 'RDV'} (${commercial?.prenom || '?'}) - ${rdv.heure_debut}-${rdv.heure_fin}`}
+                    title={`${agendaName} (${commercial?.prenom || '?'}) - ${rdv.heure_debut}-${rdv.heure_fin}`}
                   >
                     <div className="px-1.5 py-0.5">
                       {isConflict && (
                         <AlertTriangle className="w-3 h-3 text-red-500 float-right mt-0.5" />
                       )}
                       <p className={`text-[10px] font-semibold truncate ${isConflict ? 'text-red-700' : sc.text}`}>
-                        {prospect?.nom_etablissement || 'Inconnu'}
+                        {agendaName}
                       </p>
                       {height >= 36 && (
                         <p className="text-[9px] text-gray-500 truncate">

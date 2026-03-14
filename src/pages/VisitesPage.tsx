@@ -342,36 +342,47 @@ export default function VisitesPage() {
               <div className="mt-0.5 text-[10px] text-gray-400">Derniere visite: {formatShortDate(client.last_visit)}</div>
             )}
           </div>
-          <div className="flex flex-col gap-1 flex-shrink-0">
-            <button
-              onClick={() => openInteractionModal(client, 'VISITE')}
+        </div>
+        {/* Quick actions - horizontal */}
+        <div className="flex items-center gap-1.5 mt-2">
+          {(client.telephone_mobile || client.telephone) && (
+            <a
+              href={`tel:${client.telephone_mobile || client.telephone}`}
+              onClick={e => e.stopPropagation()}
               className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-              title="Marquer une visite"
+              title="Appeler"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => openInteractionModal(client, 'RDV_PLANIFIE')}
-              className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
-              title="Planifier un RDV"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => openEditClient(client)}
-              className="p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-              title="Modifier le client"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            {gmapsUrl && (
-              <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
-                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                title="Itineraire Google Maps">
-                <Navigation className="w-3.5 h-3.5" />
-              </a>
-            )}
-          </div>
+              <Phone className="w-3.5 h-3.5" />
+            </a>
+          )}
+          <button
+            onClick={() => openInteractionModal(client, 'VISITE')}
+            className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+            title="Marquer une visite"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => openInteractionModal(client, 'RDV_PLANIFIE')}
+            className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+            title="Planifier un RDV"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => openEditClient(client)}
+            className="p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+            title="Modifier le client"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+          {gmapsUrl && (
+            <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
+              className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+              title="Itineraire Google Maps">
+              <Navigation className="w-3.5 h-3.5" />
+            </a>
+          )}
         </div>
       </div>
     );

@@ -369,7 +369,11 @@ export default function AppointmentsPage() {
   };
 
   const renderRdvCard = (rdv: Appointment) => {
-    const prospect = getProspect(rdv.prospect_id);
+    const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+    const rdvClient = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
+    const rdvName = rdvClient?.nom || prospect?.nom_etablissement || 'Inconnu';
+    const rdvContact = rdvClient?.contact || prospect?.nom_contact || '';
+    const rdvTelephone = rdvClient?.telephone || rdvClient?.telephone_mobile || prospect?.telephone || '';
     const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
     const prospecteurCard = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
     return (
@@ -378,24 +382,24 @@ export default function AppointmentsPage() {
           <div className="flex-1 min-w-0">
             <button
               className="font-medium text-sm text-indigo-700 hover:text-indigo-900 hover:underline text-left"
-              onClick={() => prospect && openEditProspect(prospect.id)}
-              title="Cliquer pour modifier les infos du prospect"
+              onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
+              title={rdvClient ? rdvClient.nom : "Cliquer pour modifier les infos du prospect"}
             >
-              {prospect?.nom_etablissement || 'Inconnu'}
+              {rdvName}{rdvClient ? ' (client)' : ''}
             </button>
-            <p className="text-xs text-gray-500 mt-0.5">{prospect?.nom_contact}</p>
-            {prospect?.telephone && (
+            <p className="text-xs text-gray-500 mt-0.5">{rdvContact}</p>
+            {rdvTelephone && (
               <div className="flex items-center gap-2 mt-0.5">
                 <a
-                  href={`tel:${prospect.telephone}`}
+                  href={`tel:${rdvTelephone}`}
                   className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
                   onClick={e => e.stopPropagation()}
                 >
                   <Phone className="w-3 h-3" />
-                  {prospect.telephone}
+                  {rdvTelephone}
                 </a>
-                {prospect.nom_contact && (
-                  <span className="text-[10px] text-gray-400">({prospect.nom_contact})</span>
+                {rdvContact && (
+                  <span className="text-[10px] text-gray-400">({rdvContact})</span>
                 )}
               </div>
             )}
@@ -817,7 +821,8 @@ export default function AppointmentsPage() {
                       {dayRdvs.length > 0 ? (
                         <div className="space-y-2">
                           {dayRdvs.map(rdv => {
-                            const prospect = getProspect(rdv.prospect_id);
+                            const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+                            const rdvCl = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
                             const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                             const prospecteur = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
                             const statusColor = rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
@@ -829,10 +834,10 @@ export default function AppointmentsPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <button
                                         className="font-semibold text-sm text-indigo-700 hover:text-indigo-900 hover:underline truncate text-left"
-                                        onClick={() => prospect && openEditProspect(prospect.id)}
-                                        title="Modifier les infos du prospect"
+                                        onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
+                                        title={rdvCl ? rdvCl.nom : "Modifier les infos du prospect"}
                                       >
-                                        {prospect?.nom_etablissement || 'Inconnu'}
+                                        {rdvCl?.nom || prospect?.nom_etablissement || 'Inconnu'}{rdvCl ? ' (client)' : ''}
                                       </button>
                                       <span className={`badge text-[9px] ${statusColors[rdv.statut]}`}>
                                         {APPOINTMENT_STATUS_LABELS[rdv.statut]}
@@ -988,6 +993,7 @@ export default function AppointmentsPage() {
           <CommercialAgenda
             appointments={state.appointments}
             commerciaux={state.commerciaux}
+            clients={state.clients}
             getProspect={getProspect}
             filterCommercial={filterCommercial}
             weekOffset={weekOffset}
@@ -1093,12 +1099,13 @@ export default function AppointmentsPage() {
                 {exportPreview.length > 0 ? (
                   <div className="max-h-40 overflow-y-auto space-y-1.5">
                     {exportPreview.map(rdv => {
-                      const prospect = getProspect(rdv.prospect_id);
+                      const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+                      const expClient = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
                       const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                       return (
                         <div key={rdv.id} className="flex items-center justify-between text-[11px] text-gray-600 bg-white rounded px-2 py-1.5">
                           <div className="flex-1 min-w-0">
-                            <span className="font-medium">{prospect?.nom_etablissement || 'Inconnu'}</span>
+                            <span className="font-medium">{expClient?.nom || prospect?.nom_etablissement || 'Inconnu'}</span>
                             <span className="text-gray-400 ml-1.5">{commercial?.prenom}</span>
                           </div>
                           <span className="text-gray-400 whitespace-nowrap ml-2">
@@ -1202,10 +1209,11 @@ export default function AppointmentsPage() {
                     <AlertTriangle className="w-4 h-4" /> Conflit horaire pour ce commercial !
                   </p>
                   {formConflicts.map(c => {
-                    const cp = getProspect(c.prospect_id);
+                    const cp = c.prospect_id ? getProspect(c.prospect_id) : undefined;
+                    const cc = c.client_id ? state.clients.find(cl => cl.id === c.client_id) : undefined;
                     return (
                       <p key={c.id} className="text-[11px] text-red-600 mt-1">
-                        {formatDate(c.date)} {c.heure_debut}-{c.heure_fin} : {cp?.nom_etablissement || 'RDV'}
+                        {formatDate(c.date)} {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
                       </p>
                     );
                   })}
@@ -1262,7 +1270,8 @@ export default function AppointmentsPage() {
 
       {/* Compte-rendu modal */}
       {showCompteRendu && compteRenduRdv && (() => {
-        const crProspect = getProspect(compteRenduRdv.prospect_id);
+        const crProspect = compteRenduRdv.prospect_id ? getProspect(compteRenduRdv.prospect_id) : undefined;
+        const crClient = compteRenduRdv.client_id ? state.clients.find(c => c.id === compteRenduRdv.client_id) : undefined;
         const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
           { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
           { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
@@ -1278,7 +1287,7 @@ export default function AppointmentsPage() {
                   <h3 className="font-bold text-gray-900 flex items-center gap-2">
                     <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
                   </h3>
-                  <p className="text-sm text-gray-500 mt-0.5">{crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">{crClient?.nom || crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
                 </div>
                 <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
                   <X className="w-5 h-5 text-gray-500" />
