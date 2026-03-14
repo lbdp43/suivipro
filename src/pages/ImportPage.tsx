@@ -426,7 +426,7 @@ export default function ImportPage() {
   // Client import state
   const [clientImporting, setClientImporting] = useState(false);
   const [clientImportResults, setClientImportResults] = useState<{ success: number; errors: string[] } | null>(null);
-  const [clientImportType, setClientImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
+  const [clientImportType, setClientImportType] = useState<ClientType | ''>('');
   const [clientImportCommercial, setClientImportCommercial] = useState('');
   const clientFileRef = useRef<HTMLInputElement>(null);
 
@@ -485,7 +485,7 @@ export default function ImportPage() {
         if (v.includes('export')) return 'EXPORT';
         if (v.includes('mariage')) return 'MARIAGE';
         if (v.includes('picologie') || v.includes('oenologie') || v.includes('œnologie')) return 'PICOLOGIE';
-        return clientImportType;
+        return (clientImportType || 'BAR_RESTAURANT_GENERAL') as ClientType;
       };
 
       const existingNames = new Set(state.clients.map(c => c.nom.toLowerCase().trim()));
@@ -498,7 +498,7 @@ export default function ImportPage() {
         if (existingNames.has(nom.toLowerCase().trim())) { errors.push(`Ligne ${index + 2}: "${nom}" existe deja`); return; }
 
         const typeStr = getVal(row, 'Type', 'type', 'Type client', 'Type de client');
-        const type = typeStr ? detectClientType(typeStr) : clientImportType;
+        const type = typeStr ? detectClientType(typeStr) : ((clientImportType || 'BAR_RESTAURANT_GENERAL') as ClientType);
 
         const contact = getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom', 'Prénom', 'Prenom');
         const telephone = getVal(row, 'Tél. fixe', 'Tel. fixe', 'Telephone', 'Tel', 'tel', 'Numero');
@@ -1069,14 +1069,23 @@ export default function ImportPage() {
           Importez vos clients depuis un fichier Excel. Les clients seront ajoutes avec calcul automatique de la prochaine visite.
         </p>
 
+        <div className="mb-4 flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+          <span className="font-semibold flex-shrink-0">Info :</span>
+          <span>Le <strong>type</strong> et la <strong>tournée/secteur</strong> sont lus automatiquement depuis les colonnes du fichier. Les champs ci-dessous ne s'appliquent que si la colonne est absente ou non reconnue.</span>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Type de client par defaut</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Type si non detecte dans le fichier
+              <span className="ml-1 text-gray-400 font-normal">(optionnel)</span>
+            </label>
             <select
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
               value={clientImportType}
               onChange={e => setClientImportType(e.target.value as ClientType)}
             >
+              <option value="">Auto-detecte depuis le fichier</option>
               {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
                 <optgroup key={key} label={family.label}>
                   {family.types.map(t => (
@@ -1166,8 +1175,8 @@ export default function ImportPage() {
 
         <div className="mt-3 bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
           <p className="font-medium text-gray-700 mb-1">Colonnes reconnues :</p>
-          <p>Denomination*, Type, Contact, Tel. fixe, Tel. mobile, E-mail, Adresse, Ville, Code postal, Tournee, Notes, SIRET</p>
-          <p className="text-gray-500 mt-1">* Seul le nom est obligatoire. Le type est auto-detecte si present.</p>
+          <p>Denomination*, Type, Contact, Tel. fixe, Tel. mobile, E-mail, Adresse, Ville, Code postal, <strong>Tournee/Secteur</strong>, Notes, SIRET</p>
+          <p className="text-gray-500 mt-1">* Seul le nom est obligatoire. Le <strong>type</strong> et la <strong>tournee</strong> sont auto-detectes depuis les colonnes du fichier.</p>
         </div>
       </div>
 
