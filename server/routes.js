@@ -1239,17 +1239,28 @@ router.get('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => 
 router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => {
   const { username, password, api_url, webhook_secret } = req.body;
   const now = new Date().toISOString();
+  // If password is '***', keep the existing password
+  let finalPassword = password || '';
+  if (password === '***') {
+    const existing = await db.query('SELECT password FROM easybeer_config WHERE id = 1');
+    finalPassword = existing.rows.length > 0 ? existing.rows[0].password : '';
+  }
   await db.query(
     `INSERT INTO easybeer_config (id, username, password, api_url, webhook_secret, updated_at)
     VALUES (1, $1, $2, $3, $4, $5)
     ON CONFLICT (id) DO UPDATE SET username=$1, password=$2, api_url=$3, webhook_secret=$4, updated_at=$5`,
-    [username || '', password || '', api_url || 'https://api.easybeer.fr', webhook_secret || '', now]
+    [username || '', finalPassword, api_url || 'https://api.easybeer.fr', webhook_secret || '', now]
   );
   res.json({ ok: true });
 }));
 
 router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req, res) => {
-  const { username, password, api_url } = req.body;
+  let { username, password, api_url } = req.body;
+  // If password is masked, retrieve the real one from DB
+  if (password === '***') {
+    const existing = await db.query('SELECT password FROM easybeer_config WHERE id = 1');
+    password = existing.rows.length > 0 ? existing.rows[0].password : '';
+  }
   const baseUrl = (api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
   const headers = { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' };
