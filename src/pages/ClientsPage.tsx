@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress } from '../utils/helpers';
 import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import EmailTemplateModal from '../components/EmailTemplateModal';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -55,6 +56,9 @@ export default function ClientsPage() {
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Email modal
+  const [emailClient, setEmailClient] = useState<Client | null>(null);
 
   // Interaction modal
   const [interactionClient, setInteractionClient] = useState<Client | null>(null);
@@ -868,14 +872,13 @@ export default function ClientsPage() {
                         </a>
                       )}
                       {client.email && (
-                        <a
-                          href={`mailto:${client.email}`}
-                          onClick={e => e.stopPropagation()}
+                        <button
+                          onClick={e => { e.stopPropagation(); setEmailClient(client); }}
                           className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
                           title={`Envoyer un email a ${client.email}`}
                         >
                           <Mail className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
@@ -1011,10 +1014,10 @@ export default function ClientsPage() {
                 </a>
               )}
               {selectedClient.email && (
-                <a href={`mailto:${selectedClient.email}`} className="flex items-center gap-2 text-blue-600 hover:text-blue-700">
+                <button onClick={() => setEmailClient(selectedClient)} className="flex items-center gap-2 text-blue-600 hover:text-blue-700">
                   <Mail className="w-3.5 h-3.5" />
                   <span className="truncate">{selectedClient.email}</span>
-                </a>
+                </button>
               )}
               {(selectedClient.adresse || selectedClient.ville) && (
                 <div className="flex items-center gap-2 text-gray-600">
@@ -1778,6 +1781,11 @@ export default function ClientsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Email template modal */}
+      {emailClient && (
+        <EmailTemplateModal client={emailClient} onClose={() => setEmailClient(null)} />
       )}
     </div>
   );

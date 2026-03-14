@@ -208,7 +208,50 @@ export default function CompteRenduPage() {
     return { totalRdv, rdvWithCR, totalVisites, visitesParType, resultCounts, rdvFromProspection, rdvClients };
   }, [rangeAppointments, rangeInteractions]);
 
-  // Helper: get clients to visit for a specific date
+  // Day view data
+  const selectedDow = new Date(selectedDate + 'T12:00:00').getDay().toString();
+  const dayZones = getZonesForDate(selectedDate);
+
+  const dayAppointments = useMemo(() => {
+    const uids = new Set(effectiveUserIds);
+    return state.appointments.filter((a: Appointment) =>
+      a.date === selectedDate &&
+      (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
+    ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
+  }, [state.appointments, selectedDate, effectiveUserIds]);
+
+  // Helper: get Monday of a given date
+  const getMondayOf = (dateStr: string) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    const day = d.getDay() || 7;
+    d.setDate(d.getDate() - day + 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  // Helper: get Sunday of a week starting from Monday
+  const getSundayOf = (mondayStr: string) => {
+    const d = new Date(mondayStr + 'T12:00:00');
+    d.setDate(d.getDate() + 6);
+    return d.toISOString().split('T')[0];
+  };
+
+  // Find which day of the week a zone is configured for (to assign weekly clients to correct day)
+  const getDateForZone = (zone: string, weekMondayStr: string): string | null => {
+    for (const [dow, zones] of Object.entries(parsedConfig)) {
+      if (Array.isArray(zones) && zones.includes(zone)) {
+        const monday = new Date(weekMondayStr + 'T12:00:00');
+        // dow: 0=Sun, 1=Mon, ..., 6=Sat
+        const dowNum = parseInt(dow);
+        const offset = dowNum === 0 ? 6 : dowNum - 1; // Convert to Monday-based offset
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + offset);
+        return date.toISOString().split('T')[0];
+      }
+    }
+    return null;
+  };
+
+  // Helper: get clients to visit for a specific date (used in week view)
   const getClientsToVisitForDate = (dateStr: string): Client[] => {
     const uids = new Set(effectiveUserIds);
     const zones = getZonesForDate(dateStr);
@@ -268,49 +311,6 @@ export default function CompteRenduPage() {
     }
     return groups;
   }, [viewMode, dateRange, rangeAppointments, rangeInteractions, state.clients, effectiveUserIds, parsedConfig, state.interactions]);
-
-  // Day view data
-  const selectedDow = new Date(selectedDate + 'T12:00:00').getDay().toString();
-  const dayZones = getZonesForDate(selectedDate);
-
-  const dayAppointments = useMemo(() => {
-    const uids = new Set(effectiveUserIds);
-    return state.appointments.filter((a: Appointment) =>
-      a.date === selectedDate &&
-      (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
-    ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
-  }, [state.appointments, selectedDate, effectiveUserIds]);
-
-  // Helper: get Monday of a given date
-  const getMondayOf = (dateStr: string) => {
-    const d = new Date(dateStr + 'T12:00:00');
-    const day = d.getDay() || 7;
-    d.setDate(d.getDate() - day + 1);
-    return d.toISOString().split('T')[0];
-  };
-
-  // Helper: get Sunday of a week starting from Monday
-  const getSundayOf = (mondayStr: string) => {
-    const d = new Date(mondayStr + 'T12:00:00');
-    d.setDate(d.getDate() + 6);
-    return d.toISOString().split('T')[0];
-  };
-
-  // Find which day of the week a zone is configured for (to assign weekly clients to correct day)
-  const getDateForZone = (zone: string, weekMondayStr: string): string | null => {
-    for (const [dow, zones] of Object.entries(parsedConfig)) {
-      if (Array.isArray(zones) && zones.includes(zone)) {
-        const monday = new Date(weekMondayStr + 'T12:00:00');
-        // dow: 0=Sun, 1=Mon, ..., 6=Sat
-        const dowNum = parseInt(dow);
-        const offset = dowNum === 0 ? 6 : dowNum - 1; // Convert to Monday-based offset
-        const date = new Date(monday);
-        date.setDate(monday.getDate() + offset);
-        return date.toISOString().split('T')[0];
-      }
-    }
-    return null;
-  };
 
   const clientsToVisit = useMemo(() => {
     const uids = new Set(effectiveUserIds);
