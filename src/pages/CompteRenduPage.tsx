@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
-  CheckCircle2, AlertCircle, Save, Building2,
+  CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import {
-  Appointment, Client, Interaction,
-  APPOINTMENT_RESULT_LABELS,
+  Appointment, Client, Interaction, InteractionType,
+  APPOINTMENT_RESULT_LABELS, INTERACTION_TYPE_LABELS,
   AppointmentResult,
 } from '../types';
 import { generateId } from '../utils/helpers';
@@ -78,6 +78,11 @@ export default function CompteRenduPage() {
   const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
   const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
   const [visitComments, setVisitComments] = useState<Record<string, string>>({});
+  const [visitTypes, setVisitTypes] = useState<Record<string, InteractionType>>({});
+  const [visitRdvDate, setVisitRdvDate] = useState<Record<string, string>>({});
+  const [visitRdvHeureDebut, setVisitRdvHeureDebut] = useState<Record<string, string>>({});
+  const [visitRdvHeureFin, setVisitRdvHeureFin] = useState<Record<string, string>>({});
+  const [visitRdvLieu, setVisitRdvLieu] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
@@ -223,26 +228,56 @@ export default function CompteRenduPage() {
     finally { setSaving(null); }
   };
 
-  const logVisit = async (client: Client, comment: string) => {
+  const logVisit = async (client: Client) => {
+    const type = visitTypes[client.id] || 'VISITE';
+    const comment = visitComments[client.id] || '';
+    if (!comment.trim()) { toast.error('Ajoutez un commentaire'); return; }
     setSaving(client.id);
     try {
+      const now = new Date().toISOString();
+      const token = localStorage.getItem('suivipro_token');
+
+      // Create interaction
       const interaction = {
         id: generateId(), client_id: client.id, commercial_id: userId!,
-        type: 'VISITE' as const, date: new Date().toISOString(),
-        comment: comment || '', date_creation: new Date().toISOString(),
+        type, date: type === 'RDV_PLANIFIE' && visitRdvDate[client.id] ? new Date(visitRdvDate[client.id]).toISOString() : now,
+        comment: comment.trim(), date_creation: now,
       };
-      const token = localStorage.getItem('suivipro_token');
       const res = await fetch('/api/interactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(interaction),
       });
-      if (res.ok) {
-        dispatch({ type: 'ADD_INTERACTION', payload: interaction });
-        toast.success(`Visite enregistree pour ${client.nom}`);
-        setExpandedVisit(null);
-        setVisitComments(prev => ({ ...prev, [client.id]: '' }));
+      if (!res.ok) throw new Error();
+      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+
+      // If RDV_PLANIFIE, also create an appointment
+      if (type === 'RDV_PLANIFIE' && visitRdvDate[client.id]) {
+        const rdvId = generateId();
+        const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
+        const rdv = {
+          id: rdvId, prospect_id: '', client_id: client.id,
+          commercial_id: userId!, prospecteur_id: userId!,
+          date: visitRdvDate[client.id],
+          heure_debut: visitRdvHeureDebut[client.id] || '10:00',
+          heure_fin: visitRdvHeureFin[client.id] || '11:00',
+          lieu: visitRdvLieu[client.id] || addr,
+          notes: comment.trim(), statut: 'planifie' as const,
+          created_at: now,
+        };
+        const rdvRes = await fetch('/api/appointments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(rdv),
+        });
+        if (rdvRes.ok) dispatch({ type: 'ADD_APPOINTMENT', payload: rdv });
+        toast.success(`RDV planifie pour ${client.nom}`);
+      } else {
+        toast.success(type === 'VISITE' ? `Visite enregistree pour ${client.nom}` : `Appel enregistre pour ${client.nom}`);
       }
+      setExpandedVisit(null);
+      setVisitComments(prev => ({ ...prev, [client.id]: '' }));
+      setVisitTypes(prev => ({ ...prev, [client.id]: 'VISITE' }));
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setSaving(null); }
   };
@@ -321,9 +356,22 @@ export default function CompteRenduPage() {
     const visited = visitedClientIds.has(client.id);
     const isExpanded = expandedVisit === client.id;
     const interaction = todayInteractions.find((i: Interaction) => i.client_id === client.id);
+    const currentType = visitTypes[client.id] || 'VISITE';
+    const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
     return (
       <div key={client.id} className={`bg-white rounded-xl border ${visited ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} overflow-hidden`}>
-        <button onClick={() => { if (!visited) setExpandedVisit(isExpanded ? null : client.id); }}
+        <button onClick={() => {
+          if (!visited) {
+            setExpandedVisit(isExpanded ? null : client.id);
+            if (!isExpanded) {
+              // Init RDV fields with defaults
+              if (!visitRdvDate[client.id]) setVisitRdvDate(prev => ({ ...prev, [client.id]: todayStr }));
+              if (!visitRdvLieu[client.id]) setVisitRdvLieu(prev => ({ ...prev, [client.id]: addr }));
+              if (!visitRdvHeureDebut[client.id]) setVisitRdvHeureDebut(prev => ({ ...prev, [client.id]: '10:00' }));
+              if (!visitRdvHeureFin[client.id]) setVisitRdvHeureFin(prev => ({ ...prev, [client.id]: '11:00' }));
+            }
+          }
+        }}
           className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
           {visited ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
@@ -332,20 +380,100 @@ export default function CompteRenduPage() {
               {client.tournee && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{client.tournee}</span>}
               {client.ville && <span>{client.ville}</span>}
             </div>
-            {visited && interaction?.comment && <p className="text-xs text-green-600 mt-1 italic">{interaction.comment}</p>}
+            {visited && interaction && (
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  interaction.type === 'VISITE' ? 'bg-green-100 text-green-700'
+                  : interaction.type === 'APPEL' ? 'bg-blue-100 text-blue-700'
+                  : 'bg-purple-100 text-purple-700'
+                }`}>{INTERACTION_TYPE_LABELS[interaction.type]}</span>
+                {interaction.comment && <p className="text-xs text-gray-500 italic truncate">{interaction.comment}</p>}
+              </div>
+            )}
           </div>
           {!visited && <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />}
         </button>
         {isExpanded && !visited && (
           <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Commentaire de visite</label>
-              <textarea value={visitComments[client.id] || ''} onChange={e => setVisitComments(prev => ({ ...prev, [client.id]: e.target.value }))}
-                placeholder="Comment s'est passee la visite..." className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none h-20" />
+            {/* Type selector */}
+            <div className="grid grid-cols-3 gap-2">
+              {(['VISITE', 'APPEL', 'RDV_PLANIFIE'] as InteractionType[]).map(type => {
+                const sel = currentType === type;
+                const typeConfig = {
+                  VISITE: { color: sel ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200', icon: CheckCircle2 },
+                  APPEL: { color: sel ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200', icon: PhoneCall },
+                  RDV_PLANIFIE: { color: sel ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200', icon: Calendar },
+                };
+                const cfg = typeConfig[type];
+                const Icon = cfg.icon;
+                return (
+                  <button key={type} onClick={() => setVisitTypes(prev => ({ ...prev, [client.id]: type }))}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-colors ${cfg.color}`}>
+                    <Icon className="w-4 h-4" />
+                    {INTERACTION_TYPE_LABELS[type]}
+                  </button>
+                );
+              })}
             </div>
-            <button onClick={() => logVisit(client, visitComments[client.id] || '')} disabled={saving === client.id}
-              className="w-full py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />{saving === client.id ? 'Enregistrement...' : 'Marquer comme visitee'}
+
+            {/* RDV fields */}
+            {currentType === 'RDV_PLANIFIE' && (
+              <div className="space-y-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Date du RDV</label>
+                    <input type="date" value={visitRdvDate[client.id] || todayStr}
+                      onChange={e => setVisitRdvDate(prev => ({ ...prev, [client.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Lieu</label>
+                    <input type="text" value={visitRdvLieu[client.id] || ''} placeholder="Adresse..."
+                      onChange={e => setVisitRdvLieu(prev => ({ ...prev, [client.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Debut</label>
+                    <input type="time" value={visitRdvHeureDebut[client.id] || '10:00'}
+                      onChange={e => setVisitRdvHeureDebut(prev => ({ ...prev, [client.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-purple-700 mb-0.5 block">Fin</label>
+                    <input type="time" value={visitRdvHeureFin[client.id] || '11:00'}
+                      onChange={e => setVisitRdvHeureFin(prev => ({ ...prev, [client.id]: e.target.value }))}
+                      className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Comment */}
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">
+                {currentType === 'VISITE' ? 'Commentaire de visite' : currentType === 'APPEL' ? 'Notes de l\'appel' : 'Notes du RDV'}
+              </label>
+              <textarea value={visitComments[client.id] || ''} onChange={e => setVisitComments(prev => ({ ...prev, [client.id]: e.target.value }))}
+                placeholder={currentType === 'VISITE' ? 'Comment s\'est passee la visite...' : currentType === 'APPEL' ? 'Resume de l\'appel...' : 'Objet du rendez-vous...'}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none h-20" />
+            </div>
+
+            {/* Submit */}
+            <button onClick={() => logVisit(client)} disabled={saving === client.id || !visitComments[client.id]?.trim()}
+              className={`w-full py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2 transition-colors ${
+                currentType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
+                : currentType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'
+                : 'bg-purple-600 hover:bg-purple-700'
+              }`}>
+              {currentType === 'VISITE' && <CheckCircle2 className="w-4 h-4" />}
+              {currentType === 'APPEL' && <PhoneCall className="w-4 h-4" />}
+              {currentType === 'RDV_PLANIFIE' && <Calendar className="w-4 h-4" />}
+              {saving === client.id ? 'Enregistrement...'
+                : currentType === 'VISITE' ? 'Enregistrer la visite'
+                : currentType === 'APPEL' ? 'Enregistrer l\'appel'
+                : 'Planifier le RDV'}
             </button>
           </div>
         )}
@@ -369,7 +497,7 @@ export default function CompteRenduPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
             <ClipboardCheck className="w-7 h-7 text-brewery-600" />
-            Compte Rendu
+            Rapport Journalier
           </h1>
           <p className="text-sm text-gray-500 mt-1">Faites le bilan de votre activite</p>
         </div>

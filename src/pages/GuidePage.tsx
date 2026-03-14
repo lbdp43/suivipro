@@ -67,7 +67,7 @@ export default function GuidePage() {
     { id: 'clients', icon: Building2, label: 'Clients' },
     { id: 'tournees', icon: MapPin, label: 'Tournees' },
     { id: 'visites', icon: ClipboardCheck, label: 'Visites Clients' },
-    { id: 'compte-rendu', icon: CheckCheck, label: 'Compte Rendu' },
+    { id: 'compte-rendu', icon: CheckCheck, label: 'Rapport Journalier' },
     { id: 'taches', icon: ListTodo, label: 'Taches' },
     { id: 'activite', icon: Activity, label: 'Activite (Admin)' },
   ];
@@ -714,7 +714,7 @@ export default function GuidePage() {
       </Section>
 
       {/* ==================== COMPTE RENDU ==================== */}
-      <Section icon={CheckCheck} title="Compte Rendu" id="compte-rendu">
+      <Section icon={CheckCheck} title="Rapport Journalier" id="compte-rendu">
         <div className="space-y-3 text-sm text-gray-600">
           <p>
             La page Compte Rendu est votre outil pour faire le bilan de chaque journee.
