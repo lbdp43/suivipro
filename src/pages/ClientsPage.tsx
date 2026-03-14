@@ -95,7 +95,7 @@ export default function ClientsPage() {
     setShowForm(true);
   };
 
-  const saveClient = () => {
+  const saveClient = async () => {
     if (!formData.nom?.trim()) return;
     if (!editingClient && !forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0)) return;
     const now = new Date().toISOString();
@@ -108,39 +108,38 @@ export default function ClientsPage() {
       } as Client;
       dispatch({ type: 'UPDATE_CLIENT', payload: updated });
     } else {
-      const freq = formData.custom_recurrence || CLIENT_VISIT_FREQUENCIES[formData.type_client as ClientType];
-      let nextVisit: string | null = null;
-      if (freq) {
-        const d = new Date();
-        d.setDate(d.getDate() + freq);
-        nextVisit = d.toISOString().split('T')[0];
-      }
-      const newClient: Client = {
-        id: generateId('cli'),
-        nom: formData.nom || '',
-        ville: formData.ville || '',
-        adresse: formData.adresse || '',
-        code_postal: formData.code_postal || '',
-        telephone: formData.telephone || '',
-        telephone_mobile: formData.telephone_mobile || '',
-        email: formData.email || '',
-        contact: formData.contact || '',
-        type_client: (formData.type_client || 'BAR_RESTAURANT_GENERAL') as ClientType,
-        statut: (formData.statut || 'ACTIF') as ClientStatus,
-        commercial_id: formData.commercial_id || state.currentUser?.id || '',
-        next_visit: nextVisit,
-        last_visit: null,
-        notes: formData.notes || '',
-        custom_recurrence: formData.custom_recurrence || null,
-        latitude: formData.latitude || 0,
-        longitude: formData.longitude || 0,
-        siret: formData.siret || '',
-        tournee: formData.tournee || '',
-        prospect_id: null,
-        date_creation: now,
-        date_modification: now,
-      };
-      dispatch({ type: 'ADD_CLIENT', payload: newClient });
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      try {
+        const res = await fetch('/api/clients', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            nom: formData.nom || '',
+            ville: formData.ville || '',
+            adresse: formData.adresse || '',
+            code_postal: formData.code_postal || '',
+            telephone: formData.telephone || '',
+            telephone_mobile: formData.telephone_mobile || '',
+            email: formData.email || '',
+            contact: formData.contact || '',
+            type_client: formData.type_client || 'BAR_RESTAURANT_GENERAL',
+            statut: formData.statut || 'ACTIF',
+            commercial_id: formData.commercial_id || state.currentUser?.id || '',
+            notes: formData.notes || '',
+            custom_recurrence: formData.custom_recurrence || null,
+            latitude: formData.latitude || 0,
+            longitude: formData.longitude || 0,
+            siret: formData.siret || '',
+            tournee: formData.tournee || '',
+          }),
+        });
+        if (res.ok) {
+          const newClient: Client = await res.json();
+          dispatch({ type: 'ADD_CLIENT', payload: newClient });
+        }
+      } catch { /* ignore, will reload on next page load */ }
     }
     setShowForm(false);
   };

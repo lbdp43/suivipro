@@ -946,19 +946,21 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
   const commercialId = isAdmin(req) ? (c.commercial_id || req.user.id) : req.user.id;
   const now = new Date().toISOString();
   const nextVisit = c.next_visit || await calculateNextVisit(c.type_client, c.custom_recurrence, null);
+  const clientId = c.id || `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
      type_client, statut, commercial_id, next_visit, last_visit, notes, custom_recurrence,
      latitude, longitude, siret, tournee, prospect_id, date_creation, date_modification)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
-    [c.id, c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
+    [clientId, c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
      c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
      c.statut || 'ACTIF', commercialId, nextVisit || null, c.last_visit || null,
      c.notes || '', c.custom_recurrence || null, c.latitude || 0, c.longitude || 0,
      c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
   );
-  res.json({ ok: true });
+  const created = await db.query('SELECT * FROM clients WHERE id = $1', [clientId]);
+  res.json(created.rows[0]);
 }));
 
 router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -1181,7 +1183,7 @@ router.get('/visit-frequency-config', authMiddleware, asyncHandler(async (req, r
 }));
 
 router.put('/visit-frequency-config', authMiddleware, asyncHandler(async (req, res) => {
-  const { frequencies } = req.body; // { type_client: frequency_days }
+  const { frequencies, apply_to_existing } = req.body;
   const now = new Date().toISOString();
   for (const [type, days] of Object.entries(frequencies)) {
     await db.query(
@@ -1191,6 +1193,23 @@ router.put('/visit-frequency-config', authMiddleware, asyncHandler(async (req, r
       [type, days, now]
     );
   }
+
+  if (apply_to_existing) {
+    // Recalculate next_visit for all active clients without custom_recurrence
+    const clients = await db.query(
+      "SELECT id, type_client, last_visit, custom_recurrence FROM clients WHERE statut = 'ACTIF' AND custom_recurrence IS NULL"
+    );
+    for (const c of clients.rows) {
+      const nextVisit = await calculateNextVisit(c.type_client, null, c.last_visit);
+      if (nextVisit) {
+        await db.query(
+          'UPDATE clients SET next_visit = $1, date_modification = $2 WHERE id = $3',
+          [nextVisit, now, c.id]
+        );
+      }
+    }
+  }
+
   res.json({ ok: true });
 }));
 

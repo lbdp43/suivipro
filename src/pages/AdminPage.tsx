@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Settings, Users, Target, TrendingUp, Tag, Plus, X, Save, Edit2,
   Trash2, BarChart3, Phone, Calendar, Award, Shield, User, Eye, EyeOff, Key,
@@ -14,6 +14,72 @@ import {
   formatDuration,
 } from '../utils/helpers';
 import { PIPELINE_LABELS, PipelineStage } from '../types';
+
+function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
+  label: string;
+  selected: string[];
+  allZones: string[];
+  onAdd: (zone: string) => void;
+  onRemove: (zone: string) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const filtered = allZones.filter(z => !selected.includes(z) && z.toLowerCase().includes(input.toLowerCase()));
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleAdd = (zone: string) => { onAdd(zone); setInput(''); setOpen(false); };
+
+  return (
+    <div ref={ref}>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1">
+          {selected.map(z => (
+            <span key={z} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-medium">
+              {z}
+              <button type="button" onClick={() => onRemove(z)} className="hover:text-indigo-900"><X className="w-2.5 h-2.5" /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          type="text"
+          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-brewery-500"
+          placeholder="Ajouter une zone..."
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => { if (e.key === 'Enter' && input.trim()) handleAdd(input.trim()); }}
+        />
+        {open && (filtered.length > 0 || input.trim()) && (
+          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+            {filtered.map(zone => (
+              <button key={zone} type="button" onMouseDown={() => handleAdd(zone)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-gray-700 flex items-center gap-1.5">
+                <Plus className="w-3 h-3 text-indigo-500 flex-shrink-0" />{zone}
+              </button>
+            ))}
+            {input.trim() && !allZones.includes(input.trim()) && !selected.includes(input.trim()) && (
+              <button type="button" onMouseDown={() => handleAdd(input.trim())}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 text-green-700 flex items-center gap-1.5 border-t border-gray-100">
+                <Plus className="w-3 h-3 flex-shrink-0" />Créer "{input.trim()}"
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminPage() {
   const { state, dispatch } = useApp();
@@ -171,6 +237,29 @@ export default function AdminPage() {
     setTourneeEditConfig(prev => ({ ...prev, [day]: tournees }));
   };
 
+  const addZoneToDay = (day: string, zone: string) => {
+    const trimmed = zone.trim();
+    if (!trimmed) return;
+    setTourneeEditConfig(prev => {
+      const current = prev[day] || [];
+      if (current.includes(trimmed)) return prev;
+      return { ...prev, [day]: [...current, trimmed] };
+    });
+  };
+
+  const removeZoneFromDay = (day: string, zone: string) => {
+    setTourneeEditConfig(prev => ({
+      ...prev,
+      [day]: (prev[day] || []).filter(z => z !== zone),
+    }));
+  };
+
+  const allZones = useMemo(() => {
+    const set = new Set<string>();
+    state.clients.forEach(c => { if (c.tournee) set.add(c.tournee); });
+    return Array.from(set).sort();
+  }, [state.clients]);
+
   const startEditFrequency = () => {
     const values: Record<string, string> = {};
     for (const type of Object.keys(CLIENT_TYPE_LABELS)) {
@@ -182,7 +271,7 @@ export default function AdminPage() {
     setFrequencyEditing(true);
   };
 
-  const saveFrequencyConfig = async () => {
+  const saveFrequencyConfig = async (applyToExisting = false) => {
     setFrequencySaving(true);
     try {
       const token = localStorage.getItem('suivipro_token');
@@ -195,11 +284,11 @@ export default function AdminPage() {
       await fetch('/api/visit-frequency-config', {
         method: 'PUT',
         headers,
-        body: JSON.stringify({ frequencies }),
+        body: JSON.stringify({ frequencies, apply_to_existing: applyToExisting }),
       });
       setFrequencyConfig(frequencies);
       setFrequencyEditing(false);
-      toast.success('Recurrences sauvegardees');
+      toast.success(applyToExisting ? 'Recurrences sauvegardees et appliquees aux clients existants' : 'Recurrences sauvegardees');
     } catch {
       toast.error('Erreur sauvegarde recurrences');
     } finally {
@@ -1308,12 +1397,21 @@ export default function AdminPage() {
                     Annuler
                   </button>
                   <button
-                    onClick={saveFrequencyConfig}
+                    onClick={() => saveFrequencyConfig(false)}
                     disabled={frequencySaving}
                     className="px-3 py-1.5 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-1 disabled:opacity-50"
                   >
                     {frequencySaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     Sauvegarder
+                  </button>
+                  <button
+                    onClick={() => saveFrequencyConfig(true)}
+                    disabled={frequencySaving}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                    title="Recalculer next_visit pour tous les clients existants"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Appliquer aux clients
                   </button>
                 </div>
               )}
@@ -1438,18 +1536,26 @@ export default function AdminPage() {
                       </div>
                     </div>
 
+                    {allZones.length > 0 && (
+                      <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+                        <p className="text-[10px] font-medium text-blue-700 mb-1.5">Zones existantes :</p>
+                        <div className="flex flex-wrap gap-1">
+                          {allZones.map(zone => (
+                            <span key={zone} className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full border border-blue-200 font-medium">{zone}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                       {DAY_KEYS.map(day => (
-                        <div key={day}>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">{DAY_LABELS[day]}</label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            value={(tourneeEditConfig[day] || []).join(', ')}
-                            onChange={e => updateDayTournees(day, e.target.value)}
-                            placeholder="Zone 1, Zone 2..."
-                          />
-                        </div>
+                        <AdminZonePicker
+                          key={day}
+                          label={DAY_LABELS[day]}
+                          selected={tourneeEditConfig[day] || []}
+                          allZones={allZones}
+                          onAdd={zone => addZoneToDay(day, zone)}
+                          onRemove={zone => removeZoneFromDay(day, zone)}
+                        />
                       ))}
                     </div>
                     <div>
