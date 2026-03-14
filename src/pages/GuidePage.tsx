@@ -2,6 +2,7 @@ import {
   LayoutDashboard, Kanban, Users, Phone, Calendar, Bell, Mail, Map, Upload,
   FileText, Tag, ArrowRight, CheckCircle2, XCircle, Clock, TrendingUp,
   MessageSquare, Star, Search, Filter, MousePointer, BookOpen, Info,
+  Building2, MapPin, ClipboardCheck, ListTodo, Activity, CheckCheck,
 } from 'lucide-react';
 
 const PIPELINE_STAGES = [
@@ -63,6 +64,12 @@ export default function GuidePage() {
     { id: 'import', icon: Upload, label: 'Import / Export' },
     { id: 'tags', icon: Tag, label: 'Tags' },
     { id: 'documents', icon: FileText, label: 'Documents' },
+    { id: 'clients', icon: Building2, label: 'Clients' },
+    { id: 'tournees', icon: MapPin, label: 'Tournees' },
+    { id: 'visites', icon: ClipboardCheck, label: 'Visites Clients' },
+    { id: 'compte-rendu', icon: CheckCheck, label: 'Compte Rendu' },
+    { id: 'taches', icon: ListTodo, label: 'Taches' },
+    { id: 'activite', icon: Activity, label: 'Activite (Admin)' },
   ];
 
   return (
@@ -562,6 +569,295 @@ export default function GuidePage() {
             <li>- Organisez par categorie</li>
             <li>- Telechargez a tout moment</li>
           </ul>
+        </div>
+      </Section>
+
+      {/* ==================== CLIENTS ==================== */}
+      <Section icon={Building2} title="Gestion des Clients" id="clients">
+        <div className="space-y-3 text-sm text-gray-600">
+          <p>
+            La page Clients centralise tous vos clients actifs. Contrairement aux prospects,
+            les clients sont des etablissements qui ont deja passe commande et avec lesquels vous entretenez une relation commerciale reguliere.
+          </p>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Types de clients</h4>
+            <div className="flex flex-wrap gap-2">
+              {['Bar / Restaurant', 'Cave / Epicerie', 'Hotel', 'Grande distribution', 'C.E.', 'Autre'].map(t => (
+                <span key={t} className="px-2 py-1 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">{t}</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Statuts</h4>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Actif — Client regulier avec visites planifiees</span>
+              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-orange-100 text-orange-700">En pause — Client temporairement inactif</span>
+              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Perdu — Client qui ne commande plus</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Fonctionnalites cles</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- <strong>Fiche client</strong> : coordonnees, adresse, SIRET, type, secteur de tournee</li>
+              <li>- <strong>Frequence de visite</strong> : configuree par type de client, avec recurrence personnalisable</li>
+              <li>- <strong>Prochaine visite</strong> : calculee automatiquement apres chaque visite</li>
+              <li>- <strong>Historique</strong> : toutes les interactions (visites, appels) sont enregistrees</li>
+              <li>- <strong>Conversion prospect</strong> : un prospect "Gagne" peut etre converti en client</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
+            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-brewery-700">
+              Chaque client est assigne a un secteur de tournee (ex: "Aurec sur loire", "Haute Loire")
+              qui permet de planifier les visites par zone geographique dans la page Tournees.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* ==================== TOURNEES ==================== */}
+      <Section icon={MapPin} title="Tournees" id="tournees">
+        <div className="space-y-3 text-sm text-gray-600">
+          <p>
+            La page Tournees permet de configurer les zones de visite de chaque commercial pour chaque jour de la semaine.
+            C'est l'outil central pour organiser le planning hebdomadaire des visites clients.
+          </p>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Configuration des tournees</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- Chaque commercial a une configuration par jour (lundi a samedi)</li>
+              <li>- Pour chaque jour, vous assignez un ou plusieurs <strong>secteurs</strong> (zones geographiques)</li>
+              <li>- Les secteurs correspondent au champ "tournee" des fiches clients</li>
+              <li>- Vous pouvez choisir la frequence : <strong>chaque semaine</strong>, <strong>semaines paires</strong> ou <strong>semaines impaires</strong></li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-green-50 rounded-lg">
+            <h4 className="font-semibold text-green-800 text-xs mb-2">Zones de prospection</h4>
+            <ul className="text-xs space-y-1 text-green-700">
+              <li>- Les prospecteurs peuvent configurer des <strong>zones prioritaires pour la prospection</strong></li>
+              <li>- Pour chaque zone, vous indiquez le nombre de <strong>RDV a prendre</strong> (slots)</li>
+              <li>- Ces slots apparaissent en vert sur la vue des tournees</li>
+              <li>- Les zones de prospection sont visibles par les prospecteurs pour planifier leurs appels</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Badges sur la vue tournees</h4>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">X RDV a prendre</span>
+                <span className="text-xs text-gray-500">= total des slots de prospection configures pour ce jour</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">X RDV pris</span>
+                <span className="text-xs text-gray-500">= nombre de RDV deja planifies ce jour</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">X/Y visites</span>
+                <span className="text-xs text-gray-500">= visites effectuees / total de clients dans les secteurs</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* ==================== VISITES CLIENTS ==================== */}
+      <Section icon={ClipboardCheck} title="Visites Clients" id="visites">
+        <div className="space-y-3 text-sm text-gray-600">
+          <p>
+            La page Visites Clients vous aide a planifier et suivre vos visites terrain.
+            Elle affiche les clients a visiter en fonction de leur prochaine date de visite et de la configuration des tournees.
+          </p>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Comment ca marche</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- Les clients sont tries par <strong>urgence de visite</strong> (les plus en retard en premier)</li>
+              <li>- La <strong>prochaine visite</strong> est calculee automatiquement selon la frequence du type de client</li>
+              <li>- Vous pouvez filtrer par <strong>secteur</strong> et par <strong>commercial</strong></li>
+              <li>- Cliquez sur un client pour voir sa fiche et enregistrer une visite</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Enregistrer une visite</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>1. Ouvrez la fiche client dans la page Visites</li>
+              <li>2. Cliquez sur <strong>"Enregistrer une visite"</strong></li>
+              <li>3. Ajoutez un commentaire optionnel (observations, commande, etc.)</li>
+              <li>4. La prochaine visite est automatiquement recalculee</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Creer un RDV depuis une visite</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- Depuis la fiche d'un client en visite, vous pouvez <strong>planifier un RDV</strong></li>
+              <li>- Le RDV sera lie au client et visible dans la page Prospects & RDV</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
+            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-brewery-700">
+              Les frequences de visite par defaut sont configurables par l'administrateur dans
+              Administration &gt; Tournees. Chaque client peut aussi avoir une recurrence personnalisee.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* ==================== COMPTE RENDU ==================== */}
+      <Section icon={CheckCheck} title="Compte Rendu" id="compte-rendu">
+        <div className="space-y-3 text-sm text-gray-600">
+          <p>
+            La page Compte Rendu est votre outil pour faire le bilan de chaque journee.
+            Elle regroupe tous vos RDV et visites clients du jour en un seul endroit,
+            pour que vous puissiez facilement remplir vos comptes rendus.
+          </p>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Selection du jour</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- Par defaut, la page affiche le <strong>jour actuel</strong></li>
+              <li>- Selectionnez n'importe quel jour de la semaine en cours (lundi a dimanche)</li>
+              <li>- Les secteurs de tournee du jour sont affiches en sous-titre</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-indigo-50 rounded-lg">
+            <h4 className="font-semibold text-indigo-800 text-xs mb-2">Section RDV</h4>
+            <ul className="text-xs space-y-1 text-indigo-700">
+              <li>- Liste de tous vos RDV du jour selectionne</li>
+              <li>- Deroulez un RDV pour saisir le <strong>resultat</strong> (Client, Mail envoye, A relancer, etc.)</li>
+              <li>- Ajoutez des <strong>notes de compte rendu</strong></li>
+              <li>- Le RDV passe automatiquement en statut "Termine" et le prospect change d'etape</li>
+              <li>- Les RDV deja traites sont affiches avec une coche verte</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-green-50 rounded-lg">
+            <h4 className="font-semibold text-green-800 text-xs mb-2">Section Visites Clients</h4>
+            <ul className="text-xs space-y-1 text-green-700">
+              <li>- Liste les clients a visiter selon les secteurs de votre tournee du jour</li>
+              <li>- Deroulez un client pour ajouter un <strong>commentaire de visite</strong></li>
+              <li>- Cliquez sur "Marquer comme visitee" pour enregistrer la visite</li>
+              <li>- Le compteur X/Y en haut indique votre progression</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
+            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-brewery-700">
+              Utilisez cette page en fin de journee ou entre deux rendez-vous pour ne rien oublier.
+              Tous les comptes rendus alimentent l'historique et les statistiques.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* ==================== TACHES ==================== */}
+      <Section icon={ListTodo} title="Taches" id="taches">
+        <div className="space-y-3 text-sm text-gray-600">
+          <p>
+            La page Taches vous permet de gerer des taches associees a vos clients.
+            C'est un outil de suivi pour ne rien oublier : relances, envois de documents,
+            suivi de commandes, etc.
+          </p>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Creer une tache</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- <strong>Titre</strong> : description courte de la tache</li>
+              <li>- <strong>Description</strong> : details complementaires (optionnel)</li>
+              <li>- <strong>Client</strong> : associez la tache a un client existant</li>
+              <li>- <strong>Priorite</strong> : basse, moyenne ou haute</li>
+              <li>- <strong>Date d'echeance</strong> : pour ne pas oublier</li>
+              <li>- <strong>Commercial assigne</strong> : qui doit realiser la tache</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Statuts des taches</h4>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">A faire</span>
+              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">En cours</span>
+              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Terminee</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Categories</h4>
+            <div className="flex flex-wrap gap-2">
+              {['General', 'Commercial', 'Prospection', 'Administratif', 'Logistique'].map(cat => (
+                <span key={cat} className="px-2 py-1 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">{cat}</span>
+              ))}
+            </div>
+          </div>
+
+          <ul className="text-xs space-y-1 text-gray-500">
+            <li>- Filtrez les taches par statut, priorite ou commercial</li>
+            <li>- Les taches en retard sont mises en evidence</li>
+            <li>- Chaque tache est liee a un client pour un suivi contextuel</li>
+          </ul>
+        </div>
+      </Section>
+
+      {/* ==================== ACTIVITE (ADMIN) ==================== */}
+      <Section icon={Activity} title="Suivi d'Activite (Administrateurs)" id="activite">
+        <div className="space-y-3 text-sm text-gray-600">
+          <p>
+            L'onglet Activite dans la page Administration permet aux administrateurs de suivre
+            l'activite de toute l'equipe en temps reel.
+          </p>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Derniere connexion</h4>
+            <ul className="text-xs space-y-1 text-gray-500">
+              <li>- Voyez d'un coup d'oeil qui est <strong>en ligne</strong> (pastille verte) ou hors ligne</li>
+              <li>- Affichez la derniere connexion de chaque membre de l'equipe</li>
+              <li>- Le statut se met a jour automatiquement a chaque utilisation de l'application</li>
+            </ul>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-semibold text-gray-800 text-xs mb-2">Historique d'activite</h4>
+            <p className="text-xs text-gray-500 mb-2">Toutes les actions des utilisateurs sont enregistrees :</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { label: 'Connexion', color: 'bg-blue-100 text-blue-700' },
+                { label: 'Nouveau prospect', color: 'bg-purple-100 text-purple-700' },
+                { label: 'Modification prospect', color: 'bg-orange-100 text-orange-700' },
+                { label: 'Appel', color: 'bg-green-100 text-green-700' },
+                { label: 'Nouveau RDV', color: 'bg-indigo-100 text-indigo-700' },
+                { label: 'Compte rendu RDV', color: 'bg-teal-100 text-teal-700' },
+                { label: 'Nouveau client', color: 'bg-emerald-100 text-emerald-700' },
+                { label: 'Visite client', color: 'bg-cyan-100 text-cyan-700' },
+              ].map(a => (
+                <span key={a.label} className={`px-2 py-1 rounded-full text-[10px] font-medium ${a.color}`}>{a.label}</span>
+              ))}
+            </div>
+          </div>
+
+          <ul className="text-xs space-y-1 text-gray-500">
+            <li>- Filtrez l'historique par <strong>utilisateur</strong> via le menu deroulant</li>
+            <li>- Chaque entree montre le <strong>nom de l'utilisateur</strong>, l'<strong>action</strong>, les <strong>details</strong> et la <strong>date/heure</strong></li>
+            <li>- L'historique est accessible dans Administration &gt; onglet Activite</li>
+          </ul>
+
+          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
+            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-brewery-700">
+              Seuls les administrateurs ont acces a cette fonctionnalite.
+              Les donnees sont enregistrees automatiquement, aucune action n'est requise de la part des utilisateurs.
+            </p>
+          </div>
         </div>
       </Section>
 
