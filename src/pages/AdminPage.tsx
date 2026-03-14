@@ -560,7 +560,7 @@ export default function AdminPage() {
               <div key={user.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-start gap-3">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
-                    user.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                    user.role === 'admin' ? 'bg-amber-100 text-amber-700' : user.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
                   }`}>
                     {user.prenom[0]}
                   </div>
@@ -570,6 +570,10 @@ export default function AdminPage() {
                       {user.role === 'admin' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
                           <Shield className="w-3 h-3" /> Administrateur
+                        </span>
+                      ) : user.role === 'prospection' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                          <Users className="w-3 h-3" /> Prospection
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
@@ -657,7 +661,7 @@ export default function AdminPage() {
 
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
                           userForm.role === 'admin'
@@ -666,7 +670,7 @@ export default function AdminPage() {
                         }`}
                         onClick={() => setUserForm(prev => ({ ...prev, role: 'admin' }))}
                       >
-                        <Shield className="w-4 h-4" /> Administrateur
+                        <Shield className="w-4 h-4" /> Admin
                       </button>
                       <button
                         className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -677,6 +681,16 @@ export default function AdminPage() {
                         onClick={() => setUserForm(prev => ({ ...prev, role: 'commercial' }))}
                       >
                         <User className="w-4 h-4" /> Commercial
+                      </button>
+                      <button
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
+                          userForm.role === 'prospection'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                        onClick={() => setUserForm(prev => ({ ...prev, role: 'prospection' }))}
+                      >
+                        <Users className="w-4 h-4" /> Prospection
                       </button>
                     </div>
                   </div>
@@ -738,13 +752,13 @@ export default function AdminPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
-                      commercial.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                      commercial.role === 'admin' ? 'bg-amber-100 text-amber-700' : commercial.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
                     }`}>
                       {commercial.prenom[0]}
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{commercial.prenom} {commercial.nom}</h3>
-                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : 'Commercial'}</p>
+                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'}</p>
                     </div>
                   </div>
                   {isEditing ? (
@@ -916,7 +930,7 @@ export default function AdminPage() {
             <div key={stats.commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${
-                  stats.commercial.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                  stats.commercial.role === 'admin' ? 'bg-amber-100 text-amber-700' : stats.commercial.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
                 }`}>
                   {stats.commercial.prenom[0]}
                 </div>

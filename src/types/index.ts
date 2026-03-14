@@ -115,7 +115,7 @@ export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
 
 export type ReminderStatus = 'actif' | 'termine' | 'reporte';
 
-export type UserRole = 'admin' | 'commercial';
+export type UserRole = 'admin' | 'commercial' | 'prospection';
 
 // ============================================
 // Regions de France (mapping departement → region)

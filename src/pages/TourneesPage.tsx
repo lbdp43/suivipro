@@ -154,7 +154,118 @@ export default function TourneesPage() {
     );
   }
 
-  const nonAdminCommerciaux = commerciaux.filter(c => c.role !== 'admin');
+  const commercials = commerciaux.filter(c => c.role === 'commercial' || c.role === 'admin');
+  const prospecteurs = commerciaux.filter(c => c.role === 'prospection');
+  const isProspection = state.currentUser?.role === 'prospection';
+
+  const renderCommercialCard = (commercial: CommercialInfo, readOnly = false) => {
+    const config = configs.find(c => c.commercial_id === commercial.id);
+    const hasConfig = config && Object.keys(config.config).some(k => (config.config[k] || []).length > 0);
+    const isExpanded = expandedCommercials.has(commercial.id);
+    const isMe = commercial.id === currentUserId;
+    const weekPattern = config?.week_pattern || 'every';
+    const isActiveThisWeek = weekPattern === 'every' ||
+      (weekPattern === 'even' && isEvenWeek) ||
+      (weekPattern === 'odd' && !isEvenWeek);
+
+    return (
+      <div key={commercial.id} className={`bg-white rounded-xl border transition-shadow ${
+        isMe ? 'border-brewery-300 shadow-sm' : 'border-gray-200'
+      } ${!isActiveThisWeek ? 'opacity-60' : ''}`}>
+        <button
+          onClick={() => toggleCommercial(commercial.id)}
+          className="w-full flex items-center justify-between px-3 sm:px-4 py-3 text-left hover:bg-gray-50 rounded-xl"
+        >
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+              commercial.role === 'prospection' ? 'bg-emerald-100' : 'bg-indigo-100'
+            }`}>
+              <User className={`w-4 h-4 ${commercial.role === 'prospection' ? 'text-emerald-700' : 'text-indigo-700'}`} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 text-sm truncate">
+                {commercial.prenom} {commercial.nom}
+                {isMe && <span className="text-brewery-600 ml-1">(moi)</span>}
+                {readOnly && !isMe && <span className="text-gray-400 ml-1 text-xs">(lecture seule)</span>}
+              </p>
+              <p className="text-[10px] text-gray-500">
+                {WEEK_PATTERN_LABELS[weekPattern]}
+                {!isActiveThisWeek && ' — pas cette semaine'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {hasConfig ? (
+              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium hidden sm:inline">
+                Configure
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium hidden sm:inline">
+                Non configure
+              </span>
+            )}
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+            {config?.tournee_info && (
+              <div className="flex items-start gap-2 p-2 sm:p-3 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs sm:text-sm text-blue-800">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <p>{config.tournee_info}</p>
+              </div>
+            )}
+
+            {hasConfig ? (
+              <>
+                {/* Mobile: vertical list */}
+                <div className="sm:hidden space-y-1.5">
+                  {DAY_KEYS.map(day => {
+                    const zones = config?.config[day] || [];
+                    if (zones.length === 0) return null;
+                    return (
+                      <div key={day} className="flex items-center gap-2 py-1.5 px-2 bg-indigo-50 rounded-lg">
+                        <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {zones.map((z, i) => (
+                            <span key={i} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">{z}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop: grid */}
+                <div className="hidden sm:grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+                  {DAY_KEYS.map(day => {
+                    const zones = config?.config[day] || [];
+                    return (
+                      <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
+                        <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
+                        {zones.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {zones.map((z, i) => (
+                              <span key={i} className="block text-xs font-medium text-indigo-700">{z}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 fade-in max-w-5xl mx-auto">
@@ -269,122 +380,30 @@ export default function TourneesPage() {
         </div>
       )}
 
-      {/* All commercials tournées */}
+      {/* Commerciaux section */}
       <div className="space-y-3">
-        {nonAdminCommerciaux.map(commercial => {
-          const config = configs.find(c => c.commercial_id === commercial.id);
-          const hasConfig = config && Object.keys(config.config).some(k => (config.config[k] || []).length > 0);
-          const isExpanded = expandedCommercials.has(commercial.id);
-          const isMe = commercial.id === currentUserId;
-          const weekPattern = config?.week_pattern || 'every';
-
-          // Check if this tournée is active this week
-          const isActiveThisWeek = weekPattern === 'every' ||
-            (weekPattern === 'even' && isEvenWeek) ||
-            (weekPattern === 'odd' && !isEvenWeek);
-
-          return (
-            <div key={commercial.id} className={`bg-white rounded-xl border transition-shadow ${
-              isMe ? 'border-brewery-300 shadow-sm' : 'border-gray-200'
-            } ${!isActiveThisWeek ? 'opacity-60' : ''}`}>
-              <button
-                onClick={() => toggleCommercial(commercial.id)}
-                className="w-full flex items-center justify-between px-3 sm:px-4 py-3 text-left hover:bg-gray-50 rounded-xl"
-              >
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-                  <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4 text-indigo-700" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">
-                      {commercial.prenom} {commercial.nom}
-                      {isMe && <span className="text-brewery-600 ml-1">(moi)</span>}
-                    </p>
-                    <p className="text-[10px] text-gray-500">
-                      {WEEK_PATTERN_LABELS[weekPattern]}
-                      {!isActiveThisWeek && ' — pas cette semaine'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {hasConfig ? (
-                    <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium hidden sm:inline">
-                      Configure
-                    </span>
-                  ) : (
-                    <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium hidden sm:inline">
-                      Non configure
-                    </span>
-                  )}
-                </div>
-              </button>
-
-              {isExpanded && (
-                <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                  {config?.tournee_info && (
-                    <div className="flex items-start gap-2 p-2 sm:p-3 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs sm:text-sm text-blue-800">
-                      <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <p>{config.tournee_info}</p>
-                    </div>
-                  )}
-
-                  {hasConfig ? (
-                    <>
-                      {/* Mobile: vertical list */}
-                      <div className="sm:hidden space-y-1.5">
-                        {DAY_KEYS.map(day => {
-                          const zones = config?.config[day] || [];
-                          if (zones.length === 0) return null;
-                          return (
-                            <div key={day} className="flex items-center gap-2 py-1.5 px-2 bg-indigo-50 rounded-lg">
-                              <span className="text-xs font-semibold text-gray-600 w-8">{DAY_SHORT[day]}</span>
-                              <div className="flex flex-wrap gap-1">
-                                {zones.map((z, i) => (
-                                  <span key={i} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">{z}</span>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Desktop: grid */}
-                      <div className="hidden sm:grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
-                        {DAY_KEYS.map(day => {
-                          const zones = config?.config[day] || [];
-                          return (
-                            <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
-                              <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
-                              {zones.length > 0 ? (
-                                <div className="space-y-0.5">
-                                  {zones.map((z, i) => (
-                                    <span key={i} className="block text-xs font-medium text-indigo-700">{z}</span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">-</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {nonAdminCommerciaux.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-            <p className="text-sm text-gray-500">Aucun commercial dans l'equipe</p>
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-indigo-500" />
+          Commerciaux
+        </h2>
+        {commercials.filter(c => c.role !== 'admin').map(c => renderCommercialCard(c, isProspection))}
+        {commercials.filter(c => c.role !== 'admin').length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+            <p className="text-sm text-gray-500">Aucun commercial</p>
           </div>
         )}
       </div>
+
+      {/* Prospection section */}
+      {prospecteurs.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+            Prospection
+          </h2>
+          {prospecteurs.map(c => renderCommercialCard(c, !isProspection && !isAdmin))}
+        </div>
+      )}
     </div>
   );
 }

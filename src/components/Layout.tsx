@@ -239,12 +239,12 @@ export default function Layout() {
               title="Mon profil"
             >
               <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isAdmin ? 'bg-amber-100' : 'bg-brewery-100'
+                isAdmin ? 'bg-amber-100' : state.currentUser?.role === 'prospection' ? 'bg-emerald-100' : 'bg-brewery-100'
               }`}>
                 {isAdmin ? (
                   <Shield className="w-4 h-4 text-amber-700" />
                 ) : (
-                  <User className="w-4 h-4 text-brewery-700" />
+                  <User className={`w-4 h-4 ${state.currentUser?.role === 'prospection' ? 'text-emerald-700' : 'text-brewery-700'}`} />
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -252,7 +252,7 @@ export default function Layout() {
                   {state.currentUser?.prenom} {state.currentUser?.nom}
                 </p>
                 <p className="text-[10px] text-gray-500">
-                  {isAdmin ? 'Administrateur' : 'Commercial'}
+                  {isAdmin ? 'Administrateur' : state.currentUser?.role === 'prospection' ? 'Prospection' : 'Commercial'}
                 </p>
               </div>
             </Link>
@@ -369,9 +369,9 @@ export default function Layout() {
               <span className="hidden sm:inline">Hub</span>
             </button>
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-              isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+              isAdmin ? 'bg-amber-100 text-amber-700' : state.currentUser?.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
             }`}>
-              {isAdmin ? 'Admin' : 'Commercial'}
+              {isAdmin ? 'Admin' : state.currentUser?.role === 'prospection' ? 'Prospection' : 'Commercial'}
             </div>
             <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors">{state.currentUser?.prenom}</Link>
           </div>
