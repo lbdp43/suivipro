@@ -566,15 +566,15 @@ export default function TourneesPage() {
                               );
                             })}
                           </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             {daySectorStats && daySectorStats.totalClients > 0 && (
-                              <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
-                                {daySectorStats.visitsDone}/{daySectorStats.totalClients} visites
+                              <span className="text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                                {daySectorStats.totalClients} RDV à prendre
                               </span>
                             )}
                             {dayRdvCount > 0 && (
                               <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
-                                {dayRdvCount} RDV
+                                {dayRdvCount} RDV pris
                               </span>
                             )}
                           </div>
@@ -620,22 +620,18 @@ export default function TourneesPage() {
                             <span className="text-xs text-gray-400">-</span>
                           ) : null}
                           {daySectorStats && daySectorStats.totalClients > 0 && (
-                            <div className={`mt-1 ${zones.length > 0 || dayRdvCount > 0 ? 'pt-1 border-t border-gray-200' : ''}`}>
-                              <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold rounded-full px-2 py-0.5 ${
-                                daySectorStats.visitsDone >= daySectorStats.totalClients
-                                  ? 'text-green-700 bg-green-100'
-                                  : 'text-orange-700 bg-orange-100'
-                              }`}>
+                            <div className={`mt-1 ${zones.length > 0 ? 'pt-1 border-t border-gray-200' : ''}`}>
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
                                 <User className="w-2.5 h-2.5" />
-                                {daySectorStats.visitsDone}/{daySectorStats.totalClients}
+                                {daySectorStats.totalClients} à prendre
                               </span>
                             </div>
                           )}
                           {dayRdvCount > 0 && (
-                            <div className={`mt-0.5 ${!daySectorStats || daySectorStats.totalClients === 0 ? (zones.length > 0 ? 'pt-1 border-t border-gray-200' : '') : ''}`}>
+                            <div className="mt-0.5">
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
                                 <Calendar className="w-2.5 h-2.5" />
-                                {dayRdvCount} RDV
+                                {dayRdvCount} pris
                               </span>
                             </div>
                           )}
