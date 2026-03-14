@@ -1372,7 +1372,7 @@ export default function AdminPage() {
             <h3 className="font-semibold text-gray-900 mb-3">Tournees par commercial</h3>
           </div>
 
-          {state.commerciaux.filter(c => c.role !== 'admin').map(commercial => {
+          {state.commerciaux.filter(c => c.role !== 'prospection').map(commercial => {
             const isEditing = tourneeEditing === commercial.id;
             const config = tourneeConfigs[commercial.id];
             const hasConfig = config && Object.keys(config.config).some(k => (config.config[k] || []).length > 0);
@@ -1533,7 +1533,7 @@ export default function AdminPage() {
             );
           })}
 
-          {state.commerciaux.filter(c => c.role !== 'admin').length === 0 && (
+          {state.commerciaux.filter(c => c.role !== 'prospection').length === 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
               <p className="text-sm text-gray-500">Aucun commercial dans l'equipe</p>
               <p className="text-xs text-gray-400 mt-1">Ajoutez des membres dans l'onglet Equipe</p>

@@ -294,7 +294,7 @@ export default function TourneesPage() {
           <button onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <RefreshCw className="w-4 h-4" />
           </button>
-          {!isAdmin && !editing && (
+          {!editing && (
             <button
               onClick={startEdit}
               className="px-3 py-2 sm:px-4 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
@@ -445,8 +445,8 @@ export default function TourneesPage() {
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
           Commerciaux
         </h2>
-        {commercials.filter(c => c.role !== 'admin').map(c => renderCommercialCard(c, isProspection))}
-        {commercials.filter(c => c.role !== 'admin').length === 0 && (
+        {commercials.map(c => renderCommercialCard(c, isProspection))}
+        {commercials.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
             <p className="text-sm text-gray-500">Aucun commercial</p>
           </div>

@@ -393,7 +393,7 @@ async function initDatabase(attempt = 1) {
       await client.query("ALTER TABLE tournee_config ADD COLUMN IF NOT EXISTS week_pattern TEXT DEFAULT 'every'");
     } catch { /* column may already exist */ }
 
-    // Migration: update Louis/Lucas to prospection role + add Étienne
+    // Migration: update Louis/Lucas to prospection role + add Étienne as admin
     try {
       await client.query("UPDATE commerciaux SET role = 'prospection' WHERE prenom IN ('Louis', 'Lucas') AND role = 'commercial'");
     } catch { /* migration may fail */ }
@@ -403,9 +403,11 @@ async function initDatabase(attempt = 1) {
         const hashPwdMig = (pwd) => bcrypt.hashSync(pwd, 10);
         await client.query(
           'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-          ['com-6', 'Etienne', 'Commercial', 'etienne@labrasseriedesplantes.fr', '06 00 00 00 05', 'commercial', hashPwdMig('etienne123'), JSON.stringify({ appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 })]
+          ['com-6', 'Etienne', 'Commercial', 'etienne@labrasseriedesplantes.fr', '06 00 00 00 05', 'admin', hashPwdMig('etienne123'), JSON.stringify({ appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 })]
         );
-        console.log('Added Etienne as commercial.');
+        console.log('Added Etienne as admin.');
+      } else {
+        await client.query("UPDATE commerciaux SET role = 'admin' WHERE prenom = 'Etienne' AND role = 'commercial'");
       }
     } catch (err) { console.log('Etienne migration:', err.message); }
 
@@ -426,7 +428,7 @@ async function initDatabase(attempt = 1) {
         ['com-3', 'Lucas', 'Prospection', 'lucas@labrasseriedesplantes.fr', '06 00 00 00 02', 'prospection', hashPwd('lucas123'), JSON.stringify({ appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 })],
         ['com-4', 'Alban', 'Commercial', 'alban@labrasseriedesplantes.fr', '06 00 00 00 03', 'commercial', hashPwd('alban123'), JSON.stringify({ appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 })],
         ['com-5', 'Loic', 'Commercial', 'loic@labrasseriedesplantes.fr', '06 00 00 00 04', 'commercial', hashPwd('loic123'), JSON.stringify({ appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 })],
-        ['com-6', 'Etienne', 'Commercial', 'etienne@labrasseriedesplantes.fr', '06 00 00 00 05', 'commercial', hashPwd('etienne123'), JSON.stringify({ appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 })],
+        ['com-6', 'Etienne', 'Commercial', 'etienne@labrasseriedesplantes.fr', '06 00 00 00 05', 'admin', hashPwd('etienne123'), JSON.stringify({ appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 })],
       ];
       for (const u of users) {
         await client.query(
