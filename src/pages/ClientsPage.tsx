@@ -56,6 +56,7 @@ export default function ClientsPage() {
   const [interactionClient, setInteractionClient] = useState<Client | null>(null);
   const [interactionType, setInteractionType] = useState<InteractionType>('VISITE');
   const [interactionComment, setInteractionComment] = useState('');
+  const [interactionDate, setInteractionDate] = useState('');
 
   // Task modal
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -238,25 +239,22 @@ export default function ClientsPage() {
   };
 
   // Mark visit
-  const markVisit = (client: Client, type: InteractionType, comment: string) => {
+  const submitInteraction = () => {
+    if (!interactionClient || !interactionComment.trim()) return;
     const now = new Date().toISOString();
     const interaction = {
       id: generateId('int'),
-      client_id: client.id,
+      client_id: interactionClient.id,
       commercial_id: state.currentUser?.id || '',
-      type,
-      date: now,
-      comment,
+      type: interactionType,
+      date: interactionType === 'RDV_PLANIFIE' && interactionDate ? new Date(interactionDate).toISOString() : now,
+      comment: interactionComment.trim(),
       date_creation: now,
     };
     dispatch({ type: 'ADD_INTERACTION', payload: interaction });
-  };
-
-  const submitInteraction = () => {
-    if (!interactionClient) return;
-    markVisit(interactionClient, interactionType, interactionComment);
     setInteractionClient(null);
     setInteractionComment('');
+    setInteractionDate('');
     setInteractionType('VISITE');
   };
 
@@ -910,6 +908,13 @@ export default function ClientsPage() {
                 <PhoneCall className="w-3.5 h-3.5" />
                 Appel
               </button>
+              <button
+                onClick={() => { setInteractionClient(selectedClient); setInteractionType('RDV_PLANIFIE'); setInteractionDate(new Date().toISOString().split('T')[0]); }}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                RDV
+              </button>
             </div>
 
             {/* Notes */}
@@ -1287,15 +1292,31 @@ export default function ClientsPage() {
                   ))}
                 </div>
               </div>
+              {interactionType === 'RDV_PLANIFIE' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Date du RDV</label>
+                  <input
+                    type="date"
+                    value={interactionDate}
+                    onChange={e => setInteractionDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Commentaire (optionnel)</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Commentaire <span className="text-red-500">*</span>
+                </label>
                 <textarea
                   value={interactionComment}
                   onChange={e => setInteractionComment(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className={`w-full border rounded-lg px-3 py-2 text-sm ${!interactionComment.trim() ? 'border-red-300' : 'border-gray-200'}`}
                   rows={3}
-                  placeholder="Notes sur cette interaction..."
+                  placeholder="Notes sur cette interaction... (obligatoire)"
                 />
+                {!interactionComment.trim() && (
+                  <p className="text-[10px] text-red-500 mt-1">Le commentaire est obligatoire</p>
+                )}
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setInteractionClient(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -1303,7 +1324,8 @@ export default function ClientsPage() {
                 </button>
                 <button
                   onClick={submitInteraction}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors ${
+                  disabled={!interactionComment.trim()}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     interactionType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
                       : interactionType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-purple-600 hover:bg-purple-700'

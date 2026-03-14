@@ -3,11 +3,14 @@ import {
   ClipboardCheck, RefreshCw, AlertTriangle, MapPin, Phone, Building2,
   ChevronDown, ChevronRight, Calendar, CheckCircle2,
   Navigation, ChevronLeft, ArrowLeft, ArrowRight, User, Users,
+  Edit2, X, PhoneCall,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { CLIENT_TYPE_LABELS } from '../types';
+import { CLIENT_TYPE_LABELS, INTERACTION_TYPE_LABELS } from '../types';
+import type { InteractionType, Client } from '../types';
+import { generateId } from '../utils/helpers';
 
 interface VisitClient {
   id: string;
@@ -71,7 +74,7 @@ interface VisitesDataAll {
 type VisitesData = VisitesDataSingle | VisitesDataAll;
 
 export default function VisitesPage() {
-  const { state } = useApp();
+  const { state, dispatch, getClient } = useApp();
   const toast = useToast();
   const [data, setData] = useState<VisitesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,6 +116,74 @@ export default function VisitesPage() {
       scrollTop: window.scrollY,
     }));
   }, [weekOffset, viewMode, showLate, expandedDays, expandedCommercials]);
+
+  // Interaction modal state
+  const [modalClient, setModalClient] = useState<VisitClient | null>(null);
+  const [modalType, setModalType] = useState<InteractionType>('VISITE');
+  const [modalComment, setModalComment] = useState('');
+  const [modalDate, setModalDate] = useState('');
+  const [modalSubmitting, setModalSubmitting] = useState(false);
+
+  // Edit client modal state
+  const [editClient, setEditClient] = useState<Client | null>(null);
+  const [editForm, setEditForm] = useState({ nom: '', contact: '', telephone: '', telephone_mobile: '', email: '', ville: '', adresse: '', notes: '' });
+
+  const openInteractionModal = (client: VisitClient, type: InteractionType) => {
+    setModalClient(client);
+    setModalType(type);
+    setModalComment('');
+    setModalDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const submitInteraction = async () => {
+    if (!modalClient || !modalComment.trim()) return;
+    setModalSubmitting(true);
+    try {
+      const interaction = {
+        id: generateId('int'),
+        client_id: modalClient.id,
+        commercial_id: state.currentUser?.id || '',
+        type: modalType,
+        date: modalType === 'RDV_PLANIFIE' ? new Date(modalDate).toISOString() : new Date().toISOString(),
+        comment: modalComment.trim(),
+        date_creation: new Date().toISOString(),
+      };
+      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+      toast.success(modalType === 'VISITE' ? 'Visite enregistree' : modalType === 'APPEL' ? 'Appel enregistre' : 'RDV planifie');
+      setModalClient(null);
+      setModalComment('');
+      loadData(weekOffset, viewMode);
+    } catch {
+      toast.error('Erreur');
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  const openEditClient = (vc: VisitClient) => {
+    const full = getClient(vc.id);
+    if (full) {
+      setEditClient(full);
+      setEditForm({
+        nom: full.nom || '', contact: full.contact || '', telephone: full.telephone || '',
+        telephone_mobile: full.telephone_mobile || '', email: full.email || '',
+        ville: full.ville || '', adresse: full.adresse || '', notes: full.notes || '',
+      });
+    }
+  };
+
+  const saveEditClient = () => {
+    if (!editClient) return;
+    const updated: Client = {
+      ...editClient,
+      ...editForm,
+      date_modification: new Date().toISOString(),
+    };
+    dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+    toast.success('Client mis a jour');
+    setEditClient(null);
+    loadData(weekOffset, viewMode);
+  };
 
   const isAdmin = state.currentUser?.role === 'admin';
   const isProspection = state.currentUser?.role === 'prospection';
@@ -271,13 +342,36 @@ export default function VisitesPage() {
               <div className="mt-0.5 text-[10px] text-gray-400">Derniere visite: {formatShortDate(client.last_visit)}</div>
             )}
           </div>
-          {gmapsUrl && (
-            <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex-shrink-0"
-              title="Itineraire Google Maps">
-              <Navigation className="w-3.5 h-3.5" />
-            </a>
-          )}
+          <div className="flex flex-col gap-1 flex-shrink-0">
+            <button
+              onClick={() => openInteractionModal(client, 'VISITE')}
+              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+              title="Marquer une visite"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => openInteractionModal(client, 'RDV_PLANIFIE')}
+              className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+              title="Planifier un RDV"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => openEditClient(client)}
+              className="p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+              title="Modifier le client"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            {gmapsUrl && (
+              <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                title="Itineraire Google Maps">
+                <Navigation className="w-3.5 h-3.5" />
+              </a>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -591,6 +685,145 @@ export default function VisitesPage() {
               <p className="text-sm text-gray-500">Aucun commercial</p>
             </div>
           )}
+        </div>
+      )}
+      {/* Interaction Modal (Visite / Appel / RDV) */}
+      {modalClient && (
+        <div className="modal-backdrop" onClick={() => setModalClient(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {modalType === 'VISITE' ? 'Marquer une visite' : modalType === 'APPEL' ? 'Marquer un appel' : 'Planifier un RDV'}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">{modalClient.nom}</p>
+              </div>
+              <button onClick={() => setModalClient(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                <div className="flex gap-2">
+                  {(['VISITE', 'APPEL', 'RDV_PLANIFIE'] as InteractionType[]).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setModalType(type)}
+                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
+                        modalType === type
+                          ? type === 'VISITE' ? 'bg-green-100 text-green-700 border border-green-300'
+                            : type === 'APPEL' ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                            : 'bg-purple-100 text-purple-700 border border-purple-300'
+                          : 'bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200'
+                      }`}
+                    >
+                      {INTERACTION_TYPE_LABELS[type]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {modalType === 'RDV_PLANIFIE' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Date du RDV</label>
+                  <input
+                    type="date"
+                    value={modalDate}
+                    onChange={e => setModalDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Commentaire <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={modalComment}
+                  onChange={e => setModalComment(e.target.value)}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm ${!modalComment.trim() ? 'border-red-300 focus:ring-red-200' : 'border-gray-200'}`}
+                  rows={3}
+                  placeholder="Notes sur cette interaction... (obligatoire)"
+                />
+                {!modalComment.trim() && (
+                  <p className="text-[10px] text-red-500 mt-1">Le commentaire est obligatoire</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={() => setModalClient(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+                  Annuler
+                </button>
+                <button
+                  onClick={submitInteraction}
+                  disabled={!modalComment.trim() || modalSubmitting}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    modalType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
+                      : modalType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'
+                      : 'bg-purple-600 hover:bg-purple-700'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Confirmer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {editClient && (
+        <div className="modal-backdrop" onClick={() => setEditClient(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
+              <h2 className="text-lg font-bold text-gray-900">Modifier le client</h2>
+              <button onClick={() => setEditClient(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              {[
+                { key: 'nom', label: 'Nom', type: 'text' },
+                { key: 'contact', label: 'Contact (prenom nom)', type: 'text' },
+                { key: 'telephone', label: 'Telephone fixe', type: 'tel' },
+                { key: 'telephone_mobile', label: 'Telephone mobile', type: 'tel' },
+                { key: 'email', label: 'Email', type: 'email' },
+                { key: 'ville', label: 'Ville', type: 'text' },
+                { key: 'adresse', label: 'Adresse', type: 'text' },
+              ].map(({ key, label, type }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={(editForm as Record<string, string>)[key] || ''}
+                    onChange={e => setEditForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setEditClient(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+                  Annuler
+                </button>
+                <button
+                  onClick={saveEditClient}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
