@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
+  StickyNote, X,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -58,7 +59,7 @@ function getDaysInRange(start: string, end: string): string[] {
 }
 
 export default function CompteRenduPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, getClient } = useApp();
   const toast = useToast();
   const todayStr = toDateStr(new Date());
 
@@ -86,6 +87,11 @@ export default function CompteRenduPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [selectedCommercialId, setSelectedCommercialId] = useState<string>('');
+
+  // Quick note
+  const [noteClientId, setNoteClientId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
 
   const isAdmin = state.currentUser?.role === 'admin';
   const userId = state.currentUser?.id;
@@ -319,6 +325,31 @@ export default function CompteRenduPage() {
   };
   const isTeamView = selectedCommercialId === 'all' || (isAdmin && selectedCommercialId !== '' && selectedCommercialId !== userId);
 
+  const openQuickNote = (clientId: string) => {
+    const full = getClient(clientId);
+    setNoteClientId(clientId);
+    setNoteText(full?.notes || '');
+  };
+  const saveQuickNote = async () => {
+    if (!noteClientId) return;
+    const full = getClient(noteClientId);
+    if (!full) return;
+    setNoteSaving(true);
+    try {
+      const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
+      const token = localStorage.getItem('suivipro_token');
+      await fetch(`/api/clients/${noteClientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(updated),
+      });
+      dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      toast.success('Note enregistree');
+      setNoteClientId(null);
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setNoteSaving(false); }
+  };
+
   // RDV card (reusable for day and expanded day views)
   const renderRdvCard = (rdv: Appointment) => {
     const isExpanded = expandedRdv === rdv.id;
@@ -433,7 +464,20 @@ export default function CompteRenduPage() {
                 {interaction.comment && <p className="text-xs text-gray-500 italic truncate">{interaction.comment}</p>}
               </div>
             )}
+            {client.notes && (
+              <div className="flex items-start gap-1 mt-1 px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded text-[10px] text-yellow-800">
+                <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0 text-yellow-500" />
+                <span className="line-clamp-1">{client.notes}</span>
+              </div>
+            )}
           </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); openQuickNote(client.id); }}
+            className="p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors flex-shrink-0"
+            title="Note rapide"
+          >
+            <StickyNote className="w-4 h-4" />
+          </button>
           {!visited && <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />}
         </button>
         {isExpanded && !visited && (
@@ -895,6 +939,40 @@ export default function CompteRenduPage() {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Quick note modal */}
+      {noteClientId && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setNoteClientId(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-yellow-500" />
+                Note - {getClient(noteClientId)?.nom || ''}
+              </h3>
+              <button onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4">
+              <textarea
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-yellow-300 focus:border-yellow-400"
+                rows={5}
+                placeholder="Ajouter une note..."
+                autoFocus
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setNoteClientId(null)}>Annuler</button>
+              <button
+                className="px-4 py-2 text-sm bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-1.5 disabled:opacity-50"
+                onClick={saveQuickNote}
+                disabled={noteSaving}
+              >
+                <Save className="w-3.5 h-3.5" /> {noteSaving ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

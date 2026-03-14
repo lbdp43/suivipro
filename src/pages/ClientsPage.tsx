@@ -5,9 +5,10 @@ import {
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
   Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
   Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
-  Users, CalendarPlus,
+  Users, CalendarPlus, StickyNote,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType, ClientStatus, Client, InteractionType,
@@ -36,7 +37,8 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatch, getCommercial, getInteractionsForClient, getTasksForClient } = useApp();
+  const { state, dispatch, getCommercial, getInteractionsForClient, getTasksForClient, getClient } = useApp();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -80,6 +82,11 @@ export default function ClientsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut'>('none');
   const [bulkValue, setBulkValue] = useState('');
+
+  // Quick note
+  const [noteClientId, setNoteClientId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
 
   // Frequency config from DB
   const [frequencyConfig, setFrequencyConfig] = useState<Record<string, number | null>>({});
@@ -214,6 +221,31 @@ export default function ClientsPage() {
     setFormData(emptyForm());
     setForceCreate(false);
     setShowForm(true);
+  };
+
+  const openQuickNote = (clientId: string) => {
+    const full = getClient(clientId);
+    setNoteClientId(clientId);
+    setNoteText(full?.notes || '');
+  };
+  const saveQuickNote = async () => {
+    if (!noteClientId) return;
+    const full = getClient(noteClientId);
+    if (!full) return;
+    setNoteSaving(true);
+    try {
+      const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
+      const token = localStorage.getItem('suivipro_token');
+      await fetch(`/api/clients/${noteClientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(updated),
+      });
+      dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      toast.success('Note enregistree');
+      setNoteClientId(null);
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setNoteSaving(false); }
   };
 
   const openEditForm = (client: Client) => {
@@ -814,6 +846,12 @@ export default function ClientsPage() {
                             Prochaine visite : {formatDate(client.next_visit)}
                           </div>
                         )}
+                        {client.notes && (
+                          <div className="flex items-start gap-1 mt-1 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded text-[11px] text-yellow-800">
+                            <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0 text-yellow-500" />
+                            <span className="line-clamp-2">{client.notes}</span>
+                          </div>
+                        )}
                       </div>
 
                     </div>
@@ -859,6 +897,13 @@ export default function ClientsPage() {
                         title="Modifier le client"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openQuickNote(client.id); }}
+                        className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors"
+                        title="Note rapide"
+                      >
+                        <StickyNote className="w-3.5 h-3.5" />
                       </button>
                       {(client.latitude && client.longitude) ? (
                         <a
@@ -1694,6 +1739,41 @@ export default function ClientsPage() {
                 onClick={addTask}
               >
                 <Plus className="w-3.5 h-3.5" /> Creer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick note modal */}
+      {noteClientId && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setNoteClientId(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-yellow-500" />
+                Note - {getClient(noteClientId)?.nom || ''}
+              </h3>
+              <button onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4">
+              <textarea
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-yellow-300 focus:border-yellow-400"
+                rows={5}
+                placeholder="Ajouter une note..."
+                autoFocus
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setNoteClientId(null)}>Annuler</button>
+              <button
+                className="px-4 py-2 text-sm bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-1.5 disabled:opacity-50"
+                onClick={saveQuickNote}
+                disabled={noteSaving}
+              >
+                <Save className="w-3.5 h-3.5" /> {noteSaving ? 'Enregistrement...' : 'Enregistrer'}
               </button>
             </div>
           </div>

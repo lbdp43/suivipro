@@ -3,7 +3,7 @@ import {
   ClipboardCheck, RefreshCw, AlertTriangle, MapPin, Phone, Building2,
   ChevronDown, ChevronRight, Calendar, CheckCircle2,
   Navigation, ChevronLeft, ArrowLeft, ArrowRight, User, Users,
-  Edit2, X, PhoneCall, CalendarPlus,
+  Edit2, X, PhoneCall, CalendarPlus, StickyNote,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
@@ -138,6 +138,11 @@ export default function VisitesPage() {
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [editForm, setEditForm] = useState({ nom: '', contact: '', telephone: '', telephone_mobile: '', email: '', ville: '', adresse: '', notes: '' });
 
+  // Quick note state
+  const [noteClientId, setNoteClientId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+
   const openInteractionModal = (client: VisitClient, type: InteractionType) => {
     setModalClient(client);
     setModalType(type);
@@ -271,6 +276,32 @@ export default function VisitesPage() {
     toast.success('Client mis a jour');
     setEditClient(null);
     loadData(weekOffset, viewMode);
+  };
+
+  const openQuickNote = (clientId: string) => {
+    const full = getClient(clientId);
+    setNoteClientId(clientId);
+    setNoteText(full?.notes || '');
+  };
+
+  const saveQuickNote = async () => {
+    if (!noteClientId) return;
+    const full = getClient(noteClientId);
+    if (!full) return;
+    setNoteSaving(true);
+    try {
+      const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
+      const token = localStorage.getItem('suivipro_token');
+      await fetch(`/api/clients/${noteClientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(updated),
+      });
+      dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      toast.success('Note enregistree');
+      setNoteClientId(null);
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setNoteSaving(false); }
   };
 
   const isAdmin = state.currentUser?.role === 'admin';
@@ -465,6 +496,13 @@ export default function VisitesPage() {
             title="Planifier un RDV"
           >
             <Calendar className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => openQuickNote(client.id)}
+            className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors"
+            title="Ajouter une note"
+          >
+            <StickyNote className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => openEditClient(client)}
@@ -1127,6 +1165,46 @@ export default function VisitesPage() {
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick note modal */}
+      {noteClientId && (
+        <div className="modal-backdrop" onClick={() => setNoteClientId(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-yellow-500" />
+                Note - {getClient(noteClientId)?.nom || ''}
+              </h3>
+              <button onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <textarea
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300"
+                rows={4}
+                placeholder="Ajouter une note sur ce client..."
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setNoteClientId(null)} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+                  Annuler
+                </button>
+                <button
+                  onClick={saveQuickNote}
+                  disabled={noteSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-sm font-medium hover:bg-yellow-600 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {noteSaving ? 'Enregistrement...' : 'Enregistrer'}
                 </button>
               </div>
             </div>
