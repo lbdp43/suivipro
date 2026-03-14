@@ -410,6 +410,44 @@ export default function TourneesPage() {
     return counts;
   }, [state.appointments, weekDates]);
 
+  // Count clients in sectors and visits done per commercial per day
+  const sectorStatsByCommercialDay = useMemo(() => {
+    const stats: Record<string, Record<string, { totalClients: number; visitsDone: number }>> = {};
+
+    for (const config of configs) {
+      const commId = config.commercial_id;
+      stats[commId] = {};
+
+      for (const dayKey of DAY_KEYS) {
+        const zones = config.config[dayKey] || [];
+        if (zones.length === 0) continue;
+
+        const zonesLower = zones.map(z => z.toLowerCase());
+        // Count active clients in these sectors assigned to this commercial
+        const clientsInSectors = state.clients.filter(
+          c => c.commercial_id === commId &&
+               c.statut === 'ACTIF' &&
+               c.tournee &&
+               zonesLower.includes(c.tournee.toLowerCase())
+        );
+        const totalClients = clientsInSectors.length;
+
+        // Count visits done on this day's date for clients in these sectors
+        const dateStr = weekDates[dayKey];
+        const clientIds = new Set(clientsInSectors.map(c => c.id));
+        const visitsDone = state.interactions.filter(
+          i => i.type === 'VISITE' &&
+               i.commercial_id === commId &&
+               i.date.startsWith(dateStr) &&
+               clientIds.has(i.client_id)
+        ).length;
+
+        stats[commId][dayKey] = { totalClients, visitsDone };
+      }
+    }
+    return stats;
+  }, [configs, state.clients, state.interactions, weekDates]);
+
   const formatWeekRange = () => {
     const end = new Date(targetMonday);
     end.setDate(targetMonday.getDate() + 6);
@@ -512,6 +550,7 @@ export default function TourneesPage() {
                     {DAY_KEYS.map(day => {
                       const zones = config?.config[day] || [];
                       const dayRdvCount = rdvCountsByCommercialDay[commercial.id]?.[day] || 0;
+                      const daySectorStats = sectorStatsByCommercialDay[commercial.id]?.[day];
                       if (zones.length === 0 && dayRdvCount === 0) return null;
                       const hasProsp = zones.some(z => prospMap.has(z));
                       return (
@@ -527,11 +566,18 @@ export default function TourneesPage() {
                               );
                             })}
                           </div>
-                          {dayRdvCount > 0 && (
-                            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5 flex-shrink-0">
-                              {dayRdvCount} RDV
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {daySectorStats && daySectorStats.totalClients > 0 && (
+                              <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
+                                {daySectorStats.visitsDone}/{daySectorStats.totalClients} visites
+                              </span>
+                            )}
+                            {dayRdvCount > 0 && (
+                              <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
+                                {dayRdvCount} RDV
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -543,6 +589,7 @@ export default function TourneesPage() {
                       const zones = config?.config[day] || [];
                       const hasProsp = zones.some(z => prospMap.has(z));
                       const dayRdvCount = rdvCountsByCommercialDay[commercial.id]?.[day] || 0;
+                      const daySectorStats = sectorStatsByCommercialDay[commercial.id]?.[day];
                       const cellClass = hasProsp
                         ? 'bg-green-50 border border-green-200'
                         : zones.length > 0
@@ -572,8 +619,20 @@ export default function TourneesPage() {
                           ) : dayRdvCount === 0 ? (
                             <span className="text-xs text-gray-400">-</span>
                           ) : null}
+                          {daySectorStats && daySectorStats.totalClients > 0 && (
+                            <div className={`mt-1 ${zones.length > 0 || dayRdvCount > 0 ? 'pt-1 border-t border-gray-200' : ''}`}>
+                              <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold rounded-full px-2 py-0.5 ${
+                                daySectorStats.visitsDone >= daySectorStats.totalClients
+                                  ? 'text-green-700 bg-green-100'
+                                  : 'text-orange-700 bg-orange-100'
+                              }`}>
+                                <User className="w-2.5 h-2.5" />
+                                {daySectorStats.visitsDone}/{daySectorStats.totalClients}
+                              </span>
+                            </div>
+                          )}
                           {dayRdvCount > 0 && (
-                            <div className={zones.length > 0 ? 'mt-1.5 pt-1 border-t border-gray-200' : 'mt-0.5'}>
+                            <div className={`mt-0.5 ${!daySectorStats || daySectorStats.totalClients === 0 ? (zones.length > 0 ? 'pt-1 border-t border-gray-200' : '') : ''}`}>
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
                                 <Calendar className="w-2.5 h-2.5" />
                                 {dayRdvCount} RDV
