@@ -64,7 +64,7 @@ export default function AdminPage() {
       ]);
       if (configRes.ok) {
         const config = await configRes.json();
-        setEbConfig({ username: config.username || '', password: '', api_url: config.api_url || 'https://api.easybeer.fr', webhook_secret: config.webhook_secret || '' });
+        setEbConfig({ username: config.username || '', password: config.password || '', api_url: config.api_url || 'https://api.easybeer.fr', webhook_secret: config.webhook_secret || '' });
       }
       if (pendingRes.ok) setEbPending(await pendingRes.json());
       if (rulesRes.ok) setAssignmentRules(await rulesRes.json());
