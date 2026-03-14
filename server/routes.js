@@ -1133,9 +1133,8 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
 // ============================================
 
 // Webhook endpoint (no auth, uses secret header)
-// EasyBeer sends the webhook secret as URL path param: /webhook/easybeer/{secret}
-// Also support header-based secret and no-secret path
-router.post('/webhook/easybeer/:secret?', asyncHandler(async (req, res) => {
+// EasyBeer webhook handler (shared by both routes)
+async function handleEasyBeerWebhook(req, res) {
   const webhookSecret = req.params.secret || req.headers['x-webhook-secret'];
 
   // Check secret from config
@@ -1221,7 +1220,11 @@ router.post('/webhook/easybeer/:secret?', asyncHandler(async (req, res) => {
   }
 
   res.json({ ok: true });
-}));
+}
+
+// Register webhook routes (two separate routes for Express 5 compatibility)
+router.post('/webhook/easybeer', handleEasyBeerWebhook);
+router.post('/webhook/easybeer/:secret', handleEasyBeerWebhook);
 
 // EasyBeer config
 router.get('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => {
