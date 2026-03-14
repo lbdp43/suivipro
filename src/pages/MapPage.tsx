@@ -3,11 +3,11 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
-  ChevronLeft, ChevronRight, Users, X, Check,
+  ChevronLeft, ChevronRight, Users, X, Check, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
-import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS } from '../types';
+import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { formatDate, downloadICS } from '../utils/helpers';
@@ -62,6 +62,7 @@ export default function MapPage() {
   const [rdvWeekOffset, setRdvWeekOffset] = usePersistedState<number>('map_rdv_week', 0);
   const [rdvFilterCommercial, setRdvFilterCommercial] = usePersistedState<string>('map_rdv_commercial', '');
   const [maxMarkers, setMaxMarkers] = usePersistedState<number>('map_max_markers', 200);
+  const [showClients, setShowClients] = usePersistedState<boolean>('map_show_clients', false);
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
   const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
@@ -172,6 +173,24 @@ export default function MapPage() {
     });
   }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds]);
 
+  // Filtered clients for map
+  const filteredClients = useMemo(() => {
+    if (!showClients) return [];
+    return state.clients.filter(c => {
+      if (!c.latitude || !c.longitude) return false;
+      if (c.statut === 'INACTIF') return false;
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        return (
+          c.nom.toLowerCase().includes(term) ||
+          c.ville.toLowerCase().includes(term) ||
+          (c.tournee || '').toLowerCase().includes(term)
+        );
+      }
+      return true;
+    });
+  }, [state.clients, showClients, searchTerm]);
+
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
@@ -255,6 +274,21 @@ export default function MapPage() {
               </span>
             )}
           </button>
+          {/* Bouton Clients */}
+          <button
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
+              showClients ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            }`}
+            onClick={() => setShowClients(!showClients)}
+          >
+            <Building2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Clients</span>
+            {showClients && filteredClients.length > 0 && (
+              <span className="text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center bg-white/20">
+                {filteredClients.length}
+              </span>
+            )}
+          </button>
           {/* Bouton RDV */}
           <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
@@ -317,6 +351,12 @@ export default function MapPage() {
               {PIPELINE_LABELS[stage]}
             </span>
           ))}
+          {showClients && (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium ml-2">
+              <span className="w-3 h-3 rounded-full inline-block border border-white shadow-sm bg-emerald-500" />
+              Clients
+            </span>
+          )}
         </div>
 
         {/* Filter panels */}
@@ -765,6 +805,55 @@ export default function MapPage() {
               </Marker>
             );
           })}
+          {/* Client markers */}
+          {showClients && filteredClients.map(client => (
+            <Marker
+              key={`cli-${client.id}`}
+              position={[client.latitude, client.longitude]}
+              icon={createMarkerIcon('#10b981')}
+            >
+              <Popup>
+                <div className="min-w-[200px]">
+                  <div className="flex items-center gap-1 mb-1">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <h3 className="font-bold text-gray-900 text-sm">{client.nom}</h3>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {CLIENT_TYPE_LABELS[client.type_client] || client.type_client}
+                    {client.tournee && <span> - Tournee: {client.tournee}</span>}
+                  </p>
+                  <div className="mt-2 space-y-1 text-xs text-gray-600">
+                    <p className="flex items-center gap-1"><MapPin className="w-3 h-3" />{client.adresse}{client.ville ? `, ${client.ville}` : ''}</p>
+                    {client.telephone && <p className="flex items-center gap-1"><Phone className="w-3 h-3" /><a href={`tel:${client.telephone}`} className="text-blue-600 hover:underline">{client.telephone}</a></p>}
+                    {client.email && <p className="flex items-center gap-1"><Mail className="w-3 h-3" />{client.email}</p>}
+                  </div>
+                  {client.next_visit && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Prochaine visite: <span className={`font-medium ${client.next_visit < new Date().toISOString().split('T')[0] ? 'text-red-600' : 'text-green-600'}`}>
+                        {new Date(client.next_visit).toLocaleDateString('fr-FR')}
+                      </span>
+                    </p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${client.adresse} ${client.code_postal} ${client.ville}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded text-[10px] font-medium hover:bg-indigo-600"
+                    >
+                      <MapPin className="w-3 h-3" /> Maps
+                    </a>
+                    <Link
+                      to="/clients"
+                      className="flex items-center gap-1 px-2 py-1 bg-emerald-500 text-white rounded text-[10px] font-medium hover:bg-emerald-600"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Voir
+                    </Link>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
         </MapContainer>
       </div>
     </div>

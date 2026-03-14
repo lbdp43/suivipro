@@ -117,6 +117,7 @@ export default function Layout() {
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
     { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
     { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
+    { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
     { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
     { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false },

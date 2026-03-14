@@ -898,8 +898,21 @@ const CLIENT_VISIT_FREQUENCIES = {
   PICOLOGIE: 30,
 };
 
-function calculateNextVisit(typeClient, customRecurrence, lastVisitStr) {
-  const frequency = customRecurrence || CLIENT_VISIT_FREQUENCIES[typeClient];
+async function calculateNextVisit(typeClient, customRecurrence, lastVisitStr) {
+  let frequency = customRecurrence;
+  if (!frequency) {
+    // Check DB config first, then fallback to hardcoded
+    try {
+      const dbConfig = await db.query('SELECT frequency_days FROM visit_frequency_config WHERE type_client = $1', [typeClient]);
+      if (dbConfig.rows.length > 0 && dbConfig.rows[0].frequency_days != null) {
+        frequency = dbConfig.rows[0].frequency_days;
+      } else {
+        frequency = CLIENT_VISIT_FREQUENCIES[typeClient];
+      }
+    } catch {
+      frequency = CLIENT_VISIT_FREQUENCIES[typeClient];
+    }
+  }
   if (!frequency) return null;
   const base = lastVisitStr ? new Date(lastVisitStr) : new Date();
   base.setDate(base.getDate() + frequency);
@@ -932,7 +945,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
 
   const commercialId = isAdmin(req) ? (c.commercial_id || req.user.id) : req.user.id;
   const now = new Date().toISOString();
-  const nextVisit = c.next_visit || calculateNextVisit(c.type_client, c.custom_recurrence, null);
+  const nextVisit = c.next_visit || await calculateNextVisit(c.type_client, c.custom_recurrence, null);
 
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
@@ -1003,7 +1016,7 @@ router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
     const visitDate = i.date || now;
     let nextVisit = null;
     if (client.statut === 'ACTIF') {
-      nextVisit = calculateNextVisit(client.type_client, client.custom_recurrence, visitDate);
+      nextVisit = await calculateNextVisit(client.type_client, client.custom_recurrence, visitDate);
     }
     await db.query(
       'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
@@ -1090,14 +1103,37 @@ router.get('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (
 }));
 
 router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (req, res) => {
-  const { config, notes } = req.body;
+  const { config, notes, tournee_info, week_pattern } = req.body;
   const now = new Date().toISOString();
   await db.query(
-    `INSERT INTO tournee_config (commercial_id, config, notes, updated_at)
-    VALUES ($1, $2, $3, $4)
-    ON CONFLICT (commercial_id) DO UPDATE SET config = $2, notes = $3, updated_at = $4`,
-    [req.params.commercialId, JSON.stringify(config || {}), notes || '', now]
+    `INSERT INTO tournee_config (commercial_id, config, notes, tournee_info, week_pattern, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (commercial_id) DO UPDATE SET config = $2, notes = $3, tournee_info = $4, week_pattern = $5, updated_at = $6`,
+    [req.params.commercialId, JSON.stringify(config || {}), notes || '', tournee_info || '', week_pattern || 'every', now]
   );
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Visit Frequency Config (admin)
+// ============================================
+
+router.get('/visit-frequency-config', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM visit_frequency_config');
+  res.json(result.rows);
+}));
+
+router.put('/visit-frequency-config', authMiddleware, asyncHandler(async (req, res) => {
+  const { frequencies } = req.body; // { type_client: frequency_days }
+  const now = new Date().toISOString();
+  for (const [type, days] of Object.entries(frequencies)) {
+    await db.query(
+      `INSERT INTO visit_frequency_config (type_client, frequency_days, updated_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (type_client) DO UPDATE SET frequency_days = $2, updated_at = $3`,
+      [type, days, now]
+    );
+  }
   res.json({ ok: true });
 }));
 
@@ -1115,7 +1151,7 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
   const p = pResult.rows[0];
   const now = new Date().toISOString();
   const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
-  const nextVisit = calculateNextVisit(clientType, custom_recurrence || null, null);
+  const nextVisit = await calculateNextVisit(clientType, custom_recurrence || null, null);
   const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
   await db.query(
@@ -1332,7 +1368,7 @@ async function handleEasyBeerWebhook(req, res) {
             if (ruleResult.rows.length > 0) {
               const rule = ruleResult.rows[0];
               const clientType = 'BAR_RESTAURANT_GENERAL';
-              const nextVisit = calculateNextVisit(clientType, null, null);
+              const nextVisit = await calculateNextVisit(clientType, null, null);
               const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
               await db.query(
                 `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
@@ -1456,7 +1492,7 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const { commercial_id, type_client, tournee } = req.body;
   const now = new Date().toISOString();
   const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
-  const nextVisit = calculateNextVisit(clientType, null, null);
+  const nextVisit = await calculateNextVisit(clientType, null, null);
   const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
   await db.query(
@@ -1675,7 +1711,7 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
   for (const c of clients) {
     const now = new Date().toISOString();
     const clientType = c.type_client || 'BAR_RESTAURANT_GENERAL';
-    const nextVisit = calculateNextVisit(clientType, c.custom_recurrence || null, null);
+    const nextVisit = await calculateNextVisit(clientType, c.custom_recurrence || null, null);
     await db.query(
       `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
        type_client, statut, commercial_id, next_visit, notes, custom_recurrence, tournee, siret,

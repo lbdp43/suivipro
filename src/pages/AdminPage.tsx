@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Commercial, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
+import { Commercial, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -53,14 +53,23 @@ export default function AdminPage() {
   const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
 
   // Tournee config state
-  const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string }>>({});
+  const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }>>({});
   const [tourneeEditing, setTourneeEditing] = useState<string | null>(null);
   const [tourneeEditConfig, setTourneeEditConfig] = useState<Record<string, string[]>>({});
   const [tourneeEditNotes, setTourneeEditNotes] = useState('');
+  const [tourneeEditInfo, setTourneeEditInfo] = useState('');
+  const [tourneeEditWeekPattern, setTourneeEditWeekPattern] = useState('every');
   const [tourneeSaving, setTourneeSaving] = useState(false);
+
+  // Recurrence config state
+  const [frequencyConfig, setFrequencyConfig] = useState<Record<string, number | null>>({});
+  const [frequencyEditing, setFrequencyEditing] = useState(false);
+  const [frequencyEditValues, setFrequencyEditValues] = useState<Record<string, string>>({});
+  const [frequencySaving, setFrequencySaving] = useState(false);
 
   const DAY_LABELS: Record<string, string> = { '1': 'Lundi', '2': 'Mardi', '3': 'Mercredi', '4': 'Jeudi', '5': 'Vendredi', '6': 'Samedi', '0': 'Dimanche' };
   const DAY_KEYS = ['1', '2', '3', '4', '5', '6', '0'];
+  const WEEK_PATTERN_LABELS: Record<string, string> = { every: 'Chaque semaine', even: 'Semaines paires', odd: 'Semaines impaires' };
 
   const loadTourneeConfigs = useCallback(async () => {
     try {
@@ -70,11 +79,16 @@ export default function AdminPage() {
       const res = await fetch('/api/tournee-config', { headers });
       if (res.ok) {
         const rows = await res.json();
-        const configs: Record<string, { config: Record<string, string[]>; notes: string }> = {};
+        const configs: Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }> = {};
         for (const row of rows) {
           let parsed = {};
           try { parsed = typeof row.config === 'string' ? JSON.parse(row.config) : row.config; } catch { /* ignore */ }
-          configs[row.commercial_id] = { config: parsed as Record<string, string[]>, notes: row.notes || '' };
+          configs[row.commercial_id] = {
+            config: parsed as Record<string, string[]>,
+            notes: row.notes || '',
+            tournee_info: row.tournee_info || '',
+            week_pattern: row.week_pattern || 'every',
+          };
         }
         setTourneeConfigs(configs);
       }
@@ -83,15 +97,39 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadFrequencyConfig = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/visit-frequency-config', { headers });
+      if (res.ok) {
+        const rows = await res.json();
+        const config: Record<string, number | null> = {};
+        for (const row of rows) {
+          config[row.type_client] = row.frequency_days;
+        }
+        setFrequencyConfig(config);
+      }
+    } catch (err) {
+      console.error('Erreur chargement frequences:', err);
+    }
+  }, []);
+
   useEffect(() => {
-    if (activeTab === 'tournees') loadTourneeConfigs();
-  }, [activeTab, loadTourneeConfigs]);
+    if (activeTab === 'tournees') {
+      loadTourneeConfigs();
+      loadFrequencyConfig();
+    }
+  }, [activeTab, loadTourneeConfigs, loadFrequencyConfig]);
 
   const startEditTournee = (commercialId: string) => {
     const existing = tourneeConfigs[commercialId];
     setTourneeEditing(commercialId);
     setTourneeEditConfig(existing?.config ? { ...existing.config } : {});
     setTourneeEditNotes(existing?.notes || '');
+    setTourneeEditInfo(existing?.tournee_info || '');
+    setTourneeEditWeekPattern(existing?.week_pattern || 'every');
   };
 
   const saveTourneeConfig = async (commercialId: string) => {
@@ -101,13 +139,23 @@ export default function AdminPage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
       await fetch(`/api/tournee-config/${commercialId}`, {
-        method: 'PUT',
+        method: 'POST',
         headers,
-        body: JSON.stringify({ config: tourneeEditConfig, notes: tourneeEditNotes }),
+        body: JSON.stringify({
+          config: tourneeEditConfig,
+          notes: tourneeEditNotes,
+          tournee_info: tourneeEditInfo,
+          week_pattern: tourneeEditWeekPattern,
+        }),
       });
       setTourneeConfigs(prev => ({
         ...prev,
-        [commercialId]: { config: { ...tourneeEditConfig }, notes: tourneeEditNotes },
+        [commercialId]: {
+          config: { ...tourneeEditConfig },
+          notes: tourneeEditNotes,
+          tournee_info: tourneeEditInfo,
+          week_pattern: tourneeEditWeekPattern,
+        },
       }));
       setTourneeEditing(null);
       toast.success('Tournees sauvegardees');
@@ -121,6 +169,42 @@ export default function AdminPage() {
   const updateDayTournees = (day: string, value: string) => {
     const tournees = value.split(',').map(s => s.trim()).filter(Boolean);
     setTourneeEditConfig(prev => ({ ...prev, [day]: tournees }));
+  };
+
+  const startEditFrequency = () => {
+    const values: Record<string, string> = {};
+    for (const type of Object.keys(CLIENT_TYPE_LABELS)) {
+      const dbVal = frequencyConfig[type];
+      const defaultVal = (CLIENT_VISIT_FREQUENCIES as Record<string, number | null>)[type];
+      values[type] = String(dbVal ?? defaultVal ?? '');
+    }
+    setFrequencyEditValues(values);
+    setFrequencyEditing(true);
+  };
+
+  const saveFrequencyConfig = async () => {
+    setFrequencySaving(true);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const frequencies: Record<string, number | null> = {};
+      for (const [type, val] of Object.entries(frequencyEditValues)) {
+        frequencies[type] = val === '' ? null : parseInt(val, 10);
+      }
+      await fetch('/api/visit-frequency-config', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ frequencies }),
+      });
+      setFrequencyConfig(frequencies);
+      setFrequencyEditing(false);
+      toast.success('Recurrences sauvegardees');
+    } catch {
+      toast.error('Erreur sauvegarde recurrences');
+    } finally {
+      setFrequencySaving(false);
+    }
   };
 
   const loadEasyBeerData = async () => {
@@ -1173,41 +1257,123 @@ export default function AdminPage() {
       {/* TOURNEES TAB */}
       {/* ============================================ */}
       {activeTab === 'tournees' && (
-        <div className="space-y-4">
+        <div className="space-y-4 sm:space-y-6">
+          {/* Recurrence config */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4" /> Recurrence des visites par type de client
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">Nombre de jours entre chaque visite (vide = pas de recurrence)</p>
+              </div>
+              {!frequencyEditing ? (
+                <button
+                  onClick={startEditFrequency}
+                  className="px-3 py-1.5 text-xs font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center gap-1 self-start"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Modifier
+                </button>
+              ) : (
+                <div className="flex gap-2 self-start">
+                  <button onClick={() => setFrequencyEditing(false)} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg">
+                    Annuler
+                  </button>
+                  <button
+                    onClick={saveFrequencyConfig}
+                    disabled={frequencySaving}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {frequencySaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    Sauvegarder
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {frequencyEditing ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                  <div key={key} className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-700">{family.label}</p>
+                    {family.types.map(type => (
+                      <div key={type} className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600 flex-1 truncate">{CLIENT_TYPE_LABELS[type]}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="w-16 px-2 py-1 border border-gray-200 rounded text-sm text-center"
+                          value={frequencyEditValues[type] ?? ''}
+                          onChange={e => setFrequencyEditValues(prev => ({ ...prev, [type]: e.target.value }))}
+                          placeholder="-"
+                        />
+                        <span className="text-[10px] text-gray-400">jours</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+                {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                  <div key={key} className="space-y-1">
+                    <p className="text-xs font-semibold text-gray-700">{family.label}</p>
+                    {family.types.map(type => {
+                      const dbVal = frequencyConfig[type];
+                      const defaultVal = (CLIENT_VISIT_FREQUENCIES as Record<string, number | null>)[type];
+                      const val = dbVal ?? defaultVal;
+                      const isCustom = dbVal != null && dbVal !== defaultVal;
+                      return (
+                        <div key={type} className="flex items-center justify-between text-xs py-0.5">
+                          <span className="text-gray-600 truncate">{CLIENT_TYPE_LABELS[type]}</span>
+                          <span className={`font-medium ${isCustom ? 'text-brewery-600' : val == null ? 'text-gray-400' : 'text-gray-700'}`}>
+                            {val != null ? `${val}j` : '-'}
+                            {isCustom && <span className="text-[10px] ml-0.5">*</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Tournées par commercial */}
           <div>
-            <h3 className="font-semibold text-gray-900">Configuration des tournees</h3>
-            <p className="text-xs text-gray-500">Definissez les zones de tournee par jour pour chaque commercial</p>
+            <h3 className="font-semibold text-gray-900 mb-3">Tournees par commercial</h3>
           </div>
 
           {state.commerciaux.filter(c => c.role !== 'admin').map(commercial => {
             const isEditing = tourneeEditing === commercial.id;
             const config = tourneeConfigs[commercial.id];
+            const hasConfig = config && Object.keys(config.config).some(k => (config.config[k] || []).length > 0);
 
             return (
-              <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-brewery-100 rounded-full flex items-center justify-center">
+              <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-3 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="w-8 h-8 bg-brewery-100 rounded-full flex items-center justify-center flex-shrink-0">
                       <User className="w-4 h-4 text-brewery-700" />
                     </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900">{commercial.prenom} {commercial.nom}</h4>
-                      <p className="text-xs text-gray-500">{commercial.email}</p>
+                    <div className="min-w-0">
+                      <h4 className="font-medium text-gray-900 text-sm">{commercial.prenom} {commercial.nom}</h4>
+                      <p className="text-[10px] text-gray-500 truncate">{commercial.email}</p>
+                      {config && (
+                        <p className="text-[10px] text-gray-400">{WEEK_PATTERN_LABELS[config.week_pattern || 'every']}</p>
+                      )}
                     </div>
                   </div>
                   {!isEditing ? (
                     <button
                       onClick={() => startEditTournee(commercial.id)}
-                      className="px-3 py-1.5 text-xs font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center gap-1"
+                      className="px-3 py-1.5 text-xs font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center gap-1 self-start"
                     >
                       <Edit2 className="w-3.5 h-3.5" /> Modifier
                     </button>
                   ) : (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setTourneeEditing(null)}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg"
-                      >
+                    <div className="flex gap-2 self-start">
+                      <button onClick={() => setTourneeEditing(null)} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg">
                         Annuler
                       </button>
                       <button
@@ -1224,6 +1390,26 @@ export default function AdminPage() {
 
                 {isEditing ? (
                   <div className="space-y-3">
+                    {/* Week pattern */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Frequence</label>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(WEEK_PATTERN_LABELS).map(([key, label]) => (
+                          <button
+                            key={key}
+                            onClick={() => setTourneeEditWeekPattern(key)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                              tourneeEditWeekPattern === key
+                                ? 'bg-brewery-600 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                       {DAY_KEYS.map(day => (
                         <div key={day}>
@@ -1239,38 +1425,74 @@ export default function AdminPage() {
                       ))}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Info tournee (visible par l'equipe)</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        rows={2}
+                        value={tourneeEditInfo}
+                        onChange={e => setTourneeEditInfo(e.target.value)}
+                        placeholder="Infos visibles par les prospecteurs..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Notes (privees)</label>
                       <textarea
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                         rows={2}
                         value={tourneeEditNotes}
                         onChange={e => setTourneeEditNotes(e.target.value)}
-                        placeholder="Notes sur les tournees..."
+                        placeholder="Notes personnelles..."
                       />
                     </div>
                   </div>
                 ) : (
                   <div>
-                    {config && Object.keys(config.config).some(k => (config.config[k] || []).length > 0) ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
-                        {DAY_KEYS.map(day => {
-                          const zones = config.config[day] || [];
-                          return (
-                            <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
-                              <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
-                              {zones.length > 0 ? (
-                                <div className="space-y-0.5">
+                    {config?.tournee_info && (
+                      <div className="flex items-start gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs text-blue-800">
+                        <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <p>{config.tournee_info}</p>
+                      </div>
+                    )}
+                    {hasConfig ? (
+                      <>
+                        {/* Mobile */}
+                        <div className="sm:hidden space-y-1.5">
+                          {DAY_KEYS.map(day => {
+                            const zones = config?.config[day] || [];
+                            if (zones.length === 0) return null;
+                            return (
+                              <div key={day} className="flex items-center gap-2 py-1.5 px-2 bg-indigo-50 rounded-lg">
+                                <span className="text-xs font-semibold text-gray-600 w-8">{DAY_LABELS[day].substring(0, 3)}</span>
+                                <div className="flex flex-wrap gap-1">
                                   {zones.map((z, i) => (
-                                    <span key={i} className="block text-xs font-medium text-indigo-700">{z}</span>
+                                    <span key={i} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">{z}</span>
                                   ))}
                                 </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">-</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Desktop */}
+                        <div className="hidden sm:grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+                          {DAY_KEYS.map(day => {
+                            const zones = config?.config[day] || [];
+                            return (
+                              <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
+                                <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
+                                {zones.length > 0 ? (
+                                  <div className="space-y-0.5">
+                                    {zones.map((z, i) => (
+                                      <span key={i} className="block text-xs font-medium text-indigo-700">{z}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-400">-</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
                     ) : (
                       <p className="text-sm text-gray-400 italic">Aucune tournee configuree</p>
                     )}

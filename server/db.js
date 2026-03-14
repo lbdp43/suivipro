@@ -235,8 +235,16 @@ async function initDatabase(attempt = 1) {
         commercial_id TEXT PRIMARY KEY,
         config TEXT NOT NULL DEFAULT '{}',
         notes TEXT DEFAULT '',
+        tournee_info TEXT DEFAULT '',
+        week_pattern TEXT DEFAULT 'every',
         updated_at TEXT NOT NULL,
         FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS visit_frequency_config (
+        type_client TEXT PRIMARY KEY,
+        frequency_days INTEGER,
+        updated_at TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS easybeer_config (
@@ -364,6 +372,14 @@ async function initDatabase(attempt = 1) {
         }
       }
     } catch (err) { console.error('Migration compte-rendu pipeline:', err); }
+
+    // Add tournee_info and week_pattern to tournee_config
+    try {
+      await client.query("ALTER TABLE tournee_config ADD COLUMN IF NOT EXISTS tournee_info TEXT DEFAULT ''");
+    } catch { /* column may already exist */ }
+    try {
+      await client.query("ALTER TABLE tournee_config ADD COLUMN IF NOT EXISTS week_pattern TEXT DEFAULT 'every'");
+    } catch { /* column may already exist */ }
 
     // ============================================
     // Seed data (only if empty)

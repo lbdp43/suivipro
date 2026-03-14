@@ -20,6 +20,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 const GuidePage = lazy(() => import('./pages/GuidePage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
+const TourneesPage = lazy(() => import('./pages/TourneesPage'));
 
 function PageLoader() {
   return (
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/rappels" element={<RemindersPage />} />
           <Route path="/emails" element={<EmailsPage />} />
           <Route path="/clients" element={<ClientsPage />} />
+          <Route path="/tournees" element={<TourneesPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/guide" element={<GuidePage />} />

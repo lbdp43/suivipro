@@ -254,6 +254,8 @@ export default function ProspectsPage() {
 
   const filteredProspects = useMemo(() => {
     const list = state.prospects.filter(p => {
+      // By default, hide prospects that became clients (client_gagne)
+      if (filterStages.size === 0 && p.etape_pipeline === 'client_gagne') return false;
       if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
       if (filterStages.size > 0 && !filterStages.has(p.etape_pipeline)) return false;
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
