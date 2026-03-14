@@ -182,7 +182,6 @@ export default function MapPage() {
     return state.clients.filter(c => {
       if (!c.latitude || !c.longitude) return false;
       if (c.statut === 'INACTIF') return false;
-      if (mapFilterCommercial && c.commercial_id !== mapFilterCommercial) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -193,7 +192,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.clients, showClients, searchTerm, mapFilterCommercial]);
+  }, [state.clients, showClients, searchTerm]);
 
   const toggleType = (type: EstablishmentType) => {
     setSelectedTypes(prev =>

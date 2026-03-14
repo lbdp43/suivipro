@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS } from '../types';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
@@ -70,12 +70,18 @@ export default function AppointmentsPage() {
     lieu: '',
     notes: '',
     statut: 'planifie' as AppointmentStatus,
+    event_type: 'rdv' as EventType,
+    titre: '',
+    participants: [] as string[],
+    recurrence: 'none' as RecurrenceType,
+    recurrence_days: [] as number[],
+    recurrence_end_date: '',
   });
 
   const appointments = useMemo(() => {
     let list = [...state.appointments];
     if (filterStatus) list = list.filter(a => a.statut === filterStatus);
-    if (filterCommercial) list = list.filter(a => a.commercial_id === filterCommercial);
+    if (filterCommercial) list = list.filter(a => a.commercial_id === filterCommercial || (a.participants || []).includes(filterCommercial));
     if (filterProspecteur) list = list.filter(a => a.prospecteur_id === filterProspecteur);
     if (filterCompteRendu) {
       if (filterCompteRendu === 'sans') {
@@ -176,6 +182,12 @@ export default function AppointmentsPage() {
       lieu: '',
       notes: '',
       statut: 'planifie',
+      event_type: 'rdv',
+      titre: '',
+      participants: [],
+      recurrence: 'none',
+      recurrence_days: [],
+      recurrence_end_date: '',
     });
     setEditing(null);
     setShowForm(true);
@@ -193,37 +205,78 @@ export default function AppointmentsPage() {
       lieu: rdv.lieu,
       notes: rdv.notes,
       statut: rdv.statut,
+      event_type: rdv.event_type || 'rdv',
+      titre: rdv.titre || '',
+      participants: rdv.participants || [],
+      recurrence: rdv.recurrence || 'none',
+      recurrence_days: rdv.recurrence_days || [],
+      recurrence_end_date: rdv.recurrence_end_date || '',
     });
     setEditing(rdv);
     setShowForm(true);
   };
 
   const saveAppointment = () => {
-    if ((!formData.prospect_id && !formData.client_id) || !formData.date) return;
+    const isEvent = formData.event_type !== 'rdv';
+    // Pour un RDV classique, prospect/client requis. Pour un evenement, titre requis.
+    if (!isEvent && !formData.prospect_id && !formData.client_id) return;
+    if (isEvent && !formData.titre.trim()) return;
+    if (!formData.date) return;
+
+    const baseData = {
+      ...formData,
+      commercial_id: formData.commercial_id || state.currentUser?.id || 'com-1',
+      prospecteur_id: formData.prospecteur_id || state.currentUser?.id || 'com-1',
+    };
+
     if (editing) {
       dispatch({
         type: 'UPDATE_APPOINTMENT',
-        payload: { ...editing, ...formData } as Appointment,
+        payload: { ...editing, ...baseData } as Appointment,
       });
     } else {
-      dispatch({
-        type: 'ADD_APPOINTMENT',
-        payload: {
-          ...formData,
-          id: generateId('rdv'),
-          commercial_id: formData.commercial_id || state.currentUser?.id || 'com-1',
-          prospecteur_id: formData.prospecteur_id || state.currentUser?.id || 'com-1',
-          created_at: new Date().toISOString(),
-        } as Appointment,
-      });
+      // Gestion de la recurrence
+      if (formData.recurrence === 'weekly' && formData.recurrence_days.length > 0 && formData.recurrence_end_date) {
+        const startDate = new Date(formData.date);
+        const endDate = new Date(formData.recurrence_end_date);
+        const current = new Date(startDate);
+
+        while (current <= endDate) {
+          const dayOfWeek = current.getDay();
+          if (formData.recurrence_days.includes(dayOfWeek)) {
+            const dateStr = current.toISOString().split('T')[0];
+            dispatch({
+              type: 'ADD_APPOINTMENT',
+              payload: {
+                ...baseData,
+                id: generateId('rdv'),
+                date: dateStr,
+                created_at: new Date().toISOString(),
+              } as Appointment,
+            });
+          }
+          current.setDate(current.getDate() + 1);
+        }
+      } else {
+        dispatch({
+          type: 'ADD_APPOINTMENT',
+          payload: {
+            ...baseData,
+            id: generateId('rdv'),
+            created_at: new Date().toISOString(),
+          } as Appointment,
+        });
+      }
 
       // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
-      const prospect = state.prospects.find(p => p.id === formData.prospect_id);
-      if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-        dispatch({
-          type: 'MOVE_PROSPECT',
-          payload: { id: prospect.id, stage: 'gagne' },
-        });
+      if (!isEvent) {
+        const prospect = state.prospects.find(p => p.id === formData.prospect_id);
+        if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+          dispatch({
+            type: 'MOVE_PROSPECT',
+            payload: { id: prospect.id, stage: 'gagne' },
+          });
+        }
       }
     }
     setShowForm(false);
@@ -372,26 +425,39 @@ export default function AppointmentsPage() {
   };
 
   const renderRdvCard = (rdv: Appointment) => {
+    const isEvent = rdv.event_type && rdv.event_type !== 'rdv';
     const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
     const rdvClient = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
-    const rdvName = rdvClient?.nom || prospect?.nom_etablissement || 'Inconnu';
+    const rdvName = isEvent ? (rdv.titre || EVENT_TYPE_LABELS[rdv.event_type!]) : (rdvClient?.nom || prospect?.nom_etablissement || 'Inconnu');
     const rdvContact = rdvClient?.contact || prospect?.nom_contact || '';
     const rdvTelephone = rdvClient?.telephone || rdvClient?.telephone_mobile || prospect?.telephone || '';
     const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
     const prospecteurCard = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
+    const rdvParticipants = (rdv.participants || []).map(id => state.commerciaux.find(c => c.id === id)).filter(Boolean);
     return (
-      <div key={rdv.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+      <div key={rdv.id} className={`bg-white rounded-lg border p-4 hover:shadow-sm transition-shadow ${isEvent ? 'border-l-4' : 'border-gray-200'}`} style={isEvent ? { borderLeftColor: rdv.event_type === 'reunion' ? '#9333ea' : rdv.event_type === 'boutique' ? '#d97706' : rdv.event_type === 'depot' ? '#ea580c' : rdv.event_type === 'marche' ? '#16a34a' : '#6b7280' } : undefined}>
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <button
-              className="font-medium text-sm text-indigo-700 hover:text-indigo-900 hover:underline text-left"
-              onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
-              title={rdvClient ? rdvClient.nom : "Cliquer pour modifier les infos du prospect"}
-            >
-              {rdvName}{rdvClient ? ' (client)' : ''}
-            </button>
-            <p className="text-xs text-gray-500 mt-0.5">{rdvContact}</p>
-            {rdvTelephone && (
+            <div className="flex items-center gap-2">
+              {isEvent && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
+                  {EVENT_TYPE_LABELS[rdv.event_type!]}
+                </span>
+              )}
+              {isEvent ? (
+                <span className="font-medium text-sm text-gray-900">{rdvName}</span>
+              ) : (
+                <button
+                  className="font-medium text-sm text-indigo-700 hover:text-indigo-900 hover:underline text-left"
+                  onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
+                  title={rdvClient ? rdvClient.nom : "Cliquer pour modifier les infos du prospect"}
+                >
+                  {rdvName}{rdvClient ? ' (client)' : ''}
+                </button>
+              )}
+            </div>
+            {!isEvent && <p className="text-xs text-gray-500 mt-0.5">{rdvContact}</p>}
+            {!isEvent && rdvTelephone && (
               <div className="flex items-center gap-2 mt-0.5">
                 <a
                   href={`tel:${rdvTelephone}`}
@@ -449,6 +515,16 @@ export default function AppointmentsPage() {
             <p className="text-[10px] text-purple-400 flex items-center gap-1">
               <Phone className="w-3 h-3" /> Pris par {prospecteurCard.prenom} {prospecteurCard.nom}
             </p>
+          )}
+          {rdvParticipants.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-[10px] text-gray-400">Participants :</span>
+              {rdvParticipants.map(p => (
+                <span key={p!.id} className="text-[10px] bg-brewery-50 text-brewery-700 px-1.5 py-0.5 rounded font-medium">
+                  {p!.prenom}
+                </span>
+              ))}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2 mt-3">
@@ -706,7 +782,7 @@ export default function AppointmentsPage() {
         let planningRdvs = state.appointments.filter(
           a => a.date >= weekStart && a.date <= weekEnd && a.statut !== 'annule'
         );
-        if (filterCommercial) planningRdvs = planningRdvs.filter(a => a.commercial_id === filterCommercial);
+        if (filterCommercial) planningRdvs = planningRdvs.filter(a => a.commercial_id === filterCommercial || (a.participants || []).includes(filterCommercial));
         if (filterProspecteur) planningRdvs = planningRdvs.filter(a => a.prospecteur_id === filterProspecteur);
         if (filterStatus) planningRdvs = planningRdvs.filter(a => a.statut === filterStatus);
 
@@ -759,7 +835,7 @@ export default function AppointmentsPage() {
                           <span className="text-[9px] bg-brewery-600 text-white px-1.5 py-0.5 rounded-full font-medium">Aujourd'hui</span>
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-400">{dayRdvs.length} RDV</span>
+                      <span className="text-[10px] text-gray-400">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
                     </div>
 
                     {/* Evenements du jour */}
@@ -824,32 +900,46 @@ export default function AppointmentsPage() {
                       {dayRdvs.length > 0 ? (
                         <div className="space-y-2">
                           {dayRdvs.map(rdv => {
+                            const rdvIsEvent = rdv.event_type && rdv.event_type !== 'rdv';
                             const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
                             const rdvCl = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
                             const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                             const prospecteur = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
-                            const statusColor = rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
+                            const planParticipants = (rdv.participants || []).map(id => state.commerciaux.find(c => c.id === id)).filter(Boolean);
+                            const statusColor = rdvIsEvent
+                              ? `border-l-${rdv.event_type === 'reunion' ? 'purple' : rdv.event_type === 'boutique' ? 'amber' : rdv.event_type === 'depot' ? 'orange' : rdv.event_type === 'marche' ? 'green' : 'gray'}-500 bg-${rdv.event_type === 'reunion' ? 'purple' : rdv.event_type === 'boutique' ? 'amber' : rdv.event_type === 'depot' ? 'orange' : rdv.event_type === 'marche' ? 'green' : 'gray'}-50/30`
+                              : rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
+                            const planName = rdvIsEvent ? (rdv.titre || EVENT_TYPE_LABELS[rdv.event_type!]) : (rdvCl?.nom || prospect?.nom_etablissement || 'Inconnu');
 
                             return (
-                              <div key={rdv.id} className={`rounded-lg border border-gray-200 border-l-4 ${statusColor} p-3`}>
+                              <div key={rdv.id} className={`rounded-lg border border-gray-200 border-l-4 p-3`} style={{ borderLeftColor: rdvIsEvent ? (rdv.event_type === 'reunion' ? '#9333ea' : rdv.event_type === 'boutique' ? '#d97706' : rdv.event_type === 'depot' ? '#ea580c' : rdv.event_type === 'marche' ? '#16a34a' : '#6b7280') : (rdv.statut === 'confirme' ? '#22c55e' : rdv.statut === 'termine' ? '#9ca3af' : '#3b82f6'), backgroundColor: rdvIsEvent ? (rdv.event_type === 'reunion' ? '#faf5ff' : rdv.event_type === 'boutique' ? '#fffbeb' : rdv.event_type === 'depot' ? '#fff7ed' : rdv.event_type === 'marche' ? '#f0fdf4' : '#f9fafb') : (rdv.statut === 'confirme' ? '#f0fdf450' : rdv.statut === 'termine' ? '#f9fafb' : '#eff6ff50') }}>
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <button
-                                        className="font-semibold text-sm text-indigo-700 hover:text-indigo-900 hover:underline truncate text-left"
-                                        onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
-                                        title={rdvCl ? rdvCl.nom : "Modifier les infos du prospect"}
-                                      >
-                                        {rdvCl?.nom || prospect?.nom_etablissement || 'Inconnu'}{rdvCl ? ' (client)' : ''}
-                                      </button>
+                                      {rdvIsEvent && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
+                                          {EVENT_TYPE_LABELS[rdv.event_type!]}
+                                        </span>
+                                      )}
+                                      {rdvIsEvent ? (
+                                        <span className="font-semibold text-sm text-gray-900 truncate">{planName}</span>
+                                      ) : (
+                                        <button
+                                          className="font-semibold text-sm text-indigo-700 hover:text-indigo-900 hover:underline truncate text-left"
+                                          onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
+                                          title={rdvCl ? rdvCl.nom : "Modifier les infos du prospect"}
+                                        >
+                                          {planName}{rdvCl ? ' (client)' : ''}
+                                        </button>
+                                      )}
                                       <span className={`badge text-[9px] ${statusColors[rdv.statut]}`}>
                                         {APPOINTMENT_STATUS_LABELS[rdv.statut]}
                                       </span>
                                     </div>
-                                    {prospect?.nom_contact && (
+                                    {!rdvIsEvent && prospect?.nom_contact && (
                                       <p className="text-[11px] text-gray-500 mt-0.5">{prospect.nom_contact}</p>
                                     )}
-                                    {prospect?.telephone && (
+                                    {!rdvIsEvent && prospect?.telephone && (
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <a
                                           href={`tel:${prospect.telephone}`}
@@ -889,6 +979,12 @@ export default function AppointmentsPage() {
                                         <span className="flex items-center gap-1 text-purple-400">
                                           <Phone className="w-3 h-3" />
                                           Pris par {prospecteur.prenom}
+                                        </span>
+                                      )}
+                                      {planParticipants.length > 0 && (
+                                        <span className="flex items-center gap-1 text-brewery-600">
+                                          <Users className="w-3 h-3" />
+                                          {planParticipants.map(p => p!.prenom).join(', ')}
                                         </span>
                                       )}
                                     </div>
@@ -1147,32 +1243,109 @@ export default function AppointmentsPage() {
         <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">{editing ? 'Modifier le RDV' : 'Nouveau RDV'}</h3>
+              <h3 className="font-bold text-gray-900">{editing ? 'Modifier' : 'Nouveau'} {formData.event_type === 'rdv' ? 'RDV' : 'Evenement'}</h3>
               <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Type d'evenement */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Prospect / Client *</label>
-                <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.client_id ? `client:${formData.client_id}` : formData.prospect_id} onChange={e => {
-                  const val = e.target.value;
-                  if (val.startsWith('client:')) {
-                    setFormData(prev => ({ ...prev, prospect_id: '', client_id: val.replace('client:', '') }));
-                  } else {
-                    setFormData(prev => ({ ...prev, prospect_id: val, client_id: '' }));
-                  }
-                }}>
-                  <option value="">Selectionnez</option>
-                  <optgroup label="Prospects">
-                    {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
-                  </optgroup>
-                  <optgroup label="Clients">
-                    {state.clients.filter(c => c.statut === 'ACTIF').map(c => (<option key={c.id} value={`client:${c.id}`}>{c.nom}</option>))}
-                  </optgroup>
-                </select>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Type</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(EVENT_TYPE_LABELS) as EventType[]).map(type => (
+                    <button
+                      key={type}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        formData.event_type === type
+                          ? EVENT_TYPE_COLORS[type].replace('100', '600').replace('text-', 'text-white bg-').split(' ').reverse().join(' ')
+                          : EVENT_TYPE_COLORS[type] + ' hover:opacity-80'
+                      }`}
+                      onClick={() => setFormData(prev => ({
+                        ...prev,
+                        event_type: type,
+                        prospect_id: type !== 'rdv' ? '' : prev.prospect_id,
+                        client_id: type !== 'rdv' ? '' : prev.client_id,
+                      }))}
+                    >
+                      {EVENT_TYPE_LABELS[type]}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {/* Selecteur prospecteur + commercial */}
+
+              {/* Titre (pour les evenements) */}
+              {formData.event_type !== 'rdv' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Titre *</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    placeholder={`Ex: ${formData.event_type === 'reunion' ? 'Reunion equipe' : formData.event_type === 'boutique' ? 'Boutique Montpellier' : formData.event_type === 'marche' ? 'Marche de Noel' : 'Evenement'}`}
+                    value={formData.titre}
+                    onChange={e => setFormData(prev => ({ ...prev, titre: e.target.value }))}
+                  />
+                </div>
+              )}
+
+              {/* Prospect/Client (seulement pour RDV) */}
+              {formData.event_type === 'rdv' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Prospect / Client *</label>
+                  <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.client_id ? `client:${formData.client_id}` : formData.prospect_id} onChange={e => {
+                    const val = e.target.value;
+                    if (val.startsWith('client:')) {
+                      setFormData(prev => ({ ...prev, prospect_id: '', client_id: val.replace('client:', '') }));
+                    } else {
+                      setFormData(prev => ({ ...prev, prospect_id: val, client_id: '' }));
+                    }
+                  }}>
+                    <option value="">Selectionnez</option>
+                    <optgroup label="Prospects">
+                      {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
+                    </optgroup>
+                    <optgroup label="Clients">
+                      {state.clients.filter(c => c.statut === 'ACTIF').map(c => (<option key={c.id} value={`client:${c.id}`}>{c.nom}</option>))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
+
+              {/* Participants multi-select */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" /> Participants
+                </label>
+                <div className="flex flex-wrap gap-1.5 p-2 border border-gray-200 rounded-lg min-h-[38px]">
+                  {state.commerciaux.map(c => {
+                    const isSelected = formData.participants.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                          isSelected
+                            ? 'bg-brewery-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          participants: isSelected
+                            ? prev.participants.filter(id => id !== c.id)
+                            : [...prev.participants, c.id],
+                        }))}
+                      >
+                        {c.prenom}
+                      </button>
+                    );
+                  })}
+                </div>
+                {formData.participants.length === 0 && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">Cliquez pour assigner des personnes</p>
+                )}
+              </div>
+
+              {/* Selecteur prospecteur + commercial (pour RDV) */}
+              {formData.event_type === 'rdv' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
@@ -1203,6 +1376,7 @@ export default function AppointmentsPage() {
                   </select>
                 </div>
               </div>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
@@ -1217,6 +1391,61 @@ export default function AppointmentsPage() {
                   <input type="time" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.heure_fin} onChange={e => setFormData(prev => ({ ...prev, heure_fin: e.target.value }))} />
                 </div>
               </div>
+              {/* Recurrence (uniquement en creation) */}
+              {!editing && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                    <RefreshCw className="w-3.5 h-3.5" /> Recurrence
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={formData.recurrence}
+                    onChange={e => setFormData(prev => ({ ...prev, recurrence: e.target.value as RecurrenceType }))}
+                  >
+                    <option value="none">Pas de recurrence</option>
+                    <option value="weekly">Chaque semaine</option>
+                  </select>
+                  {formData.recurrence === 'weekly' && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-[11px] text-gray-500">Jours de la semaine :</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[1, 2, 3, 4, 5, 6, 0].map(day => {
+                          const isSelected = formData.recurrence_days.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                              onClick={() => setFormData(prev => ({
+                                ...prev,
+                                recurrence_days: isSelected
+                                  ? prev.recurrence_days.filter(d => d !== day)
+                                  : [...prev.recurrence_days, day],
+                              }))}
+                            >
+                              {DAYS_OF_WEEK_LABELS[day].substring(0, 3)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-0.5">Jusqu'au :</label>
+                        <input
+                          type="date"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          value={formData.recurrence_end_date}
+                          onChange={e => setFormData(prev => ({ ...prev, recurrence_end_date: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Alerte conflit */}
               {formConflicts.length > 0 && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg">

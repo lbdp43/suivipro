@@ -103,6 +103,38 @@ export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   annule: 'Annule',
 };
 
+export type EventType = 'rdv' | 'reunion' | 'boutique' | 'depot' | 'marche' | 'autre';
+
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  rdv: 'RDV Client/Prospect',
+  reunion: 'Reunion',
+  boutique: 'Boutique',
+  depot: 'Depot',
+  marche: 'Marche',
+  autre: 'Autre',
+};
+
+export const EVENT_TYPE_COLORS: Record<EventType, string> = {
+  rdv: 'bg-blue-100 text-blue-800',
+  reunion: 'bg-purple-100 text-purple-800',
+  boutique: 'bg-amber-100 text-amber-800',
+  depot: 'bg-orange-100 text-orange-800',
+  marche: 'bg-green-100 text-green-800',
+  autre: 'bg-gray-100 text-gray-800',
+};
+
+export type RecurrenceType = 'none' | 'weekly';
+
+export const DAYS_OF_WEEK_LABELS: Record<number, string> = {
+  1: 'Lundi',
+  2: 'Mardi',
+  3: 'Mercredi',
+  4: 'Jeudi',
+  5: 'Vendredi',
+  6: 'Samedi',
+  0: 'Dimanche',
+};
+
 export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | '';
 
 export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
@@ -308,6 +340,13 @@ export interface Appointment {
   compte_rendu?: AppointmentResult;
   notes_compte_rendu?: string;
   created_at?: string;
+  // Champs evenement
+  event_type?: EventType;
+  titre?: string; // titre pour les evenements (reunion, boutique, etc.)
+  participants?: string[]; // IDs des commerciaux assignes (multi-select)
+  recurrence?: RecurrenceType;
+  recurrence_days?: number[]; // jours de la semaine (0=dim, 1=lun, ..., 6=sam)
+  recurrence_end_date?: string; // date de fin de recurrence
 }
 
 export interface Reminder {
