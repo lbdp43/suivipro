@@ -90,6 +90,7 @@ export default function CompteRenduPage() {
 
   const [showRdvSection, setShowRdvSection] = useState(true);
   const [showVisitesSection, setShowVisitesSection] = useState(true);
+  const [expandedResult, setExpandedResult] = useState<string | null>(null);
 
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
@@ -191,7 +192,9 @@ export default function CompteRenduPage() {
     rangeAppointments.forEach(a => {
       if (a.compte_rendu) resultCounts[a.compte_rendu] = (resultCounts[a.compte_rendu] || 0) + 1;
     });
-    return { totalRdv, rdvWithCR, totalVisites, visitesParType, resultCounts };
+    const rdvFromProspection = rangeAppointments.filter(a => a.prospect_id && !a.client_id).length;
+    const rdvClients = rangeAppointments.filter(a => !!a.client_id).length;
+    return { totalRdv, rdvWithCR, totalVisites, visitesParType, resultCounts, rdvFromProspection, rdvClients };
   }, [rangeAppointments, rangeInteractions]);
 
   // Group by day for week/month/period views
@@ -762,7 +765,13 @@ export default function CompteRenduPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-indigo-600">{stats.totalRdv}</p>
-            <p className="text-[10px] text-gray-500">RDV (prospects)</p>
+            <p className="text-[10px] text-gray-500">RDV total</p>
+            {stats.totalRdv > 0 && (
+              <div className="flex items-center justify-center gap-2 mt-1">
+                {stats.rdvFromProspection > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600">Prospection: {stats.rdvFromProspection}</span>}
+                {stats.rdvClients > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">Clients: {stats.rdvClients}</span>}
+              </div>
+            )}
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-green-600">{stats.rdvWithCR}</p>
@@ -807,7 +816,7 @@ export default function CompteRenduPage() {
             </div>
           </div>
 
-          {/* Result breakdown */}
+          {/* Result breakdown - interactive */}
           {Object.keys(stats.resultCounts).length > 0 && (
             <div className="col-span-2 sm:col-span-4 bg-white rounded-xl border border-gray-200 p-3">
               <p className="text-xs font-medium text-gray-600 mb-2">Resultats des RDV</p>
@@ -818,13 +827,73 @@ export default function CompteRenduPage() {
                     commande_plus_tard: 'bg-yellow-100 text-yellow-700', a_relancer: 'bg-orange-100 text-orange-700',
                     pas_interesse: 'bg-red-100 text-red-700',
                   };
+                  const isActive = expandedResult === key;
                   return (
-                    <span key={key} className={`px-2 py-1 rounded-full text-xs font-medium ${colors[key] || 'bg-gray-100 text-gray-600'}`}>
+                    <button key={key} onClick={() => setExpandedResult(isActive ? null : key)}
+                      className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${colors[key] || 'bg-gray-100 text-gray-600'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105' : 'hover:scale-105'}`}>
                       {APPOINTMENT_RESULT_LABELS[key] || key}: {count}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
+              {/* Expanded result detail */}
+              {expandedResult && (() => {
+                const rdvsForResult = rangeAppointments.filter(a => a.compte_rendu === expandedResult);
+                const resultColors: Record<string, string> = {
+                  client: 'border-green-200', mail_envoye: 'border-blue-200',
+                  commande_plus_tard: 'border-yellow-200', a_relancer: 'border-orange-200',
+                  pas_interesse: 'border-red-200',
+                };
+                return (
+                  <div className={`mt-3 border-t pt-3 space-y-2`}>
+                    <p className="text-xs text-gray-500 font-medium">{APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult} ({rdvsForResult.length})</p>
+                    {rdvsForResult.map(rdv => {
+                      const name = getEntityName(rdv);
+                      const entityId = rdv.client_id || rdv.prospect_id;
+                      const isClient = !!rdv.client_id;
+                      const entity = isClient
+                        ? state.clients.find((c: Client) => c.id === rdv.client_id)
+                        : state.prospects.find((p: any) => p.id === rdv.prospect_id);
+                      const phone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
+                      const ville = entity?.ville || '';
+                      return (
+                        <div key={rdv.id} className={`bg-white rounded-lg border ${resultColors[expandedResult] || 'border-gray-200'} p-3`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium text-gray-800">{name}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                  {isClient ? 'Client' : 'Prospect'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
+                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date}</span>
+                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut} - {rdv.heure_fin}</span>
+                                {ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{ville}</span>}
+                              </div>
+                              {rdv.notes_compte_rendu && <p className="text-xs text-gray-500 italic mt-1 truncate">{rdv.notes_compte_rendu}</p>}
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                              {phone && (
+                                <a href={`tel:${phone}`} onClick={e => e.stopPropagation()}
+                                  className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100">
+                                  <Phone className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              {isClient && rdv.client_id && (
+                                <button onClick={() => openQuickNote(rdv.client_id!)}
+                                  className="p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100">
+                                  <StickyNote className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
