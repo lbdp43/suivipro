@@ -58,9 +58,16 @@ export default function CompteRenduPage() {
   // Get day-of-week for tournee matching
   const selectedDow = new Date(selectedDate + 'T12:00:00').getDay().toString();
 
-  // Find user's tournee config
+  // Find user's tournee config (config is a JSON string)
   const myTourneeConfig = state.tourneeConfigs?.find((tc: any) => tc.commercial_id === userId);
-  const dayZones: string[] = (myTourneeConfig?.config as any)?.[selectedDow] || [];
+  const parsedConfig = useMemo(() => {
+    if (!myTourneeConfig?.config) return {};
+    if (typeof myTourneeConfig.config === 'string') {
+      try { return JSON.parse(myTourneeConfig.config); } catch { return {}; }
+    }
+    return myTourneeConfig.config;
+  }, [myTourneeConfig?.config]);
+  const dayZones: string[] = Array.isArray(parsedConfig[selectedDow]) ? parsedConfig[selectedDow] : [];
 
   // RDVs for the selected day (my RDVs)
   const dayAppointments = useMemo(() => {
