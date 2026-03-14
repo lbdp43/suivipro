@@ -1410,57 +1410,87 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
 
   const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
-  const pathsToTry = [
-    `/tiers/${ebId}`, `/clients/${ebId}`, `/api/tiers/${ebId}`, `/api/clients/${ebId}`,
-    `/tiers?id=${ebId}`, `/clients?id=${ebId}`, `/api/tiers?id=${ebId}`, `/api/clients?id=${ebId}`,
-  ];
+  const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
+  // Helper to update client from data
+  const updateFromData = async (data, path) => {
+    const clientName = data.nom || data.libelle || data.raisonSociale || data.name || '';
+    const now = new Date().toISOString();
+    await db.query(
+      `UPDATE easybeer_clients SET
+        name = COALESCE(NULLIF($2, ''), name),
+        type = COALESCE(NULLIF($3, ''), type),
+        contact_name = COALESCE(NULLIF($4, ''), contact_name),
+        phone = COALESCE(NULLIF($5, ''), phone),
+        email = COALESCE(NULLIF($6, ''), email),
+        city = COALESCE(NULLIF($7, ''), city),
+        address = COALESCE(NULLIF($8, ''), address),
+        postal_code = COALESCE(NULLIF($9, ''), postal_code),
+        notes = COALESCE(NULLIF($10, ''), notes),
+        commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
+        raw_data = $12, updated_at = $13
+      WHERE id = $1`,
+      [req.params.id, clientName, data.type || '', data.contact || data.contactNom || '',
+       data.phone || data.telephone || data.mobile || data.tel || '',
+       data.email || data.mail || '',
+       data.ville || data.city || '', data.rue || data.adresse || data.address || '',
+       data.codePostal || data.cp || data.postal_code || '', data.notes || data.commentaire || '',
+       data.commercialEmail || data.commercial_email || data.emailCommercial || '', JSON.stringify(data), now]
+    );
+    return res.json({ ok: true, message: `Synchronise via ${path}`, name: clientName });
+  };
+
+  // Strategy 1: Try direct ID lookup
+  const directPaths = [`/tiers/${ebId}`, `/clients/${ebId}`, `/api/tiers/${ebId}`, `/api/clients/${ebId}`];
   const errors = [];
-  for (const path of pathsToTry) {
+  let firstErrorBody = '';
+
+  for (const path of directPaths) {
     try {
-      const url = `${apiBase}${path}`;
-      const resp = await fetch(url, {
-        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      });
+      const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(10000) });
       if (resp.ok) {
         let data = await resp.json();
-        // If response is an array, find the matching item
-        if (Array.isArray(data)) {
-          data = data.find(d => String(d.id) === String(ebId)) || data[0] || {};
-        }
-        const clientName = data.nom || data.libelle || data.raisonSociale || data.name || '';
-        const now = new Date().toISOString();
-        await db.query(
-          `UPDATE easybeer_clients SET
-            name = COALESCE(NULLIF($2, ''), name),
-            type = COALESCE(NULLIF($3, ''), type),
-            contact_name = COALESCE(NULLIF($4, ''), contact_name),
-            phone = COALESCE(NULLIF($5, ''), phone),
-            email = COALESCE(NULLIF($6, ''), email),
-            city = COALESCE(NULLIF($7, ''), city),
-            address = COALESCE(NULLIF($8, ''), address),
-            postal_code = COALESCE(NULLIF($9, ''), postal_code),
-            notes = COALESCE(NULLIF($10, ''), notes),
-            commercial_email = COALESCE(NULLIF($11, ''), commercial_email),
-            raw_data = $12, updated_at = $13
-          WHERE id = $1`,
-          [req.params.id, clientName, data.type || '', data.contact || data.contactNom || '',
-           data.phone || data.telephone || data.mobile || data.tel || '',
-           data.email || data.mail || '',
-           data.ville || data.city || '', data.rue || data.adresse || data.address || '',
-           data.codePostal || data.cp || data.postal_code || '', data.notes || data.commentaire || '',
-           data.commercialEmail || data.commercial_email || data.emailCommercial || '', JSON.stringify(data), now]
-        );
-        return res.json({ ok: true, message: `Synchronise via ${path}`, name: clientName });
+        if (Array.isArray(data)) data = data.find(d => String(d.id) === String(ebId)) || data[0] || {};
+        return await updateFromData(data, path);
       } else {
+        const body = await resp.text().catch(() => '');
         errors.push(`${path}: HTTP ${resp.status}`);
+        if (!firstErrorBody && body) firstErrorBody = body.substring(0, 200);
       }
     } catch (err) {
       errors.push(`${path}: ${err.message}`);
     }
   }
-  return res.json({ ok: false, message: `Impossible de recuperer le client ${ebId}. Erreurs: ${errors.join(' | ')}` });
+
+  // Strategy 2: Fetch the full list and search by ID
+  const listPaths = ['/tiers', '/clients', '/api/tiers', '/api/clients'];
+  for (const path of listPaths) {
+    try {
+      const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data)) {
+          const match = data.find(d => String(d.id) === String(ebId));
+          if (match) {
+            return await updateFromData(match, `${path} (liste)`);
+          }
+          errors.push(`${path}: liste OK (${data.length} items) mais ID ${ebId} non trouve`);
+        } else if (data.results || data.data || data.items) {
+          const items = data.results || data.data || data.items;
+          if (Array.isArray(items)) {
+            const match = items.find(d => String(d.id) === String(ebId));
+            if (match) {
+              return await updateFromData(match, `${path} (liste paginee)`);
+            }
+            errors.push(`${path}: liste OK (${items.length} items) mais ID ${ebId} non trouve`);
+          }
+        }
+      }
+    } catch { /* ignore list errors */ }
+  }
+
+  const detail = firstErrorBody ? ` | Reponse API: ${firstErrorBody}` : '';
+  return res.json({ ok: false, message: `Impossible de recuperer le client ${ebId}. ${errors.slice(0, 4).join(' | ')}${detail}` });
 }));
 
 // Assignment rules
