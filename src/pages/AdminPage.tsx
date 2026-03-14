@@ -2,10 +2,11 @@ import { useState, useMemo } from 'react';
 import {
   Settings, Users, Target, TrendingUp, Tag, Plus, X, Save, Edit2,
   Trash2, BarChart3, Phone, Calendar, Award, Shield, User, Eye, EyeOff, Key,
+  Building2, Link2, RefreshCw, Check, AlertCircle, Loader2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Commercial, Tag as TagType, UserRole } from '../types';
+import { Commercial, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -17,7 +18,7 @@ import { PIPELINE_LABELS, PipelineStage } from '../types';
 export default function AdminPage() {
   const { state, dispatch } = useApp();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer'>('team');
 
   // Tag state
   const [showTagForm, setShowTagForm] = useState(false);
@@ -36,11 +37,134 @@ export default function AdminPage() {
   });
   const [showPassword, setShowPassword] = useState(false);
 
+  // EasyBeer state
+  const [ebConfig, setEbConfig] = useState({ username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
+  const [ebConfigLoaded, setEbConfigLoaded] = useState(false);
+  const [ebSaving, setEbSaving] = useState(false);
+  const [ebTesting, setEbTesting] = useState(false);
+  const [ebTestResult, setEbTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [ebPending, setEbPending] = useState<any[]>([]);
+  const [ebLoadingPending, setEbLoadingPending] = useState(false);
+  const [assignmentRules, setAssignmentRules] = useState<{ id: string; email: string; commercial_id: string }[]>([]);
+  const [newRuleEmail, setNewRuleEmail] = useState('');
+  const [newRuleCommercial, setNewRuleCommercial] = useState('');
+  const [ebImportType, setEbImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
+  const [ebImportCommercial, setEbImportCommercial] = useState('');
+
+  const loadEasyBeerData = async () => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const [configRes, pendingRes, rulesRes] = await Promise.all([
+        fetch('/api/easybeer/config', { headers }),
+        fetch('/api/easybeer/pending-clients', { headers }),
+        fetch('/api/assignment-rules', { headers }),
+      ]);
+      if (configRes.ok) {
+        const config = await configRes.json();
+        setEbConfig({ username: config.username || '', password: '', api_url: config.api_url || 'https://api.easybeer.fr', webhook_secret: config.webhook_secret || '' });
+      }
+      if (pendingRes.ok) setEbPending(await pendingRes.json());
+      if (rulesRes.ok) setAssignmentRules(await rulesRes.json());
+      setEbConfigLoaded(true);
+    } catch { /* ignore */ }
+  };
+
+  const saveEbConfig = async () => {
+    setEbSaving(true);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      await fetch('/api/easybeer/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(ebConfig),
+      });
+      toast.success('Configuration EasyBeer sauvegardee');
+    } catch { toast.error('Erreur de sauvegarde'); }
+    setEbSaving(false);
+  };
+
+  const testEbConnection = async () => {
+    setEbTesting(true);
+    setEbTestResult(null);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch('/api/easybeer/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(ebConfig),
+      });
+      const result = await res.json();
+      setEbTestResult(result);
+    } catch { setEbTestResult({ ok: false, message: 'Erreur reseau' }); }
+    setEbTesting(false);
+  };
+
+  const importEbClient = async (ebId: number) => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch(`/api/easybeer/pending-clients/${ebId}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ commercial_id: ebImportCommercial || state.currentUser?.id, type_client: ebImportType }),
+      });
+      if (res.ok) {
+        setEbPending(prev => prev.filter(c => c.id !== ebId));
+        toast.success('Client importe avec succes');
+        // Reload to get new client in state
+        window.location.reload();
+      }
+    } catch { toast.error('Erreur lors de l\'import'); }
+  };
+
+  const dismissEbClient = async (ebId: number) => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      await fetch(`/api/easybeer/pending-clients/${ebId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      setEbPending(prev => prev.filter(c => c.id !== ebId));
+    } catch { /* ignore */ }
+  };
+
+  const addAssignmentRule = async () => {
+    if (!newRuleEmail || !newRuleCommercial) return;
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch('/api/assignment-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ email: newRuleEmail, commercial_id: newRuleCommercial }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAssignmentRules(prev => [...prev, { id: data.id, email: newRuleEmail.toLowerCase(), commercial_id: newRuleCommercial }]);
+        setNewRuleEmail('');
+        setNewRuleCommercial('');
+      }
+    } catch { toast.error('Erreur'); }
+  };
+
+  const deleteAssignmentRule = async (ruleId: string) => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      await fetch(`/api/assignment-rules/${ruleId}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      setAssignmentRules(prev => prev.filter(r => r.id !== ruleId));
+    } catch { /* ignore */ }
+  };
+
   const tabs = [
     { id: 'team' as const, label: 'Equipe', icon: Users },
     { id: 'objectives' as const, label: 'Objectifs', icon: Target },
     { id: 'tags' as const, label: 'Tags', icon: Tag },
     { id: 'commercials' as const, label: 'Statistiques', icon: BarChart3 },
+    { id: 'easybeer' as const, label: 'EasyBeer', icon: Link2 },
   ];
 
   // ============================================
@@ -665,6 +789,235 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {/* EasyBeer tab */}
+      {activeTab === 'easybeer' && (
+        <div className="space-y-6">
+          {/* Auto-load data when tab opens */}
+          {!ebConfigLoaded && (() => { loadEasyBeerData(); return null; })()}
+
+          {/* Configuration */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Settings className="w-4 h-4" /> Configuration EasyBeer
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nom d'utilisateur API</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={ebConfig.username}
+                  onChange={e => setEbConfig(prev => ({ ...prev, username: e.target.value }))}
+                  placeholder="votre_username"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Mot de passe API</label>
+                <input
+                  type="password"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={ebConfig.password}
+                  onChange={e => setEbConfig(prev => ({ ...prev, password: e.target.value }))}
+                  placeholder="••••••••"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">URL API</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={ebConfig.api_url}
+                  onChange={e => setEbConfig(prev => ({ ...prev, api_url: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Webhook Secret</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={ebConfig.webhook_secret}
+                  onChange={e => setEbConfig(prev => ({ ...prev, webhook_secret: e.target.value }))}
+                  placeholder="secret-pour-verifier-les-webhooks"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-3 flex-wrap">
+              <button
+                className="px-4 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                onClick={saveEbConfig}
+                disabled={ebSaving}
+              >
+                {ebSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Sauvegarder
+              </button>
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                onClick={testEbConnection}
+                disabled={ebTesting || !ebConfig.username}
+              >
+                {ebTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Tester la connexion
+              </button>
+              {ebTestResult && (
+                <span className={`text-sm flex items-center gap-1 ${ebTestResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                  {ebTestResult.ok ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  {ebTestResult.message}
+                </span>
+              )}
+            </div>
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
+              <p className="font-medium text-gray-700 mb-1">URL du webhook a configurer dans EasyBeer :</p>
+              <code className="bg-gray-200 px-2 py-1 rounded text-gray-800">
+                {window.location.origin}/api/webhook/easybeer
+              </code>
+              <p className="mt-2">Ajoutez le header <code className="bg-gray-200 px-1 rounded">X-Webhook-Secret</code> avec la valeur du secret ci-dessus.</p>
+            </div>
+          </div>
+
+          {/* Regles d'affectation */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Users className="w-4 h-4" /> Regles d'affectation automatique
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Quand un client arrive d'EasyBeer avec un email commercial, il est automatiquement assigne au bon commercial.
+            </p>
+
+            {assignmentRules.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {assignmentRules.map(rule => {
+                  const com = state.commerciaux.find(c => c.id === rule.commercial_id);
+                  return (
+                    <div key={rule.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg text-sm">
+                      <span className="text-gray-600 flex-1">{rule.email}</span>
+                      <span className="text-gray-400">→</span>
+                      <span className="font-medium text-gray-900">{com ? `${com.prenom} ${com.nom}` : rule.commercial_id}</span>
+                      <button className="p-1 rounded hover:bg-red-50" onClick={() => deleteAssignmentRule(rule.id)}>
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Email commercial EasyBeer</label>
+                <input
+                  type="email"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={newRuleEmail}
+                  onChange={e => setNewRuleEmail(e.target.value)}
+                  placeholder="commercial@easybeer.fr"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Commercial SuiviPro</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={newRuleCommercial}
+                  onChange={e => setNewRuleCommercial(e.target.value)}
+                >
+                  <option value="">Choisir...</option>
+                  {state.commerciaux.map(c => (
+                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50"
+                onClick={addAssignmentRule}
+                disabled={!newRuleEmail || !newRuleCommercial}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Clients en attente */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Building2 className="w-4 h-4" /> Clients en attente d'import ({ebPending.length})
+              </h3>
+              <button
+                className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
+                onClick={loadEasyBeerData}
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
+              </button>
+            </div>
+
+            {ebPending.length > 0 && (
+              <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Type client pour l'import</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={ebImportType}
+                    onChange={e => setEbImportType(e.target.value as ClientType)}
+                  >
+                    {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                      <optgroup key={key} label={family.label}>
+                        {family.types.map(t => (
+                          <option key={t} value={t}>{CLIENT_TYPE_LABELS[t]}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Commercial assigne</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={ebImportCommercial}
+                    onChange={e => setEbImportCommercial(e.target.value)}
+                  >
+                    <option value="">Par defaut</option>
+                    {state.commerciaux.map(c => (
+                      <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {ebPending.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-6">Aucun client en attente</p>
+            ) : (
+              <div className="space-y-2">
+                {ebPending.map(client => (
+                  <div key={client.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{client.name}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {[client.city, client.phone, client.email].filter(Boolean).join(' - ')}
+                      </p>
+                      {client.commercial_email && (
+                        <p className="text-[10px] text-gray-400">Commercial: {client.commercial_email}</p>
+                      )}
+                    </div>
+                    <button
+                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs font-medium"
+                      onClick={() => importEbClient(client.id)}
+                    >
+                      Importer
+                    </button>
+                    <button
+                      className="p-1.5 rounded-lg hover:bg-red-50"
+                      onClick={() => dismissEbClient(client.id)}
+                      title="Ignorer"
+                    >
+                      <X className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

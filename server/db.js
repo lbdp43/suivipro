@@ -238,6 +238,53 @@ async function initDatabase(attempt = 1) {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS easybeer_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        username TEXT DEFAULT '',
+        password TEXT DEFAULT '',
+        api_url TEXT DEFAULT 'https://api.easybeer.fr',
+        webhook_secret TEXT DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT '',
+        CHECK (id = 1)
+      );
+
+      CREATE TABLE IF NOT EXISTS easybeer_clients (
+        id SERIAL PRIMARY KEY,
+        easybeer_id TEXT UNIQUE,
+        name TEXT DEFAULT '',
+        type TEXT DEFAULT '',
+        contact_name TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        postal_code TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        commercial_email TEXT DEFAULT '',
+        raw_data TEXT DEFAULT '{}',
+        status TEXT DEFAULT 'pending',
+        imported_client_id TEXT,
+        synced_at TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT ''
+      );
+
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id SERIAL PRIMARY KEY,
+        source TEXT NOT NULL DEFAULT 'easybeer',
+        type TEXT NOT NULL DEFAULT '',
+        external_id TEXT DEFAULT '',
+        payload TEXT DEFAULT '{}',
+        received_at TEXT NOT NULL DEFAULT ''
+      );
+
+      CREATE TABLE IF NOT EXISTS assignment_rules (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL DEFAULT '',
+        commercial_id TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+      );
     `);
 
     // ============================================

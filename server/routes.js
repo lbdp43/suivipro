@@ -1128,6 +1128,221 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
   res.json({ ok: true, client_id: clientId });
 }));
 
+// ============================================
+// EasyBeer Integration
+// ============================================
+
+// Webhook endpoint (no auth, uses secret header)
+router.post('/webhook/easybeer', asyncHandler(async (req, res) => {
+  const webhookSecret = req.headers['x-webhook-secret'];
+
+  // Check secret from config
+  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  const config = configResult.rows[0];
+  if (config?.webhook_secret && webhookSecret !== config.webhook_secret) {
+    return res.status(403).json({ error: 'Invalid webhook secret' });
+  }
+
+  const { type, id } = req.body;
+  const now = new Date().toISOString();
+
+  // Log webhook
+  await db.query(
+    'INSERT INTO webhooks (source, type, external_id, payload, received_at) VALUES ($1,$2,$3,$4,$5)',
+    ['easybeer', type || '', id || '', JSON.stringify(req.body), now]
+  );
+
+  // Keep only last 100 webhooks
+  await db.query(`DELETE FROM webhooks WHERE id NOT IN (SELECT id FROM webhooks ORDER BY received_at DESC LIMIT 100)`);
+
+  // If client.created, try to fetch from EasyBeer after delay
+  if (type === 'client.created' && id && config?.username && config?.api_url) {
+    // Background fetch with retry
+    setTimeout(async () => {
+      const delays = [0, 15000, 30000, 30000, 30000];
+      let fetched = false;
+      for (let attempt = 0; attempt < delays.length && !fetched; attempt++) {
+        if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
+        try {
+          const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+          const resp = await fetch(`${config.api_url}/clients/${id}`, {
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const clientName = data.nom || data.libelle || data.raisonSociale || '';
+            const clientNow = new Date().toISOString();
+            await db.query(
+              `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, raw_data, status, synced_at, updated_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+              ON CONFLICT (easybeer_id) DO UPDATE SET name=$2, type=$3, contact_name=$4, phone=$5, email=$6, city=$7, address=$8, postal_code=$9, notes=$10, commercial_email=$11, raw_data=$12, updated_at=$15`,
+              [id, clientName, data.type || '', data.contact || '', data.phone || data.mobile || '', data.email || '',
+               data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '', data.notes || '',
+               data.commercialEmail || '', JSON.stringify(data), 'pending', clientNow, clientNow]
+            );
+
+            // Auto-import if assignment rule exists
+            const commercialEmail = data.commercialEmail || '';
+            if (commercialEmail) {
+              const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [commercialEmail.toLowerCase()]);
+              if (ruleResult.rows.length > 0) {
+                const rule = ruleResult.rows[0];
+                const clientType = 'BAR_RESTAURANT_GENERAL';
+                const nextVisit = calculateNextVisit(clientType, null, null);
+                const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                await db.query(
+                  `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
+                   type_client, statut, commercial_id, next_visit, notes, latitude, longitude, date_creation, date_modification)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                  [clientId, clientName, data.ville || '', data.rue || data.adresse || '', data.codePostal || data.cp || '',
+                   data.phone || data.mobile || '', data.email || '', data.contact || '', clientType, 'ACTIF',
+                   rule.commercial_id, nextVisit || null, data.notes || '', data.latitude || 0, data.longitude || 0, clientNow, clientNow]
+                );
+                await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
+              }
+            }
+            fetched = true;
+          }
+        } catch (err) {
+          console.error(`EasyBeer fetch attempt ${attempt + 1} failed:`, err.message);
+        }
+      }
+    }, 10000); // Initial 10s delay
+  }
+
+  res.json({ ok: true });
+}));
+
+// EasyBeer config
+router.get('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  if (result.rows.length === 0) {
+    return res.json({ id: 1, username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
+  }
+  const config = result.rows[0];
+  res.json({ ...config, password: config.password ? '***' : '' });
+}));
+
+router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => {
+  const { username, password, api_url, webhook_secret } = req.body;
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO easybeer_config (id, username, password, api_url, webhook_secret, updated_at)
+    VALUES (1, $1, $2, $3, $4, $5)
+    ON CONFLICT (id) DO UPDATE SET username=$1, password=$2, api_url=$3, webhook_secret=$4, updated_at=$5`,
+    [username || '', password || '', api_url || 'https://api.easybeer.fr', webhook_secret || '', now]
+  );
+  res.json({ ok: true });
+}));
+
+router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req, res) => {
+  const { username, password, api_url } = req.body;
+  try {
+    const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+    const resp = await fetch(`${api_url || 'https://api.easybeer.fr'}/clients?limit=1`, {
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+    });
+    if (resp.ok) {
+      res.json({ ok: true, message: 'Connexion reussie' });
+    } else {
+      res.json({ ok: false, message: `Erreur ${resp.status}: ${resp.statusText}` });
+    }
+  } catch (err) {
+    res.json({ ok: false, message: `Erreur connexion: ${err.message}` });
+  }
+}));
+
+// Pending clients from EasyBeer
+router.get('/easybeer/pending-clients', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query("SELECT * FROM easybeer_clients WHERE status = 'pending' ORDER BY synced_at DESC");
+  res.json(result.rows);
+}));
+
+router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler(async (req, res) => {
+  const ebClient = await db.query('SELECT * FROM easybeer_clients WHERE id = $1', [req.params.id]);
+  if (ebClient.rows.length === 0) return res.status(404).json({ error: 'Client EasyBeer non trouve' });
+
+  const eb = ebClient.rows[0];
+  const { commercial_id, type_client, tournee } = req.body;
+  const now = new Date().toISOString();
+  const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
+  const nextVisit = calculateNextVisit(clientType, null, null);
+  const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+  await db.query(
+    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
+     type_client, statut, commercial_id, next_visit, notes, tournee, date_creation, date_modification)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [clientId, eb.name, eb.city || '', eb.address || '', eb.postal_code || '',
+     eb.phone || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
+     commercial_id || req.user.id, nextVisit || null, eb.notes || '', tournee || '', now, now]
+  );
+
+  await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, req.params.id]);
+  res.json({ ok: true, client_id: clientId });
+}));
+
+router.delete('/easybeer/pending-clients/:id', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query("UPDATE easybeer_clients SET status = 'dismissed' WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Assignment rules
+router.get('/assignment-rules', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM assignment_rules ORDER BY created_at');
+  res.json(result.rows);
+}));
+
+router.post('/assignment-rules', authMiddleware, asyncHandler(async (req, res) => {
+  const { email, commercial_id } = req.body;
+  if (!email || !commercial_id) return res.status(400).json({ error: 'Email et commercial requis' });
+  const id = `rule-${Date.now()}`;
+  const now = new Date().toISOString();
+  await db.query(
+    'INSERT INTO assignment_rules (id, email, commercial_id, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING',
+    [id, email.toLowerCase(), commercial_id, now]
+  );
+  res.json({ ok: true, id });
+}));
+
+router.delete('/assignment-rules/:id', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM assignment_rules WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Webhooks history
+router.get('/webhooks', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 50');
+  res.json(result.rows);
+}));
+
+// Import clients from Excel (bulk)
+router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => {
+  const { clients } = req.body;
+  if (!Array.isArray(clients) || clients.length === 0) {
+    return res.status(400).json({ error: 'Liste de clients requise' });
+  }
+
+  let imported = 0;
+  for (const c of clients) {
+    const now = new Date().toISOString();
+    const clientType = c.type_client || 'BAR_RESTAURANT_GENERAL';
+    const nextVisit = calculateNextVisit(clientType, c.custom_recurrence || null, null);
+    await db.query(
+      `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
+       type_client, statut, commercial_id, next_visit, notes, custom_recurrence, tournee, siret,
+       latitude, longitude, date_creation, date_modification)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      [c.id, c.nom, c.ville || '', c.adresse || '', c.code_postal || '',
+       c.telephone || '', c.telephone_mobile || '', c.email || '', c.contact || '',
+       clientType, 'ACTIF', c.commercial_id, nextVisit || null, c.notes || '',
+       c.custom_recurrence || null, c.tournee || '', c.siret || '', c.latitude || 0, c.longitude || 0, now, now]
+    );
+    imported++;
+  }
+  res.json({ ok: true, imported });
+}));
+
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
 router.use(hubBridgeRouter);
 

@@ -1,11 +1,11 @@
 import { useState, useRef } from 'react';
 import {
   Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, Loader2, MapPin,
-  Search, Trash2, Trophy, CheckSquare, Square,
+  Search, Trash2, Trophy, CheckSquare, Square, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS } from '../types';
+import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
 import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 
 export default function ImportPage() {
@@ -423,6 +423,146 @@ export default function ImportPage() {
   const [crossDetectedCols, setCrossDetectedCols] = useState<{ denomination: string; telFixe: string; telMobile: string; adresse: string }>({ denomination: '', telFixe: '', telMobile: '', adresse: '' });
   const crossFileRef = useRef<HTMLInputElement>(null);
 
+  // Client import state
+  const [clientImporting, setClientImporting] = useState(false);
+  const [clientImportResults, setClientImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [clientImportType, setClientImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
+  const [clientImportCommercial, setClientImportCommercial] = useState('');
+  const clientFileRef = useRef<HTMLInputElement>(null);
+
+  const handleClientImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setClientImporting(true);
+    setClientImportResults(null);
+    const errors: string[] = [];
+    let success = 0;
+
+    try {
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      // Auto-detect header row
+      const headerPatterns = ['denom', 'raison', 'societe', 'société', 'nom', 'client', 'tel', 'adresse', 'address', 'mobile', 'fixe', 'mail', 'email', 'ville', 'code postal', 'siret', 'tournee', 'tournée', 'type', 'contact'];
+      const rawArrays = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
+      let headerRow = 0;
+      for (let r = 0; r < Math.min(15, rawArrays.length); r++) {
+        const rowVals = (rawArrays[r] as unknown[] || []).map(v => String(v ?? '').toLowerCase().trim()).filter(Boolean);
+        if (rowVals.length < 2) continue;
+        const recognizable = rowVals.filter(v => headerPatterns.some(p => v.includes(p)));
+        if (recognizable.length >= 2) { headerRow = r; break; }
+      }
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { range: headerRow });
+      if (rows.length === 0) {
+        errors.push('Le fichier est vide');
+        setClientImportResults({ success: 0, errors });
+        setClientImporting(false);
+        return;
+      }
+
+      const getVal = (row: Record<string, unknown>, ...keys: string[]): string => {
+        for (const key of keys) {
+          for (const rowKey of Object.keys(row)) {
+            if (rowKey.toLowerCase().trim() === key.toLowerCase().trim()) {
+              return String(row[rowKey] ?? '').trim();
+            }
+          }
+        }
+        return '';
+      };
+
+      const detectClientType = (val: string): ClientType => {
+        const v = val.toLowerCase().trim();
+        if (v.includes('bar') || v.includes('restaurant') || v.includes('brasserie') || v.includes('bistrot')) return 'BAR_RESTAURANT_GENERAL';
+        if (v.includes('cave') || v.includes('caviste') || v.includes('epicerie') || v.includes('épicerie')) return 'CAVE_EPICERIE';
+        if (v.includes('souchon')) return 'SOUCHON';
+        if (v.includes('grand public') || v.includes('particulier')) return 'GRAND_PUBLIC';
+        if (v.includes('comite') || v.includes('comité') || v.includes('ce ')) return 'COMITE_ENTREPRISE';
+        if (v.includes('distribut') || v.includes('grossiste')) return 'DISTRIBUTEUR';
+        if (v.includes('export')) return 'EXPORT';
+        if (v.includes('mariage')) return 'MARIAGE';
+        if (v.includes('picologie') || v.includes('oenologie') || v.includes('œnologie')) return 'PICOLOGIE';
+        return clientImportType;
+      };
+
+      const existingNames = new Set(state.clients.map(c => c.nom.toLowerCase().trim()));
+      const now = new Date().toISOString();
+      const newClients: Record<string, unknown>[] = [];
+
+      rows.forEach((row, index) => {
+        const nom = getVal(row, 'Dénomination', 'Denomination', 'Nom', 'nom', 'Raison sociale', 'Client', 'Enseigne');
+        if (!nom) { errors.push(`Ligne ${index + 2}: Nom manquant`); return; }
+        if (existingNames.has(nom.toLowerCase().trim())) { errors.push(`Ligne ${index + 2}: "${nom}" existe deja`); return; }
+
+        const typeStr = getVal(row, 'Type', 'type', 'Type client', 'Type de client');
+        const type = typeStr ? detectClientType(typeStr) : clientImportType;
+
+        const contact = getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom', 'Prénom', 'Prenom');
+        const telephone = getVal(row, 'Tél. fixe', 'Tel. fixe', 'Telephone', 'Tel', 'tel', 'Numero');
+        const telMobile = getVal(row, 'Tél. mobile', 'Tel. mobile', 'Mobile', 'Portable');
+        const email = getVal(row, 'E-mail', 'Email', 'email', 'Mail', 'mail');
+        const adresse = getVal(row, 'Adresse', 'adresse', 'Rue');
+        const ville = getVal(row, 'Ville', 'ville', 'City');
+        const cp = getVal(row, 'Code postal', 'CP', 'cp', 'Code_postal');
+        const tournee = getVal(row, 'Tournée', 'Tournee', 'tournee', 'Secteur', 'Zone');
+        const notes = getVal(row, 'Notes', 'notes', 'Commentaire');
+        const siret = getVal(row, 'SIRET', 'siret', 'Siren');
+
+        const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}-${index}`;
+        newClients.push({
+          id: clientId, nom, ville, adresse, code_postal: cp,
+          telephone: telephone || telMobile, telephone_mobile: telMobile, email, contact,
+          type_client: type, commercial_id: clientImportCommercial || state.currentUser?.id || 'com-1',
+          notes, tournee, siret, custom_recurrence: null,
+        });
+        existingNames.add(nom.toLowerCase().trim());
+        success++;
+      });
+
+      if (newClients.length > 0) {
+        // Dispatch each client to state
+        for (const c of newClients) {
+          dispatch({ type: 'ADD_CLIENT', payload: { ...c, statut: 'ACTIF', latitude: 0, longitude: 0, last_visit: null, next_visit: null, prospect_id: null, date_creation: now, date_modification: now } as any });
+        }
+      }
+    } catch (err) {
+      errors.push('Erreur de lecture du fichier. Verifiez le format.');
+    }
+    setClientImportResults({ success, errors });
+    setClientImporting(false);
+    if (clientFileRef.current) clientFileRef.current.value = '';
+  };
+
+  const downloadClientTemplate = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const template = [{
+        'Dénomination': 'Bar Le Central',
+        'Type': 'Bar Restaurant',
+        'Contact': 'Jean Dupont',
+        'Tél. fixe': '04 71 00 00 00',
+        'Tél. mobile': '06 12 34 56 78',
+        'E-mail': 'contact@lecentral.fr',
+        'Adresse': '1 Place de la Mairie',
+        'Ville': 'Saint-Etienne',
+        'Code postal': '42000',
+        'Tournée': 'Zone Loire',
+        'Notes': 'Client fidele depuis 2020',
+        'SIRET': '12345678901234',
+      }];
+      const ws = XLSX.utils.json_to_sheet(template);
+      ws['!cols'] = [{ wch: 25 }, { wch: 18 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 25 }, { wch: 30 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 30 }, { wch: 18 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Template Clients');
+      XLSX.writeFile(wb, 'template-import-clients.xlsx');
+    } catch {
+      toast.error('Erreur lors de la creation du template');
+    }
+  };
+
   const normalizeStr = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   const normalizePhone = (tel: string) => tel.replace(/[\s.\-()\/+]/g, '').replace(/^0033/, '0').replace(/^33/, '0');
 
@@ -625,7 +765,7 @@ export default function ImportPage() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Import / Export</h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des donnees prospects</p>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des donnees prospects et clients</p>
       </div>
 
       {/* Export section */}
@@ -917,6 +1057,118 @@ export default function ImportPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* ========== Import Clients ========== */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-1 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-emerald-600" />
+          Importer des clients
+        </h3>
+        <p className="text-xs sm:text-sm text-gray-500 mb-4">
+          Importez vos clients depuis un fichier Excel. Les clients seront ajoutes avec calcul automatique de la prochaine visite.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Type de client par defaut</label>
+            <select
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+              value={clientImportType}
+              onChange={e => setClientImportType(e.target.value as ClientType)}
+            >
+              {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                <optgroup key={key} label={family.label}>
+                  {family.types.map(t => (
+                    <option key={t} value={t}>{CLIENT_TYPE_LABELS[t]}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Commercial assigne</label>
+            <select
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+              value={clientImportCommercial}
+              onChange={e => setClientImportCommercial(e.target.value)}
+            >
+              <option value="">Moi ({state.currentUser?.prenom})</option>
+              {state.commerciaux.map(c => (
+                <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="border-2 border-dashed border-emerald-300 rounded-xl p-6 sm:p-8 text-center hover:border-emerald-500 transition-colors bg-emerald-50/30">
+          {clientImporting ? (
+            <div className="space-y-2">
+              <Loader2 className="w-8 h-8 text-emerald-500 mx-auto animate-spin" />
+              <p className="text-sm font-medium text-gray-700">Import clients en cours...</p>
+            </div>
+          ) : (
+            <>
+              <Building2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                Fichier Excel (.xlsx) avec vos clients
+              </p>
+              <input
+                ref={clientFileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleClientImport}
+              />
+              <button
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs sm:text-sm font-medium"
+                onClick={() => clientFileRef.current?.click()}
+              >
+                Choisir un fichier clients
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="mt-3 flex items-center gap-4">
+          <button
+            className="text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+            onClick={downloadClientTemplate}
+          >
+            <Download className="w-4 h-4" /> Template clients
+          </button>
+        </div>
+
+        {/* Client import results */}
+        {clientImportResults && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-2">
+            {clientImportResults.success > 0 && (
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">{clientImportResults.success} client(s) importe(s)</span>
+              </div>
+            )}
+            {clientImportResults.errors.length > 0 && (
+              <div className="space-y-1">
+                {clientImportResults.errors.slice(0, 20).map((err, i) => (
+                  <div key={i} className="flex items-start gap-2 text-red-600 text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <span>{err}</span>
+                  </div>
+                ))}
+                {clientImportResults.errors.length > 20 && (
+                  <p className="text-xs text-gray-500">... et {clientImportResults.errors.length - 20} autres erreurs</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-3 bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
+          <p className="font-medium text-gray-700 mb-1">Colonnes reconnues :</p>
+          <p>Denomination*, Type, Contact, Tel. fixe, Tel. mobile, E-mail, Adresse, Ville, Code postal, Tournee, Notes, SIRET</p>
+          <p className="text-gray-500 mt-1">* Seul le nom est obligatoire. Le type est auto-detecte si present.</p>
+        </div>
       </div>
 
       {/* Import results */}
