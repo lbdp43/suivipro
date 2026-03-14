@@ -2100,8 +2100,10 @@ router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) => {
-  const userId = req.user.id;
   const weekOffset = parseInt(req.query.week_offset) || 0;
+  // Allow viewing another commercial's visites (for admins/prospection)
+  const targetId = req.query.commercial_id || req.user.id;
+  const viewAll = req.query.view === 'all';
   const now = new Date();
   const today = now.toISOString().split('T')[0];
 
@@ -2110,33 +2112,95 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
   const monday = new Date(now);
   monday.setDate(now.getDate() - dayOfWeek + 1 + (weekOffset * 7));
   monday.setHours(0, 0, 0, 0);
-
-  // My clients
-  const clients = await db.query(
-    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
-    [userId]
-  );
-
-  // My tournée config
-  const tourneeConfig = await db.query(
-    'SELECT * FROM tournee_config WHERE commercial_id = $1',
-    [userId]
-  );
-  const tc = tourneeConfig.rows[0] || null;
-  const config = tc ? JSON.parse(tc.config || '{}') : {};
-  const weekPattern = tc?.week_pattern || 'every';
+  const mondayStr = monday.toISOString().split('T')[0];
 
   // Week number for target week
   const startOfYear = new Date(monday.getFullYear(), 0, 1);
   const weekNum = Math.ceil(((monday - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
   const isEvenWeek = weekNum % 2 === 0;
 
-  // Check if tournée is active this week
+  if (viewAll) {
+    // --- VIEW ALL commercials ---
+    const allCommerciaux = await db.query("SELECT id, prenom, nom, role FROM commerciaux WHERE role != 'prospection' ORDER BY prenom");
+    const allClients = await db.query("SELECT * FROM clients WHERE statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST");
+    const allConfigs = await db.query('SELECT * FROM tournee_config');
+
+    const commerciauxData = [];
+    let totalLate = 0;
+
+    for (const com of allCommerciaux.rows) {
+      const comClients = allClients.rows.filter(c => c.commercial_id === com.id);
+      const tcRow = allConfigs.rows.find(tc => tc.commercial_id === com.id);
+      const config = tcRow ? JSON.parse(tcRow.config || '{}') : {};
+      const wp = tcRow?.week_pattern || 'every';
+      const active = wp === 'every' || (wp === 'even' && isEvenWeek) || (wp === 'odd' && !isEvenWeek);
+
+      const weekDays = [];
+      for (let d = 0; d < 7; d++) {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + d);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayKey = String(d === 6 ? 0 : d + 1);
+        const tourneesForDay = active ? (config[dayKey] || []) : [];
+
+        const tourneeClients = comClients.filter(c =>
+          tourneesForDay.length > 0 && c.tournee && tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())
+        );
+        const visitClients = comClients.filter(c =>
+          c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
+        );
+
+        weekDays.push({
+          day_key: dayKey, date: dateStr,
+          day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][date.getDay()],
+          tournees: tourneesForDay,
+          clients: [...tourneeClients, ...visitClients],
+          is_today: dateStr === today, is_past: dateStr < today,
+        });
+      }
+
+      const lateClients = comClients.filter(c => c.next_visit && c.next_visit < mondayStr);
+      totalLate += lateClients.length;
+
+      commerciauxData.push({
+        commercial: { id: com.id, prenom: com.prenom, nom: com.nom, role: com.role },
+        week_days: weekDays,
+        late_clients: lateClients,
+        week_pattern: wp,
+        tournee_active: active,
+        total_active_clients: comClients.length,
+      });
+    }
+
+    return res.json({
+      view: 'all',
+      commerciaux: commerciauxData,
+      week_number: weekNum,
+      is_even_week: isEvenWeek,
+      week_offset: weekOffset,
+      week_start: mondayStr,
+      total_late: totalLate,
+    });
+  }
+
+  // --- SINGLE commercial view ---
+  const clients = await db.query(
+    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
+    [targetId]
+  );
+
+  const tourneeConfig = await db.query(
+    'SELECT * FROM tournee_config WHERE commercial_id = $1',
+    [targetId]
+  );
+  const tc = tourneeConfig.rows[0] || null;
+  const config = tc ? JSON.parse(tc.config || '{}') : {};
+  const weekPattern = tc?.week_pattern || 'every';
+
   const isTourneeActive = weekPattern === 'every' ||
     (weekPattern === 'even' && isEvenWeek) ||
     (weekPattern === 'odd' && !isEvenWeek);
 
-  // Build week days with tournée clients
   const weekDays = [];
   for (let d = 0; d < 7; d++) {
     const date = new Date(monday);
@@ -2145,34 +2209,28 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     const dayKey = String(d === 6 ? 0 : d + 1);
     const tourneesForDay = isTourneeActive ? (config[dayKey] || []) : [];
 
-    // Clients matching this day's tournées
     const tourneeClients = clients.rows.filter(c =>
       tourneesForDay.length > 0 && c.tournee && tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())
     );
-
-    // Clients with next_visit on this date (not already in tournée list)
     const visitClients = clients.rows.filter(c =>
       c.next_visit === dateStr && !tourneeClients.find(tc2 => tc2.id === c.id)
     );
 
     weekDays.push({
-      day_key: dayKey,
-      date: dateStr,
+      day_key: dayKey, date: dateStr,
       day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][date.getDay()],
       tournees: tourneesForDay,
       clients: [...tourneeClients, ...visitClients],
-      is_today: dateStr === today,
-      is_past: dateStr < today,
+      is_today: dateStr === today, is_past: dateStr < today,
     });
   }
 
-  // Late clients (next_visit before this week's Monday)
-  const mondayStr = monday.toISOString().split('T')[0];
   const lateClients = clients.rows.filter(c =>
     c.next_visit && c.next_visit < mondayStr
   );
 
   res.json({
+    view: 'single',
     week_days: weekDays,
     late_clients: lateClients,
     week_number: weekNum,
