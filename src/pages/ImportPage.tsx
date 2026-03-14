@@ -476,16 +476,56 @@ export default function ImportPage() {
 
       const detectClientType = (val: string): ClientType => {
         const v = val.toLowerCase().trim();
-        if (v.includes('bar') || v.includes('restaurant') || v.includes('brasserie') || v.includes('bistrot')) return 'BAR_RESTAURANT_GENERAL';
-        if (v.includes('cave') || v.includes('caviste') || v.includes('epicerie') || v.includes('épicerie')) return 'CAVE_EPICERIE';
+        if (v.includes('bar') || v.includes('restaurant') || v.includes('brasserie') || v.includes('bistrot') || v.includes('cafe') || v.includes('café') || v.includes('pub')) return 'BAR_RESTAURANT_GENERAL';
+        if (v.includes('cave') || v.includes('caviste') || v.includes('epicerie') || v.includes('épicerie') || v.includes('bio')) return 'CAVE_EPICERIE';
+        if (v.includes('souchon hors') || v.includes('hors droit')) return 'SOUCHON_HORS_DROIT';
         if (v.includes('souchon')) return 'SOUCHON';
-        if (v.includes('grand public') || v.includes('particulier')) return 'GRAND_PUBLIC';
-        if (v.includes('comite') || v.includes('comité') || v.includes('ce ')) return 'COMITE_ENTREPRISE';
-        if (v.includes('distribut') || v.includes('grossiste')) return 'DISTRIBUTEUR';
+        if (v.includes('grand public') || v.includes('particulier') || v.includes('public')) return 'GRAND_PUBLIC';
+        if (v.includes('comite') || v.includes('comité') || v.includes('entreprise') || v.includes('ce ') || v.includes(' ce')) return 'COMITE_ENTREPRISE';
+        if (v.includes('distribut') || v.includes('grossiste') || v.includes('import')) return 'DISTRIBUTEUR';
         if (v.includes('export')) return 'EXPORT';
-        if (v.includes('mariage')) return 'MARIAGE';
+        if (v.includes('mariage') || v.includes('traiteur') || v.includes('event')) return 'MARIAGE';
         if (v.includes('picologie') || v.includes('oenologie') || v.includes('œnologie')) return 'PICOLOGIE';
         return (clientImportType || 'BAR_RESTAURANT_GENERAL') as ClientType;
+      };
+
+      // Helper: parse Lat/Lng field "45.302/4.274" or "45.302,4.274"
+      const parseLatLng = (val: string): { lat: number; lng: number } | null => {
+        if (!val) return null;
+        const sep = val.includes('/') ? '/' : val.includes(',') ? ',' : null;
+        if (!sep) return null;
+        const parts = val.split(sep).map(s => parseFloat(s.trim()));
+        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          return { lat: parts[0], lng: parts[1] };
+        }
+        return null;
+      };
+
+      // Helper: try to find commercial_id from email or name
+      const resolveCommercial = (emailOrName: string): string => {
+        if (!emailOrName) return clientImportCommercial || state.currentUser?.id || '';
+        const val = emailOrName.toLowerCase().trim();
+        // Try email match
+        const byEmail = state.commerciaux.find(c => c.email?.toLowerCase() === val);
+        if (byEmail) return byEmail.id;
+        // Try name match (prenom or "prenom nom")
+        const byName = state.commerciaux.find(c =>
+          val.includes(c.prenom.toLowerCase()) || val.includes(c.nom?.toLowerCase() || '')
+        );
+        if (byName) return byName.id;
+        return clientImportCommercial || state.currentUser?.id || '';
+      };
+
+      // Extract city from a full address like "Boulevard de Pélissac, 43140 Saint-Didier-en-Velay, France"
+      const extractVilleFromAdresse = (adresse: string): { ville: string; cp: string; adresseClean: string } => {
+        const match = adresse.match(/(\d{5})\s+([^,]+)/);
+        if (match) {
+          const cp = match[1];
+          const ville = match[2].trim();
+          const adresseClean = adresse.split(',')[0]?.trim() || adresse;
+          return { ville, cp, adresseClean };
+        }
+        return { ville: '', cp: '', adresseClean: adresse };
       };
 
       const existingNames = new Set(state.clients.map(c => c.nom.toLowerCase().trim()));
@@ -493,39 +533,102 @@ export default function ImportPage() {
       const newClients: Record<string, unknown>[] = [];
 
       rows.forEach((row, index) => {
-        const nom = getVal(row, 'Dénomination', 'Denomination', 'Nom', 'nom', 'Raison sociale', 'Client', 'Enseigne');
+        // Nom: prefer Dénomination, fallback to Raison sociale
+        const denomination = getVal(row, 'Dénomination', 'Denomination', 'Client', 'Enseigne');
+        const raisonSociale = getVal(row, 'Raison sociale', 'Raison Sociale', 'RaisonSociale');
+        const nom = denomination || raisonSociale;
         if (!nom) { errors.push(`Ligne ${index + 2}: Nom manquant`); return; }
         if (existingNames.has(nom.toLowerCase().trim())) { errors.push(`Ligne ${index + 2}: "${nom}" existe deja`); return; }
 
-        const typeStr = getVal(row, 'Type', 'type', 'Type client', 'Type de client');
+        // Type
+        const typeStr = getVal(row, 'Type de client', 'Type client', 'Type', 'type');
         const type = typeStr ? detectClientType(typeStr) : ((clientImportType || 'BAR_RESTAURANT_GENERAL') as ClientType);
 
-        const contact = getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom', 'Prénom', 'Prenom');
+        // Tournée / Zone
+        const tournee = getVal(row, 'Tournée / Zone', 'Tournee / Zone', 'Tournée/Zone', 'Tournée', 'Tournee', 'Secteur', 'Zone', 'tournee');
+
+        // Contact: combine Nom + Prénom if available
+        const contactNom = getVal(row, 'Nom');
+        const contactPrenom = getVal(row, 'Prénom', 'Prenom');
+        const contact = [contactPrenom, contactNom].filter(Boolean).join(' ') ||
+          getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom');
+
         const telephone = getVal(row, 'Tél. fixe', 'Tel. fixe', 'Telephone', 'Tel', 'tel', 'Numero');
         const telMobile = getVal(row, 'Tél. mobile', 'Tel. mobile', 'Mobile', 'Portable');
         const email = getVal(row, 'E-mail', 'Email', 'email', 'Mail', 'mail');
-        const adresse = getVal(row, 'Adresse', 'adresse', 'Rue');
-        const ville = getVal(row, 'Ville', 'ville', 'City');
-        const cp = getVal(row, 'Code postal', 'CP', 'cp', 'Code_postal');
-        const tournee = getVal(row, 'Tournée', 'Tournee', 'tournee', 'Secteur', 'Zone');
-        const notes = getVal(row, 'Notes', 'notes', 'Commentaire');
-        const siret = getVal(row, 'SIRET', 'siret', 'Siren');
+
+        // Address: prefer "Adresse de facturation", fallback to "Adresse"
+        const adresseRaw = getVal(row, 'Adresse de facturation', 'Adresse facturation', 'Adresse', 'adresse', 'Rue');
+
+        // CP & Ville: prefer explicit columns, fallback to extraction from adresse
+        let cp = getVal(row, 'Code postal facturation', 'Code postal', 'CP', 'cp', 'Code_postal');
+        let ville = getVal(row, 'Ville', 'ville', 'City');
+        let adresse = adresseRaw;
+
+        if (adresseRaw && (!cp || !ville)) {
+          const extracted = extractVilleFromAdresse(adresseRaw);
+          if (!cp) cp = extracted.cp;
+          if (!ville) ville = extracted.ville;
+          adresse = extracted.adresseClean;
+        }
+
+        // GPS: "Lat/Lng" column in format "45.302/4.274"
+        const latLngStr = getVal(row, 'Lat/Lng', 'Lat/Lng ', 'lat/lng', 'Coordonnées', 'Coordonnees', 'GPS');
+        const gps = parseLatLng(latLngStr);
+        const latitude = gps?.lat ?? 0;
+        const longitude = gps?.lng ?? 0;
+
+        const notes = getVal(row, 'Notes', 'notes', 'Commentaire', 'Remarque');
+        const siret = getVal(row, 'SIRET', 'siret', 'SIREN', 'Siren');
+
+        // Last visit: "Dernière commande"
+        const lastVisitStr = getVal(row, 'Dernière commande', 'Derniere commande', 'Derniere livraison', 'Dernière livraison');
+        let lastVisit: string | null = null;
+        if (lastVisitStr) {
+          // Try parsing date formats: "03/09/2022" or ISO
+          const parts = lastVisitStr.split('/');
+          if (parts.length === 3) {
+            lastVisit = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          } else if (lastVisitStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+            lastVisit = lastVisitStr.slice(0, 10);
+          }
+        }
+
+        // Commercial assignment: prefer "Commercial rattaché (email)", then "Commercial principal"
+        const commercialEmail = getVal(row, 'Commercial rattaché (email)', 'Commercial rattache (email)', 'Commercial rattaché', 'Commercial rattache');
+        const commercialNom = getVal(row, 'Commercial principal', 'Commercial', 'commercial');
+        const commercialId = resolveCommercial(commercialEmail || commercialNom);
 
         const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}-${index}`;
         newClients.push({
           id: clientId, nom, ville, adresse, code_postal: cp,
           telephone: telephone || telMobile, telephone_mobile: telMobile, email, contact,
-          type_client: type, commercial_id: clientImportCommercial || state.currentUser?.id || 'com-1',
-          notes, tournee, siret, custom_recurrence: null,
+          type_client: type, commercial_id: commercialId,
+          notes, tournee, siret, latitude, longitude,
+          last_visit: lastVisit,
+          custom_recurrence: null,
         });
         existingNames.add(nom.toLowerCase().trim());
         success++;
       });
 
       if (newClients.length > 0) {
-        // Dispatch each client to state
-        for (const c of newClients) {
-          dispatch({ type: 'ADD_CLIENT', payload: { ...c, statut: 'ACTIF', latitude: 0, longitude: 0, last_visit: null, next_visit: null, prospect_id: null, date_creation: now, date_modification: now } as any });
+        // Save to DB via API
+        const token = localStorage.getItem('suivipro_token');
+        const importRes = await fetch('/api/clients/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ clients: newClients }),
+        });
+        if (!importRes.ok) {
+          const err = await importRes.json().catch(() => ({}));
+          errors.push(`Erreur serveur: ${err.error || importRes.statusText}`);
+          success = 0;
+        } else {
+          // Also update local state
+          for (const c of newClients) {
+            dispatch({ type: 'ADD_CLIENT', payload: { ...c, statut: 'ACTIF', next_visit: null, prospect_id: null, date_creation: now, date_modification: now } as any });
+          }
         }
       }
     } catch (err) {
