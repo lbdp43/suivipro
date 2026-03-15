@@ -702,17 +702,15 @@ export default function PipelineCRPage() {
                     const info = getEntityInfo(apt);
                     const comName = commercialMap.get(apt.commercial_id) || '';
                     const prospName = apt.prospecteur_id ? commercialMap.get(apt.prospecteur_id) : null;
-                    const isPastNoAction = !apt.compte_rendu && apt.date < today;
-
                     return (
                       <div
                         key={apt.id}
                         draggable
                         onDragStart={e => handleDragStart(e, apt.id)}
                         onDragEnd={handleDragEnd}
-                        className={`bg-white rounded-lg border p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                        className={`bg-white rounded-lg border border-gray-200 p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
                           draggedId === apt.id ? 'opacity-50' : ''
-                        } ${isPastNoAction ? 'border-red-200 bg-red-50/30' : 'border-gray-200'}`}
+                        }`}
                       >
                         <div className="flex items-start gap-2">
                           <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
@@ -735,7 +733,6 @@ export default function PipelineCRPage() {
                               <Calendar className="w-3 h-3" />
                               {format(parseISO(apt.date), 'dd MMM yyyy', { locale: fr })}
                               {apt.heure_debut && <span className="ml-1">{apt.heure_debut}</span>}
-                              {isPastNoAction && <span className="ml-1 text-red-500 font-medium">- En retard</span>}
                             </div>
 
                             <div className="flex items-center gap-1 mt-1 text-[10px]">

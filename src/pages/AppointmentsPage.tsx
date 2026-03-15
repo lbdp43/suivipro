@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation, Phone,
   AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
-  ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw,
+  ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
@@ -1532,6 +1532,7 @@ export default function AppointmentsPage() {
           { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
           { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
           { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
         ];
         return (
           <div className="modal-backdrop">
@@ -1582,6 +1583,9 @@ export default function AppointmentsPage() {
                   )}
                   {compteRenduResult === 'commande_plus_tard' && (
                     <p className="text-[10px] text-amber-600 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
+                  )}
+                  {compteRenduResult === 'decale' && (
+                    <p className="text-[10px] text-violet-600 mt-1 italic">Le RDV sera marque comme decale - pensez a replanifier un nouveau RDV</p>
                   )}
                 </div>
 

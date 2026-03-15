@@ -135,7 +135,7 @@ export const DAYS_OF_WEEK_LABELS: Record<number, string> = {
   0: 'Dimanche',
 };
 
-export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | '';
+export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | 'decale' | '';
 
 export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
   client: 'Client',
@@ -143,6 +143,7 @@ export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
   commande_plus_tard: 'Commande plus tard',
   a_relancer: 'A relancer',
   pas_interesse: 'Pas interesse',
+  decale: 'RDV decale',
 };
 
 export type ReminderStatus = 'actif' | 'termine' | 'reporte';
