@@ -119,6 +119,7 @@ export default function DashboardPage() {
   const [rankingPeriod, setRankingPeriod] = useState<TimePeriod>('week');
   const [perfPeriod, setPerfPeriod] = useState<TimePeriod>('week');
   const [comparePeriod, setComparePeriod] = useState<TimePeriod | ''>('');
+  const [pipelineFilterUser, setPipelineFilterUser] = useState<string>('');
   const isAdmin = state.currentUser?.role === 'admin';
 
   const selectedMonth = subMonths(new Date(), -monthOffset);
@@ -444,28 +445,38 @@ export default function DashboardPage() {
     const lastMonthStart = startOfMonth(subMonths(now, 1));
     const lastMonthEnd = endOfMonth(subMonths(now, 1));
 
-    const convertedThisMonth = state.prospects.filter(p => {
+    const filteredProspects = pipelineFilterUser
+      ? state.prospects.filter(p => p.commercial_id === pipelineFilterUser)
+      : state.prospects;
+    const filteredCalls = pipelineFilterUser
+      ? state.calls.filter(c => c.commercial_id === pipelineFilterUser)
+      : state.calls;
+    const filteredAppointments = pipelineFilterUser
+      ? state.appointments.filter(a => a.commercial_id === pipelineFilterUser)
+      : state.appointments;
+
+    const convertedThisMonth = filteredProspects.filter(p => {
       if (p.etape_pipeline !== 'client_gagne') return false;
       try { return isWithinInterval(parseISO(p.date_modification), { start: monthStart, end: monthEnd }); } catch { return false; }
     }).length;
-    const convertedLastMonth = state.prospects.filter(p => {
+    const convertedLastMonth = filteredProspects.filter(p => {
       if (p.etape_pipeline !== 'client_gagne') return false;
       try { return isWithinInterval(parseISO(p.date_modification), { start: lastMonthStart, end: lastMonthEnd }); } catch { return false; }
     }).length;
 
     // Stagnant prospects: active prospects with no call or RDV in the last 14 days
     const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
-    const activeProspects = state.prospects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline));
+    const activeProspects = filteredProspects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline));
     const stagnant = activeProspects.filter(p => {
-      const lastCall = state.calls.filter(c => c.prospect_id === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
-      const lastRdv = state.appointments.filter(a => a.prospect_id === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+      const lastCall = filteredCalls.filter(c => c.prospect_id === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+      const lastRdv = filteredAppointments.filter(a => a.prospect_id === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
       const lastActivity = [lastCall?.date, lastRdv?.date].filter(Boolean).sort().pop();
       if (!lastActivity) return true;
       try { return parseISO(lastActivity) < twoWeeksAgo; } catch { return true; }
     });
 
     return { convertedThisMonth, convertedLastMonth, stagnantCount: stagnant.length, totalActive: activeProspects.length };
-  }, [state.prospects, state.calls, state.appointments]);
+  }, [state.prospects, state.calls, state.appointments, pipelineFilterUser]);
 
   // === Top clients par CA ===
   const topClientsData = useMemo(() => {
@@ -740,10 +751,22 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pipeline velocity */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
-            <TrendingUp className="w-4 h-4 text-purple-500" />
-            Pipeline & Conversion
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-purple-500" />
+              Pipeline & Conversion
+            </h3>
+            <select
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white"
+              value={pipelineFilterUser}
+              onChange={e => setPipelineFilterUser(e.target.value)}
+            >
+              <option value="">Tous</option>
+              {allUsers.map(u => (
+                <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>
+              ))}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-green-50 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-green-700">{funnelData.convertedThisMonth}</p>
@@ -810,24 +833,26 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* CA par commercial */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
-            <BarChart3 className="w-4 h-4 text-indigo-500" />
-            CA par commercial
-          </h3>
-          <div className="h-52 sm:h-64">
-            {allUsers.length > 0 ? (
-              <Bar data={caByCommChartData} options={{
-                responsive: true, maintainAspectRatio: false,
-                scales: { y: { beginAtZero: true } },
-                plugins: { legend: { display: false } },
-              }} />
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-6">Aucun membre</p>
-            )}
+        {/* CA par commercial (admin only) */}
+        {isAdmin && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+              <BarChart3 className="w-4 h-4 text-indigo-500" />
+              CA par commercial
+            </h3>
+            <div className="h-52 sm:h-64">
+              {allUsers.length > 0 ? (
+                <Bar data={caByCommChartData} options={{
+                  responsive: true, maintainAspectRatio: false,
+                  scales: { y: { beginAtZero: true } },
+                  plugins: { legend: { display: false } },
+                }} />
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-6">Aucun membre</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Commandes recentes + Clients inactifs */}

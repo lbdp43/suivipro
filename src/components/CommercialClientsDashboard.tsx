@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, Calendar, CheckCircle2, Clock, MapPin,
-  ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, Eye,
+  ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, Eye, ClipboardCheck,
 } from 'lucide-react';
 
 interface AppointmentInfo {
@@ -17,6 +17,20 @@ interface AppointmentInfo {
   prospect_nom: string;
   client_nom: string;
   statut: string;
+}
+
+interface RdvSansCR {
+  id: string;
+  date: string;
+  heure_debut: string;
+  heure_fin: string;
+  lieu: string;
+  prospect_id: string;
+  client_id: string;
+  prospect_nom: string;
+  client_nom: string;
+  event_type: string;
+  titre: string;
 }
 
 interface WeekDay {
@@ -70,6 +84,7 @@ interface DashboardData {
   total_clients: number;
   interactions_semaine_par_type?: Record<string, number>;
   interactions_mois_par_type?: Record<string, number>;
+  rdv_sans_compte_rendu?: RdvSansCR[];
 }
 
 function formatDateShort(dateStr: string) {
@@ -191,6 +206,40 @@ export default function CommercialClientsDashboard() {
           </div>
         </div>
       </div>
+
+      {/* RDV sans compte-rendu */}
+      {(data.rdv_sans_compte_rendu?.length || 0) > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="font-semibold text-amber-800 flex items-center gap-2 mb-3">
+            <ClipboardCheck className="w-4 h-4" />
+            RDV sans compte-rendu ({data.rdv_sans_compte_rendu!.length})
+          </h3>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {data.rdv_sans_compte_rendu!.map(rdv => (
+              <Link
+                key={rdv.id}
+                to="/rdv"
+                className="flex items-center justify-between text-xs py-2 px-3 bg-white rounded-lg hover:bg-amber-50 border border-amber-100"
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                  <span className="font-medium text-gray-800">
+                    {rdv.titre || rdv.prospect_nom || rdv.client_nom || 'RDV'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500">{formatDateShort(rdv.date)}</span>
+                  {rdv.heure_debut && (
+                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px]">
+                      {rdv.heure_debut}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Interaction type breakdown */}
       {(data.interactions_semaine_par_type || data.interactions_mois_par_type) && (

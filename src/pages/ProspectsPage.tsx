@@ -4,7 +4,7 @@ import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
   CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
-  Camera, Loader2, Building2,
+  Camera, Loader2, Building2, ClipboardCheck, ShoppingCart, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
@@ -13,7 +13,7 @@ import { ocrProspect, convertProspectToClient } from '../api/client';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
-  APPOINTMENT_RESULT_LABELS,
+  APPOINTMENT_RESULT_LABELS, AppointmentResult, Appointment,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType,
@@ -58,6 +58,15 @@ export default function ProspectsPage() {
   const [converting, setConverting] = useState(false);
   const alreadyConvertedIds = useMemo(() => new Set(state.clients.map(c => c.prospect_id).filter(Boolean)), [state.clients]);
 
+  // Compte-rendu modal
+  const [showCompteRendu, setShowCompteRendu] = useState(false);
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+  const [compteRenduResult, setCompteRenduResult] = useState<AppointmentResult>('');
+  const [compteRenduNotes, setCompteRenduNotes] = useState('');
+  const [compteRenduRappel, setCompteRenduRappel] = useState(false);
+  const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
+  const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
+
   // Tag management in form
   const [showTagManager, setShowTagManager] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -90,6 +99,76 @@ export default function ProspectsPage() {
     setNewTagName(tag.nom);
     setNewTagColor(tag.couleur);
     setShowTagManager(true);
+  };
+
+  // Compte-rendu functions
+  const openCompteRendu = (rdv: Appointment) => {
+    setCompteRenduRdv(rdv);
+    setCompteRenduResult((rdv.compte_rendu as AppointmentResult) || '');
+    setCompteRenduNotes(rdv.notes_compte_rendu || '');
+    setCompteRenduRappel(false);
+    const in7days = new Date();
+    in7days.setDate(in7days.getDate() + 7);
+    setCompteRenduRappelDate(in7days.toISOString().split('T')[0]);
+    setCompteRenduRappelMessage('');
+    setShowCompteRendu(true);
+  };
+
+  const handleCompteRenduResultChange = (value: AppointmentResult) => {
+    const newValue = compteRenduResult === value ? '' : value;
+    setCompteRenduResult(newValue);
+    if (newValue === 'a_relancer' || newValue === 'commande_plus_tard' || newValue === 'mail_envoye') {
+      setCompteRenduRappel(true);
+    }
+  };
+
+  const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
+  const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
+
+  const saveCompteRendu = () => {
+    if (!compteRenduRdv || !compteRenduValid) return;
+    dispatch({
+      type: 'UPDATE_APPOINTMENT',
+      payload: {
+        ...compteRenduRdv,
+        statut: 'termine',
+        compte_rendu: compteRenduResult,
+        notes_compte_rendu: compteRenduNotes,
+      },
+    });
+    const prospect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
+    if (prospect) {
+      const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+      if (compteRenduResult === 'client') {
+        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'client_gagne' } });
+      } else if (compteRenduResult === 'pas_interesse') {
+        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
+      } else if (compteRenduResult === 'mail_envoye') {
+        if (!terminal.includes(prospect.etape_pipeline)) {
+          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+        }
+      } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
+        if (!terminal.includes(prospect.etape_pipeline)) {
+          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'proposition' } });
+        }
+      }
+    }
+    if (compteRenduRappel && compteRenduRappelDate) {
+      const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
+      dispatch({
+        type: 'ADD_REMINDER',
+        payload: {
+          id: generateId('rem'),
+          prospect_id: compteRenduRdv.prospect_id,
+          commercial_id: compteRenduRdv.commercial_id,
+          date: compteRenduRappelDate,
+          heure: '09:00',
+          message: autoMessage,
+          statut: 'actif',
+        },
+      });
+    }
+    setShowCompteRendu(false);
   };
 
   // Multi-selection mode
@@ -1141,6 +1220,18 @@ export default function ProspectsPage() {
                         <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
                           {rdv.statut}
                         </span>
+                        <button
+                          onClick={() => openCompteRendu(rdv as Appointment)}
+                          className={`px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1 ${
+                            rdv.compte_rendu
+                              ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          }`}
+                          title={rdv.compte_rendu ? 'Modifier le compte-rendu' : 'Faire le compte-rendu'}
+                        >
+                          <ClipboardCheck className="w-3 h-3" />
+                          {rdv.compte_rendu ? 'Modifier CR' : 'Compte-rendu'}
+                        </button>
                       </div>
                       {rdv.compte_rendu && (
                         <div className="ml-7 space-y-0.5">
@@ -1769,6 +1860,126 @@ export default function ProspectsPage() {
           </div>
         </div>
       )}
+
+      {/* Compte-rendu modal */}
+      {showCompteRendu && compteRenduRdv && (() => {
+        const crProspect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
+        const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
+          { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
+          { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
+          { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
+          { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
+          { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
+        ];
+        return (
+          <div className="modal-backdrop">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                    <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">{crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
+                </div>
+                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Resultat du rendez-vous</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {resultOptions.map(opt => {
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.value}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                            compteRenduResult === opt.value ? opt.color : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleCompteRenduResultChange(opt.value)}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Notes du compte-rendu <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${
+                      compteRenduNotes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
+                    }`}
+                    placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
+                    value={compteRenduNotes}
+                    onChange={e => setCompteRenduNotes(e.target.value)}
+                  />
+                </div>
+                {!compteRenduRappel && !rappelRequired ? (
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
+                    onClick={() => setCompteRenduRappel(true)}
+                  >
+                    <Bell className="w-4 h-4" /> Programmer un rappel
+                  </button>
+                ) : compteRenduRappel ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                        <Bell className="w-3 h-3" /> Rappel de relance {rappelRequired && <span className="text-red-500">*</span>}
+                      </label>
+                      {!rappelRequired && (
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelRequired && <span className="text-red-500">*</span>}</label>
+                      <input
+                        type="date"
+                        className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${
+                          rappelRequired && !compteRenduRappelDate ? 'border-red-300' : 'border-amber-200'
+                        }`}
+                        value={compteRenduRappelDate}
+                        onChange={e => setCompteRenduRappelDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Message (optionnel)</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
+                        placeholder="Ex: Relancer pour devis..."
+                        value={compteRenduRappelMessage}
+                        onChange={e => setCompteRenduRappelMessage(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCompteRendu(false)}>
+                  Annuler
+                </button>
+                <button
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={saveCompteRendu}
+                  disabled={!compteRenduValid}
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  Valider le compte-rendu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -3157,6 +3157,20 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     [userId]
   );
 
+  // RDV passés ou du jour sans compte-rendu
+  const rdvSansCR = await db.query(
+    `SELECT a.*, p.nom_etablissement as prospect_nom, c.nom as client_nom
+     FROM appointments a
+     LEFT JOIN prospects p ON a.prospect_id = p.id
+     LEFT JOIN clients c ON a.client_id = c.id
+     WHERE a.commercial_id = $1 AND a.date <= $2
+     AND a.statut != 'annule'
+     AND (a.compte_rendu IS NULL OR a.compte_rendu = '')
+     ORDER BY a.date DESC, a.heure_debut ASC
+     LIMIT 20`,
+    [userId, today]
+  );
+
   res.json({
     week_days: weekDays,
     tournee_config: config,
@@ -3168,6 +3182,7 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     total_clients: clients.rows.length,
     interactions_semaine_par_type: weekByType,
     interactions_mois_par_type: monthByType,
+    rdv_sans_compte_rendu: rdvSansCR.rows,
   });
 }));
 
