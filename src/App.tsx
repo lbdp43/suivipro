@@ -82,7 +82,7 @@ export default function App() {
           <Route path="/pipeline-cr" element={<PipelineCRPage />} />
           <Route path="/taches" element={<TasksPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
-          <Route path="/import" element={<ImportPage />} />
+          <Route path="/import" element={<AdminRoute><ImportPage /></AdminRoute>} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/profil" element={<ProfilePage />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />

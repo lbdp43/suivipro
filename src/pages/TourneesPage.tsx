@@ -285,7 +285,7 @@ export default function TourneesPage() {
           config: typeof r.config === 'string' ? JSON.parse(r.config) : r.config,
         }));
         setConfigs(parsed);
-        setExpandedCommercials(new Set(parsed.map((c: TourneeConfig) => c.commercial_id)));
+        setExpandedCommercials(new Set());
       }
     } catch (err) {
       console.error('Erreur chargement tournees:', err);

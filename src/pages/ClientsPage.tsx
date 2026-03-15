@@ -84,7 +84,7 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit'>('none');
   const [bulkValue, setBulkValue] = useState('');
 
   // Quick note
@@ -175,7 +175,7 @@ export default function ClientsPage() {
   };
 
   const applyBulkAction = async () => {
-    if (!bulkValue.trim() && bulkAction !== 'statut') return;
+    if (!bulkValue.trim()) return;
     const now = new Date().toISOString();
     const token = localStorage.getItem('suivipro_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -189,6 +189,7 @@ export default function ClientsPage() {
       if (bulkAction === 'tournee') updated.tournee = bulkValue;
       if (bulkAction === 'type') updated.type_client = bulkValue as ClientType;
       if (bulkAction === 'statut') updated.statut = bulkValue as ClientStatus;
+      if (bulkAction === 'next_visit') updated.next_visit = bulkValue;
       dispatch({ type: 'UPDATE_CLIENT', payload: updated });
       fetch(`/api/clients/${id}`, { method: 'PUT', headers, body: JSON.stringify(updated) }).catch(() => {});
     }
@@ -721,6 +722,7 @@ export default function ClientsPage() {
               <option value="tournee">Changer la tournée</option>
               <option value="type">Changer le type</option>
               <option value="statut">Changer le statut</option>
+              <option value="next_visit">Definir date de visite</option>
             </select>
 
             {bulkAction === 'commercial' && (
@@ -752,6 +754,14 @@ export default function ClientsPage() {
                 <option value="ACTIF">Actif</option>
                 <option value="INACTIF">Inactif</option>
               </select>
+            )}
+            {bulkAction === 'next_visit' && (
+              <input
+                type="date"
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                value={bulkValue}
+                onChange={e => setBulkValue(e.target.value)}
+              />
             )}
 
             {bulkAction !== 'none' && (

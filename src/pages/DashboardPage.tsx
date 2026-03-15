@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
-  Users, Phone, Calendar, TrendingUp, BarChart3, Clock, ChevronLeft, ChevronRight,
-  UserCheck, Star, ClipboardCheck, Briefcase, Target, ChevronDown, Building2,
+  Users, Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
+  UserCheck, Star, Briefcase, Target, Building2, MapPin, ArrowRightLeft,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { APPOINTMENT_RESULT_LABELS } from '../types';
 import {
   getCallsToday, getCallsThisWeek, getCallsThisMonth,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
-  getConversionRate, getResponseRate, getAverageCallDuration,
-  formatDuration, formatDate,
+  getResponseRate, getAverageCallDuration,
+  formatDuration,
 } from '../utils/helpers';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
@@ -113,11 +111,9 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
 export default function DashboardPage() {
   const { state } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
-  const [crFilterResult, setCrFilterResult] = useState<string>('');
-  const [crFilterUser, setCrFilterUser] = useState<string>('');
   const [rankingPeriod, setRankingPeriod] = useState<TimePeriod>('week');
   const [perfPeriod, setPerfPeriod] = useState<TimePeriod>('week');
-  const [showProspectionDetail, setShowProspectionDetail] = useState(false);
+  const [comparePeriod, setComparePeriod] = useState<TimePeriod | ''>('');
   const isAdmin = state.currentUser?.role === 'admin';
 
   const selectedMonth = subMonths(new Date(), -monthOffset);
@@ -136,7 +132,6 @@ export default function DashboardPage() {
     const callsMonth = getCallsThisMonth(state.calls);
     const rdvWeek = getAppointmentsThisWeek(state.appointments);
     const rdvMonth = getAppointmentsThisMonth(state.appointments);
-    const conversionRate = getConversionRate(state.prospects);
     const responseRate = getResponseRate(state.calls);
     const avgDuration = getAverageCallDuration(state.calls);
 
@@ -148,7 +143,6 @@ export default function DashboardPage() {
     }));
 
     const activeProspects = state.prospects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length;
-    const wonProspects = state.prospects.filter(p => p.etape_pipeline === 'client_gagne').length;
 
     return {
       callsToday: callsToday.length,
@@ -156,13 +150,11 @@ export default function DashboardPage() {
       callsMonth: callsMonth.length,
       rdvWeek: rdvWeek.length,
       rdvMonth: rdvMonth.length,
-      conversionRate,
       responseRate,
       avgDuration,
       prospectsByStage,
       totalProspects: state.prospects.length,
       activeProspects,
-      wonProspects,
     };
   }, [state, activeColumns]);
 
@@ -271,18 +263,36 @@ export default function DashboardPage() {
       const userCalls = state.calls.filter(c => c.commercial_id === user.id);
       const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
+      const userVisites = (state as any).visites ? (state as any).visites.filter((v: any) => v.commercial_id === user.id) : [];
 
       const periodCalls = getCallsInRange(userCalls, range.start, range.end);
       const periodRdv = getCallsInRange(userAppointments, range.start, range.end);
+      const periodVisites = getCallsInRange(userVisites, range.start, range.end);
+      const periodProspectsCreated = userProspects.filter(p => {
+        try {
+          const d = parseISO(p.date_creation);
+          return isWithinInterval(d, { start: range.start, end: range.end });
+        } catch { return false; }
+      });
+
+      // For prospection role: score = calls + prospects created
+      // For commercial/admin: score = rdv + visites + calls
+      const isProspection = user.role === 'prospection';
+      const score = isProspection
+        ? periodCalls.length + periodProspectsCreated.length
+        : periodRdv.length + periodVisites.length + periodCalls.length;
 
       return {
         user,
         periodCalls: periodCalls.length,
         periodRdv: periodRdv.length,
+        periodVisites: periodVisites.length,
+        periodProspectsCreated: periodProspectsCreated.length,
         totalProspects: userProspects.length,
+        score,
       };
-    }).sort((a, b) => b.periodCalls - a.periodCalls);
-  }, [allUsers, state.calls, state.appointments, state.prospects, rankingPeriod]);
+    }).sort((a, b) => b.score - a.score);
+  }, [allUsers, state, rankingPeriod]);
 
   // Performance table user activities (based on selected period)
   const perfUserActivities = useMemo(() => {
@@ -329,33 +339,38 @@ export default function DashboardPage() {
     }).sort((a, b) => b.periodCalls - a.periodCalls);
   }, [allUsers, state.calls, state.appointments, state.prospects, perfPeriod]);
 
-  // Recent RDV compte-rendus (with filters)
-  const recentCompteRendus = useMemo(() => {
-    let list = state.appointments.filter(a => a.compte_rendu && a.statut === 'termine');
-    if (crFilterResult) list = list.filter(a => a.compte_rendu === crFilterResult);
-    if (crFilterUser) list = list.filter(a => a.commercial_id === crFilterUser);
-    return list
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 50)
-      .map(apt => {
-        const prospect = state.prospects.find(p => p.id === apt.prospect_id);
-        const commercial = allUsers.find(u => u.id === apt.commercial_id);
-        return { ...apt, prospectName: prospect?.nom_etablissement || 'Inconnu', contactName: prospect?.nom_contact || '', commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu' };
-      });
-  }, [state.appointments, state.prospects, allUsers, crFilterResult, crFilterUser]);
+  // Comparison period data
+  const compareUserActivities = useMemo(() => {
+    if (!comparePeriod) return null;
+    const range = getPeriodRange(comparePeriod);
+    const isMonthPeriod = comparePeriod.startsWith('month');
 
-  // Compte-rendu stats (filtered by user)
-  const compteRenduStats = useMemo(() => {
-    let rdvsWithCR = state.appointments.filter(a => a.compte_rendu);
-    if (crFilterUser) rdvsWithCR = rdvsWithCR.filter(a => a.commercial_id === crFilterUser);
-    const total = rdvsWithCR.length;
-    const byResult: Record<string, number> = {};
-    rdvsWithCR.forEach(a => {
-      const cr = a.compte_rendu || '';
-      byResult[cr] = (byResult[cr] || 0) + 1;
+    return allUsers.map(user => {
+      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
+
+      const periodCalls = getCallsInRange(userCalls, range.start, range.end);
+      const periodRdv = getCallsInRange(userAppointments, range.start, range.end);
+      const periodResponseRate = periodCalls.length > 0
+        ? Math.round((periodCalls.filter(c => c.resultat === 'repondu').length / periodCalls.length) * 100)
+        : 0;
+      const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
+      const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
+      const progress = objective > 0 ? Math.round((periodCalls.length / objective) * 100) : 0;
+
+      return {
+        userId: user.id,
+        periodCalls: periodCalls.length,
+        periodRdv: periodRdv.length,
+        responseRate: periodResponseRate,
+        wonProspects,
+        objective,
+        progress,
+      };
     });
-    return { total, byResult };
-  }, [state.appointments, crFilterUser]);
+  }, [allUsers, state.calls, state.appointments, state.prospects, comparePeriod]);
+
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {
@@ -423,23 +438,13 @@ export default function DashboardPage() {
     }],
   };
 
-  const kpis = [
-    { label: 'Total prospects', value: stats.totalProspects, icon: Users, color: 'bg-blue-500', sub: `${stats.activeProspects} actifs` },
-    { label: 'Appels aujourd\'hui', value: stats.callsToday, icon: Phone, color: 'bg-green-500', sub: `${stats.callsWeek} cette semaine` },
-    { label: 'RDV ce mois', value: stats.rdvMonth, icon: Calendar, color: 'bg-amber-500', sub: `${stats.rdvWeek} cette semaine` },
-    { label: 'Taux de conversion', value: `${stats.conversionRate}%`, icon: TrendingUp, color: 'bg-purple-500', sub: `${stats.wonProspects} gagnes` },
-  ];
-
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       {/* Page header */}
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
 
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* UNIFIED KPI ROW - Clients + Prospection in one glance     */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Client-side KPIs */}
+      {/* KPI ROW */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="bg-white rounded-xl border border-indigo-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-indigo-100 p-1.5 rounded-lg"><Building2 className="w-3.5 h-3.5 text-indigo-600" /></div>
@@ -463,14 +468,6 @@ export default function DashboardPage() {
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.rdvMonth}</p>
           <p className="text-[10px] text-gray-400">{stats.rdvWeek} cette semaine</p>
-        </div>
-        <div className="bg-white rounded-xl border border-purple-100 p-3 sm:p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="bg-purple-100 p-1.5 rounded-lg"><TrendingUp className="w-3.5 h-3.5 text-purple-600" /></div>
-            <p className="text-[10px] text-gray-500">Conversion</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{stats.conversionRate}%</p>
-          <p className="text-[10px] text-gray-400">{stats.wonProspects} gagnes</p>
         </div>
         <div className="bg-white rounded-xl border border-amber-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -565,278 +562,223 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Compte-rendu RDV + Classement side by side */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Compte-rendu RDV */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
-                  <ClipboardCheck className="w-4 h-4 text-indigo-500" />
-                  Comptes-rendus RDV
-                </h3>
-                <select
-                  className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
-                  value={crFilterUser}
-                  onChange={e => setCrFilterUser(e.target.value)}
-                >
-                  <option value="">Tout le monde</option>
-                  {allUsers.map(u => (
-                    <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
-                <button onClick={() => setCrFilterResult('')}
-                  className={`rounded-lg p-2 text-center transition-all cursor-pointer ${crFilterResult === '' ? 'bg-indigo-50 text-indigo-700 ring-2 ring-indigo-400' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                  <p className="text-lg font-bold">{compteRenduStats.total}</p>
-                  <p className="text-[9px] leading-tight">Tous</p>
-                </button>
-                {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
-                  const count = compteRenduStats.byResult[key] || 0;
-                  const colorMap: Record<string, string> = { client: 'bg-green-50 text-green-700', mail_envoye: 'bg-blue-50 text-blue-700', commande_plus_tard: 'bg-amber-50 text-amber-700', a_relancer: 'bg-purple-50 text-purple-700', pas_interesse: 'bg-red-50 text-red-700' };
-                  const ringMap: Record<string, string> = { client: 'ring-green-400', mail_envoye: 'ring-blue-400', commande_plus_tard: 'ring-amber-400', a_relancer: 'ring-purple-400', pas_interesse: 'ring-red-400' };
-                  const isActive = crFilterResult === key;
-                  return (
-                    <button key={key} onClick={() => setCrFilterResult(isActive ? '' : key)}
-                      className={`${colorMap[key] || 'bg-gray-50 text-gray-700'} rounded-lg p-2 text-center transition-all cursor-pointer hover:opacity-80 ${isActive ? `ring-2 ${ringMap[key] || 'ring-gray-400'}` : ''}`}>
-                      <p className="text-lg font-bold">{count}</p>
-                      <p className="text-[9px] leading-tight">{label}</p>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="space-y-1.5 max-h-[350px] overflow-y-auto">
-                {recentCompteRendus.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">Aucun compte-rendu</p>
-                ) : recentCompteRendus.map(cr => {
-                  const colorMap: Record<string, string> = { client: 'text-green-600 bg-green-50', mail_envoye: 'text-blue-600 bg-blue-50', commande_plus_tard: 'text-amber-600 bg-amber-50', a_relancer: 'text-purple-600 bg-purple-50', pas_interesse: 'text-red-600 bg-red-50' };
-                  const crColor = colorMap[cr.compte_rendu || ''] || 'text-gray-600 bg-gray-50';
-                  return (
-                    <div key={cr.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-                      <div className={`p-1.5 rounded-lg shrink-0 ${crColor}`}><ClipboardCheck className="w-3.5 h-3.5" /></div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Link to={`/prospects?id=${cr.prospect_id}`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline truncate" onClick={e => e.stopPropagation()}>
-                            {cr.prospectName}
-                          </Link>
-                          {cr.contactName && <span className="text-[10px] text-gray-500">({cr.contactName})</span>}
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>{APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}</span>
-                        </div>
-                        <p className="text-[10px] text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
-                        {cr.notes_compte_rendu && <p className="text-[10px] text-gray-400 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+          {/* Classement */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-400" />
+                Classement
+              </h3>
+              <select className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+                value={rankingPeriod} onChange={e => setRankingPeriod(e.target.value as TimePeriod)}>
+                {PERIOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
             </div>
-
-            {/* Classement */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
-                  <Star className="w-4 h-4 text-amber-400" />
-                  Classement
-                </h3>
-                <select className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
-                  value={rankingPeriod} onChange={e => setRankingPeriod(e.target.value as TimePeriod)}>
-                  {PERIOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </div>
-              <div className="space-y-3">
-                {rankedActivities.map((ua, i) => {
-                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-                  return (
-                    <div key={ua.user.id} className={`p-3 rounded-lg ${i < 3 ? 'bg-gradient-to-r from-amber-50/50 to-transparent' : 'bg-gray-50'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <div className="w-9 h-9 rounded-full bg-brewery-100 flex items-center justify-center text-sm font-bold text-brewery-700">{ua.user.prenom[0]}{ua.user.nom[0]}</div>
-                          {medal && <span className="absolute -top-1 -right-1 text-sm">{medal}</span>}
+            <div className="space-y-3">
+              {rankedActivities.map((ua, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                const isProspection = ua.user.role === 'prospection';
+                return (
+                  <div key={ua.user.id} className={`p-3 rounded-lg ${i < 3 ? 'bg-gradient-to-r from-amber-50/50 to-transparent' : 'bg-gray-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <div className="w-9 h-9 rounded-full bg-brewery-100 flex items-center justify-center text-sm font-bold text-brewery-700">{ua.user.prenom[0]}{ua.user.nom[0]}</div>
+                        {medal && <span className="absolute -top-1 -right-1 text-sm">{medal}</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm text-gray-900">{ua.user.prenom} {ua.user.nom}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{ROLE_LABELS[ua.user.role] || ua.user.role}</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm text-gray-900">{ua.user.prenom} {ua.user.nom}</p>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{ROLE_LABELS[ua.user.role] || ua.user.role}</span>
-                          </div>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="text-[10px] text-green-600 flex items-center gap-0.5"><Phone className="w-3 h-3" /> {ua.periodCalls} appels</span>
-                            <span className="text-[10px] text-blue-600 flex items-center gap-0.5"><Calendar className="w-3 h-3" /> {ua.periodRdv} RDV</span>
-                            <span className="text-[10px] text-purple-600 flex items-center gap-0.5"><UserCheck className="w-3 h-3" /> {ua.totalProspects} prospects</span>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-lg font-bold text-gray-900">{ua.periodCalls}</p>
-                          <p className="text-[10px] text-gray-400">appels</p>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-[10px] text-green-600 flex items-center gap-0.5"><Phone className="w-3 h-3" /> {ua.periodCalls} appels</span>
+                          {isProspection ? (
+                            <span className="text-[10px] text-purple-600 flex items-center gap-0.5"><UserCheck className="w-3 h-3" /> {ua.periodProspectsCreated} prospects</span>
+                          ) : (
+                            <>
+                              <span className="text-[10px] text-blue-600 flex items-center gap-0.5"><Calendar className="w-3 h-3" /> {ua.periodRdv} RDV</span>
+                              <span className="text-[10px] text-indigo-600 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {ua.periodVisites} visites</span>
+                            </>
+                          )}
                         </div>
                       </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-lg font-bold text-gray-900">{ua.score}</p>
+                        <p className="text-[10px] text-gray-400">score</p>
+                      </div>
                     </div>
-                  );
-                })}
-                {rankedActivities.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Aucun membre</p>}
-              </div>
+                  </div>
+                );
+              })}
+              {rankedActivities.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Aucun membre</p>}
             </div>
           </div>
 
-          {/* Expandable detail section */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <button
-              onClick={() => setShowProspectionDetail(!showProspectionDetail)}
-              className="w-full px-4 sm:px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            >
+          {/* Performance detaillee */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-gray-400" />
-                Performance detaillee & Historique
+                Performance de l'equipe
               </h3>
-              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showProspectionDetail ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showProspectionDetail && (
-              <div className="px-4 sm:px-5 pb-5 space-y-6 border-t border-gray-100 pt-4">
-                {/* Performance table */}
-                <div>
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                    <h4 className="font-medium text-gray-700 text-sm">Performance de l'equipe</h4>
-                    <select className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
-                      value={perfPeriod} onChange={e => setPerfPeriod(e.target.value as TimePeriod)}>
-                      {PERIOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-200">
-                          <th className="text-left py-3 px-2 font-medium text-gray-500">Membre</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Appels</span><span className="sm:hidden">App.</span> auj.</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Appels</span><span className="sm:hidden">App.</span> per.</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500">Objectif</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500">Progres</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500">RDV</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">RDV prosp.</span><span className="sm:hidden">Prosp.</span></th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500">Rep.</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Duree</span><span className="sm:hidden">Dur.</span></th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500">Prospects</th>
-                          <th className="text-center py-3 px-2 font-medium text-gray-500">Gagnes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {perfUserActivities.map(ua => {
-                          const progressColor = ua.progress >= 100 ? 'bg-green-500' : ua.progress >= 70 ? 'bg-amber-500' : 'bg-red-500';
-                          return (
-                            <tr key={ua.user.id} className="border-b border-gray-100 last:border-0">
-                              <td className="py-3 px-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-full bg-brewery-100 flex items-center justify-center text-xs font-bold text-brewery-700">{ua.user.prenom[0]}{ua.user.nom[0]}</div>
-                                  <div>
-                                    <p className="font-medium text-gray-900 text-sm">{ua.user.prenom} {ua.user.nom}</p>
-                                    <p className="text-[10px] text-gray-500">{ROLE_LABELS[ua.user.role] || ua.user.role}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.todayCalls > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.todayCalls}</span></td>
-                              <td className="text-center py-3 px-2 font-semibold">{ua.periodCalls}</td>
-                              <td className="text-center py-3 px-2 text-gray-500">{ua.objective}</td>
-                              <td className="py-3 px-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 bg-gray-200 rounded-full h-2 min-w-[60px]">
-                                    <div className={`h-2 rounded-full progress-bar ${progressColor}`} style={{ width: `${Math.min(ua.progress, 100)}%` }} />
-                                  </div>
-                                  <span className="text-xs font-medium text-gray-600 w-10 text-right">{ua.progress}%</span>
-                                </div>
-                              </td>
-                              <td className="text-center py-3 px-2 font-semibold text-blue-600">{ua.periodRdv}</td>
-                              <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodRdvTaken > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{ua.periodRdvTaken}</span></td>
-                              <td className="text-center py-3 px-2">
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.responseRate >= 60 ? 'bg-green-100 text-green-700' : ua.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.responseRate}%</span>
-                              </td>
-                              <td className="text-center py-3 px-2 text-gray-600 text-xs">{formatDuration(ua.avgDuration)}</td>
-                              <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-[10px] text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
-                              <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.wonProspects > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.wonProspects}</span></td>
-                            </tr>
-                          );
-                        })}
-                        {perfUserActivities.length === 0 && <tr><td colSpan={11} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Monthly History */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="font-medium text-gray-700 text-sm">Historique mensuel</h4>
-                    <div className="flex items-center gap-2">
-                      <button className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600" onClick={() => setMonthOffset(prev => prev - 1)}>
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <span className="text-sm font-medium text-gray-700 min-w-[140px] text-center capitalize">{monthLabel}</span>
-                      <button className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30" onClick={() => setMonthOffset(prev => prev + 1)} disabled={monthOffset >= 0}>
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
-                    <div className="bg-green-50 rounded-lg p-3 text-center">
-                      <p className="text-2xl font-bold text-green-700">{monthlyHistory.totalCalls}</p>
-                      <p className="text-[10px] text-green-600 mt-0.5">Appels total</p>
-                    </div>
-                    <div className="bg-amber-50 rounded-lg p-3 text-center">
-                      <p className="text-2xl font-bold text-amber-700">{monthlyHistory.totalProspects}</p>
-                      <p className="text-[10px] text-amber-600 mt-0.5">Prospects crees</p>
-                    </div>
-                    <div className="bg-blue-50 rounded-lg p-3 text-center">
-                      <p className="text-2xl font-bold text-blue-700">{monthlyHistory.totalRdv}</p>
-                      <p className="text-[10px] text-blue-600 mt-0.5">RDV total</p>
-                    </div>
-                    <div className="bg-purple-50 rounded-lg p-3 text-center">
-                      <p className="text-2xl font-bold text-purple-700">{monthlyHistory.answered}</p>
-                      <p className="text-[10px] text-purple-600 mt-0.5">Repondus</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-2xl font-bold text-gray-700">{monthlyHistory.responseRate}%</p>
-                      <p className="text-[10px] text-gray-600 mt-0.5">Taux reponse</p>
-                    </div>
-                  </div>
-
-                  <div className="h-48 mb-4">
-                    <Bar data={weeklyChartData} options={{
-                      responsive: true, maintainAspectRatio: false,
-                      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
-                      plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 10 } } } },
-                    }} />
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-200">
-                          <th className="text-left py-2 px-2 font-medium text-gray-500">Semaine</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-500">Appels</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-500">Repondus</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-500">Taux</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-500">Prospects</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-500">RDV</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyHistory.weeklyBreakdown.map((week, i) => (
-                          <tr key={i} className="border-b border-gray-50">
-                            <td className="py-2 px-2 font-medium text-gray-700">{week.label}</td>
-                            <td className="text-center py-2 px-2 font-semibold">{week.calls}</td>
-                            <td className="text-center py-2 px-2 text-green-600 font-semibold">{week.answered}</td>
-                            <td className="text-center py-2 px-2">
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${week.responseRate >= 60 ? 'bg-green-100 text-green-700' : week.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{week.responseRate}%</span>
-                            </td>
-                            <td className="text-center py-2 px-2 text-amber-600 font-semibold">{week.prospects}</td>
-                            <td className="text-center py-2 px-2 text-blue-600 font-semibold">{week.rdv}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <select className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+                  value={perfPeriod} onChange={e => setPerfPeriod(e.target.value as TimePeriod)}>
+                  {PERIOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <ArrowRightLeft className="w-3.5 h-3.5 text-gray-400" />
+                  <select className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-500 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+                    value={comparePeriod} onChange={e => setComparePeriod(e.target.value as TimePeriod | '')}>
+                    <option value="">Comparer avec...</option>
+                    {PERIOD_OPTIONS.filter(opt => opt.value !== perfPeriod).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-2 font-medium text-gray-500">Membre</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Appels</span><span className="sm:hidden">App.</span> auj.</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Appels</span><span className="sm:hidden">App.</span> per.</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Objectif</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Progres</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">RDV</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">RDV prosp.</span><span className="sm:hidden">Prosp.</span></th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Rep.</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Duree</span><span className="sm:hidden">Dur.</span></th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Prospects</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Gagnes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perfUserActivities.map(ua => {
+                    const progressColor = ua.progress >= 100 ? 'bg-green-500' : ua.progress >= 70 ? 'bg-amber-500' : 'bg-red-500';
+                    const cmp = compareUserActivities?.find(c => c.userId === ua.user.id);
+                    const diffBadge = (current: number, prev: number | undefined) => {
+                      if (prev === undefined) return null;
+                      const diff = current - prev;
+                      if (diff === 0) return null;
+                      return <span className={`text-[9px] ml-0.5 ${diff > 0 ? 'text-green-500' : 'text-red-500'}`}>{diff > 0 ? '+' : ''}{diff}</span>;
+                    };
+                    return (
+                      <tr key={ua.user.id} className="border-b border-gray-100 last:border-0">
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-brewery-100 flex items-center justify-center text-xs font-bold text-brewery-700">{ua.user.prenom[0]}{ua.user.nom[0]}</div>
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{ua.user.prenom} {ua.user.nom}</p>
+                              <p className="text-[10px] text-gray-500">{ROLE_LABELS[ua.user.role] || ua.user.role}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.todayCalls > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.todayCalls}</span></td>
+                        <td className="text-center py-3 px-2 font-semibold">{ua.periodCalls}{diffBadge(ua.periodCalls, cmp?.periodCalls)}</td>
+                        <td className="text-center py-3 px-2 text-gray-500">{ua.objective}</td>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-gray-200 rounded-full h-2 min-w-[60px]">
+                              <div className={`h-2 rounded-full progress-bar ${progressColor}`} style={{ width: `${Math.min(ua.progress, 100)}%` }} />
+                            </div>
+                            <span className="text-xs font-medium text-gray-600 w-10 text-right">{ua.progress}%{diffBadge(ua.progress, cmp?.progress)}</span>
+                          </div>
+                        </td>
+                        <td className="text-center py-3 px-2 font-semibold text-blue-600">{ua.periodRdv}{diffBadge(ua.periodRdv, cmp?.periodRdv)}</td>
+                        <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodRdvTaken > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{ua.periodRdvTaken}</span></td>
+                        <td className="text-center py-3 px-2">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.responseRate >= 60 ? 'bg-green-100 text-green-700' : ua.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.responseRate}%{diffBadge(ua.responseRate, cmp?.responseRate)}</span>
+                        </td>
+                        <td className="text-center py-3 px-2 text-gray-600 text-xs">{formatDuration(ua.avgDuration)}</td>
+                        <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-[10px] text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
+                        <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.wonProspects > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.wonProspects}{diffBadge(ua.wonProspects, cmp?.wonProspects)}</span></td>
+                      </tr>
+                    );
+                  })}
+                  {perfUserActivities.length === 0 && <tr><td colSpan={11} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Historique mensuel */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-gray-400" />
+                Historique mensuel
+              </h3>
+              <div className="flex items-center gap-2">
+                <button className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600" onClick={() => setMonthOffset(prev => prev - 1)}>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-sm font-medium text-gray-700 min-w-[140px] text-center capitalize">{monthLabel}</span>
+                <button className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30" onClick={() => setMonthOffset(prev => prev + 1)} disabled={monthOffset >= 0}>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-green-700">{monthlyHistory.totalCalls}</p>
+                <p className="text-[10px] text-green-600 mt-0.5">Appels total</p>
+              </div>
+              <div className="bg-amber-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-amber-700">{monthlyHistory.totalProspects}</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">Prospects crees</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-blue-700">{monthlyHistory.totalRdv}</p>
+                <p className="text-[10px] text-blue-600 mt-0.5">RDV total</p>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-purple-700">{monthlyHistory.answered}</p>
+                <p className="text-[10px] text-purple-600 mt-0.5">Repondus</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-gray-700">{monthlyHistory.responseRate}%</p>
+                <p className="text-[10px] text-gray-600 mt-0.5">Taux reponse</p>
+              </div>
+            </div>
+
+            <div className="h-48 mb-4">
+              <Bar data={weeklyChartData} options={{
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 10 } } } },
+              }} />
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 font-medium text-gray-500">Semaine</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500">Appels</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500">Repondus</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500">Taux</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500">Prospects</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500">RDV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyHistory.weeklyBreakdown.map((week, i) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      <td className="py-2 px-2 font-medium text-gray-700">{week.label}</td>
+                      <td className="text-center py-2 px-2 font-semibold">{week.calls}</td>
+                      <td className="text-center py-2 px-2 text-green-600 font-semibold">{week.answered}</td>
+                      <td className="text-center py-2 px-2">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${week.responseRate >= 60 ? 'bg-green-100 text-green-700' : week.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{week.responseRate}%</span>
+                      </td>
+                      <td className="text-center py-2 px-2 text-amber-600 font-semibold">{week.prospects}</td>
+                      <td className="text-center py-2 px-2 text-blue-600 font-semibold">{week.rdv}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
