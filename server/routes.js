@@ -3361,9 +3361,9 @@ async function fetchNearPoint(lat, lng, radius = 10, nafCodes = [], page = 1) {
 
 const INSEE_BASE_URL = 'https://api.insee.fr/api-sirene/3.11';
 
-// Build zone filter for INSEE query
+// Build zone filter for INSEE query (uses codePostalEtablissement with wildcard)
 function buildInseeZoneFilter(departements) {
-  return departements.map(d => `codeDepartementEtablissement:${d}`).join(' OR ');
+  return departements.map(d => `codePostalEtablissement:${d}*`).join(' OR ');
 }
 
 // Parse INSEE result -> array of etablissements
@@ -3396,11 +3396,14 @@ function parseInseeResult(etab) {
 // Fetch from INSEE API with date filter
 async function fetchInsee(nafCode, dateFrom, departements, cursor = 0, apiKey = '') {
   const zoneFilter = buildInseeZoneFilter(departements);
+  // activitePrincipaleEtablissement, etatAdministratifEtablissement, codePostalEtablissement
+  // are historized fields → must be inside periode()
+  // dateCreationEtablissement is NOT historized → outside periode()
+  // NAF codes contain dots (56.10A) which are special in Lucene → quote them
+  const escapedNaf = `"${nafCode}"`;
   const query = [
-    `periode(activitePrincipaleEtablissement:${nafCode})`,
-    `AND etatAdministratifEtablissement:A`,
+    `periode(activitePrincipaleEtablissement:${escapedNaf} AND etatAdministratifEtablissement:A AND (${zoneFilter}))`,
     `AND dateCreationEtablissement:[${dateFrom} TO *]`,
-    `AND (${zoneFilter})`,
   ].join(' ');
 
   const params = new URLSearchParams({
