@@ -5,7 +5,7 @@ import {
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
   Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
   Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
-  Users, CalendarPlus, StickyNote,
+  Users, CalendarPlus, StickyNote, LayoutList, CalendarDays, Map,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -56,6 +56,8 @@ export default function ClientsPage() {
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'planning'>('list');
+  const [planningWeekOffset, setPlanningWeekOffset] = useState(0);
 
   // Email modal
   const [emailClient, setEmailClient] = useState<Client | null>(null);
@@ -517,6 +519,67 @@ export default function ClientsPage() {
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const lateCount = state.clients.filter(c => getVisitStatus(c) === 'LATE').length;
 
+  // Planning view data
+  const planningData = useMemo(() => {
+    // Get the Monday of the selected week
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (planningWeekOffset * 7));
+    monday.setHours(0, 0, 0, 0);
+
+    const days: { date: Date; dateStr: string; label: string }[] = [];
+    const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      days.push({
+        date: d,
+        dateStr: d.toISOString().split('T')[0],
+        label: `${dayNames[i]} ${d.getDate()}/${d.getMonth() + 1}`,
+      });
+    }
+
+    const weekStart = days[0].dateStr;
+    const weekEnd = days[days.length - 1].dateStr;
+
+    // Clients to visit this week: next_visit in [weekStart, weekEnd] OR late (next_visit < weekStart)
+    let clientsBase = state.clients.filter(c => c.statut === 'ACTIF');
+    if (!isAdmin && state.currentUser) {
+      clientsBase = clientsBase.filter(c => c.commercial_id === state.currentUser!.id);
+    }
+    if (filterCommercial) {
+      clientsBase = clientsBase.filter(c => c.commercial_id === filterCommercial);
+    }
+
+    const lateClients = clientsBase.filter(c => c.next_visit && c.next_visit < weekStart);
+    const weekClients = clientsBase.filter(c => c.next_visit && c.next_visit >= weekStart && c.next_visit <= weekEnd);
+
+    // Group by tournee
+    const groupByTournee = (clients: typeof clientsBase) => {
+      const groups: Record<string, typeof clientsBase> = {};
+      clients.forEach(c => {
+        const key = c.tournee || 'Sans secteur';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(c);
+      });
+      return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+    };
+
+    // Group week clients by day then tournee
+    const byDay = days.map(day => ({
+      ...day,
+      groups: groupByTournee(weekClients.filter(c => c.next_visit === day.dateStr)),
+      count: weekClients.filter(c => c.next_visit === day.dateStr).length,
+    }));
+
+    const lateGroups = groupByTournee(lateClients);
+
+    const weekLabel = `${days[0].date.getDate()}/${days[0].date.getMonth() + 1} - ${days[days.length - 1].date.getDate()}/${days[days.length - 1].date.getMonth() + 1}/${days[days.length - 1].date.getFullYear()}`;
+
+    return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal: weekClients.length };
+  }, [state.clients, planningWeekOffset, isAdmin, state.currentUser, filterCommercial]);
+
   // Duplicate detection
   const normalize = (s: string) =>
     s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
@@ -562,6 +625,23 @@ export default function ClientsPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              {/* View toggle */}
+              <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 transition-colors ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  title="Vue liste"
+                >
+                  <LayoutList className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('planning')}
+                  className={`p-2 transition-colors ${viewMode === 'planning' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  title="Vue planning semaine"
+                >
+                  <CalendarDays className="w-4 h-4" />
+                </button>
+              </div>
               <button
                 onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
                 className={`p-2 rounded-lg transition-colors ${selectionMode ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
@@ -785,7 +865,125 @@ export default function ClientsPage() {
           {allTournees.map(t => <option key={t} value={t} />)}
         </datalist>
 
+        {/* Planning view */}
+        {viewMode === 'planning' && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Week navigation */}
+            <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-4 py-2.5">
+              <button onClick={() => setPlanningWeekOffset(o => o - 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="text-center">
+                <span className="font-semibold text-sm text-gray-900">Semaine du {planningData.weekLabel}</span>
+                <span className="text-xs text-gray-500 ml-2">({planningData.weekTotal} visite{planningData.weekTotal > 1 ? 's' : ''})</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {planningWeekOffset !== 0 && (
+                  <button onClick={() => setPlanningWeekOffset(0)} className="px-2 py-1 text-[10px] text-brewery-600 hover:bg-brewery-50 rounded">
+                    Aujourd'hui
+                  </button>
+                )}
+                <button onClick={() => setPlanningWeekOffset(o => o + 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Late clients */}
+            {planningData.lateCount > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <h3 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" />
+                  En retard ({planningData.lateCount})
+                </h3>
+                <div className="space-y-2">
+                  {planningData.lateGroups.map(([tournee, clients]) => (
+                    <div key={tournee}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Map className="w-3 h-3 text-red-500" />
+                        <span className="text-xs font-medium text-red-600">{tournee}</span>
+                        <span className="text-[10px] text-red-400">({clients.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 ml-4">
+                        {clients.map(c => (
+                          <button
+                            key={c.id}
+                            onClick={() => setSearchParams({ id: c.id })}
+                            className="px-2 py-1 bg-white border border-red-200 rounded text-xs text-red-700 hover:bg-red-100 transition-colors flex items-center gap-1"
+                          >
+                            <span className="font-medium">{c.nom}</span>
+                            <span className="text-[10px] text-red-400">{c.ville}</span>
+                            {c.next_visit && <span className="text-[9px] text-red-300">({c.next_visit.substring(5).replace('-', '/')})</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Days of the week */}
+            <div className="space-y-3">
+              {planningData.days.map(day => {
+                const isToday = day.dateStr === new Date().toISOString().split('T')[0];
+                const isPast = day.dateStr < new Date().toISOString().split('T')[0];
+                return (
+                  <div
+                    key={day.dateStr}
+                    className={`rounded-lg border p-3 ${
+                      isToday ? 'bg-brewery-50 border-brewery-300' : isPast ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className={`text-sm font-semibold ${isToday ? 'text-brewery-700' : 'text-gray-700'}`}>
+                        {day.label}
+                        {isToday && <span className="ml-2 px-1.5 py-0.5 bg-brewery-600 text-white rounded text-[10px]">Aujourd'hui</span>}
+                      </h3>
+                      <span className="text-xs text-gray-400">{day.count} visite{day.count > 1 ? 's' : ''}</span>
+                    </div>
+                    {day.groups.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">Aucune visite prevue</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {day.groups.map(([tournee, clients]) => (
+                          <div key={tournee}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Map className="w-3 h-3 text-gray-400" />
+                              <span className="text-xs font-medium text-gray-600">{tournee}</span>
+                              <span className="text-[10px] text-gray-400">({clients.length})</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 ml-4">
+                              {clients.map(c => {
+                                const comm = getCommercial(c.commercial_id);
+                                return (
+                                  <button
+                                    key={c.id}
+                                    onClick={() => setSearchParams({ id: c.id })}
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm ${
+                                      isToday ? 'bg-white border-brewery-200 text-brewery-700 hover:bg-brewery-100' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    <span className="font-medium">{c.nom}</span>
+                                    <span className="text-gray-400 ml-1">{c.ville}</span>
+                                    {isAdmin && comm && <span className="text-[10px] text-gray-300 ml-1">• {comm.prenom}</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Client list */}
+        {viewMode === 'list' && (
         <div className="flex-1 overflow-y-auto">
           {paginated.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
@@ -949,9 +1147,10 @@ export default function ClientsPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {viewMode === 'list' && totalPages > 1 && (
           <div className="p-3 border-t border-gray-200 bg-white flex items-center justify-between text-xs">
             <span className="text-gray-500">Page {currentPage + 1} / {totalPages}</span>
             <div className="flex gap-1">
