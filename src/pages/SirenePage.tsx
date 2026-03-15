@@ -561,6 +561,32 @@ export default function SirenePage() {
                           );
                         })}
                       </div>
+                      {(() => {
+                        const predefinedCodes = nafCodes.map(n => n.code);
+                        const customCodes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(c => c && !predefinedCodes.includes(c));
+                        return customCodes.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {customCodes.map(code => (
+                              <span key={code} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-medium">
+                                {code}
+                                <button type="button" className="hover:text-red-600" onClick={() => {
+                                  const codes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(c => c && c !== code);
+                                  setZoneForm(f => ({ ...f, naf_codes: codes.join(',') }));
+                                }}><X className="w-2.5 h-2.5" /></button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
+                      <input type="text" className="w-full mt-1 px-2 py-1 border border-indigo-200 rounded text-[10px] text-gray-600" placeholder="+ codes NAF perso (ex: 55.10Z, 93.29Z)" onBlur={e => {
+                        const custom = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                        if (custom.length > 0) {
+                          const existing = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                          const merged = [...new Set([...existing, ...custom])];
+                          setZoneForm(f => ({ ...f, naf_codes: merged.join(',') }));
+                          e.target.value = '';
+                        }
+                      }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} />
                     </div>
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Cle API INSEE</label>
