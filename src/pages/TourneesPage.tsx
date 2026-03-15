@@ -462,24 +462,31 @@ export default function TourneesPage() {
     return set;
   }, [configs]);
 
-  // Zones from clients that aren't in any commercial config
+  // Zones from clients that aren't in any commercial config (filtered by user for non-admins)
+  const myClients = useMemo(() => {
+    if (isAdmin) return state.clients;
+    return state.clients.filter((c: Client) => c.commercial_id === currentUserId);
+  }, [state.clients, isAdmin, currentUserId]);
+
   const unassignedZones = useMemo(() => {
-    return allZones.filter(z => !assignedZones.has(z.toLowerCase()));
-  }, [allZones, assignedZones]);
+    const myZones = new Set<string>();
+    myClients.forEach((c: Client) => { if (c.tournee && c.statut === 'ACTIF') myZones.add(c.tournee); });
+    return Array.from(myZones).filter(z => !assignedZones.has(z.toLowerCase())).sort();
+  }, [myClients, assignedZones]);
 
   // Count clients per unassigned zone
   const clientsPerUnassignedZone = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const zone of unassignedZones) {
-      counts[zone] = state.clients.filter(c => c.statut === 'ACTIF' && c.tournee === zone).length;
+      counts[zone] = myClients.filter((c: Client) => c.statut === 'ACTIF' && c.tournee === zone).length;
     }
     return counts;
-  }, [unassignedZones, state.clients]);
+  }, [unassignedZones, myClients]);
 
-  // Clients without any tour
+  // Clients without any tour (filtered by user for non-admins)
   const clientsWithoutTour = useMemo(() => {
-    return state.clients.filter((c: Client) => c.statut === 'ACTIF' && (!c.tournee || c.tournee.trim() === ''));
-  }, [state.clients]);
+    return myClients.filter((c: Client) => c.statut === 'ACTIF' && (!c.tournee || c.tournee.trim() === ''));
+  }, [myClients]);
 
   // Inactive tours this week that have clients
   const inactiveToursWithClients = useMemo(() => {
