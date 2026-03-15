@@ -288,6 +288,21 @@ export default function DashboardPage() {
         ? periodCalls.length + periodProspectsCreated.length
         : periodRdv.length + periodVisites.length + periodCalls.length;
 
+      // CA: sum commandes of this user's clients in the period
+      const userClients = state.clients.filter(c => c.commercial_id === user.id);
+      const userClientIds = new Set(userClients.map(c => c.id));
+      const periodCommandes = state.commandes.filter(cmd => {
+        if (!userClientIds.has(cmd.client_id)) return false;
+        try { return isWithinInterval(parseISO(cmd.date_commande), { start: range.start, end: range.end }); } catch { return false; }
+      });
+      const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+
+      // Visit coverage: clients visited in time vs late
+      const today = new Date().toISOString().split('T')[0];
+      const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
+      const clientsOnTime = activeClients.filter(c => c.next_visit! >= today).length;
+      const clientsLate = activeClients.filter(c => c.next_visit! < today).length;
+
       return {
         user,
         periodCalls: periodCalls.length,
@@ -296,6 +311,9 @@ export default function DashboardPage() {
         periodProspectsCreated: periodProspectsCreated.length,
         totalProspects: userProspects.length,
         score,
+        periodCA,
+        clientsOnTime,
+        clientsLate,
       };
     }).sort((a, b) => b.score - a.score);
   }, [allUsers, state, rankingPeriod]);
@@ -316,6 +334,10 @@ export default function DashboardPage() {
       const periodRdv = getCallsInRange(userAppointments, range.start, range.end);
       const periodRdvTaken = getAppointmentsByCreatedAt(rdvTakenAsProspector, range.start, range.end);
 
+      // Visites in period
+      const userVisites = (state as any).visites ? (state as any).visites.filter((v: any) => v.commercial_id === user.id) : [];
+      const periodVisites = getCallsInRange(userVisites, range.start, range.end);
+
       const periodResponseRate = periodCalls.length > 0
         ? Math.round((periodCalls.filter(c => c.resultat === 'repondu').length / periodCalls.length) * 100)
         : 0;
@@ -324,6 +346,22 @@ export default function DashboardPage() {
         ? Math.round(periodAnsweredCalls.reduce((sum, c) => sum + c.duree, 0) / periodAnsweredCalls.length)
         : 0;
       const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
+
+      // CA in period
+      const userClients = state.clients.filter(c => c.commercial_id === user.id);
+      const userClientIds = new Set(userClients.map(c => c.id));
+      const periodCommandes = state.commandes.filter(cmd => {
+        if (!userClientIds.has(cmd.client_id)) return false;
+        try { return isWithinInterval(parseISO(cmd.date_commande), { start: range.start, end: range.end }); } catch { return false; }
+      });
+      const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+
+      // Visit coverage
+      const today = new Date().toISOString().split('T')[0];
+      const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
+      const coverageRate = activeClients.length > 0
+        ? Math.round((activeClients.filter(c => c.next_visit! >= today).length / activeClients.length) * 100)
+        : -1; // -1 means no data
 
       const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
       const progress = objective > 0 ? Math.round((periodCalls.length / objective) * 100) : 0;
@@ -334,6 +372,9 @@ export default function DashboardPage() {
         periodCalls: periodCalls.length,
         periodRdv: periodRdv.length,
         periodRdvTaken: periodRdvTaken.length,
+        periodVisites: periodVisites.length,
+        periodCA,
+        coverageRate,
         responseRate: periodResponseRate,
         avgDuration: periodAvgDuration,
         totalProspects: userProspects.length,
@@ -343,7 +384,7 @@ export default function DashboardPage() {
         progress,
       };
     }).sort((a, b) => b.periodCalls - a.periodCalls);
-  }, [allUsers, state.calls, state.appointments, state.prospects, perfPeriod]);
+  }, [allUsers, state, perfPeriod]);
 
   // Comparison period data
   const compareUserActivities = useMemo(() => {
@@ -1060,7 +1101,7 @@ export default function DashboardPage() {
                           <p className="font-medium text-sm text-gray-900">{ua.user.prenom} {ua.user.nom}</p>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{ROLE_LABELS[ua.user.role] || ua.user.role}</span>
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <span className="text-[10px] text-green-600 flex items-center gap-0.5"><Phone className="w-3 h-3" /> {ua.periodCalls} appels</span>
                           {isProspection ? (
                             <span className="text-[10px] text-purple-600 flex items-center gap-0.5"><UserCheck className="w-3 h-3" /> {ua.periodProspectsCreated} prospects</span>
@@ -1069,6 +1110,12 @@ export default function DashboardPage() {
                               <span className="text-[10px] text-blue-600 flex items-center gap-0.5"><Calendar className="w-3 h-3" /> {ua.periodRdv} RDV</span>
                               <span className="text-[10px] text-indigo-600 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {ua.periodVisites} visites</span>
                             </>
+                          )}
+                          {ua.periodCA > 0 && <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><Euro className="w-3 h-3" /> {ua.periodCA.toFixed(0)} EUR</span>}
+                          {(ua.clientsOnTime + ua.clientsLate) > 0 && (
+                            <span className={`text-[10px] flex items-center gap-0.5 ${ua.clientsLate > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              <UserCheck className="w-3 h-3" /> {ua.clientsOnTime}/{ua.clientsOnTime + ua.clientsLate} visites OK
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1120,6 +1167,9 @@ export default function DashboardPage() {
                     <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">RDV prosp.</span><span className="sm:hidden">Prosp.</span></th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Rep.</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Duree</span><span className="sm:hidden">Dur.</span></th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Visites</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">CA</th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500">Couv.</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Prospects</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Gagnes</th>
                   </tr>
@@ -1162,12 +1212,19 @@ export default function DashboardPage() {
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.responseRate >= 60 ? 'bg-green-100 text-green-700' : ua.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.responseRate}%{diffBadge(ua.responseRate, cmp?.responseRate)}</span>
                         </td>
                         <td className="text-center py-3 px-2 text-gray-600 text-xs">{formatDuration(ua.avgDuration)}</td>
+                        <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodVisites > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>{ua.periodVisites}</span></td>
+                        <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodCA > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>{ua.periodCA > 0 ? `${ua.periodCA.toFixed(0)}` : '—'}</span></td>
+                        <td className="text-center py-3 px-2">
+                          {ua.coverageRate >= 0 ? (
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.coverageRate >= 80 ? 'bg-green-100 text-green-700' : ua.coverageRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.coverageRate}%</span>
+                          ) : <span className="text-gray-400">—</span>}
+                        </td>
                         <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-[10px] text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.wonProspects > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.wonProspects}{diffBadge(ua.wonProspects, cmp?.wonProspects)}</span></td>
                       </tr>
                     );
                   })}
-                  {perfUserActivities.length === 0 && <tr><td colSpan={11} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
+                  {perfUserActivities.length === 0 && <tr><td colSpan={14} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
                 </tbody>
               </table>
             </div>
