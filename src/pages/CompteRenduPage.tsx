@@ -202,8 +202,13 @@ export default function CompteRenduPage() {
       RDV_PLANIFIE: rangeInteractions.filter(i => i.type === 'RDV_PLANIFIE').length,
     };
     const resultCounts: Record<string, number> = {};
+    const todayDate = toDateStr(new Date());
     rangeAppointments.forEach(a => {
-      if (a.compte_rendu) resultCounts[a.compte_rendu] = (resultCounts[a.compte_rendu] || 0) + 1;
+      if (a.compte_rendu) {
+        resultCounts[a.compte_rendu] = (resultCounts[a.compte_rendu] || 0) + 1;
+      } else if (a.date <= todayDate) {
+        resultCounts['sans_cr'] = (resultCounts['sans_cr'] || 0) + 1;
+      }
     });
     const rdvFromProspection = rangeAppointments.filter(a => a.prospect_id && !a.client_id).length;
     const rdvClients = rangeAppointments.filter(a => !!a.client_id).length;
@@ -929,7 +934,7 @@ export default function CompteRenduPage() {
 
           {/* Result breakdown - interactive */}
           {Object.keys(stats.resultCounts).length > 0 && (
-            <div className="col-span-2 sm:col-span-4 bg-white rounded-xl border border-gray-200 p-3">
+            <div className="col-span-2 sm:col-span-3 bg-white rounded-xl border border-gray-200 p-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-gray-600">Resultats des RDV</p>
                 <p className="text-[10px] text-gray-400 italic">Cliquez pour voir le detail</p>
@@ -943,12 +948,13 @@ export default function CompteRenduPage() {
                     a_relancer: 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200',
                     pas_interesse: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200',
                     decale: 'bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200',
+                    sans_cr: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300',
                   };
                   const isActive = expandedResult === key;
                   return (
                     <button key={key} onClick={() => setExpandedResult(isActive ? null : key)}
                       className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-pointer transition-all ${colors[key] || 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105 shadow-sm' : 'hover:scale-105 hover:shadow-sm'}`}>
-                      {APPOINTMENT_RESULT_LABELS[key] || key}: {count}
+                      {key === 'sans_cr' ? 'Sans CR' : (APPOINTMENT_RESULT_LABELS[key] || key)}: {count}
                       <ChevronDown className={`w-3 h-3 transition-transform ${isActive ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />
                     </button>
                   );
@@ -956,11 +962,15 @@ export default function CompteRenduPage() {
               </div>
               {/* Expanded result detail */}
               {expandedResult && (() => {
-                const rdvsForResult = rangeAppointments.filter(a => a.compte_rendu === expandedResult);
+                const todayDate = toDateStr(new Date());
+                const rdvsForResult = expandedResult === 'sans_cr'
+                  ? rangeAppointments.filter(a => !a.compte_rendu && a.date <= todayDate)
+                  : rangeAppointments.filter(a => a.compte_rendu === expandedResult);
                 const resultColors: Record<string, string> = {
                   client: 'border-green-200', mail_envoye: 'border-blue-200',
                   commande_plus_tard: 'border-yellow-200', a_relancer: 'border-orange-200',
                   pas_interesse: 'border-red-200', decale: 'border-violet-200',
+                  sans_cr: 'border-gray-300',
                 };
                 const commercialColors = ['bg-blue-50 border-blue-200', 'bg-purple-50 border-purple-200', 'bg-teal-50 border-teal-200', 'bg-pink-50 border-pink-200', 'bg-amber-50 border-amber-200'];
 
@@ -1026,7 +1036,7 @@ export default function CompteRenduPage() {
 
                 return (
                   <div className="mt-3 border-t pt-3 space-y-2">
-                    <p className="text-xs text-gray-500 font-medium">{APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult} ({rdvsForResult.length})</p>
+                    <p className="text-xs text-gray-500 font-medium">{expandedResult === 'sans_cr' ? 'Sans compte-rendu' : (APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult)} ({rdvsForResult.length})</p>
                     {isTeamView ? (
                       <div className="space-y-3">
                         {grouped.map(([commercialId, rdvs], idx) => {
