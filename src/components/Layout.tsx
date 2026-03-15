@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
-  MessageCircle, Building2, CheckCheck, ClipboardCheck, ListTodo,
+  MessageCircle, Building2, CheckCheck, ClipboardCheck, ListTodo, GitBranch,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -129,6 +129,7 @@ export default function Layout() {
     { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
     { to: '/visites', icon: ClipboardCheck, label: 'Visites Clients', adminOnly: false },
     { to: '/compte-rendu', icon: CheckCheck, label: 'Rapport Journalier', adminOnly: false },
+    { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR', adminOnly: false },
     { to: '/taches', icon: ListTodo, label: 'Taches', adminOnly: false },
     { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
     { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },

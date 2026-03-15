@@ -24,6 +24,7 @@ const TourneesPage = lazy(() => import('./pages/TourneesPage'));
 const VisitesPage = lazy(() => import('./pages/VisitesPage'));
 const TasksPage = lazy(() => import('./pages/TasksPage'));
 const CompteRenduPage = lazy(() => import('./pages/CompteRenduPage'));
+const PipelineCRPage = lazy(() => import('./pages/PipelineCRPage'));
 
 function PageLoader() {
   return (
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/tournees" element={<TourneesPage />} />
           <Route path="/visites" element={<VisitesPage />} />
           <Route path="/compte-rendu" element={<CompteRenduPage />} />
+          <Route path="/pipeline-cr" element={<PipelineCRPage />} />
           <Route path="/taches" element={<TasksPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/import" element={<ImportPage />} />
