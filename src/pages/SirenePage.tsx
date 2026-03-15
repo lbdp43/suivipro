@@ -48,6 +48,9 @@ interface SyncLog {
 }
 
 interface ZoneConfig {
+  id: number;
+  name: string;
+  entity_type: string;
   departements: string;
   naf_codes: string;
   lookback_days: number;
@@ -108,14 +111,21 @@ export default function SirenePage() {
   const [showGeoForm, setShowGeoForm] = useState(false);
 
   // Import result
-  const [importResult, setImportResult] = useState<{ imported: number; enriched?: number; skipped: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; duplicates?: number; skipped: number } | null>(null);
 
-  // Zone config
-  const [zoneConfig, setZoneConfig] = useState<ZoneConfig | null>(null);
-  const [showZoneConfig, setShowZoneConfig] = useState(false);
+  // Duplicate queue
+  const [duplicateQueue, setDuplicateQueue] = useState<any[]>([]);
+  const [resolvingDupId, setResolvingDupId] = useState<number | null>(null);
+
+  // Zone configs (multi)
+  const [zoneConfigs, setZoneConfigs] = useState<ZoneConfig[]>([]);
+  const [editingConfigId, setEditingConfigId] = useState<number | null>(null);
+  const [syncingConfigId, setSyncingConfigId] = useState<number | null>(null);
   const [zoneSyncing, setZoneSyncing] = useState(false);
   const [zoneSaving, setZoneSaving] = useState(false);
   const [zoneForm, setZoneForm] = useState({
+    name: '',
+    entity_type: 'prospect',
     departements: '03,07,26,38,42,43,63',
     naf_codes: '',
     lookback_days: 7,
@@ -124,6 +134,7 @@ export default function SirenePage() {
     cron_enabled: true,
     insee_api_key: '',
   });
+  const [showNewConfigForm, setShowNewConfigForm] = useState(false);
 
   const token = localStorage.getItem('suivipro_token');
   const headers: Record<string, string> = {
@@ -168,38 +179,41 @@ export default function SirenePage() {
     }
   }, [filterDept, filterNaf, filterImported]);
 
-  const loadZoneConfig = useCallback(async () => {
+  const loadZoneConfigs = useCallback(async () => {
     try {
-      const res = await fetch('/api/sirene/zone-config', { headers });
+      const res = await fetch('/api/sirene/zone-configs', { headers });
       if (res.ok) {
         const data = await res.json();
-        setZoneConfig(data);
-        setZoneForm({
-          departements: data.departements || '03,07,26,38,42,43,63',
-          naf_codes: data.naf_codes || '',
-          lookback_days: data.lookback_days || 7,
-          auto_import: data.auto_import ?? true,
-          default_commercial_id: data.default_commercial_id || '',
-          cron_enabled: data.cron_enabled ?? true,
-          insee_api_key: data.insee_api_key || '',
-        });
+        setZoneConfigs(data);
       }
     } catch (err) {
-      console.error('Error loading zone config:', err);
+      console.error('Error loading zone configs:', err);
     }
   }, []);
 
   const saveZoneConfig = async () => {
     setZoneSaving(true);
     try {
-      const res = await fetch('/api/sirene/zone-config', {
-        method: 'PUT', headers,
-        body: JSON.stringify(zoneForm),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setZoneConfig(data.config);
-        setShowZoneConfig(false);
+      if (editingConfigId) {
+        // Update existing
+        const res = await fetch(`/api/sirene/zone-configs/${editingConfigId}`, {
+          method: 'PUT', headers, body: JSON.stringify(zoneForm),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setZoneConfigs(prev => prev.map(c => c.id === editingConfigId ? data.config : c));
+          setEditingConfigId(null);
+        }
+      } else {
+        // Create new
+        const res = await fetch('/api/sirene/zone-configs', {
+          method: 'POST', headers, body: JSON.stringify(zoneForm),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setZoneConfigs(prev => [...prev, data.config]);
+          setShowNewConfigForm(false);
+        }
       }
     } catch (err) {
       console.error('Error saving zone config:', err);
@@ -208,17 +222,29 @@ export default function SirenePage() {
     }
   };
 
-  const launchZoneSync = async () => {
+  const deleteZoneConfig = async (id: number) => {
+    if (!confirm('Supprimer cette configuration de sync ?')) return;
+    try {
+      await fetch(`/api/sirene/zone-configs/${id}`, { method: 'DELETE', headers });
+      setZoneConfigs(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      console.error('Error deleting config:', err);
+    }
+  };
+
+  const launchZoneSync = async (configId?: number) => {
     setZoneSyncing(true);
+    setSyncingConfigId(configId || null);
     try {
       const res = await fetch('/api/sirene/sync-zone', {
         method: 'POST', headers,
-        body: JSON.stringify({}),
+        body: JSON.stringify({ config_id: configId }),
       });
       const data = await res.json();
       if (data.error) {
         alert(data.error);
         setZoneSyncing(false);
+        setSyncingConfigId(null);
         return;
       }
       if (data.ok) {
@@ -229,6 +255,7 @@ export default function SirenePage() {
           if (logs[0]?.status !== 'running') {
             clearInterval(pollInterval);
             setZoneSyncing(false);
+            setSyncingConfigId(null);
             loadEtablissements();
             loadStats();
           }
@@ -237,6 +264,7 @@ export default function SirenePage() {
     } catch (err) {
       console.error('Zone sync error:', err);
       setZoneSyncing(false);
+      setSyncingConfigId(null);
     }
   };
 
@@ -250,8 +278,30 @@ export default function SirenePage() {
     }
   }, []);
 
+  const loadDuplicates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sirene/duplicates', { headers });
+      const data = await res.json();
+      setDuplicateQueue(data);
+    } catch (err) {
+      console.error('Error loading duplicates:', err);
+    }
+  }, []);
+
+  const resolveDuplicate = async (dupId: number, action: 'merge' | 'skip' | 'import') => {
+    setResolvingDupId(dupId);
+    try {
+      await fetch(`/api/sirene/duplicates/${dupId}/${action}`, { method: 'POST', headers });
+      setDuplicateQueue(prev => prev.filter(d => d.id !== dupId));
+    } catch (err) {
+      console.error('Error resolving duplicate:', err);
+    } finally {
+      setResolvingDupId(null);
+    }
+  };
+
   useEffect(() => {
-    Promise.all([loadConfig(), loadStats(), loadEtablissements(), loadSyncLogs(), loadZoneConfig()])
+    Promise.all([loadConfig(), loadStats(), loadEtablissements(), loadSyncLogs(), loadZoneConfigs(), loadDuplicates()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -325,6 +375,7 @@ export default function SirenePage() {
       setSelectedIds(new Set());
       loadEtablissements();
       loadStats();
+      loadDuplicates();
     } catch (err) {
       console.error('Import error:', err);
     } finally {
@@ -352,6 +403,7 @@ export default function SirenePage() {
       setImportResult(data);
       loadEtablissements();
       loadStats();
+      loadDuplicates();
     } catch (err) {
       console.error('Import all error:', err);
     } finally {
@@ -402,169 +454,291 @@ export default function SirenePage() {
         </div>
       )}
 
-      {/* Zone Config + Auto Sync */}
+      {/* Zone Configs + Auto Sync */}
       <div className="bg-white rounded-xl border border-indigo-200 p-4 sm:p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
             <Globe className="w-4 h-4 text-indigo-500" />
-            Zone de prospection & Sync automatique
-            {zoneConfig?.cron_enabled && (
-              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">CRON actif</span>
+            Configurations de sync automatique
+            {zoneConfigs.filter(c => c.cron_enabled).length > 0 && (
+              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">
+                {zoneConfigs.filter(c => c.cron_enabled).length} CRON actif{zoneConfigs.filter(c => c.cron_enabled).length > 1 ? 's' : ''}
+              </span>
             )}
           </h2>
           <button
-            onClick={() => setShowZoneConfig(!showZoneConfig)}
-            className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+            onClick={() => {
+              setZoneForm({ name: '', entity_type: 'prospect', departements: '03,07,26,38,42,43,63', naf_codes: '', lookback_days: 7, auto_import: true, default_commercial_id: '', cron_enabled: true, insee_api_key: '' });
+              setEditingConfigId(null);
+              setShowNewConfigForm(!showNewConfigForm);
+            }}
+            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs hover:bg-indigo-700 flex items-center gap-1"
           >
-            <Settings className="w-3 h-3" />
-            {showZoneConfig ? 'Masquer config' : 'Configurer'}
+            <Building2 className="w-3 h-3" /> Nouvelle config
           </button>
         </div>
 
-        {/* Zone summary */}
-        {zoneConfig && !showZoneConfig && (
-          <div className="mb-4 space-y-2">
-            <div className="flex flex-wrap gap-1.5">
-              {zoneConfig.departements.split(',').map(d => d.trim()).filter(Boolean).map(dept => (
-                <span key={dept} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium">
-                  {dept} {DEPT_LABELS[dept] ? `- ${DEPT_LABELS[dept]}` : ''}
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span>Lookback: {zoneConfig.lookback_days}j</span>
-              <span>Auto-import: {zoneConfig.auto_import ? 'Oui' : 'Non'}</span>
-              <span>Cle INSEE: {zoneConfig.insee_api_key ? 'Configuree' : 'Non configuree'}</span>
-              {zoneConfig.default_commercial_id && (
-                <span>Commercial: {state.commerciaux.find(c => c.id === zoneConfig.default_commercial_id)?.prenom || zoneConfig.default_commercial_id}</span>
-              )}
-            </div>
-          </div>
+        {/* List of configs */}
+        {zoneConfigs.length === 0 && !showNewConfigForm && (
+          <p className="text-sm text-gray-400 text-center py-4">Aucune configuration. Creez-en une pour lancer la sync automatique INSEE.</p>
         )}
 
-        {/* Zone config form */}
-        {showZoneConfig && (
-          <div className="space-y-4 mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-indigo-700 mb-1">
-                  Departements (separes par virgule)
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
-                  placeholder="03,07,26,38,42,43,63"
-                  value={zoneForm.departements}
-                  onChange={e => setZoneForm(f => ({ ...f, departements: e.target.value }))}
-                />
-                <p className="text-[10px] text-indigo-400 mt-1">Corridor Rhone-Alpes / Auvergne</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-indigo-700 mb-1">
-                  Codes NAF supplementaires (separes par virgule)
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
-                  placeholder="55.10Z, 93.29Z... (vide = liste predefinie)"
-                  value={zoneForm.naf_codes || ''}
-                  onChange={e => setZoneForm(f => ({ ...f, naf_codes: e.target.value }))}
-                />
-                <p className="text-[10px] text-indigo-400 mt-1">Vide = les 20 codes predefinis (restaurants, bars, caves, etc.)</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-indigo-700 mb-1">
-                  <Key className="w-3 h-3 inline mr-1" />
-                  Cle API INSEE (portail-api.insee.fr)
-                </label>
-                <input
-                  type="password"
-                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
-                  placeholder={zoneForm.insee_api_key === '***configured***' ? 'Cle deja configuree' : 'X-INSEE-Api-Key-Integration'}
-                  value={zoneForm.insee_api_key === '***configured***' ? '' : zoneForm.insee_api_key}
-                  onChange={e => setZoneForm(f => ({ ...f, insee_api_key: e.target.value || (zoneConfig?.insee_api_key ? '***configured***' : '') }))}
-                />
-                <p className="text-[10px] text-indigo-400 mt-1">Gratuite sur portail-api.insee.fr - necessaire pour le filtre par date</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-indigo-700 mb-1">Lookback (jours)</label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
-                  value={zoneForm.lookback_days}
-                  onChange={e => setZoneForm(f => ({ ...f, lookback_days: parseInt(e.target.value) || 7 }))}
-                  min={1} max={90}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-indigo-700 mb-1">Commercial par defaut</label>
-                <select
-                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
-                  value={zoneForm.default_commercial_id}
-                  onChange={e => setZoneForm(f => ({ ...f, default_commercial_id: e.target.value }))}
-                >
-                  <option value="">-- Aucun --</option>
-                  {state.commerciaux.map(c => (
-                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+        <div className="space-y-3">
+          {zoneConfigs.map(config => {
+            const isEditing = editingConfigId === config.id;
+            const isSyncing = syncingConfigId === config.id;
+            const entityColors: Record<string, string> = {
+              prospect: 'bg-sky-100 text-sky-700 border-sky-200',
+              client: 'bg-green-100 text-green-700 border-green-200',
+              concurrent: 'bg-red-100 text-red-700 border-red-200',
+              distributeur: 'bg-amber-100 text-amber-700 border-amber-200',
+              partenaire: 'bg-purple-100 text-purple-700 border-purple-200',
+            };
+            const entityColor = entityColors[config.entity_type] || 'bg-gray-100 text-gray-700 border-gray-200';
+
+            if (isEditing) {
+              return (
+                <div key={config.id} className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-indigo-600 mb-0.5">Nom</label>
+                      <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.name} onChange={e => setZoneForm(f => ({ ...f, name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
+                      <input type="text" list="config-entity-types" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value.toLowerCase().trim() }))} />
+                      <datalist id="config-entity-types">
+                        <option value="prospect">Prospect</option>
+                        <option value="concurrent">Concurrent</option>
+                        <option value="distributeur">Distributeur</option>
+                        <option value="partenaire">Partenaire</option>
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
+                      <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.departements} onChange={e => setZoneForm(f => ({ ...f, departements: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-indigo-600 mb-0.5">Codes NAF (virgule)</label>
+                      <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="Vide = 20 codes predefinis" value={zoneForm.naf_codes} onChange={e => setZoneForm(f => ({ ...f, naf_codes: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-indigo-600 mb-0.5">Cle API INSEE</label>
+                      <input type="password" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder={zoneForm.insee_api_key === '***configured***' ? 'Deja configuree' : 'X-INSEE-Api-Key...'} value={zoneForm.insee_api_key === '***configured***' ? '' : zoneForm.insee_api_key} onChange={e => setZoneForm(f => ({ ...f, insee_api_key: e.target.value || (config.insee_api_key ? '***configured***' : '') }))} />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <label className="text-[10px] text-indigo-600">Lookback:</label>
+                      <input type="number" className="w-14 px-1 py-1 border border-indigo-200 rounded text-xs" value={zoneForm.lookback_days} onChange={e => setZoneForm(f => ({ ...f, lookback_days: parseInt(e.target.value) || 7 }))} min={1} max={90} />
+                      <span className="text-[10px] text-indigo-400">jours</span>
+                    </div>
+                    <label className="flex items-center gap-1 cursor-pointer text-xs text-indigo-700">
+                      <input type="checkbox" checked={zoneForm.auto_import} onChange={e => setZoneForm(f => ({ ...f, auto_import: e.target.checked }))} className="rounded border-indigo-300" />
+                      Auto-import
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer text-xs text-indigo-700">
+                      <input type="checkbox" checked={zoneForm.cron_enabled} onChange={e => setZoneForm(f => ({ ...f, cron_enabled: e.target.checked }))} className="rounded border-indigo-300" />
+                      CRON lundi 6h
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveZoneConfig} disabled={zoneSaving || !zoneForm.name} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1">
+                      {zoneSaving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Enregistrer
+                    </button>
+                    <button onClick={() => setEditingConfigId(null)} className="px-3 py-1.5 border border-gray-200 rounded text-xs hover:bg-gray-50">Annuler</button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={config.id} className="p-3 border border-gray-200 rounded-lg hover:border-indigo-200 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-sm text-gray-900">{config.name}</h3>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${entityColor}`}>
+                      {config.entity_type}
+                    </span>
+                    {config.cron_enabled && (
+                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-medium">CRON</span>
+                    )}
+                    {config.auto_import && (
+                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-medium">Auto-import</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => launchZoneSync(config.id)}
+                      disabled={zoneSyncing || syncing}
+                      className="px-2 py-1 bg-indigo-600 text-white rounded text-[10px] hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                      Sync
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingConfigId(config.id);
+                        setShowNewConfigForm(false);
+                        setZoneForm({
+                          name: config.name, entity_type: config.entity_type,
+                          departements: config.departements, naf_codes: config.naf_codes || '',
+                          lookback_days: config.lookback_days, auto_import: config.auto_import,
+                          default_commercial_id: config.default_commercial_id || '',
+                          cron_enabled: config.cron_enabled, insee_api_key: config.insee_api_key || '',
+                        });
+                      }}
+                      className="px-2 py-1 border border-gray-200 rounded text-[10px] hover:bg-gray-50"
+                    >
+                      <Settings className="w-3 h-3" />
+                    </button>
+                    <button onClick={() => deleteZoneConfig(config.id)} className="px-2 py-1 text-red-400 hover:text-red-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {config.departements.split(',').map(d => d.trim()).filter(Boolean).map(dept => (
+                    <span key={dept} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px]">
+                      {dept} {DEPT_LABELS[dept] ? `- ${DEPT_LABELS[dept]}` : ''}
+                    </span>
                   ))}
-                </select>
+                </div>
+                <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                  <span>Lookback: {config.lookback_days}j</span>
+                  {config.naf_codes && <span>NAF: {config.naf_codes.split(',').length} codes</span>}
+                  <span>INSEE: {config.insee_api_key ? 'OK' : 'Non config.'}</span>
+                </div>
               </div>
-              <div className="flex items-end gap-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={zoneForm.auto_import}
-                    onChange={e => setZoneForm(f => ({ ...f, auto_import: e.target.checked }))}
-                    className="rounded border-indigo-300"
-                  />
-                  <span className="text-xs text-indigo-700">Auto-import</span>
-                </label>
+            );
+          })}
+        </div>
+
+        {/* New config form */}
+        {showNewConfigForm && (
+          <div className="mt-3 p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+            <h3 className="font-medium text-sm text-indigo-800">Nouvelle configuration</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[10px] text-indigo-600 mb-0.5">Nom</label>
+                <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="Ex: Concurrents brasseries" value={zoneForm.name} onChange={e => setZoneForm(f => ({ ...f, name: e.target.value }))} />
               </div>
-              <div className="flex items-end gap-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={zoneForm.cron_enabled}
-                    onChange={e => setZoneForm(f => ({ ...f, cron_enabled: e.target.checked }))}
-                    className="rounded border-indigo-300"
-                  />
-                  <span className="text-xs text-indigo-700">CRON lundi 6h</span>
-                </label>
+              <div>
+                <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
+                <input type="text" list="new-config-entity-types" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="prospect, concurrent..." value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value.toLowerCase().trim() }))} />
+                <datalist id="new-config-entity-types">
+                  <option value="prospect">Prospect</option>
+                  <option value="concurrent">Concurrent</option>
+                  <option value="distributeur">Distributeur</option>
+                  <option value="partenaire">Partenaire</option>
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
+                <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.departements} onChange={e => setZoneForm(f => ({ ...f, departements: e.target.value }))} />
               </div>
             </div>
-            <button
-              onClick={saveZoneConfig}
-              disabled={zoneSaving}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-            >
-              {zoneSaving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              Enregistrer la configuration
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] text-indigo-600 mb-0.5">Codes NAF (virgule)</label>
+                <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="11.05Z, 46.34Z... (vide = predefinis)" value={zoneForm.naf_codes} onChange={e => setZoneForm(f => ({ ...f, naf_codes: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-indigo-600 mb-0.5">Cle API INSEE</label>
+                <input type="password" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="X-INSEE-Api-Key-Integration" value={zoneForm.insee_api_key} onChange={e => setZoneForm(f => ({ ...f, insee_api_key: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-indigo-600">Lookback:</label>
+                <input type="number" className="w-14 px-1 py-1 border border-indigo-200 rounded text-xs" value={zoneForm.lookback_days} onChange={e => setZoneForm(f => ({ ...f, lookback_days: parseInt(e.target.value) || 7 }))} min={1} max={90} />
+                <span className="text-[10px] text-indigo-400">jours</span>
+              </div>
+              <label className="flex items-center gap-1 cursor-pointer text-xs text-indigo-700">
+                <input type="checkbox" checked={zoneForm.auto_import} onChange={e => setZoneForm(f => ({ ...f, auto_import: e.target.checked }))} className="rounded border-indigo-300" />
+                Auto-import
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer text-xs text-indigo-700">
+                <input type="checkbox" checked={zoneForm.cron_enabled} onChange={e => setZoneForm(f => ({ ...f, cron_enabled: e.target.checked }))} className="rounded border-indigo-300" />
+                CRON lundi 6h
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveZoneConfig} disabled={zoneSaving || !zoneForm.name} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1">
+                {zoneSaving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Creer
+              </button>
+              <button onClick={() => setShowNewConfigForm(false)} className="px-3 py-1.5 border border-gray-200 rounded text-xs hover:bg-gray-50">Annuler</button>
+            </div>
           </div>
         )}
-
-        {/* Zone sync button */}
-        <div className="flex gap-3">
-          <button
-            onClick={launchZoneSync}
-            disabled={zoneSyncing || syncing}
-            className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {zoneSyncing ? (
-              <><RefreshCw className="w-4 h-4 animate-spin" /> Sync zone en cours...</>
-            ) : (
-              <><Zap className="w-4 h-4" /> Sync ma zone (INSEE)</>
-            )}
-          </button>
-          <p className="text-xs text-gray-400 self-center">
-            Utilise l'API INSEE avec filtre date natif - ne ramene que les <strong>nouveaux</strong> etablissements
-          </p>
-        </div>
       </div>
+
+      {/* Duplicate queue */}
+      {duplicateQueue.length > 0 && (
+        <div className="bg-white rounded-xl border border-orange-200 p-4 sm:p-5">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+            <AlertTriangle className="w-4 h-4 text-orange-500" />
+            Doublons a valider ({duplicateQueue.length})
+          </h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Ces etablissements SIRENE correspondent a des prospects existants. Choisissez l'action pour chacun.
+          </p>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {duplicateQueue.map(dup => (
+              <div key={dup.id} className="p-3 border border-orange-100 rounded-lg bg-orange-50/50">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[9px] font-medium uppercase">{dup.match_type}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <p className="text-[10px] text-gray-400 mb-0.5">Nouveau (SIRENE)</p>
+                        <p className="font-medium text-gray-900">{dup.sirene_nom}</p>
+                        <p className="text-gray-500">{dup.sirene_ville} - SIRET: {dup.sirene_siret}</p>
+                        <p className="text-gray-400 text-[10px]">NAF: {dup.sirene_naf}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 mb-0.5">Existant (prospect)</p>
+                        <p className="font-medium text-gray-900">{dup.existing_nom}</p>
+                        <p className="text-gray-500">{dup.existing_ville}{dup.existing_siret ? ` - SIRET: ${dup.existing_siret}` : ''}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => resolveDuplicate(dup.id, 'merge')}
+                      disabled={resolvingDupId === dup.id}
+                      className="px-2 py-1 bg-green-600 text-white rounded text-[10px] hover:bg-green-700 disabled:opacity-50"
+                      title="Fusionner: enrichir le prospect existant"
+                    >
+                      Fusionner
+                    </button>
+                    <button
+                      onClick={() => resolveDuplicate(dup.id, 'import')}
+                      disabled={resolvingDupId === dup.id}
+                      className="px-2 py-1 bg-blue-600 text-white rounded text-[10px] hover:bg-blue-700 disabled:opacity-50"
+                      title="Importer comme nouvelle fiche"
+                    >
+                      Creer
+                    </button>
+                    <button
+                      onClick={() => resolveDuplicate(dup.id, 'skip')}
+                      disabled={resolvingDupId === dup.id}
+                      className="px-2 py-1 border border-gray-200 rounded text-[10px] hover:bg-gray-50 disabled:opacity-50 text-gray-500"
+                      title="Ignorer ce doublon"
+                    >
+                      Ignorer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sync section */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
@@ -732,8 +906,8 @@ export default function SirenePage() {
           <div className="flex items-center gap-2">
             <Check className="w-5 h-5 text-green-600" />
             <span className="text-sm text-green-800 font-medium">
-              {importResult.imported} prospect{importResult.imported > 1 ? 's' : ''} importe{importResult.imported > 1 ? 's' : ''}
-              {(importResult.enriched || 0) > 0 && `, ${importResult.enriched} existant${(importResult.enriched || 0) > 1 ? 's' : ''} enrichi${(importResult.enriched || 0) > 1 ? 's' : ''}`}
+              {importResult.imported} importe{importResult.imported > 1 ? 's' : ''}
+              {(importResult.duplicates || 0) > 0 && `, ${importResult.duplicates} doublon${(importResult.duplicates || 0) > 1 ? 's' : ''} a valider`}
               {importResult.skipped > 0 && `, ${importResult.skipped} ignore${importResult.skipped > 1 ? 's' : ''}`}
             </span>
           </div>

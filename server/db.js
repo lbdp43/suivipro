@@ -202,7 +202,9 @@ async function initDatabase(attempt = 1) {
       );
 
       CREATE TABLE IF NOT EXISTS sirene_zone_config (
-        id INTEGER PRIMARY KEY DEFAULT 1,
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT 'Zone principale',
+        entity_type TEXT NOT NULL DEFAULT 'prospect',
         departements TEXT NOT NULL DEFAULT '03,07,26,38,42,43,63',
         naf_codes TEXT NOT NULL DEFAULT '',
         lookback_days INTEGER DEFAULT 7,
@@ -211,8 +213,7 @@ async function initDatabase(attempt = 1) {
         cron_enabled BOOLEAN DEFAULT TRUE,
         cron_schedule TEXT DEFAULT '0 6 * * 1',
         insee_api_key TEXT DEFAULT '',
-        updated_at TEXT NOT NULL DEFAULT '',
-        CHECK (id = 1)
+        updated_at TEXT NOT NULL DEFAULT ''
       );
 
       CREATE TABLE IF NOT EXISTS documents (
@@ -525,24 +526,22 @@ async function initDatabase(attempt = 1) {
       }
     } catch (err) { console.log('Etienne migration:', err.message); }
 
-    // Migration: sirene_zone_config table
+    // Migration: sirene_zone_config multi-config
     try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS sirene_zone_config (
-          id INTEGER PRIMARY KEY DEFAULT 1,
-          departements TEXT NOT NULL DEFAULT '03,07,26,38,42,43,63',
-          naf_codes TEXT NOT NULL DEFAULT '',
-          lookback_days INTEGER DEFAULT 7,
-          auto_import BOOLEAN DEFAULT TRUE,
-          default_commercial_id TEXT DEFAULT '',
-          cron_enabled BOOLEAN DEFAULT TRUE,
-          cron_schedule TEXT DEFAULT '0 6 * * 1',
-          insee_api_key TEXT DEFAULT '',
-          updated_at TEXT NOT NULL DEFAULT '',
-          CHECK (id = 1)
-        )
-      `);
-    } catch (err) { console.log('sirene_zone_config migration:', err.message); }
+      // Add name and entity_type columns if missing
+      await client.query(`ALTER TABLE sirene_zone_config ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Zone principale'`);
+      await client.query(`ALTER TABLE sirene_zone_config ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'prospect'`);
+      // Remove CHECK constraint (id=1) if it exists - allow multiple rows
+      await client.query(`ALTER TABLE sirene_zone_config DROP CONSTRAINT IF EXISTS sirene_zone_config_id_check`);
+      await client.query(`ALTER TABLE sirene_zone_config DROP CONSTRAINT IF EXISTS sirene_zone_config_check`);
+      // Convert id to SERIAL if it's not already
+      try {
+        await client.query(`CREATE SEQUENCE IF NOT EXISTS sirene_zone_config_id_seq OWNED BY sirene_zone_config.id`);
+        await client.query(`ALTER TABLE sirene_zone_config ALTER COLUMN id SET DEFAULT nextval('sirene_zone_config_id_seq')`);
+        const maxId = await client.query('SELECT COALESCE(MAX(id), 0) + 1 as next FROM sirene_zone_config');
+        await client.query(`SELECT setval('sirene_zone_config_id_seq', $1, false)`, [maxId.rows[0].next]);
+      } catch (seqErr) { /* sequence may already exist */ }
+    } catch (err) { console.log('sirene_zone_config multi-config migration:', err.message); }
 
     // Migration: sirene_import_rules table
     try {
@@ -611,6 +610,29 @@ async function initDatabase(attempt = 1) {
     // Migration: add latitude/longitude to sirene_etablissements (may have been created without them)
     try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION"); } catch { /* */ }
     try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION"); } catch { /* */ }
+
+    // Migration: sirene_duplicate_queue for admin review
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sirene_duplicate_queue (
+          id SERIAL PRIMARY KEY,
+          sirene_etab_id INTEGER,
+          existing_prospect_id TEXT,
+          match_type TEXT NOT NULL DEFAULT 'siret',
+          sirene_nom TEXT DEFAULT '',
+          sirene_siret TEXT DEFAULT '',
+          sirene_ville TEXT DEFAULT '',
+          sirene_naf TEXT DEFAULT '',
+          existing_nom TEXT DEFAULT '',
+          existing_siret TEXT DEFAULT '',
+          existing_ville TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'pending',
+          resolved_by TEXT DEFAULT '',
+          resolved_at TEXT DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT ''
+        )
+      `);
+    } catch (err) { console.log('sirene_duplicate_queue migration:', err.message); }
 
     // Migration: add new columns to sirene_sync_logs
     try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS records_auto_imported INTEGER DEFAULT 0"); } catch { /* */ }

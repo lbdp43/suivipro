@@ -3609,58 +3609,125 @@ async function enrichWithDatagouv(siret) {
 // Zone Config & CRON sync routes
 // ============================================
 
-// GET /api/sirene/zone-config
-router.get('/sirene/zone-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  let config = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
-  if (config.rows.length === 0) {
-    await db.query(
-      `INSERT INTO sirene_zone_config (id, departements, updated_at) VALUES (1, '03,07,26,38,42,43,63', $1)`,
-      [new Date().toISOString()]
-    );
-    config = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
-  }
-  const row = config.rows[0];
-  // Mask API key for frontend
-  res.json({
+// GET /api/sirene/zone-configs - list all configs
+router.get('/sirene/zone-configs', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM sirene_zone_config ORDER BY id');
+  const configs = result.rows.map(row => ({
     ...row,
     insee_api_key: row.insee_api_key ? '***configured***' : '',
-  });
+  }));
+  res.json(configs);
 }));
 
-// PUT /api/sirene/zone-config
+// Legacy GET /api/sirene/zone-config - return first config for backwards compat
+router.get('/sirene/zone-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  let config = await db.query('SELECT * FROM sirene_zone_config ORDER BY id LIMIT 1');
+  if (config.rows.length === 0) {
+    await db.query(
+      `INSERT INTO sirene_zone_config (name, entity_type, departements, updated_at) VALUES ('Prospects (restaurants, bars, caves)', 'prospect', '03,07,26,38,42,43,63', $1) RETURNING *`,
+      [new Date().toISOString()]
+    );
+    config = await db.query('SELECT * FROM sirene_zone_config ORDER BY id LIMIT 1');
+  }
+  const row = config.rows[0];
+  res.json({ ...row, insee_api_key: row.insee_api_key ? '***configured***' : '' });
+}));
+
+// POST /api/sirene/zone-configs - create new config
+router.post('/sirene/zone-configs', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { name, entity_type, departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, insee_api_key } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nom requis' });
+
+  const result = await db.query(
+    `INSERT INTO sirene_zone_config (name, entity_type, departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, cron_schedule, insee_api_key, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '0 6 * * 1', $9, $10) RETURNING *`,
+    [
+      name, entity_type || 'prospect', departements || '03,07,26,38,42,43,63',
+      naf_codes || '', lookback_days || 7, auto_import !== undefined ? auto_import : true,
+      default_commercial_id || '', cron_enabled !== undefined ? cron_enabled : true,
+      insee_api_key || '', new Date().toISOString(),
+    ]
+  );
+  res.json({ ok: true, config: { ...result.rows[0], insee_api_key: result.rows[0].insee_api_key ? '***configured***' : '' } });
+}));
+
+// PUT /api/sirene/zone-configs/:id - update a config
+router.put('/sirene/zone-configs/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { name, entity_type, departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, insee_api_key } = req.body;
+  const configId = req.params.id;
+
+  await db.query(
+    `UPDATE sirene_zone_config SET
+       name = COALESCE(NULLIF($1, ''), name),
+       entity_type = COALESCE(NULLIF($2, ''), entity_type),
+       departements = COALESCE(NULLIF($3, ''), departements),
+       naf_codes = COALESCE($4, naf_codes),
+       lookback_days = COALESCE($5, lookback_days),
+       auto_import = COALESCE($6, auto_import),
+       default_commercial_id = COALESCE($7, default_commercial_id),
+       cron_enabled = COALESCE($8, cron_enabled),
+       insee_api_key = CASE WHEN $9 = '***configured***' THEN insee_api_key WHEN $9 IS NOT NULL AND $9 != '' THEN $9 ELSE insee_api_key END,
+       updated_at = $10
+     WHERE id = $11`,
+    [
+      name || '', entity_type || '', departements || '', naf_codes ?? null,
+      lookback_days || null, auto_import ?? null, default_commercial_id ?? null,
+      cron_enabled ?? null, insee_api_key || '', new Date().toISOString(), configId,
+    ]
+  );
+
+  const updated = await db.query('SELECT * FROM sirene_zone_config WHERE id = $1', [configId]);
+  res.json({ ok: true, config: { ...updated.rows[0], insee_api_key: updated.rows[0].insee_api_key ? '***configured***' : '' } });
+}));
+
+// PUT /api/sirene/zone-config (legacy - updates first config)
 router.put('/sirene/zone-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, cron_schedule, insee_api_key } = req.body;
-
-  // Upsert
+  let config = await db.query('SELECT id FROM sirene_zone_config ORDER BY id LIMIT 1');
+  if (config.rows.length === 0) {
+    const ins = await db.query(
+      `INSERT INTO sirene_zone_config (name, entity_type, departements, updated_at) VALUES ('Prospects', 'prospect', '03,07,26,38,42,43,63', $1) RETURNING id`,
+      [new Date().toISOString()]
+    );
+    config = { rows: [ins.rows[0]] };
+  }
+  const configId = config.rows[0].id;
   await db.query(
-    `INSERT INTO sirene_zone_config (id, departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, cron_schedule, insee_api_key, updated_at)
-     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
-     ON CONFLICT (id) DO UPDATE SET
-       departements = COALESCE(NULLIF($1, ''), sirene_zone_config.departements),
-       naf_codes = COALESCE($2, sirene_zone_config.naf_codes),
-       lookback_days = COALESCE($3, sirene_zone_config.lookback_days),
-       auto_import = COALESCE($4, sirene_zone_config.auto_import),
-       default_commercial_id = COALESCE($5, sirene_zone_config.default_commercial_id),
-       cron_enabled = COALESCE($6, sirene_zone_config.cron_enabled),
-       cron_schedule = COALESCE($7, sirene_zone_config.cron_schedule),
-       insee_api_key = CASE WHEN $8 = '***configured***' THEN sirene_zone_config.insee_api_key WHEN $8 IS NOT NULL AND $8 != '' THEN $8 ELSE sirene_zone_config.insee_api_key END,
-       updated_at = $9`,
+    `UPDATE sirene_zone_config SET
+       departements = COALESCE(NULLIF($1, ''), departements),
+       naf_codes = COALESCE($2, naf_codes),
+       lookback_days = COALESCE($3, lookback_days),
+       auto_import = COALESCE($4, auto_import),
+       default_commercial_id = COALESCE($5, default_commercial_id),
+       cron_enabled = COALESCE($6, cron_enabled),
+       cron_schedule = COALESCE($7, cron_schedule),
+       insee_api_key = CASE WHEN $8 = '***configured***' THEN insee_api_key WHEN $8 IS NOT NULL AND $8 != '' THEN $8 ELSE insee_api_key END,
+       updated_at = $9
+     WHERE id = $10`,
     [
       departements || '', naf_codes || '', lookback_days || 7,
       auto_import !== undefined ? auto_import : true,
       default_commercial_id || '', cron_enabled !== undefined ? cron_enabled : true,
       cron_schedule || '0 6 * * 1', insee_api_key || '',
-      new Date().toISOString(),
+      new Date().toISOString(), configId,
     ]
   );
-
-  const updated = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  const updated = await db.query('SELECT * FROM sirene_zone_config WHERE id = $1', [configId]);
   res.json({ ok: true, config: { ...updated.rows[0], insee_api_key: updated.rows[0].insee_api_key ? '***configured***' : '' } });
+}));
+
+// DELETE /api/sirene/zone-configs/:id - delete a config
+router.delete('/sirene/zone-configs/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM sirene_zone_config WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
 }));
 
 // POST /api/sirene/sync-zone - Manual or CRON zone sync (uses INSEE API)
 router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  const configRes = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  const configId = req.body.config_id;
+  const configRes = configId
+    ? await db.query('SELECT * FROM sirene_zone_config WHERE id = $1', [configId])
+    : await db.query('SELECT * FROM sirene_zone_config ORDER BY id LIMIT 1');
   if (configRes.rows.length === 0) return res.status(400).json({ error: 'Zone non configuree. Configurez d\'abord la zone.' });
 
   const config = configRes.rows[0];
@@ -4018,86 +4085,31 @@ async function importEtabAsProspect(etab, commercialId, now, userId) {
     );
   }
 
-  // Duplicate found → enrich existing prospect
+  // Duplicate found → queue for admin validation
   if (existing.rows.length > 0) {
     const prospect = existing.rows[0];
-    const updates = [];
-    const params = [];
-    let paramIdx = 1;
+    const matchType = prospect.siret === etab.siret ? 'siret'
+      : prospect.id === prospectId ? 'id'
+      : prospect.notes?.includes(`SIRET: ${etab.siret}`) ? 'notes'
+      : 'nom_ville';
 
-    // Enrich SIRET if missing
-    if (!prospect.siret && etab.siret) {
-      params.push(etab.siret);
-      updates.push(`siret = $${paramIdx++}`);
-    }
-
-    // Enrich address if missing/empty
-    if ((!prospect.adresse || prospect.adresse === '') && etab.adresse_voie) {
-      params.push(etab.adresse_voie);
-      updates.push(`adresse = $${paramIdx++}`);
-    }
-
-    // Enrich ville if missing
-    if ((!prospect.ville || prospect.ville === '') && etab.commune) {
-      params.push(etab.commune);
-      updates.push(`ville = $${paramIdx++}`);
-    }
-
-    // Enrich code_postal if missing
-    if ((!prospect.code_postal || prospect.code_postal === '') && etab.code_postal) {
-      params.push(etab.code_postal);
-      updates.push(`code_postal = $${paramIdx++}`);
-    }
-
-    // Enrich departement if missing
-    if ((!prospect.departement || prospect.departement === '') && etab.departement) {
-      params.push(etab.departement);
-      updates.push(`departement = $${paramIdx++}`);
-    }
-
-    // Enrich GPS coords if missing (0,0)
-    if ((!prospect.latitude || prospect.latitude === 0) && etab.latitude) {
-      params.push(etab.latitude);
-      updates.push(`latitude = $${paramIdx++}`);
-    }
-    if ((!prospect.longitude || prospect.longitude === 0) && etab.longitude) {
-      params.push(etab.longitude);
-      updates.push(`longitude = $${paramIdx++}`);
-    }
-
-    // Enrich type if generic
-    if (prospect.type_etablissement === 'autre' && typeEtab !== 'autre') {
-      params.push(typeEtab);
-      updates.push(`type_etablissement = $${paramIdx++}`);
-    }
-
-    // Enrich secteur/libelle NAF if missing
-    if ((!prospect.secteur || prospect.secteur === '') && etab.libelle_naf) {
-      params.push(etab.libelle_naf);
-      updates.push(`secteur = $${paramIdx++}`);
-    }
-
-    // Add SIRET info to notes if not already there
-    if (prospect.notes && !prospect.notes.includes(`SIRET: ${etab.siret}`)) {
-      const newNotes = prospect.notes + `\n--- Enrichi Datagouv ---\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation etab: ${etab.date_creation_etab || 'N/A'}`;
-      params.push(newNotes);
-      updates.push(`notes = $${paramIdx++}`);
-    }
-
-    if (updates.length > 0) {
-      params.push(now);
-      updates.push(`date_modification = $${paramIdx++}`);
-      params.push(prospect.id);
+    // Check if already queued
+    const alreadyQueued = await db.query(
+      'SELECT id FROM sirene_duplicate_queue WHERE sirene_etab_id = $1 AND existing_prospect_id = $2 AND status = $3',
+      [etab.id, prospect.id, 'pending']
+    );
+    if (alreadyQueued.rows.length === 0) {
       await db.query(
-        `UPDATE prospects SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
-        params
+        `INSERT INTO sirene_duplicate_queue (sirene_etab_id, existing_prospect_id, match_type, sirene_nom, sirene_siret, sirene_ville, sirene_naf, existing_nom, existing_siret, existing_ville, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [etab.id, prospect.id, matchType, nomEtab, etab.siret, etab.commune || '', etab.code_naf || '',
+         prospect.nom_etablissement || '', prospect.siret || '', prospect.ville || '', now]
       );
     }
 
     // Link the sirene_etablissement to this prospect
     await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospect.id, etab.id]);
-    if (userId) logActivity(userId, 'enrichi_datagouv', `${nomEtab} (SIRET: ${etab.siret}) → prospect ${prospect.nom_etablissement}`, 'prospect', prospect.id);
-    return updates.length > 0 ? 'enriched' : 'skipped';
+    return 'duplicate_queued';
   }
 
   // No duplicate → create new entry (prospect/concurrent/distributeur/partenaire)
@@ -4127,7 +4139,7 @@ router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(
   if (etablissement_ids.length === 0) return res.status(400).json({ error: 'Aucun etablissement selectionne' });
 
   const now = new Date().toISOString();
-  let imported = 0, enriched = 0, skipped = 0;
+  let imported = 0, duplicates = 0, skipped = 0;
 
   for (const etabId of etablissement_ids) {
     const etabRes = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [etabId]);
@@ -4136,11 +4148,11 @@ router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(
 
     const result = await importEtabAsProspect(etab, commercial_id, now, req.user.id);
     if (result === 'imported') imported++;
-    else if (result === 'enriched') enriched++;
+    else if (result === 'duplicate_queued') duplicates++;
     else skipped++;
   }
 
-  res.json({ ok: true, imported, enriched, skipped });
+  res.json({ ok: true, imported, duplicates, skipped });
 }));
 
 // POST /api/sirene/import-all
@@ -4162,20 +4174,125 @@ router.post('/sirene/import-all', authMiddleware, adminOnly, asyncHandler(async 
   if (result.rows.length === 0) return res.json({ ok: true, imported: 0, enriched: 0, skipped: 0 });
 
   const now = new Date().toISOString();
-  let imported = 0, enriched = 0, skipped = 0;
+  let imported = 0, duplicates = 0, skipped = 0;
 
   for (const etab of result.rows) {
     const r = await importEtabAsProspect(etab, commercial_id, now, null);
     if (r === 'imported') imported++;
-    else if (r === 'enriched') enriched++;
+    else if (r === 'duplicate_queued') duplicates++;
     else skipped++;
   }
 
-  if (imported > 0 || enriched > 0) {
-    logActivity(req.user.id, 'import_datagouv_bulk', `${imported} importes, ${enriched} enrichis`, '', '');
+  if (imported > 0) {
+    logActivity(req.user.id, 'import_datagouv_bulk', `${imported} importes, ${duplicates} doublons a valider`, '', '');
   }
 
-  res.json({ ok: true, imported, enriched, skipped });
+  res.json({ ok: true, imported, duplicates, skipped });
+}));
+
+// ==========================================
+// DUPLICATE QUEUE
+// ==========================================
+
+// GET /api/sirene/duplicates - list pending duplicates
+router.get('/sirene/duplicates', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    'SELECT * FROM sirene_duplicate_queue WHERE status = $1 ORDER BY created_at DESC LIMIT 100',
+    ['pending']
+  );
+  res.json(result.rows);
+}));
+
+// POST /api/sirene/duplicates/:id/merge - merge (enrich existing prospect with SIRENE data)
+router.post('/sirene/duplicates/:id/merge', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const dup = await db.query('SELECT * FROM sirene_duplicate_queue WHERE id = $1', [req.params.id]);
+  if (dup.rows.length === 0) return res.status(404).json({ error: 'Doublon non trouve' });
+  const d = dup.rows[0];
+
+  const etabRes = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [d.sirene_etab_id]);
+  const prospectRes = await db.query('SELECT * FROM prospects WHERE id = $1', [d.existing_prospect_id]);
+  if (etabRes.rows.length === 0 || prospectRes.rows.length === 0) {
+    await db.query("UPDATE sirene_duplicate_queue SET status = 'error', resolved_at = $2 WHERE id = $1", [d.id, new Date().toISOString()]);
+    return res.status(404).json({ error: 'Etablissement ou prospect introuvable' });
+  }
+
+  const etab = etabRes.rows[0];
+  const prospect = prospectRes.rows[0];
+  const now = new Date().toISOString();
+  const updates = [];
+  const params = [];
+  let paramIdx = 1;
+
+  if (!prospect.siret && etab.siret) { params.push(etab.siret); updates.push(`siret = $${paramIdx++}`); }
+  if ((!prospect.adresse || prospect.adresse === '') && etab.adresse_voie) { params.push(etab.adresse_voie); updates.push(`adresse = $${paramIdx++}`); }
+  if ((!prospect.ville || prospect.ville === '') && etab.commune) { params.push(etab.commune); updates.push(`ville = $${paramIdx++}`); }
+  if ((!prospect.code_postal || prospect.code_postal === '') && etab.code_postal) { params.push(etab.code_postal); updates.push(`code_postal = $${paramIdx++}`); }
+  if ((!prospect.departement || prospect.departement === '') && etab.departement) { params.push(etab.departement); updates.push(`departement = $${paramIdx++}`); }
+  if ((!prospect.latitude || prospect.latitude === 0) && etab.latitude) { params.push(etab.latitude); updates.push(`latitude = $${paramIdx++}`); }
+  if ((!prospect.longitude || prospect.longitude === 0) && etab.longitude) { params.push(etab.longitude); updates.push(`longitude = $${paramIdx++}`); }
+  if (prospect.type_etablissement === 'autre' && etab.libelle_naf) { params.push(etab.libelle_naf); updates.push(`secteur = $${paramIdx++}`); }
+
+  if (updates.length > 0) {
+    params.push(now);
+    updates.push(`date_modification = $${paramIdx++}`);
+    params.push(prospect.id);
+    await db.query(`UPDATE prospects SET ${updates.join(', ')} WHERE id = $${paramIdx}`, params);
+  }
+
+  await db.query("UPDATE sirene_duplicate_queue SET status = 'merged', resolved_by = $2, resolved_at = $3 WHERE id = $1", [d.id, req.user.id, now]);
+  logActivity(req.user.id, 'merge_doublon', `Fusion ${d.sirene_nom} → ${prospect.nom_etablissement}`, 'prospect', prospect.id);
+  res.json({ ok: true, action: 'merged' });
+}));
+
+// POST /api/sirene/duplicates/:id/skip - skip (ignore this duplicate, don't import)
+router.post('/sirene/duplicates/:id/skip', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const now = new Date().toISOString();
+  await db.query("UPDATE sirene_duplicate_queue SET status = 'skipped', resolved_by = $2, resolved_at = $3 WHERE id = $1", [req.params.id, req.user.id, now]);
+  res.json({ ok: true, action: 'skipped' });
+}));
+
+// POST /api/sirene/duplicates/:id/import - force import as new entry (not a duplicate)
+router.post('/sirene/duplicates/:id/import', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const dup = await db.query('SELECT * FROM sirene_duplicate_queue WHERE id = $1', [req.params.id]);
+  if (dup.rows.length === 0) return res.status(404).json({ error: 'Doublon non trouve' });
+  const d = dup.rows[0];
+
+  const etabRes = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [d.sirene_etab_id]);
+  if (etabRes.rows.length === 0) return res.status(404).json({ error: 'Etablissement introuvable' });
+
+  // Unlink from existing prospect so importEtabAsProspect creates a new entry
+  await db.query('UPDATE sirene_etablissements SET imported_as_prospect = NULL WHERE id = $1', [d.sirene_etab_id]);
+
+  // Force create new prospect by giving a unique ID
+  const etab = etabRes.rows[0];
+  const now = new Date().toISOString();
+  const ruleRes = await db.query('SELECT * FROM sirene_import_rules WHERE naf_code = $1 LIMIT 1', [etab.code_naf]);
+  const rule = ruleRes.rows[0] || null;
+  const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf);
+  const typeEtab = rule?.entity_type === 'distributeur' ? 'distributeur' : (nafInfo?.type || 'autre');
+  const entityType = rule?.entity_type || 'prospect';
+  const pipelineStage = rule?.pipeline_stage || 'nouveau_datagouv';
+  const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
+  const prospectId = `sirene_${etab.siret}_${Date.now()}`;
+
+  await db.query(
+    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
+      adresse, ville, code_postal, departement, secteur, latitude, longitude,
+      etape_pipeline, tags, commercial_id, siret, entity_type, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+    [
+      prospectId, nomEtab, typeEtab, '', '', '',
+      etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
+      etab.libelle_naf || '', etab.latitude || 0, etab.longitude || 0,
+      pipelineStage, '[]', '', etab.siret, entityType,
+      `Import force (doublon ignore)\nSIRET: ${etab.siret}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}`,
+      now, now, 30,
+    ]
+  );
+  await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etab.id]);
+  await db.query("UPDATE sirene_duplicate_queue SET status = 'force_imported', resolved_by = $2, resolved_at = $3 WHERE id = $1", [d.id, req.user.id, now]);
+  logActivity(req.user.id, 'force_import_doublon', `Import force: ${nomEtab} (SIRET: ${etab.siret})`, 'prospect', prospectId);
+  res.json({ ok: true, action: 'force_imported' });
 }));
 
 // GET /api/sirene/stats
@@ -4204,23 +4321,23 @@ router.get('/sirene/stats', authMiddleware, adminOnly, asyncHandler(async (req, 
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
 router.use(hubBridgeRouter);
 
-// Exported function for CRON scheduler
+// Exported function for CRON scheduler - iterates all active configs
 export async function runZoneSync() {
-  const configRes = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
-  if (configRes.rows.length === 0) {
-    console.log('[CRON] Zone non configuree, sync ignoree');
+  const allConfigs = await db.query('SELECT * FROM sirene_zone_config WHERE cron_enabled = TRUE ORDER BY id');
+  if (allConfigs.rows.length === 0) {
+    console.log('[CRON] Aucune config active, sync ignoree');
     return;
   }
 
-  const config = configRes.rows[0];
-  if (!config.cron_enabled) {
-    console.log('[CRON] Sync automatique desactivee');
-    return;
+  for (const config of allConfigs.rows) {
+    await runSyncForConfig(config, true);
   }
+}
 
+async function runSyncForConfig(config, isCron = false) {
   const apiKey = config.insee_api_key || process.env.SIRENE_API_KEY || '';
   if (!apiKey) {
-    console.log('[CRON] Pas de cle API INSEE configuree, sync ignoree');
+    console.log(`[SYNC] Config "${config.name}" (id=${config.id}): Pas de cle API INSEE, sync ignoree`);
     return;
   }
 
@@ -4229,21 +4346,21 @@ export async function runZoneSync() {
   const lookbackDays = config.lookback_days || 7;
   const dateFrom = new Date(Date.now() - lookbackDays * 86400000).toISOString().split('T')[0];
 
-  console.log(`[CRON] Lancement sync zone: ${nafCodes.length} NAF x ${departements.length} depts, depuis ${dateFrom}`);
+  console.log(`[SYNC] Config "${config.name}" (${config.entity_type}): ${nafCodes.length} NAF x ${departements.length} depts, depuis ${dateFrom}`);
 
   const logRes = await db.query(
     `INSERT INTO sirene_sync_logs (started_at, naf_codes, departements, source, is_cron)
-     VALUES ($1, $2, $3, 'insee', TRUE) RETURNING id`,
-    [new Date().toISOString(), nafCodes.join(','), departements.join(',')]
+     VALUES ($1, $2, $3, 'insee', $4) RETURNING id`,
+    [new Date().toISOString(), nafCodes.join(','), departements.join(','), isCron]
   );
   const syncLogId = logRes.rows[0].id;
 
   let totalFetched = 0, totalInserted = 0, totalUpdated = 0, totalAutoImported = 0;
   try {
     for (const nafCode of nafCodes) {
-      console.log(`[CRON] NAF ${nafCode} depuis ${dateFrom}...`);
+      console.log(`[SYNC]   NAF ${nafCode} depuis ${dateFrom}...`);
       const rawEtabs = await fetchAllInsee(nafCode, dateFrom, apiKey);
-      console.log(`[CRON]   -> ${rawEtabs.length} etablissements (avant filtre dept)`);
+      console.log(`[SYNC]   -> ${rawEtabs.length} etablissements (avant filtre dept)`);
 
       for (const rawEtab of rawEtabs) {
         const etab = parseInseeResult(rawEtab);
@@ -4295,7 +4412,7 @@ export async function runZoneSync() {
         if (isNew && config.auto_import) {
           const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
           if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
-            const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null);
+            const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id || '', new Date().toISOString(), null);
             if (result === 'imported') totalAutoImported++;
           }
         }
@@ -4308,9 +4425,9 @@ export async function runZoneSync() {
        WHERE id = $1`,
       [syncLogId, new Date().toISOString(), totalFetched, totalInserted, totalUpdated, totalAutoImported]
     );
-    console.log(`[CRON] Sync terminee: ${totalFetched} recup, ${totalInserted} nouveaux, ${totalAutoImported} auto-importes`);
+    console.log(`[SYNC] Config "${config.name}" terminee: ${totalFetched} recup, ${totalInserted} nouveaux, ${totalAutoImported} auto-importes`);
   } catch (error) {
-    console.error('[CRON] Sync error:', error.message);
+    console.error(`[SYNC] Config "${config.name}" error:`, error.message);
     await db.query(
       `UPDATE sirene_sync_logs SET finished_at = $2, status = 'error', error_message = $3 WHERE id = $1`,
       [syncLogId, new Date().toISOString(), error.message]
