@@ -314,6 +314,7 @@ export interface Prospect {
   tags: string[];
   commercial_id: string;
   siret?: string;
+  entity_type?: string;
   notes: string;
   date_creation: string;
   date_modification: string;

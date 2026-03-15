@@ -331,8 +331,14 @@ export default function ProspectsPage() {
     return ids;
   }, [filterCommercial, state.calls, state.appointments]);
 
+  // Entity types visible in pipeline/prospection (hide competitors, distributors, etc.)
+  const PROSPECTION_ENTITY_TYPES = new Set(['prospect', '', undefined, null]);
+
   const filteredProspects = useMemo(() => {
     const list = state.prospects.filter(p => {
+      // Hide non-prospection entity types (concurrent, distributeur, partenaire, fournisseur)
+      const eType = p.entity_type || 'prospect';
+      if (!PROSPECTION_ENTITY_TYPES.has(eType)) return false;
       // By default, hide prospects that became clients (client_gagne)
       if (filterStages.size === 0 && p.etape_pipeline === 'client_gagne') return false;
       if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;

@@ -522,13 +522,14 @@ export default function SirenePage() {
                     </div>
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
-                      <input type="text" list="config-entity-types" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value.toLowerCase().trim() }))} />
-                      <datalist id="config-entity-types">
+                      <select className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
                         <option value="prospect">Prospect</option>
+                        <option value="client">Client</option>
                         <option value="concurrent">Concurrent</option>
                         <option value="distributeur">Distributeur</option>
                         <option value="partenaire">Partenaire</option>
-                      </datalist>
+                        <option value="fournisseur">Fournisseur</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
@@ -691,13 +692,14 @@ export default function SirenePage() {
               </div>
               <div>
                 <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
-                <input type="text" list="new-config-entity-types" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="prospect, concurrent..." value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value.toLowerCase().trim() }))} />
-                <datalist id="new-config-entity-types">
+                <select className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
                   <option value="prospect">Prospect</option>
+                  <option value="client">Client</option>
                   <option value="concurrent">Concurrent</option>
                   <option value="distributeur">Distributeur</option>
                   <option value="partenaire">Partenaire</option>
-                </datalist>
+                  <option value="fournisseur">Fournisseur</option>
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>

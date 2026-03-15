@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Search, RefreshCw, MapPin, Building2, Users, Shield, Truck,
-  Handshake, ChevronDown, ChevronRight, Plus, Trash2, Save, Settings, X, Tag,
+  Handshake, ChevronDown, ChevronRight, Plus, Trash2, Save, Settings, X, Tag, Package,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -45,6 +45,7 @@ const DEFAULT_ENTITY_TYPES = [
   { value: 'concurrent', label: 'Concurrent', icon: Shield, color: 'text-red-600 bg-red-50 border-red-200' },
   { value: 'distributeur', label: 'Distributeur', icon: Truck, color: 'text-amber-600 bg-amber-50 border-amber-200' },
   { value: 'partenaire', label: 'Partenaire', icon: Handshake, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+  { value: 'fournisseur', label: 'Fournisseur', icon: Package, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
 ];
 
 const CUSTOM_TYPE_COLORS = [

@@ -3807,7 +3807,7 @@ router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (
           if (isNew && config.auto_import) {
             const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
             if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
-              const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null);
+              const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null, config.entity_type);
               if (result === 'imported') totalAutoImported++;
             }
           }
@@ -4050,14 +4050,15 @@ router.post('/sirene/sync-near', authMiddleware, adminOnly, asyncHandler(async (
 // - Detects duplicates by: SIRET column, SIRET in notes, ID sirene_xxx, nom+ville
 // - If duplicate found: enriches existing prospect with missing data
 // - If no duplicate: creates new prospect in nouveau_datagouv pipeline
-async function importEtabAsProspect(etab, commercialId, now, userId) {
+async function importEtabAsProspect(etab, commercialId, now, userId, configEntityType = null) {
   // Look up import rule for this NAF code
   const ruleRes = await db.query('SELECT * FROM sirene_import_rules WHERE naf_code = $1 LIMIT 1', [etab.code_naf]);
   const rule = ruleRes.rows[0] || null;
 
   const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf);
   const typeEtab = rule?.entity_type === 'distributeur' ? 'distributeur' : (nafInfo?.type || 'autre');
-  const entityType = rule?.entity_type || 'prospect';
+  // Zone config entity_type takes priority over import rule
+  const entityType = configEntityType || rule?.entity_type || 'prospect';
   const pipelineStage = rule?.pipeline_stage || 'nouveau_datagouv';
   const ruleCommercial = rule?.commercial_id || commercialId || null;
   const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
@@ -4420,7 +4421,7 @@ async function runSyncForConfig(config, isCron = false) {
         if (isNew && config.auto_import) {
           const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
           if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
-            const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id || '', new Date().toISOString(), null);
+            const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id || '', new Date().toISOString(), null, config.entity_type);
             if (result === 'imported') totalAutoImported++;
           }
         }
