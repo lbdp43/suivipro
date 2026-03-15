@@ -5,11 +5,26 @@ import {
   ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, Eye,
 } from 'lucide-react';
 
+interface AppointmentInfo {
+  id: string;
+  titre: string;
+  heure_debut: string;
+  heure_fin: string;
+  lieu: string;
+  event_type: string;
+  prospect_id: string;
+  client_id: string;
+  prospect_nom: string;
+  client_nom: string;
+  statut: string;
+}
+
 interface WeekDay {
   date: string;
   day_name: string;
   tournees: string[];
   clients: ClientInfo[];
+  appointments?: AppointmentInfo[];
   count: number;
 }
 
@@ -299,14 +314,55 @@ export default function CommercialClientsDashboard() {
                       </div>
                     )}
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    day.count === 0 ? 'bg-gray-100 text-gray-500' :
-                    'bg-green-100 text-green-700'
-                  }`}>
-                    {day.count} client{day.count !== 1 ? 's' : ''}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {(day.appointments?.length || 0) > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
+                        {day.appointments!.length} RDV
+                      </span>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      day.count === 0 ? 'bg-gray-100 text-gray-500' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      {day.count} client{day.count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
                 </button>
 
+                {expandedDays.has(dayKey) && (day.appointments?.length || 0) > 0 && (
+                  <div className="px-3 pb-1 space-y-1">
+                    {day.appointments!.map(apt => (
+                      <Link
+                        key={apt.id}
+                        to={apt.prospect_id ? `/prospects?id=${apt.prospect_id}` : `/rdv`}
+                        className="flex items-center justify-between text-xs py-1.5 px-2 bg-purple-50 rounded hover:bg-purple-100 border border-purple-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                          <span className="font-medium text-purple-800">{apt.titre}</span>
+                          {apt.lieu && <span className="text-purple-500 text-[10px]">- {apt.lieu}</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {apt.heure_debut && (
+                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-medium">
+                              {apt.heure_debut}{apt.heure_fin ? ` - ${apt.heure_fin}` : ''}
+                            </span>
+                          )}
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            apt.event_type === 'rdv' ? 'bg-blue-100 text-blue-600' :
+                            apt.event_type === 'reunion' ? 'bg-amber-100 text-amber-600' :
+                            apt.event_type === 'marche' ? 'bg-green-100 text-green-600' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {apt.event_type === 'rdv' ? 'RDV' : apt.event_type === 'reunion' ? 'Reunion' :
+                             apt.event_type === 'boutique' ? 'Boutique' : apt.event_type === 'depot' ? 'Depot' :
+                             apt.event_type === 'marche' ? 'Marche' : apt.event_type}
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
                 {expandedDays.has(dayKey) && day.clients.length > 0 && (
                   <div className="px-3 pb-2 space-y-1">
                     {day.clients.map(c => (
@@ -333,8 +389,8 @@ export default function CommercialClientsDashboard() {
                     ))}
                   </div>
                 )}
-                {expandedDays.has(dayKey) && day.clients.length === 0 && (
-                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucun client prevu</p>
+                {expandedDays.has(dayKey) && day.clients.length === 0 && (day.appointments?.length || 0) === 0 && (
+                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucun client ou RDV prevu</p>
                 )}
               </div>
             );

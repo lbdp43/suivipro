@@ -3112,6 +3112,46 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
   const monthByType = {};
   interactionsMonthByType.rows.forEach(r => { monthByType[r.type] = parseInt(r.count); });
 
+  // Appointments/RDV for the week (prospection + client)
+  const weekEndStr = new Date(monday.getTime() + 6 * 86400000).toISOString().split('T')[0];
+  const weekAppointments = await db.query(
+    `SELECT a.*, p.nom_etablissement as prospect_nom, c.nom as client_nom
+     FROM appointments a
+     LEFT JOIN prospects p ON a.prospect_id = p.id
+     LEFT JOIN clients c ON a.client_id = c.id
+     WHERE a.commercial_id = $1 AND a.date >= $2 AND a.date <= $3
+     AND a.statut != 'annule'
+     ORDER BY a.date ASC, a.heure_debut ASC`,
+    [userId, weekStart, weekEndStr]
+  );
+
+  // Group appointments by day key
+  const appointmentsByDay = {};
+  weekAppointments.rows.forEach(apt => {
+    const aptDate = new Date(apt.date);
+    const dayNum = aptDate.getDay(); // 0=Sunday
+    const dayKey = String(dayNum);
+    if (!appointmentsByDay[dayKey]) appointmentsByDay[dayKey] = [];
+    appointmentsByDay[dayKey].push({
+      id: apt.id,
+      titre: apt.titre || (apt.prospect_nom ? `RDV ${apt.prospect_nom}` : apt.client_nom ? `RDV ${apt.client_nom}` : 'RDV'),
+      heure_debut: apt.heure_debut || '',
+      heure_fin: apt.heure_fin || '',
+      lieu: apt.lieu || '',
+      event_type: apt.event_type || 'rdv',
+      prospect_id: apt.prospect_id || '',
+      client_id: apt.client_id || '',
+      prospect_nom: apt.prospect_nom || '',
+      client_nom: apt.client_nom || '',
+      statut: apt.statut || '',
+    });
+  });
+
+  // Inject appointments into weekDays
+  for (const dayKey of Object.keys(weekDays)) {
+    weekDays[dayKey].appointments = appointmentsByDay[dayKey] || [];
+  }
+
   // Pending tasks
   const tasks = await db.query(
     "SELECT t.*, c.nom as client_nom FROM tasks_client t LEFT JOIN clients c ON t.client_id = c.id WHERE t.commercial_id = $1 AND t.statut != 'TERMINEE' ORDER BY t.date_echeance ASC NULLS LAST LIMIT 10",

@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Prospect, Call, Appointment, EmailTemplate, Client } from '../types';
 
@@ -53,6 +53,16 @@ export function isThisMonth(dateStr: string): boolean {
     const date = parseISO(dateStr);
     const now = new Date();
     return isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
+  } catch {
+    return false;
+  }
+}
+
+export function isLastMonth(dateStr: string): boolean {
+  try {
+    const date = parseISO(dateStr);
+    const lastMonth = subMonths(new Date(), 1);
+    return isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
   } catch {
     return false;
   }

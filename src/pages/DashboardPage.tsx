@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Users, Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
-  UserCheck, Star, Briefcase, Target, Building2, MapPin, ArrowRightLeft,
+  UserCheck, Star, ClipboardCheck, Briefcase, Target, Building2, MapPin, ArrowRightLeft,
+  AlertTriangle, ShoppingCart, TrendingUp, Euro,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { APPOINTMENT_RESULT_LABELS, CLIENT_TYPE_LABELS, CLIENT_VISIT_FREQUENCIES, ClientType } from '../types';
 import {
   getCallsToday, getCallsThisWeek, getCallsThisMonth,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
   getResponseRate, getAverageCallDuration,
-  formatDuration,
+  formatDuration, formatDate, isLastMonth,
 } from '../utils/helpers';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
@@ -111,6 +114,8 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
 export default function DashboardPage() {
   const { state } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
+  const [crFilterResult, setCrFilterResult] = useState<string>('');
+  const [crFilterUser, setCrFilterUser] = useState<string>('');
   const [rankingPeriod, setRankingPeriod] = useState<TimePeriod>('week');
   const [perfPeriod, setPerfPeriod] = useState<TimePeriod>('week');
   const [comparePeriod, setComparePeriod] = useState<TimePeriod | ''>('');
@@ -371,6 +376,147 @@ export default function DashboardPage() {
     });
   }, [allUsers, state.calls, state.appointments, state.prospects, comparePeriod]);
 
+  // Recent RDV compte-rendus (with filters)
+  const recentCompteRendus = useMemo(() => {
+    let list = state.appointments.filter(a => a.compte_rendu && a.statut === 'termine');
+    if (crFilterResult) list = list.filter(a => a.compte_rendu === crFilterResult);
+    if (crFilterUser) list = list.filter(a => a.commercial_id === crFilterUser);
+    return list
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 50)
+      .map(apt => {
+        const prospect = state.prospects.find(p => p.id === apt.prospect_id);
+        const commercial = allUsers.find(u => u.id === apt.commercial_id);
+        return { ...apt, prospectName: prospect?.nom_etablissement || 'Inconnu', contactName: prospect?.nom_contact || '', commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu' };
+      });
+  }, [state.appointments, state.prospects, allUsers, crFilterResult, crFilterUser]);
+
+  const compteRenduStats = useMemo(() => {
+    let rdvsWithCR = state.appointments.filter(a => a.compte_rendu);
+    if (crFilterUser) rdvsWithCR = rdvsWithCR.filter(a => a.commercial_id === crFilterUser);
+    const total = rdvsWithCR.length;
+    const byResult: Record<string, number> = {};
+    rdvsWithCR.forEach(a => { byResult[a.compte_rendu || ''] = (byResult[a.compte_rendu || ''] || 0) + 1; });
+    return { total, byResult };
+  }, [state.appointments, crFilterUser]);
+
+  // === CA (Chiffre d'affaires) ===
+  const caStats = useMemo(() => {
+    const now = new Date();
+    const monthCommandes = state.commandes.filter(c => {
+      try { return isWithinInterval(parseISO(c.date_commande), { start: startOfMonth(now), end: endOfMonth(now) }); } catch { return false; }
+    });
+    const lastMonthCommandes = state.commandes.filter(c => isLastMonth(c.date_commande));
+    const caMonth = monthCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+    const caLastMonth = lastMonthCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+    const nbCommandesMonth = monthCommandes.length;
+    return { caMonth, caLastMonth, nbCommandesMonth };
+  }, [state.commandes]);
+
+  // === Sante des visites ===
+  const visitHealth = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const activeClients = state.clients.filter(c => c.statut === 'ACTIF');
+    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).toISOString().split('T')[0];
+
+    const lateClients = activeClients.filter(c => c.next_visit && c.next_visit < today);
+    const todayClients = activeClients.filter(c => c.next_visit && c.next_visit === today);
+    const weekClients = activeClients.filter(c => c.next_visit && c.next_visit >= today && c.next_visit <= weekEnd);
+    const withRecurrence = activeClients.filter(c => c.next_visit);
+    const onTime = withRecurrence.filter(c => c.next_visit! >= today);
+    const coverageRate = withRecurrence.length > 0 ? Math.round((onTime.length / withRecurrence.length) * 100) : 100;
+
+    const avgDelay = lateClients.length > 0
+      ? Math.round(lateClients.reduce((sum, c) => {
+          const diff = Math.floor((new Date(today).getTime() - new Date(c.next_visit!).getTime()) / 86400000);
+          return sum + diff;
+        }, 0) / lateClients.length)
+      : 0;
+
+    return { lateCount: lateClients.length, todayCount: todayClients.length, weekCount: weekClients.length, coverageRate, avgDelay, totalActive: activeClients.length };
+  }, [state.clients]);
+
+  // === Entonnoir de conversion ===
+  const funnelData = useMemo(() => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const lastMonthStart = startOfMonth(subMonths(now, 1));
+    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+
+    const convertedThisMonth = state.prospects.filter(p => {
+      if (p.etape_pipeline !== 'client_gagne') return false;
+      try { return isWithinInterval(parseISO(p.date_modification), { start: monthStart, end: monthEnd }); } catch { return false; }
+    }).length;
+    const convertedLastMonth = state.prospects.filter(p => {
+      if (p.etape_pipeline !== 'client_gagne') return false;
+      try { return isWithinInterval(parseISO(p.date_modification), { start: lastMonthStart, end: lastMonthEnd }); } catch { return false; }
+    }).length;
+
+    // Stagnant prospects: active prospects with no call or RDV in the last 14 days
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
+    const activeProspects = state.prospects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline));
+    const stagnant = activeProspects.filter(p => {
+      const lastCall = state.calls.filter(c => c.prospect_id === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+      const lastRdv = state.appointments.filter(a => a.prospect_id === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+      const lastActivity = [lastCall?.date, lastRdv?.date].filter(Boolean).sort().pop();
+      if (!lastActivity) return true;
+      try { return parseISO(lastActivity) < twoWeeksAgo; } catch { return true; }
+    });
+
+    return { convertedThisMonth, convertedLastMonth, stagnantCount: stagnant.length, totalActive: activeProspects.length };
+  }, [state.prospects, state.calls, state.appointments]);
+
+  // === Top clients par CA ===
+  const topClientsData = useMemo(() => {
+    const clientCA = state.clients.map(c => {
+      const commandes = state.commandes.filter(cmd => cmd.client_id === c.id);
+      const totalCA = commandes.reduce((sum, cmd) => sum + (cmd.montant_ttc || 0), 0);
+      const lastOrder = commandes.sort((a, b) => b.date_commande.localeCompare(a.date_commande))[0];
+      return { client: c, totalCA, orderCount: commandes.length, lastOrderDate: lastOrder?.date_commande || '' };
+    });
+
+    const top10 = clientCA.filter(c => c.totalCA > 0).sort((a, b) => b.totalCA - a.totalCA).slice(0, 10);
+
+    // CA par type de client
+    const caByType: Record<string, number> = {};
+    clientCA.forEach(c => {
+      const type = c.client.type_client || 'AUTRE';
+      caByType[type] = (caByType[type] || 0) + c.totalCA;
+    });
+
+    // Clients actifs sans commande depuis 60 jours
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
+    const inactiveOrdering = clientCA.filter(c =>
+      c.client.statut === 'ACTIF' && c.orderCount > 0 && c.lastOrderDate < sixtyDaysAgo
+    );
+
+    // CA par commercial
+    const caByCommercial: Record<string, number> = {};
+    clientCA.forEach(c => {
+      if (c.client.commercial_id) {
+        caByCommercial[c.client.commercial_id] = (caByCommercial[c.client.commercial_id] || 0) + c.totalCA;
+      }
+    });
+
+    // 5 dernieres commandes
+    const recentOrders = [...state.commandes]
+      .sort((a, b) => b.date_commande.localeCompare(a.date_commande))
+      .slice(0, 5)
+      .map(cmd => {
+        const client = state.clients.find(c => c.id === cmd.client_id);
+        return { ...cmd, clientName: client?.nom || (cmd as any).client_name || 'Inconnu' };
+      });
+
+    return { top10, caByType, inactiveOrdering, caByCommercial, recentOrders };
+  }, [state.clients, state.commandes]);
+
+  // === Alertes ===
+  const alerts = useMemo(() => {
+    const orphanCommandes = state.commandes.filter(c => !c.client_id).length;
+    const overdueTasks = (state as any).tasksClient?.filter((t: any) => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < new Date().toISOString().split('T')[0]).length || 0;
+    return { lateVisits: visitHealth.lateCount, stagnantProspects: funnelData.stagnantCount, orphanCommandes, overdueTasks };
+  }, [visitHealth, funnelData, state]);
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {
@@ -438,13 +584,71 @@ export default function DashboardPage() {
     }],
   };
 
+  // CA par type de client (donut)
+  const caByTypeEntries = Object.entries(topClientsData.caByType).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const caByTypeChartData = {
+    labels: caByTypeEntries.map(([k]) => CLIENT_TYPE_LABELS[k as ClientType] || k),
+    datasets: [{
+      data: caByTypeEntries.map(([, v]) => Math.round(v * 100) / 100),
+      backgroundColor: ['#6366f1', '#22c55e', '#f59e0b', '#3b82f6', '#a855f7', '#ef4444', '#14b8a6', '#f97316', '#ec4899', '#64748b'],
+      borderWidth: 0,
+    }],
+  };
+
+  // CA par commercial (bar)
+  const caByCommChartData = {
+    labels: allUsers.map(u => u.prenom),
+    datasets: [{
+      label: 'CA total (TTC)',
+      data: allUsers.map(u => Math.round((topClientsData.caByCommercial[u.id] || 0) * 100) / 100),
+      backgroundColor: '#6366f1',
+      borderRadius: 6,
+    }],
+  };
+
+  const totalAlerts = alerts.lateVisits + alerts.stagnantProspects + alerts.orphanCommandes + alerts.overdueTasks;
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       {/* Page header */}
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
 
+      {/* Bandeau alertes */}
+      {totalAlerts > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {alerts.lateVisits > 0 && (
+            <Link to="/visites" className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 hover:bg-red-100 transition-colors">
+              <AlertTriangle className="w-3.5 h-3.5" /> {alerts.lateVisits} clients en retard de visite
+            </Link>
+          )}
+          {alerts.stagnantProspects > 0 && (
+            <Link to="/prospects" className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors">
+              <AlertTriangle className="w-3.5 h-3.5" /> {alerts.stagnantProspects} prospects stagnants (+14j)
+            </Link>
+          )}
+          {alerts.orphanCommandes > 0 && (
+            <Link to="/admin" className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-lg text-xs font-medium text-orange-700 hover:bg-orange-100 transition-colors">
+              <ShoppingCart className="w-3.5 h-3.5" /> {alerts.orphanCommandes} commandes a assigner
+            </Link>
+          )}
+          {alerts.overdueTasks > 0 && (
+            <Link to="/taches" className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors">
+              <AlertTriangle className="w-3.5 h-3.5" /> {alerts.overdueTasks} taches en retard
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* KPI ROW */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="bg-white rounded-xl border border-emerald-200 p-3 sm:p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="bg-emerald-100 p-1.5 rounded-lg"><Euro className="w-3.5 h-3.5 text-emerald-600" /></div>
+            <p className="text-[10px] text-gray-500">CA ce mois</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{caStats.caMonth.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
+          <p className="text-[10px] text-gray-400">{caStats.nbCommandesMonth} cmd / Mois prec. {caStats.caLastMonth.toFixed(0)} EUR</p>
+        </div>
         <div className="bg-white rounded-xl border border-indigo-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-indigo-100 p-1.5 rounded-lg"><Building2 className="w-3.5 h-3.5 text-indigo-600" /></div>
@@ -496,6 +700,181 @@ export default function DashboardPage() {
           Gestion Clients
         </h2>
         {isAdmin ? <AdminClientsDashboard /> : <CommercialClientsDashboard />}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* SANTE DES VISITES                                         */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+          <MapPin className="w-4 h-4 text-indigo-500" />
+          Sante des visites
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className={`rounded-lg p-3 text-center ${visitHealth.lateCount > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+            <p className={`text-2xl font-bold ${visitHealth.lateCount > 0 ? 'text-red-700' : 'text-green-700'}`}>{visitHealth.lateCount}</p>
+            <p className={`text-[10px] mt-0.5 ${visitHealth.lateCount > 0 ? 'text-red-600' : 'text-green-600'}`}>En retard</p>
+          </div>
+          <div className="bg-orange-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-orange-700">{visitHealth.todayCount}</p>
+            <p className="text-[10px] text-orange-600 mt-0.5">Aujourd'hui</p>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-blue-700">{visitHealth.weekCount}</p>
+            <p className="text-[10px] text-blue-600 mt-0.5">Cette semaine</p>
+          </div>
+          <div className={`rounded-lg p-3 text-center ${visitHealth.coverageRate >= 80 ? 'bg-green-50' : visitHealth.coverageRate >= 50 ? 'bg-amber-50' : 'bg-red-50'}`}>
+            <p className={`text-2xl font-bold ${visitHealth.coverageRate >= 80 ? 'text-green-700' : visitHealth.coverageRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>{visitHealth.coverageRate}%</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">Couverture</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-gray-700">{visitHealth.avgDelay > 0 ? `${visitHealth.avgDelay}j` : '0j'}</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">Retard moyen</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* ENTONNOIR DE CONVERSION + CA                              */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Pipeline velocity */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-purple-500" />
+            Pipeline & Conversion
+          </h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-green-50 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-green-700">{funnelData.convertedThisMonth}</p>
+              <p className="text-[10px] text-green-600 mt-0.5">Convertis ce mois</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-gray-700">{funnelData.convertedLastMonth}</p>
+              <p className="text-[10px] text-gray-600 mt-0.5">Convertis mois prec.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">{funnelData.stagnantCount} prospects stagnants</p>
+              <p className="text-[10px] text-amber-600">Sans activite depuis plus de 14 jours sur {funnelData.totalActive} actifs</p>
+            </div>
+          </div>
+        </div>
+
+        {/* CA par type */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <Euro className="w-4 h-4 text-emerald-500" />
+            CA par type de client
+          </h3>
+          <div className="h-52 sm:h-64 flex items-center justify-center">
+            {caByTypeEntries.length > 0 ? (
+              <Doughnut data={caByTypeChartData} options={{
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 10 } } } },
+              }} />
+            ) : (
+              <p className="text-sm text-gray-400">Aucune commande</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* TOP CLIENTS & CA PAR COMMERCIAL                           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top 10 clients */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <Star className="w-4 h-4 text-amber-400" />
+            Top 10 clients par CA
+          </h3>
+          {topClientsData.top10.length > 0 ? (
+            <div className="space-y-2">
+              {topClientsData.top10.map((item, i) => (
+                <div key={item.client.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'}`}>{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{item.client.nom}</p>
+                    <p className="text-[10px] text-gray-500">{item.client.ville} - {item.orderCount} commandes</p>
+                  </div>
+                  <p className="text-sm font-bold text-emerald-700">{item.totalCA.toFixed(0)} EUR</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-6">Aucune commande</p>
+          )}
+        </div>
+
+        {/* CA par commercial */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-indigo-500" />
+            CA par commercial
+          </h3>
+          <div className="h-52 sm:h-64">
+            {allUsers.length > 0 ? (
+              <Bar data={caByCommChartData} options={{
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { display: false } },
+              }} />
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-6">Aucun membre</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Commandes recentes + Clients inactifs */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 5 dernieres commandes */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <ShoppingCart className="w-4 h-4 text-emerald-500" />
+            Dernieres commandes
+          </h3>
+          {topClientsData.recentOrders.length > 0 ? (
+            <div className="space-y-2">
+              {topClientsData.recentOrders.map(cmd => (
+                <div key={cmd.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900">#{cmd.numero || '—'} - {cmd.clientName}</p>
+                    <p className="text-[10px] text-gray-500">{cmd.date_commande ? formatDate(cmd.date_commande) : '—'}</p>
+                  </div>
+                  <p className="text-sm font-bold text-emerald-700 ml-3">{(cmd.montant_ttc || 0).toFixed(0)} EUR</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-6">Aucune commande</p>
+          )}
+        </div>
+
+        {/* Clients sans commande depuis 60j */}
+        {topClientsData.inactiveOrdering.length > 0 && (
+          <div className="bg-white rounded-xl border border-orange-200 p-4 sm:p-5">
+            <h3 className="font-semibold text-orange-800 text-sm sm:text-base flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-4 h-4" />
+              Clients sans commande depuis 60j ({topClientsData.inactiveOrdering.length})
+            </h3>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {topClientsData.inactiveOrdering.slice(0, 15).map(item => (
+                <div key={item.client.id} className="flex items-center justify-between p-2 bg-orange-50 rounded-lg">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{item.client.nom}</p>
+                    <p className="text-[10px] text-gray-500">{item.client.ville} - Derniere cmd: {item.lastOrderDate ? formatDate(item.lastOrderDate) : '—'}</p>
+                  </div>
+                  <p className="text-xs text-orange-600 font-medium ml-2">{item.totalCA.toFixed(0)} EUR total</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
@@ -562,6 +941,72 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Compte-rendu RDV + Classement side by side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Compte-rendu RDV */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                  <ClipboardCheck className="w-4 h-4 text-indigo-500" />
+                  Comptes-rendus RDV
+                </h3>
+                <select
+                  className="rounded-lg border border-gray-200 text-xs px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
+                  value={crFilterUser}
+                  onChange={e => setCrFilterUser(e.target.value)}
+                >
+                  <option value="">Tout le monde</option>
+                  {allUsers.map(u => (
+                    <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+                <button onClick={() => setCrFilterResult('')}
+                  className={`rounded-lg p-2 text-center transition-all cursor-pointer ${crFilterResult === '' ? 'bg-indigo-50 text-indigo-700 ring-2 ring-indigo-400' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                  <p className="text-lg font-bold">{compteRenduStats.total}</p>
+                  <p className="text-[9px] leading-tight">Tous</p>
+                </button>
+                {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+                  const count = compteRenduStats.byResult[key] || 0;
+                  const colorMap: Record<string, string> = { client: 'bg-green-50 text-green-700', mail_envoye: 'bg-blue-50 text-blue-700', commande_plus_tard: 'bg-amber-50 text-amber-700', a_relancer: 'bg-purple-50 text-purple-700', pas_interesse: 'bg-red-50 text-red-700' };
+                  const ringMap: Record<string, string> = { client: 'ring-green-400', mail_envoye: 'ring-blue-400', commande_plus_tard: 'ring-amber-400', a_relancer: 'ring-purple-400', pas_interesse: 'ring-red-400' };
+                  const isActive = crFilterResult === key;
+                  return (
+                    <button key={key} onClick={() => setCrFilterResult(isActive ? '' : key)}
+                      className={`${colorMap[key] || 'bg-gray-50 text-gray-700'} rounded-lg p-2 text-center transition-all cursor-pointer hover:opacity-80 ${isActive ? `ring-2 ${ringMap[key] || 'ring-gray-400'}` : ''}`}>
+                      <p className="text-lg font-bold">{count}</p>
+                      <p className="text-[9px] leading-tight">{label}</p>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="space-y-1.5 max-h-[350px] overflow-y-auto">
+                {recentCompteRendus.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-8">Aucun compte-rendu</p>
+                ) : recentCompteRendus.map(cr => {
+                  const colorMap: Record<string, string> = { client: 'text-green-600 bg-green-50', mail_envoye: 'text-blue-600 bg-blue-50', commande_plus_tard: 'text-amber-600 bg-amber-50', a_relancer: 'text-purple-600 bg-purple-50', pas_interesse: 'text-red-600 bg-red-50' };
+                  const crColor = colorMap[cr.compte_rendu || ''] || 'text-gray-600 bg-gray-50';
+                  return (
+                    <div key={cr.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className={`p-1.5 rounded-lg shrink-0 ${crColor}`}><ClipboardCheck className="w-3.5 h-3.5" /></div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Link to={`/prospects?id=${cr.prospect_id}`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline truncate" onClick={e => e.stopPropagation()}>
+                            {cr.prospectName}
+                          </Link>
+                          {cr.contactName && <span className="text-[10px] text-gray-500">({cr.contactName})</span>}
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>{APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
+                        {cr.notes_compte_rendu && <p className="text-[10px] text-gray-400 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
           {/* Classement */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -612,6 +1057,7 @@ export default function DashboardPage() {
               })}
               {rankedActivities.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Aucun membre</p>}
             </div>
+          </div>
           </div>
 
           {/* Performance detaillee */}
