@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   MapPin, Save, Edit2, RefreshCw, ChevronDown, ChevronRight,
   User, Loader2, Info, Calendar, ArrowLeft, ArrowRight, ChevronLeft,
-  X, Plus,
+  X, Plus, AlertTriangle, Users2, CheckSquare, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
+import { Client } from '../types';
 
 interface TourneeConfig {
   commercial_id: string;
@@ -243,7 +244,7 @@ function ProspectionZonePicker({ entries, allZones, onAdd, onRemove, onSlotsChan
 }
 
 export default function TourneesPage() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const toast = useToast();
   const [configs, setConfigs] = useState<TourneeConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -447,6 +448,128 @@ export default function TourneesPage() {
     }
     return stats;
   }, [configs, state.clients, state.interactions, weekDates]);
+
+  // Zones assigned in at least one commercial's config
+  const assignedZones = useMemo(() => {
+    const set = new Set<string>();
+    for (const config of configs) {
+      for (const dayKey of DAY_KEYS) {
+        for (const zone of (config.config[dayKey] || [])) {
+          set.add(zone.toLowerCase());
+        }
+      }
+    }
+    return set;
+  }, [configs]);
+
+  // Zones from clients that aren't in any commercial config
+  const unassignedZones = useMemo(() => {
+    return allZones.filter(z => !assignedZones.has(z.toLowerCase()));
+  }, [allZones, assignedZones]);
+
+  // Count clients per unassigned zone
+  const clientsPerUnassignedZone = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const zone of unassignedZones) {
+      counts[zone] = state.clients.filter(c => c.statut === 'ACTIF' && c.tournee === zone).length;
+    }
+    return counts;
+  }, [unassignedZones, state.clients]);
+
+  // Clients without any tour
+  const clientsWithoutTour = useMemo(() => {
+    return state.clients.filter((c: Client) => c.statut === 'ACTIF' && (!c.tournee || c.tournee.trim() === ''));
+  }, [state.clients]);
+
+  // Inactive tours this week that have clients
+  const inactiveToursWithClients = useMemo(() => {
+    const results: { commercialId: string; commercialName: string; weekPattern: string; zones: string[]; clientCount: number }[] = [];
+    for (const config of configs) {
+      const weekPattern = config.week_pattern || 'every';
+      const isActiveThisWeek = weekPattern === 'every' ||
+        (weekPattern === 'even' && isEvenWeek) ||
+        (weekPattern === 'odd' && !isEvenWeek);
+      if (isActiveThisWeek) continue;
+
+      const zonesSet = new Set<string>();
+      for (const dayKey of DAY_KEYS) {
+        for (const zone of (config.config[dayKey] || [])) {
+          zonesSet.add(zone);
+        }
+      }
+      if (zonesSet.size === 0) continue;
+
+      const zones = Array.from(zonesSet);
+      const zonesLower = zones.map(z => z.toLowerCase());
+      const clientCount = state.clients.filter(
+        (c: Client) => c.statut === 'ACTIF' && c.commercial_id === config.commercial_id &&
+          c.tournee && zonesLower.includes(c.tournee.toLowerCase())
+      ).length;
+
+      if (clientCount === 0) continue;
+
+      const commercial = state.commerciaux.find((c: any) => c.id === config.commercial_id);
+      results.push({
+        commercialId: config.commercial_id,
+        commercialName: commercial ? `${commercial.prenom} ${commercial.nom}` : 'Inconnu',
+        weekPattern,
+        zones,
+        clientCount,
+      });
+    }
+    return results;
+  }, [configs, state.clients, state.commerciaux, isEvenWeek]);
+
+  // Multi-select state for clients without tour
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+  const [assignTournee, setAssignTournee] = useState('');
+  const [assigningSaving, setAssigningSaving] = useState(false);
+  const [showClientsWithoutTour, setShowClientsWithoutTour] = useState(false);
+  const [showUnassignedZones, setShowUnassignedZones] = useState(false);
+
+  const toggleClientSelection = (id: string) => {
+    setSelectedClientIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllClientsWithoutTour = () => {
+    if (selectedClientIds.size === clientsWithoutTour.length) {
+      setSelectedClientIds(new Set());
+    } else {
+      setSelectedClientIds(new Set(clientsWithoutTour.map(c => c.id)));
+    }
+  };
+
+  const assignTourneeToSelected = async () => {
+    if (!assignTournee.trim() || selectedClientIds.size === 0) return;
+    setAssigningSaving(true);
+    try {
+      const now = new Date().toISOString();
+      for (const clientId of selectedClientIds) {
+        const client = state.clients.find((c: Client) => c.id === clientId);
+        if (!client) continue;
+        const updated = { ...client, tournee: assignTournee.trim(), date_modification: now };
+        const res = await fetch(`/api/clients/${clientId}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(updated),
+        });
+        if (res.ok) {
+          dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+        }
+      }
+      toast.success(`${selectedClientIds.size} client(s) affecte(s) a "${assignTournee.trim()}"`);
+      setSelectedClientIds(new Set());
+      setAssignTournee('');
+    } catch {
+      toast.error('Erreur lors de l\'affectation');
+    } finally {
+      setAssigningSaving(false);
+    }
+  };
 
   const formatWeekRange = () => {
     const end = new Date(targetMonday);
@@ -880,6 +1003,169 @@ export default function TourneesPage() {
             Prospection
           </h2>
           {prospecteurs.map(c => renderCommercialCard(c, !isProspection && !isAdmin))}
+        </div>
+      )}
+
+      {/* Inactive tours warning */}
+      {inactiveToursWithClients.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber-500" />
+            Tournees inactives cette semaine
+          </h2>
+          {inactiveToursWithClients.map(item => (
+            <div key={item.commercialId} className="bg-amber-50 rounded-xl border border-amber-200 p-3 sm:p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm text-gray-800">{item.commercialName}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {WEEK_PATTERN_LABELS[item.weekPattern]} — pas active cette semaine
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {item.zones.map(z => (
+                      <span key={z} className="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium">{z}</span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                    <Users2 className="w-3.5 h-3.5" />
+                    {item.clientCount} client{item.clientCount > 1 ? 's' : ''} actif{item.clientCount > 1 ? 's' : ''} sur ces tournees
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Unassigned zones */}
+      {unassignedZones.length > 0 && (
+        <div className="space-y-3">
+          <button
+            onClick={() => setShowUnassignedZones(v => !v)}
+            className="w-full flex items-center gap-2 text-left"
+          >
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showUnassignedZones ? '' : '-rotate-90'}`} />
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              Tournees non affectees
+              <span className="text-xs font-normal normal-case text-red-600 bg-red-100 px-2 py-0.5 rounded-full">{unassignedZones.length}</span>
+            </h2>
+          </button>
+          {showUnassignedZones && (
+            <div className="bg-red-50 rounded-xl border border-red-200 p-3 sm:p-4">
+              <p className="text-xs text-red-700 mb-3">Ces zones existent sur des clients mais ne sont configurees dans aucune tournee de commercial.</p>
+              <div className="flex flex-wrap gap-2">
+                {unassignedZones.map(zone => (
+                  <div key={zone} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg">
+                    <MapPin className="w-3.5 h-3.5 text-red-500" />
+                    <span className="text-sm font-medium text-gray-800">{zone}</span>
+                    <span className="text-xs text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full font-medium">
+                      {clientsPerUnassignedZone[zone] || 0} client{(clientsPerUnassignedZone[zone] || 0) > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Clients without tour */}
+      {clientsWithoutTour.length > 0 && (
+        <div className="space-y-3">
+          <button
+            onClick={() => setShowClientsWithoutTour(v => !v)}
+            className="w-full flex items-center gap-2 text-left"
+          >
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showClientsWithoutTour ? '' : '-rotate-90'}`} />
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-orange-500" />
+              Clients sans tournee
+              <span className="text-xs font-normal normal-case text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">{clientsWithoutTour.length}</span>
+            </h2>
+          </button>
+          {showClientsWithoutTour && (
+            <div className="bg-white rounded-xl border border-orange-200 p-3 sm:p-4 space-y-3">
+              {/* Batch assign bar */}
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-orange-50 rounded-lg border border-orange-100">
+                <button
+                  onClick={selectAllClientsWithoutTour}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    selectedClientIds.size === clientsWithoutTour.length
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  {selectedClientIds.size === clientsWithoutTour.length ? 'Tout deselectionner' : 'Tout selectionner'}
+                </button>
+                {selectedClientIds.size > 0 && (
+                  <>
+                    <span className="text-xs text-gray-500">{selectedClientIds.size} selectionne{selectedClientIds.size > 1 ? 's' : ''}</span>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <select
+                        value={assignTournee}
+                        onChange={e => setAssignTournee(e.target.value)}
+                        className="text-sm border border-gray-300 rounded-lg px-2 py-1.5"
+                      >
+                        <option value="">Choisir une tournee...</option>
+                        {allZones.map(z => (
+                          <option key={z} value={z}>{z}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={assignTournee}
+                        onChange={e => setAssignTournee(e.target.value)}
+                        placeholder="Ou saisir..."
+                        className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 w-32"
+                      />
+                      <button
+                        onClick={assignTourneeToSelected}
+                        disabled={!assignTournee.trim() || assigningSaving}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium hover:bg-brewery-700 disabled:opacity-50 transition-colors"
+                      >
+                        {assigningSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                        Affecter
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Client list */}
+              <div className="space-y-1 max-h-96 overflow-y-auto">
+                {clientsWithoutTour.map(client => {
+                  const isSelected = selectedClientIds.has(client.id);
+                  const commercial = state.commerciaux.find((c: any) => c.id === client.commercial_id);
+                  return (
+                    <button
+                      key={client.id}
+                      onClick={() => toggleClientSelection(client.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                        isSelected ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
+                      }`}>
+                        {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                      </div>
+                      <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{client.nom}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {client.ville || 'Pas de ville'}
+                          {commercial && <span className="ml-2 text-indigo-600">({commercial.prenom})</span>}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
