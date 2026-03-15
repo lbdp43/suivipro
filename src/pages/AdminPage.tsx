@@ -130,6 +130,9 @@ export default function AdminPage() {
   const [ebImportType, setEbImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
   const [ebImportCommercial, setEbImportCommercial] = useState('');
   const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
+  const [orphanCommandes, setOrphanCommandes] = useState<any[]>([]);
+  const [assigningCmd, setAssigningCmd] = useState<string | null>(null);
+  const [assignCmdClientSearch, setAssignCmdClientSearch] = useState('');
 
   // Tournee config state
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }>>({});
@@ -368,11 +371,12 @@ export default function AdminPage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const [configRes, pendingRes, rulesRes, logsRes] = await Promise.all([
+      const [configRes, pendingRes, rulesRes, logsRes, orphanRes] = await Promise.all([
         fetch('/api/easybeer/config', { headers }),
         fetch('/api/easybeer/pending-clients', { headers }),
         fetch('/api/assignment-rules', { headers }),
         fetch('/api/easybeer/webhook-logs', { headers }),
+        fetch('/api/commandes/orphelines', { headers }),
       ]);
       if (configRes.ok) {
         const config = await configRes.json();
@@ -381,6 +385,7 @@ export default function AdminPage() {
       if (pendingRes.ok) setEbPending(await pendingRes.json());
       if (rulesRes.ok) setAssignmentRules(await rulesRes.json());
       if (logsRes.ok) setWebhookLogs(await logsRes.json());
+      if (orphanRes.ok) setOrphanCommandes(await orphanRes.json());
       setEbConfigLoaded(true);
     } catch { /* ignore */ }
   };
@@ -1389,6 +1394,160 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+
+          {/* Commandes orphelines (sans client) */}
+          {orphanCommandes.length > 0 && (
+          <div className="bg-white rounded-xl border border-orange-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-orange-800 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" /> Commandes a assigner ({orphanCommandes.length})
+              </h3>
+              <button
+                className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
+                onClick={loadEasyBeerData}
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Ces commandes ont ete recues par webhook EasyBeer mais n'ont pas pu etre associees automatiquement a un client.</p>
+            <div className="space-y-3">
+              {orphanCommandes.map(cmd => {
+                const lignes = cmd.lignes || [];
+                const isAssigning = assigningCmd === cmd.id;
+
+                // Filter clients for search
+                const searchResults = assignCmdClientSearch.length >= 2 && isAssigning
+                  ? state.clients.filter(c =>
+                      c.nom.toLowerCase().includes(assignCmdClientSearch.toLowerCase()) ||
+                      c.ville?.toLowerCase().includes(assignCmdClientSearch.toLowerCase()) ||
+                      c.email?.toLowerCase().includes(assignCmdClientSearch.toLowerCase())
+                    ).slice(0, 8)
+                  : [];
+
+                return (
+                  <div key={cmd.id} className="p-4 bg-orange-50 rounded-lg border border-orange-100">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold text-gray-900">#{cmd.numero || cmd.easybeer_id}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                            cmd.statut === 'livree' ? 'bg-green-100 text-green-700' :
+                            cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {cmd.statut === 'livree' ? 'Livree' : cmd.statut === 'annulee' ? 'Annulee' : 'En cours'}
+                          </span>
+                        </div>
+                        {cmd.client_name && (
+                          <p className="text-xs text-gray-600 mb-1">Client EasyBeer : <strong>{cmd.client_name}</strong></p>
+                        )}
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          {cmd.date_commande && <span>{new Date(cmd.date_commande).toLocaleDateString('fr-FR')}</span>}
+                          {cmd.montant_ht > 0 && <span>{cmd.montant_ht.toFixed(2)} € HT</span>}
+                          {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const token = localStorage.getItem('suivipro_token');
+                          await fetch(`/api/commandes/${cmd.id}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          setOrphanCommandes(prev => prev.filter(c => c.id !== cmd.id));
+                          toast.success('Commande supprimee');
+                        }}
+                        className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Lignes produits */}
+                    {lignes.length > 0 && (
+                      <div className="mb-3 p-2 bg-white rounded border border-orange-100">
+                        <p className="text-[10px] text-gray-400 mb-1 font-medium">Produits :</p>
+                        {lignes.slice(0, 6).map((l: any, i: number) => (
+                          <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
+                            <span className="truncate flex-1">{l.produit || '—'}</span>
+                            <span className="flex-shrink-0 ml-2 text-gray-500">x{l.quantite}</span>
+                            {l.montant > 0 && <span className="flex-shrink-0 ml-2 font-medium">{l.montant.toFixed(2)} €</span>}
+                          </div>
+                        ))}
+                        {lignes.length > 6 && <p className="text-[10px] text-gray-400 mt-1">+{lignes.length - 6} autres produits</p>}
+                      </div>
+                    )}
+
+                    {/* Assignment UI */}
+                    {isAssigning ? (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          value={assignCmdClientSearch}
+                          onChange={e => setAssignCmdClientSearch(e.target.value)}
+                          placeholder="Rechercher un client par nom, ville, email..."
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+                          autoFocus
+                        />
+                        {searchResults.length > 0 && (
+                          <div className="mt-1 border border-gray-200 rounded-lg max-h-48 overflow-y-auto bg-white shadow-lg">
+                            {searchResults.map(client => (
+                              <button
+                                key={client.id}
+                                onClick={async () => {
+                                  try {
+                                    const token = localStorage.getItem('suivipro_token');
+                                    const resp = await fetch(`/api/commandes/${cmd.id}/assign`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                      body: JSON.stringify({ client_id: client.id }),
+                                    });
+                                    const data = await resp.json();
+                                    if (data.ok) {
+                                      setOrphanCommandes(prev => prev.filter(c => c.id !== cmd.id));
+                                      toast.success(`Commande #${cmd.numero || ''} assignee a ${client.nom}`);
+                                    } else {
+                                      toast.error(data.error || 'Erreur');
+                                    }
+                                  } catch { toast.error('Erreur reseau'); }
+                                  setAssigningCmd(null);
+                                  setAssignCmdClientSearch('');
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-brewery-50 border-b border-gray-100 last:border-0"
+                              >
+                                <span className="text-sm font-medium text-gray-900">{client.nom}</span>
+                                <span className="text-xs text-gray-500 ml-2">
+                                  {[client.ville, client.email].filter(Boolean).join(' - ')}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {assignCmdClientSearch.length >= 2 && searchResults.length === 0 && (
+                          <p className="text-xs text-gray-400 text-center py-2">Aucun client trouve</p>
+                        )}
+                        <button
+                          onClick={() => { setAssigningCmd(null); setAssignCmdClientSearch(''); }}
+                          className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setAssigningCmd(cmd.id); setAssignCmdClientSearch(cmd.client_name || ''); }}
+                        className="mt-2 px-3 py-1.5 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-1"
+                      >
+                        <Link2 className="w-3 h-3" /> Assigner a un client
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          )}
 
           {/* Journal des webhooks */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">

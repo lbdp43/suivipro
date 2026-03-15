@@ -301,7 +301,7 @@ async function initDatabase(attempt = 1) {
 
       CREATE TABLE IF NOT EXISTS commandes (
         id TEXT PRIMARY KEY,
-        client_id TEXT NOT NULL,
+        client_id TEXT,
         easybeer_id TEXT DEFAULT '',
         numero TEXT DEFAULT '',
         date_commande TEXT NOT NULL,
@@ -312,6 +312,8 @@ async function initDatabase(attempt = 1) {
         lignes TEXT DEFAULT '[]',
         notes TEXT DEFAULT '',
         source TEXT DEFAULT 'easybeer',
+        client_name TEXT DEFAULT '',
+        raw_data TEXT DEFAULT '{}',
         date_creation TEXT NOT NULL,
         FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
       );
@@ -423,6 +425,11 @@ async function initDatabase(attempt = 1) {
         }
       }
     } catch (err) { console.error('Migration compte-rendu pipeline:', err); }
+
+    // Make commandes.client_id nullable and add raw_data + client_name columns
+    try { await client.query("ALTER TABLE commandes ALTER COLUMN client_id DROP NOT NULL"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS raw_data TEXT DEFAULT '{}'"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS client_name TEXT DEFAULT ''"); } catch { /* */ }
 
     // Add new columns to easybeer_clients
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS phone_mobile TEXT DEFAULT ''"); } catch { /* */ }

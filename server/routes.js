@@ -1120,6 +1120,44 @@ router.delete('/commandes/:id', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true });
 }));
 
+// Orphan commandes (no client assigned)
+router.get('/commandes/orphelines', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query("SELECT * FROM commandes WHERE client_id IS NULL ORDER BY date_commande DESC");
+  res.json(result.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })));
+}));
+
+// Assign an orphan commande to a client
+router.post('/commandes/:id/assign', authMiddleware, asyncHandler(async (req, res) => {
+  const { client_id } = req.body;
+  if (!client_id) return res.status(400).json({ error: 'client_id requis' });
+
+  const cmd = await db.query('SELECT * FROM commandes WHERE id = $1', [req.params.id]);
+  if (cmd.rows.length === 0) return res.status(404).json({ error: 'Commande non trouvee' });
+
+  const client = await db.query('SELECT id, nom, commercial_id FROM clients WHERE id = $1', [client_id]);
+  if (client.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
+
+  await db.query('UPDATE commandes SET client_id = $1 WHERE id = $2', [client_id, req.params.id]);
+
+  // If this commande has an easybeer client ID, link it too for future orders
+  const commande = cmd.rows[0];
+  const rawData = JSON.parse(commande.raw_data || '{}');
+  const ebClientId = String(rawData.clientId || rawData.client_id || rawData.tiersId || rawData.tiers_id
+    || rawData.idClient || rawData.id_client || '');
+  if (ebClientId) {
+    await db.query(
+      `INSERT INTO easybeer_clients (easybeer_id, name, status, imported_client_id, synced_at, updated_at)
+      VALUES ($1,$2,'imported',$3,$4,$4)
+      ON CONFLICT (easybeer_id) DO UPDATE SET status = 'imported', imported_client_id = $3, updated_at = $4`,
+      [ebClientId, commande.client_name || client.rows[0].nom, client_id, new Date().toISOString()]
+    );
+    console.log(`[Commandes] Lien EasyBeer cree: easybeer_id=${ebClientId} -> client ${client_id}`);
+  }
+
+  console.log(`[Commandes] Orpheline #${commande.numero} assignee a ${client.rows[0].nom} (${client_id})`);
+  res.json({ ok: true, client_nom: client.rows[0].nom });
+}));
+
 // Fetch orders from EasyBeer for a specific client and sync them
 router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(async (req, res) => {
   const clientId = req.params.clientId;
@@ -1883,9 +1921,36 @@ async function handleEasyBeerWebhook(req, res) {
           }
         }
 
+        // Store client name from order for orphan display
+        const cmdClientName = orderClientName || '';
+
         if (!clientId) {
-          console.log(`[EasyBeer Webhook] Commande ${numero}: pas de client associe (ebClientId=${ebClientId}), stockage en attente`);
-          // Store in webhooks for manual processing later
+          // Store as orphan commande (client_id = null) for admin to assign
+          const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          await db.query(
+            `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+            [cmdId, null, String(id), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
+             JSON.stringify(lignes), '', 'easybeer', cmdClientName, JSON.stringify(orderData), now]
+          );
+
+          const lignesStr = lignes.length > 0 ? lignes.map(l => `${l.produit} x${l.quantite}`).join(', ') : 'aucun detail';
+          console.log(`[EasyBeer Webhook] Commande ORPHELINE: #${numero}, client="${cmdClientName}" (ebClientId=${ebClientId}), ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits (${lignesStr})`);
+
+          // Notify admins
+          try {
+            const admins = await db.query("SELECT id FROM commerciaux WHERE role = 'admin'");
+            for (const admin of admins.rows) {
+              const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+              await db.query(
+                `INSERT INTO notifications (id, user_id, type, title, message, data, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+                [notifId, admin.id, 'commande_orpheline',
+                 `Commande #${numero} sans client`,
+                 `${cmdClientName || 'Client inconnu'} - ${montantTtc.toFixed(2)}€ TTC - A assigner manuellement`,
+                 JSON.stringify({ commande_id: cmdId }), now]
+              );
+            }
+          } catch (err) { console.error('[EasyBeer Webhook] Notif orpheline error:', err.message); }
           return;
         }
 
@@ -1903,10 +1968,10 @@ async function handleEasyBeerWebhook(req, res) {
         // Create the commande
         const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         await db.query(
-          `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, date_creation)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
           [cmdId, clientId, String(id), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
-           JSON.stringify(lignes), '', 'easybeer', now]
+           JSON.stringify(lignes), '', 'easybeer', cmdClientName, JSON.stringify(orderData), now]
         );
 
         const lignesStr = lignes.length > 0
