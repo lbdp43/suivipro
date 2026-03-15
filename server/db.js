@@ -638,6 +638,42 @@ async function initDatabase(attempt = 1) {
       `);
     } catch (err) { console.log('sirene_duplicate_queue migration:', err.message); }
 
+    // Migration: entity_types table (custom entity types)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS entity_types (
+          id TEXT PRIMARY KEY,
+          label TEXT NOT NULL,
+          icon TEXT NOT NULL DEFAULT 'Tag',
+          color TEXT NOT NULL DEFAULT 'text-gray-600 bg-gray-50 border-gray-200',
+          show_in_pipeline BOOLEAN DEFAULT FALSE,
+          sort_order INTEGER DEFAULT 100,
+          is_default BOOLEAN DEFAULT FALSE,
+          created_at TEXT NOT NULL DEFAULT ''
+        )
+      `);
+      // Seed defaults if empty
+      const etCount = await client.query('SELECT COUNT(*) as c FROM entity_types');
+      if (parseInt(etCount.rows[0].c) === 0) {
+        const now = new Date().toISOString();
+        const defaults = [
+          ['prospect', 'Prospect', 'Users', 'text-sky-600 bg-sky-50 border-sky-200', true, 1, true],
+          ['client', 'Client', 'Building2', 'text-green-600 bg-green-50 border-green-200', false, 2, true],
+          ['concurrent', 'Concurrent', 'Shield', 'text-red-600 bg-red-50 border-red-200', false, 3, true],
+          ['distributeur', 'Distributeur', 'Truck', 'text-amber-600 bg-amber-50 border-amber-200', false, 4, true],
+          ['partenaire', 'Partenaire', 'Handshake', 'text-purple-600 bg-purple-50 border-purple-200', false, 5, true],
+          ['fournisseur', 'Fournisseur', 'Package', 'text-indigo-600 bg-indigo-50 border-indigo-200', false, 6, true],
+        ];
+        for (const [id, label, icon, color, showPipeline, order, isDef] of defaults) {
+          await client.query(
+            'INSERT INTO entity_types (id, label, icon, color, show_in_pipeline, sort_order, is_default, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+            [id, label, icon, color, showPipeline, order, isDef, now]
+          );
+        }
+        console.log('Seeded 6 default entity types');
+      }
+    } catch (err) { console.log('entity_types migration:', err.message); }
+
     // Migration: add new columns to sirene_sync_logs
     try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS records_auto_imported INTEGER DEFAULT 0"); } catch { /* */ }
     try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'datagouv'"); } catch { /* */ }

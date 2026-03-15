@@ -3366,6 +3366,55 @@ async function fetchNearPoint(lat, lng, radius = 10, nafCodes = [], page = 1) {
 }
 
 // ============================================
+// Entity Types CRUD
+// ============================================
+
+// GET /api/entity-types
+router.get('/entity-types', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM entity_types ORDER BY sort_order, label');
+  res.json(result.rows);
+}));
+
+// POST /api/entity-types
+router.post('/entity-types', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { id, label, icon, color, show_in_pipeline } = req.body;
+  if (!id || !label) return res.status(400).json({ error: 'ID et label requis' });
+  const cleanId = id.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_');
+  // Check if exists
+  const existing = await db.query('SELECT id FROM entity_types WHERE id = $1', [cleanId]);
+  if (existing.rows.length > 0) return res.status(400).json({ error: 'Ce type existe deja' });
+  const maxOrder = await db.query('SELECT COALESCE(MAX(sort_order), 0) + 1 as next FROM entity_types');
+  await db.query(
+    'INSERT INTO entity_types (id, label, icon, color, show_in_pipeline, sort_order, is_default, created_at) VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7)',
+    [cleanId, label, icon || 'Tag', color || 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline || false, maxOrder.rows[0].next, new Date().toISOString()]
+  );
+  const created = await db.query('SELECT * FROM entity_types WHERE id = $1', [cleanId]);
+  res.json({ ok: true, entity_type: created.rows[0] });
+}));
+
+// PUT /api/entity-types/:id
+router.put('/entity-types/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { label, icon, color, show_in_pipeline } = req.body;
+  await db.query(
+    'UPDATE entity_types SET label = COALESCE(NULLIF($1, \'\'), label), icon = COALESCE(NULLIF($2, \'\'), icon), color = COALESCE(NULLIF($3, \'\'), color), show_in_pipeline = COALESCE($4, show_in_pipeline) WHERE id = $5',
+    [label || '', icon || '', color || '', show_in_pipeline ?? null, req.params.id]
+  );
+  const updated = await db.query('SELECT * FROM entity_types WHERE id = $1', [req.params.id]);
+  res.json({ ok: true, entity_type: updated.rows[0] });
+}));
+
+// DELETE /api/entity-types/:id
+router.delete('/entity-types/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  // Don't allow deleting defaults that are in use
+  const inUse = await db.query('SELECT COUNT(*) as c FROM prospects WHERE COALESCE(entity_type, \'prospect\') = $1', [req.params.id]);
+  if (parseInt(inUse.rows[0].c) > 0) {
+    return res.status(400).json({ error: `Ce type est utilise par ${inUse.rows[0].c} fiche(s). Reassignez-les d'abord.` });
+  }
+  await db.query('DELETE FROM entity_types WHERE id = $1 AND is_default = FALSE', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
 // Import Rules CRUD
 // ============================================
 

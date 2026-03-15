@@ -136,11 +136,22 @@ export default function SirenePage() {
   });
   const [showNewConfigForm, setShowNewConfigForm] = useState(false);
 
+  // Entity types from DB
+  const [entityTypes, setEntityTypes] = useState<{ id: string; label: string }[]>([]);
+
   const token = localStorage.getItem('suivipro_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+
+  const loadEntityTypes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/entity-types', { headers });
+      const data = await res.json();
+      setEntityTypes(data.map((et: any) => ({ id: et.id, label: et.label })));
+    } catch (err) { console.error('Error loading entity types:', err); }
+  }, []);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -301,7 +312,7 @@ export default function SirenePage() {
   };
 
   useEffect(() => {
-    Promise.all([loadConfig(), loadStats(), loadEtablissements(), loadSyncLogs(), loadZoneConfigs(), loadDuplicates()])
+    Promise.all([loadConfig(), loadStats(), loadEtablissements(), loadSyncLogs(), loadZoneConfigs(), loadDuplicates(), loadEntityTypes()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -523,12 +534,18 @@ export default function SirenePage() {
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
                       <select className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
-                        <option value="prospect">Prospect</option>
-                        <option value="client">Client</option>
-                        <option value="concurrent">Concurrent</option>
-                        <option value="distributeur">Distributeur</option>
-                        <option value="partenaire">Partenaire</option>
-                        <option value="fournisseur">Fournisseur</option>
+                        {entityTypes.length > 0 ? entityTypes.map(et => (
+                          <option key={et.id} value={et.id}>{et.label}</option>
+                        )) : (
+                          <>
+                            <option value="prospect">Prospect</option>
+                            <option value="client">Client</option>
+                            <option value="concurrent">Concurrent</option>
+                            <option value="distributeur">Distributeur</option>
+                            <option value="partenaire">Partenaire</option>
+                            <option value="fournisseur">Fournisseur</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     <div>

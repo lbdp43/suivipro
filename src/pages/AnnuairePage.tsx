@@ -39,6 +39,27 @@ interface ImportRule {
   sort_order: number;
 }
 
+const ICON_MAP: Record<string, any> = {
+  Users, Building2, Shield, Truck, Handshake, Package, Tag, MapPin, Search, BookOpen, Settings,
+};
+
+const AVAILABLE_ICONS = ['Users', 'Building2', 'Shield', 'Truck', 'Handshake', 'Package', 'Tag', 'MapPin', 'Search', 'BookOpen', 'Settings'];
+
+const AVAILABLE_COLORS = [
+  { value: 'text-sky-600 bg-sky-50 border-sky-200', label: 'Bleu' },
+  { value: 'text-green-600 bg-green-50 border-green-200', label: 'Vert' },
+  { value: 'text-red-600 bg-red-50 border-red-200', label: 'Rouge' },
+  { value: 'text-amber-600 bg-amber-50 border-amber-200', label: 'Orange' },
+  { value: 'text-purple-600 bg-purple-50 border-purple-200', label: 'Violet' },
+  { value: 'text-indigo-600 bg-indigo-50 border-indigo-200', label: 'Indigo' },
+  { value: 'text-teal-600 bg-teal-50 border-teal-200', label: 'Teal' },
+  { value: 'text-pink-600 bg-pink-50 border-pink-200', label: 'Rose' },
+  { value: 'text-cyan-600 bg-cyan-50 border-cyan-200', label: 'Cyan' },
+  { value: 'text-orange-600 bg-orange-50 border-orange-200', label: 'Orange vif' },
+  { value: 'text-lime-600 bg-lime-50 border-lime-200', label: 'Lime' },
+  { value: 'text-gray-600 bg-gray-50 border-gray-200', label: 'Gris' },
+];
+
 const DEFAULT_ENTITY_TYPES = [
   { value: 'prospect', label: 'Prospect', icon: Users, color: 'text-sky-600 bg-sky-50 border-sky-200' },
   { value: 'client', label: 'Client', icon: Building2, color: 'text-green-600 bg-green-50 border-green-200' },
@@ -79,6 +100,14 @@ export default function AnnuairePage() {
   const [editingRule, setEditingRule] = useState<Partial<ImportRule> | null>(null);
   const [savingRule, setSavingRule] = useState(false);
 
+  // Entity types management
+  interface EntityTypeRow { id: string; label: string; icon: string; color: string; show_in_pipeline: boolean; sort_order: number; is_default: boolean; }
+  const [entityTypesDB, setEntityTypesDB] = useState<EntityTypeRow[]>([]);
+  const [showEntityTypes, setShowEntityTypes] = useState(false);
+  const [newEntityType, setNewEntityType] = useState({ id: '', label: '', icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false });
+  const [editingEntityType, setEditingEntityType] = useState<string | null>(null);
+  const [editEntityForm, setEditEntityForm] = useState({ label: '', icon: '', color: '', show_in_pipeline: false });
+
   const token = localStorage.getItem('suivipro_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -113,8 +142,47 @@ export default function AnnuairePage() {
     }
   }, []);
 
+  const loadEntityTypes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/entity-types', { headers });
+      const data = await res.json();
+      setEntityTypesDB(data);
+    } catch (err) {
+      console.error('Error loading entity types:', err);
+    }
+  }, []);
+
+  const createEntityType = async () => {
+    if (!newEntityType.id || !newEntityType.label) return;
+    try {
+      const res = await fetch('/api/entity-types', { method: 'POST', headers, body: JSON.stringify(newEntityType) });
+      const data = await res.json();
+      if (data.error) { alert(data.error); return; }
+      setNewEntityType({ id: '', label: '', icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false });
+      await loadEntityTypes();
+    } catch (err) { console.error('Error creating entity type:', err); }
+  };
+
+  const updateEntityType = async (id: string) => {
+    try {
+      await fetch(`/api/entity-types/${id}`, { method: 'PUT', headers, body: JSON.stringify(editEntityForm) });
+      setEditingEntityType(null);
+      await loadEntityTypes();
+    } catch (err) { console.error('Error updating entity type:', err); }
+  };
+
+  const deleteEntityType = async (id: string) => {
+    if (!confirm('Supprimer ce type d\'entite ?')) return;
+    try {
+      const res = await fetch(`/api/entity-types/${id}`, { method: 'DELETE', headers });
+      const data = await res.json();
+      if (data.error) { alert(data.error); return; }
+      await loadEntityTypes();
+    } catch (err) { console.error('Error deleting entity type:', err); }
+  };
+
   useEffect(() => {
-    Promise.all([loadEntries(), loadRules()]).finally(() => setLoading(false));
+    Promise.all([loadEntries(), loadRules(), loadEntityTypes()]).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -152,21 +220,21 @@ export default function AnnuairePage() {
     }
   };
 
-  // Build dynamic entity types from rules (custom types beyond defaults)
-  const allEntityTypes = [...DEFAULT_ENTITY_TYPES];
-  const defaultValues = new Set(DEFAULT_ENTITY_TYPES.map(e => e.value));
-  const customTypesFromRules = [...new Set(rules.map(r => r.entity_type).filter(t => !defaultValues.has(t)))];
-  // Also include custom types from stats (in case data exists but no rule)
+  // Build entity types from DB, fallback to defaults
+  const allEntityTypes = entityTypesDB.length > 0
+    ? entityTypesDB.map(et => ({
+        value: et.id,
+        label: et.label,
+        icon: ICON_MAP[et.icon] || Tag,
+        color: et.color,
+      }))
+    : [...DEFAULT_ENTITY_TYPES];
+  // Add any types from stats that aren't in the list
+  const knownValues = new Set(allEntityTypes.map(e => e.value));
   Object.keys(stats).forEach(t => {
-    if (!defaultValues.has(t) && !customTypesFromRules.includes(t)) customTypesFromRules.push(t);
-  });
-  customTypesFromRules.forEach((t, i) => {
-    allEntityTypes.push({
-      value: t,
-      label: t.charAt(0).toUpperCase() + t.slice(1),
-      icon: Tag,
-      color: CUSTOM_TYPE_COLORS[i % CUSTOM_TYPE_COLORS.length],
-    });
+    if (!knownValues.has(t)) {
+      allEntityTypes.push({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1), icon: Tag, color: 'text-gray-600 bg-gray-50 border-gray-200' });
+    }
   });
 
   const totalEntries = Object.values(stats).reduce((a, b) => a + b, 0);
@@ -242,15 +310,140 @@ export default function AnnuairePage() {
           />
         </div>
         {isAdmin && (
-          <button
-            onClick={() => setShowRules(!showRules)}
-            className="px-3 py-2 border border-indigo-200 text-indigo-600 rounded-lg text-sm hover:bg-indigo-50 flex items-center gap-1.5"
-          >
-            <Settings className="w-4 h-4" />
-            Regles d'import ({rules.length})
-          </button>
+          <>
+            <button
+              onClick={() => { setShowEntityTypes(!showEntityTypes); setShowRules(false); }}
+              className="px-3 py-2 border border-purple-200 text-purple-600 rounded-lg text-sm hover:bg-purple-50 flex items-center gap-1.5"
+            >
+              <Tag className="w-4 h-4" />
+              Types d'entite ({entityTypesDB.length})
+            </button>
+            <button
+              onClick={() => { setShowRules(!showRules); setShowEntityTypes(false); }}
+              className="px-3 py-2 border border-indigo-200 text-indigo-600 rounded-lg text-sm hover:bg-indigo-50 flex items-center gap-1.5"
+            >
+              <Settings className="w-4 h-4" />
+              Regles d'import ({rules.length})
+            </button>
+          </>
         )}
       </div>
+
+      {/* Entity Types management panel */}
+      {showEntityTypes && isAdmin && (
+        <div className="bg-white rounded-xl border border-purple-200 p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-purple-500" />
+              Gestion des types d'entite
+            </h2>
+            <button onClick={() => setShowEntityTypes(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+          </div>
+
+          {/* Existing types */}
+          <div className="space-y-2 mb-4">
+            {entityTypesDB.map(et => {
+              const IconComp = ICON_MAP[et.icon] || Tag;
+              const isEditing = editingEntityType === et.id;
+
+              if (isEditing) {
+                return (
+                  <div key={et.id} className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                      <div>
+                        <label className="text-[10px] text-purple-600">Label</label>
+                        <input type="text" className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={editEntityForm.label} onChange={e => setEditEntityForm(f => ({ ...f, label: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-purple-600">Icone</label>
+                        <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={editEntityForm.icon} onChange={e => setEditEntityForm(f => ({ ...f, icon: e.target.value }))}>
+                          {AVAILABLE_ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-purple-600">Couleur</label>
+                        <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={editEntityForm.color} onChange={e => setEditEntityForm(f => ({ ...f, color: e.target.value }))}>
+                          {AVAILABLE_COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <label className="flex items-center gap-1 text-[10px] text-purple-600 cursor-pointer">
+                          <input type="checkbox" checked={editEntityForm.show_in_pipeline} onChange={e => setEditEntityForm(f => ({ ...f, show_in_pipeline: e.target.checked }))} className="rounded" />
+                          Pipeline
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => updateEntityType(et.id)} className="px-2 py-1 bg-purple-600 text-white rounded text-[10px]">Sauver</button>
+                      <button onClick={() => setEditingEntityType(null)} className="px-2 py-1 border border-gray-200 rounded text-[10px]">Annuler</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={et.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-lg hover:bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-7 h-7 rounded-lg flex items-center justify-center border ${et.color}`}>
+                      <IconComp className="w-3.5 h-3.5" />
+                    </span>
+                    <span className="text-sm font-medium text-gray-900">{et.label}</span>
+                    <span className="text-[10px] text-gray-400">({et.id})</span>
+                    {et.show_in_pipeline && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[9px]">Pipeline</span>}
+                    {et.is_default && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[9px]">Defaut</span>}
+                    {stats[et.id] ? <span className="text-[10px] text-gray-400">{stats[et.id]} fiche{stats[et.id] > 1 ? 's' : ''}</span> : null}
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => {
+                      setEditingEntityType(et.id);
+                      setEditEntityForm({ label: et.label, icon: et.icon, color: et.color, show_in_pipeline: et.show_in_pipeline });
+                    }} className="px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 rounded">Modifier</button>
+                    {!et.is_default && (
+                      <button onClick={() => deleteEntityType(et.id)} className="px-2 py-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded">Supprimer</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Create new type */}
+          <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+            <h3 className="text-xs font-medium text-purple-800 mb-2">Nouveau type d'entite</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div>
+                <label className="text-[10px] text-purple-600">ID (unique)</label>
+                <input type="text" className="w-full px-2 py-1 border border-purple-200 rounded text-xs" placeholder="ex: grossiste" value={newEntityType.id} onChange={e => setNewEntityType(f => ({ ...f, id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') }))} />
+              </div>
+              <div>
+                <label className="text-[10px] text-purple-600">Label</label>
+                <input type="text" className="w-full px-2 py-1 border border-purple-200 rounded text-xs" placeholder="ex: Grossiste" value={newEntityType.label} onChange={e => setNewEntityType(f => ({ ...f, label: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-[10px] text-purple-600">Icone</label>
+                <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={newEntityType.icon} onChange={e => setNewEntityType(f => ({ ...f, icon: e.target.value }))}>
+                  {AVAILABLE_ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-purple-600">Couleur</label>
+                <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={newEntityType.color} onChange={e => setNewEntityType(f => ({ ...f, color: e.target.value }))}>
+                  {AVAILABLE_COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-1 text-[10px] text-purple-600 cursor-pointer">
+                  <input type="checkbox" checked={newEntityType.show_in_pipeline} onChange={e => setNewEntityType(f => ({ ...f, show_in_pipeline: e.target.checked }))} className="rounded" />
+                  Pipeline
+                </label>
+                <button onClick={createEntityType} disabled={!newEntityType.id || !newEntityType.label} className="px-3 py-1 bg-purple-600 text-white rounded text-xs disabled:opacity-50 flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Creer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Import Rules panel */}
       {showRules && isAdmin && (

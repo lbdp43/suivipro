@@ -58,6 +58,20 @@ export default function ProspectsPage() {
   const [converting, setConverting] = useState(false);
   const alreadyConvertedIds = useMemo(() => new Set(state.clients.map(c => c.prospect_id).filter(Boolean)), [state.clients]);
 
+  // Entity types visible in pipeline (loaded from DB)
+  const [pipelineEntityTypes, setPipelineEntityTypes] = useState<Set<string>>(new Set(['prospect']));
+  useEffect(() => {
+    const token = localStorage.getItem('suivipro_token');
+    fetch('/api/entity-types', { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+      .then(r => r.json())
+      .then(data => {
+        const visible = new Set<string>(data.filter((et: any) => et.show_in_pipeline).map((et: any) => et.id as string));
+        if (visible.size === 0) visible.add('prospect');
+        setPipelineEntityTypes(visible);
+      })
+      .catch(() => {});
+  }, []);
+
   // Compte-rendu modal
   const [showCompteRendu, setShowCompteRendu] = useState(false);
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
@@ -331,14 +345,11 @@ export default function ProspectsPage() {
     return ids;
   }, [filterCommercial, state.calls, state.appointments]);
 
-  // Entity types visible in pipeline/prospection (hide competitors, distributors, etc.)
-  const PROSPECTION_ENTITY_TYPES = new Set(['prospect', '', undefined, null]);
-
   const filteredProspects = useMemo(() => {
     const list = state.prospects.filter(p => {
-      // Hide non-prospection entity types (concurrent, distributeur, partenaire, fournisseur)
+      // Hide entity types not marked as visible in pipeline
       const eType = p.entity_type || 'prospect';
-      if (!PROSPECTION_ENTITY_TYPES.has(eType)) return false;
+      if (!pipelineEntityTypes.has(eType)) return false;
       // By default, hide prospects that became clients (client_gagne)
       if (filterStages.size === 0 && p.etape_pipeline === 'client_gagne') return false;
       if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
@@ -365,7 +376,7 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
