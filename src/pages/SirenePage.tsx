@@ -308,7 +308,7 @@ export default function SirenePage() {
   };
 
   const importSelected = async () => {
-    if (!importCommercialId || selectedIds.size === 0) return;
+    if (selectedIds.size === 0) return;
     setImporting(true);
     setImportResult(null);
     try {
@@ -333,8 +333,7 @@ export default function SirenePage() {
   };
 
   const importAll = async () => {
-    if (!importCommercialId) return;
-    if (!confirm('Importer TOUS les etablissements non importes en prospects ?')) return;
+    if (!confirm('Importer TOUS les etablissements non importes ?')) return;
     setImporting(true);
     setImportResult(null);
     try {
@@ -795,13 +794,13 @@ export default function SirenePage() {
             </select>
           </div>
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5">Assigner a</label>
+            <label className="block text-[10px] text-gray-500 mb-0.5">Assigner a (optionnel)</label>
             <select
               className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
               value={importCommercialId}
               onChange={e => setImportCommercialId(e.target.value)}
             >
-              <option value="">-- Commercial --</option>
+              <option value="">-- Non assigne --</option>
               {state.commerciaux.map(c => (
                 <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
               ))}
@@ -822,7 +821,7 @@ export default function SirenePage() {
           {selectedIds.size > 0 && (
             <button
               onClick={importSelected}
-              disabled={importing || !importCommercialId}
+              disabled={importing}
               className="px-3 py-1.5 text-xs bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50 flex items-center gap-1"
             >
               {importing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
@@ -831,7 +830,7 @@ export default function SirenePage() {
           )}
           <button
             onClick={importAll}
-            disabled={importing || !importCommercialId}
+            disabled={importing}
             className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
           >
             <Download className="w-3 h-3" />

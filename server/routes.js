@@ -393,10 +393,20 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateAppointment(a);
   if (errors.length > 0) return validationError(res, errors);
 
+  const rdvCommercialId = a.commercial_id || req.user.id;
   await db.query(
     'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu, created_at, client_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
-    [a.id, a.prospect_id || null, a.commercial_id || req.user.id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString(), a.client_id || null]
+    [a.id, a.prospect_id || null, rdvCommercialId, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString(), a.client_id || null]
   );
+
+  // Auto-assign prospect to commercial when RDV is created (if not already assigned)
+  if (a.prospect_id) {
+    const prospect = await db.query("SELECT commercial_id FROM prospects WHERE id = $1", [a.prospect_id]);
+    if (prospect.rows.length > 0 && (!prospect.rows[0].commercial_id || prospect.rows[0].commercial_id === '')) {
+      await db.query("UPDATE prospects SET commercial_id = $1, date_modification = $2 WHERE id = $3", [rdvCommercialId, new Date().toISOString(), a.prospect_id]);
+    }
+  }
+
   logActivity(req.user.id, 'creation_rdv', `RDV le ${a.date} à ${a.lieu || 'N/A'}`, 'appointment', a.id);
   res.json({ ok: true });
 }));
@@ -3727,7 +3737,7 @@ router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (
           else totalUpdated++;
 
           // Auto-import as prospect if enabled
-          if (isNew && config.auto_import && config.default_commercial_id) {
+          if (isNew && config.auto_import) {
             const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
             if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
               const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null);
@@ -3982,7 +3992,7 @@ async function importEtabAsProspect(etab, commercialId, now, userId) {
   const typeEtab = rule?.entity_type === 'distributeur' ? 'distributeur' : (nafInfo?.type || 'autre');
   const entityType = rule?.entity_type || 'prospect';
   const pipelineStage = rule?.pipeline_stage || 'nouveau_datagouv';
-  const ruleCommercial = rule?.commercial_id || commercialId;
+  const ruleCommercial = rule?.commercial_id || commercialId || '';
   const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
   const prospectId = `sirene_${etab.siret}`;
 
@@ -4113,8 +4123,7 @@ async function importEtabAsProspect(etab, commercialId, now, userId) {
 
 // POST /api/sirene/import-prospects
 router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  const { etablissement_ids = [], commercial_id } = req.body;
-  if (!commercial_id) return res.status(400).json({ error: 'commercial_id requis' });
+  const { etablissement_ids = [], commercial_id = '' } = req.body;
   if (etablissement_ids.length === 0) return res.status(400).json({ error: 'Aucun etablissement selectionne' });
 
   const now = new Date().toISOString();
@@ -4136,8 +4145,7 @@ router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(
 
 // POST /api/sirene/import-all
 router.post('/sirene/import-all', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  const { commercial_id, departements = [], naf_codes = [] } = req.body;
-  if (!commercial_id) return res.status(400).json({ error: 'commercial_id requis' });
+  const { commercial_id = '', departements = [], naf_codes = [] } = req.body;
 
   let query = "SELECT * FROM sirene_etablissements WHERE imported_as_prospect IS NULL AND etat_admin = 'A'";
   const params = [];
@@ -4284,7 +4292,7 @@ export async function runZoneSync() {
         if (isNew) totalInserted++;
         else totalUpdated++;
 
-        if (isNew && config.auto_import && config.default_commercial_id) {
+        if (isNew && config.auto_import) {
           const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
           if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
             const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null);

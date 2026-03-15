@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Search, RefreshCw, MapPin, Building2, Users, Shield, Truck,
-  Handshake, ChevronDown, ChevronRight, Plus, Trash2, Save, Settings, X,
+  Handshake, ChevronDown, ChevronRight, Plus, Trash2, Save, Settings, X, Tag,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -38,7 +39,7 @@ interface ImportRule {
   sort_order: number;
 }
 
-const ENTITY_TYPES = [
+const DEFAULT_ENTITY_TYPES = [
   { value: 'prospect', label: 'Prospect', icon: Users, color: 'text-sky-600 bg-sky-50 border-sky-200' },
   { value: 'client', label: 'Client', icon: Building2, color: 'text-green-600 bg-green-50 border-green-200' },
   { value: 'concurrent', label: 'Concurrent', icon: Shield, color: 'text-red-600 bg-red-50 border-red-200' },
@@ -46,12 +47,24 @@ const ENTITY_TYPES = [
   { value: 'partenaire', label: 'Partenaire', icon: Handshake, color: 'text-purple-600 bg-purple-50 border-purple-200' },
 ];
 
-function getEntityConfig(type: string) {
-  return ENTITY_TYPES.find(e => e.value === type) || ENTITY_TYPES[0];
+const CUSTOM_TYPE_COLORS = [
+  'text-teal-600 bg-teal-50 border-teal-200',
+  'text-pink-600 bg-pink-50 border-pink-200',
+  'text-cyan-600 bg-cyan-50 border-cyan-200',
+  'text-orange-600 bg-orange-50 border-orange-200',
+  'text-lime-600 bg-lime-50 border-lime-200',
+  'text-rose-600 bg-rose-50 border-rose-200',
+  'text-violet-600 bg-violet-50 border-violet-200',
+  'text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200',
+];
+
+function getEntityConfig(type: string, allTypes: typeof DEFAULT_ENTITY_TYPES = DEFAULT_ENTITY_TYPES) {
+  return allTypes.find(e => e.value === type) || { value: type, label: type, icon: Tag, color: 'text-gray-600 bg-gray-50 border-gray-200' };
 }
 
 export default function AnnuairePage() {
   const { state } = useApp();
+  const navigate = useNavigate();
   const [entries, setEntries] = useState<AnnuaireEntry[]>([]);
   const [stats, setStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -138,6 +151,23 @@ export default function AnnuairePage() {
     }
   };
 
+  // Build dynamic entity types from rules (custom types beyond defaults)
+  const allEntityTypes = [...DEFAULT_ENTITY_TYPES];
+  const defaultValues = new Set(DEFAULT_ENTITY_TYPES.map(e => e.value));
+  const customTypesFromRules = [...new Set(rules.map(r => r.entity_type).filter(t => !defaultValues.has(t)))];
+  // Also include custom types from stats (in case data exists but no rule)
+  Object.keys(stats).forEach(t => {
+    if (!defaultValues.has(t) && !customTypesFromRules.includes(t)) customTypesFromRules.push(t);
+  });
+  customTypesFromRules.forEach((t, i) => {
+    allEntityTypes.push({
+      value: t,
+      label: t.charAt(0).toUpperCase() + t.slice(1),
+      icon: Tag,
+      color: CUSTOM_TYPE_COLORS[i % CUSTOM_TYPE_COLORS.length],
+    });
+  });
+
   const totalEntries = Object.values(stats).reduce((a, b) => a + b, 0);
 
   if (loading) {
@@ -169,7 +199,7 @@ export default function AnnuairePage() {
         >
           Tous ({totalEntries})
         </button>
-        {ENTITY_TYPES.map(et => {
+        {allEntityTypes.map(et => {
           const count = stats[et.value] || 0;
           const Icon = et.icon;
           return (
@@ -267,24 +297,28 @@ export default function AnnuairePage() {
                 </div>
                 <div>
                   <label className="block text-[10px] text-indigo-600 mb-0.5">Type entite</label>
-                  <select
+                  <input
+                    type="text"
+                    list="entity-type-options"
                     className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs"
+                    placeholder="prospect, concurrent..."
                     value={editingRule.entity_type || 'prospect'}
-                    onChange={e => setEditingRule(r => r ? { ...r, entity_type: e.target.value } : r)}
-                  >
-                    {ENTITY_TYPES.filter(e => e.value !== 'client').map(et => (
+                    onChange={e => setEditingRule(r => r ? { ...r, entity_type: e.target.value.toLowerCase().trim() } : r)}
+                  />
+                  <datalist id="entity-type-options">
+                    {allEntityTypes.filter(e => e.value !== 'client').map(et => (
                       <option key={et.value} value={et.value}>{et.label}</option>
                     ))}
-                  </select>
+                  </datalist>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-indigo-600 mb-0.5">Commercial</label>
+                  <label className="block text-[10px] text-indigo-600 mb-0.5">Assigner a (optionnel)</label>
                   <select
                     className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs"
                     value={editingRule.commercial_id || ''}
                     onChange={e => setEditingRule(r => r ? { ...r, commercial_id: e.target.value } : r)}
                   >
-                    <option value="">Par defaut</option>
+                    <option value="">Non assigne</option>
                     {state.commerciaux.map(c => (
                       <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
                     ))}
@@ -332,7 +366,7 @@ export default function AnnuairePage() {
               </thead>
               <tbody>
                 {rules.map(rule => {
-                  const config = getEntityConfig(rule.entity_type);
+                  const config = getEntityConfig(rule.entity_type, allEntityTypes);
                   return (
                     <tr key={rule.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-2 py-2 font-mono font-medium">{rule.naf_code}</td>
@@ -397,10 +431,17 @@ export default function AnnuairePage() {
                   </td>
                 </tr>
               ) : entries.map(entry => {
-                const config = getEntityConfig(entry.entity_type);
+                const config = getEntityConfig(entry.entity_type, allEntityTypes);
                 const Icon = config.icon;
+                const handleClick = () => {
+                  if (entry.source === 'client') {
+                    navigate(`/clients?id=${entry.id}`);
+                  } else {
+                    navigate(`/prospects?id=${entry.id}`);
+                  }
+                };
                 return (
-                  <tr key={`${entry.source}-${entry.id}`} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr key={`${entry.source}-${entry.id}`} className="border-b border-gray-50 hover:bg-indigo-50 cursor-pointer transition-colors" onClick={handleClick}>
                     <td className="px-2 py-2">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-medium border inline-flex items-center gap-1 ${config.color}`}>
                         <Icon className="w-3 h-3" />
@@ -408,7 +449,7 @@ export default function AnnuairePage() {
                       </span>
                     </td>
                     <td className="px-2 py-2">
-                      <p className="font-medium text-gray-800">{entry.nom}</p>
+                      <p className="font-medium text-indigo-700 hover:text-indigo-900">{entry.nom}</p>
                       <p className="text-[10px] text-gray-400">{entry.type_etablissement}</p>
                     </td>
                     <td className="px-2 py-2 text-gray-600">
