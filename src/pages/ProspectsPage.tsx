@@ -63,8 +63,9 @@ export default function ProspectsPage() {
   useEffect(() => {
     const token = localStorage.getItem('suivipro_token');
     fetch('/api/entity-types', { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error('Not ok'); return r.json(); })
       .then(data => {
+        if (!Array.isArray(data)) return;
         const visible = new Set<string>(data.filter((et: any) => et.show_in_pipeline).map((et: any) => et.id as string));
         if (visible.size === 0) visible.add('prospect');
         setPipelineEntityTypes(visible);

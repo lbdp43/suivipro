@@ -133,20 +133,23 @@ export default function AnnuairePage() {
   }, [filterType, searchQuery, filterDept]);
 
   const loadRules = useCallback(async () => {
+    if (!isAdmin) return; // Only admins can access import rules
     try {
       const res = await fetch('/api/import-rules', { headers });
+      if (!res.ok) return;
       const data = await res.json();
-      setRules(data);
+      setRules(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading rules:', err);
     }
-  }, []);
+  }, [isAdmin]);
 
   const loadEntityTypes = useCallback(async () => {
     try {
       const res = await fetch('/api/entity-types', { headers });
+      if (!res.ok) return;
       const data = await res.json();
-      setEntityTypesDB(data);
+      setEntityTypesDB(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading entity types:', err);
     }

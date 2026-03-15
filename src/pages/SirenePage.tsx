@@ -148,7 +148,9 @@ export default function SirenePage() {
   const loadEntityTypes = useCallback(async () => {
     try {
       const res = await fetch('/api/entity-types', { headers });
+      if (!res.ok) return;
       const data = await res.json();
+      if (!Array.isArray(data)) return;
       setEntityTypes(data.map((et: any) => ({ id: et.id, label: et.label })));
     } catch (err) { console.error('Error loading entity types:', err); }
   }, []);
