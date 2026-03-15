@@ -299,6 +299,23 @@ async function initDatabase(attempt = 1) {
         FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS commandes (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        easybeer_id TEXT DEFAULT '',
+        numero TEXT DEFAULT '',
+        date_commande TEXT NOT NULL,
+        date_livraison TEXT DEFAULT '',
+        statut TEXT NOT NULL DEFAULT 'en_cours',
+        montant_ht DOUBLE PRECISION DEFAULT 0,
+        montant_ttc DOUBLE PRECISION DEFAULT 0,
+        lignes TEXT DEFAULT '[]',
+        notes TEXT DEFAULT '',
+        source TEXT DEFAULT 'easybeer',
+        date_creation TEXT NOT NULL,
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS notifications (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,

@@ -540,6 +540,37 @@ export interface TourneeConfig {
   updated_at: string;
 }
 
+export type CommandeStatut = 'en_cours' | 'livree' | 'annulee';
+
+export const COMMANDE_STATUT_LABELS: Record<CommandeStatut, string> = {
+  en_cours: 'En cours',
+  livree: 'Livree',
+  annulee: 'Annulee',
+};
+
+export interface CommandeLigne {
+  produit: string;
+  quantite: number;
+  prix_unitaire: number;
+  montant: number;
+}
+
+export interface Commande {
+  id: string;
+  client_id: string;
+  easybeer_id: string;
+  numero: string;
+  date_commande: string;
+  date_livraison: string;
+  statut: CommandeStatut;
+  montant_ht: number;
+  montant_ttc: number;
+  lignes: CommandeLigne[];
+  notes: string;
+  source: string;
+  date_creation: string;
+}
+
 export type VisitStatus = 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF';
 
 export type DocumentCategory = 'bar_restaurant' | 'prix_ce' | 'cave_epicerie' | 'grand_public' | 'autre';
@@ -583,4 +614,5 @@ export interface AppState {
   interactions: Interaction[];
   tasksClient: TaskClient[];
   tourneeConfigs: TourneeConfig[];
+  commandes: Commande[];
 }

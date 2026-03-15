@@ -38,7 +38,7 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatch, getCommercial, getInteractionsForClient, getTasksForClient, getClient } = useApp();
+  const { state, dispatch, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient } = useApp();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -544,6 +544,34 @@ export default function ClientsPage() {
   const selectedClient = selectedId ? state.clients.find(c => c.id === selectedId) : null;
   const selectedInteractions = selectedClient ? getInteractionsForClient(selectedClient.id) : [];
   const selectedTasks = selectedClient ? getTasksForClient(selectedClient.id) : [];
+  const selectedCommandes = selectedClient ? getCommandesForClient(selectedClient.id) : [];
+
+  // Sync commandes from EasyBeer
+  const [syncingCommandes, setSyncingCommandes] = useState(false);
+  const syncCommandes = async (clientId: string) => {
+    setSyncingCommandes(true);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const resp = await fetch(`/api/easybeer/sync-commandes/${clientId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json();
+      if (data.ok && data.commandes) {
+        dispatch({ type: 'SET_COMMANDES', payload: [
+          ...state.commandes.filter(c => c.client_id !== clientId),
+          ...data.commandes,
+        ]});
+        toast.success(data.message || 'Commandes synchronisees');
+      } else {
+        toast.info(data.message || 'Aucune commande trouvee');
+      }
+    } catch {
+      toast.error('Erreur lors de la synchronisation');
+    } finally {
+      setSyncingCommandes(false);
+    }
+  };
 
   return (
     <div className="flex h-full">
@@ -1130,6 +1158,58 @@ export default function ClientsPage() {
                     </div>
                   ))}
               </div>
+            )}
+          </div>
+
+          {/* Commandes EasyBeer */}
+          <div className="p-4 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">Commandes ({selectedCommandes.length})</h3>
+              <button
+                onClick={() => selectedClient && syncCommandes(selectedClient.id)}
+                disabled={syncingCommandes}
+                className="text-xs text-brewery-600 hover:text-brewery-700 font-medium flex items-center gap-1 disabled:opacity-50"
+              >
+                <Download className={`w-3 h-3 ${syncingCommandes ? 'animate-spin' : ''}`} />
+                {syncingCommandes ? 'Sync...' : 'Sync EasyBeer'}
+              </button>
+            </div>
+            {selectedCommandes.length > 0 ? (
+              <div className="space-y-2">
+                {selectedCommandes.slice(0, 10).map(cmd => (
+                  <div key={cmd.id} className="p-2.5 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-900">
+                        {cmd.numero ? `#${cmd.numero}` : 'Commande'}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        cmd.statut === 'livree' ? 'bg-green-100 text-green-700' :
+                        cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {cmd.statut === 'livree' ? 'Livree' : cmd.statut === 'annulee' ? 'Annulee' : 'En cours'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-500">
+                      <span>{cmd.date_commande ? formatDate(cmd.date_commande) : ''}</span>
+                      {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
+                    </div>
+                    {cmd.lignes && cmd.lignes.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {cmd.lignes.slice(0, 5).map((l, i) => (
+                          <div key={i} className="flex justify-between text-[10px] text-gray-500">
+                            <span className="truncate flex-1">{l.produit}</span>
+                            <span className="flex-shrink-0 ml-2">x{l.quantite}</span>
+                          </div>
+                        ))}
+                        {cmd.lignes.length > 5 && <p className="text-[10px] text-gray-400">+{cmd.lignes.length - 5} autres</p>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-3">Aucune commande. Cliquez Sync pour importer.</p>
             )}
           </div>
 

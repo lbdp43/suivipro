@@ -196,7 +196,7 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // All users see all data
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -210,6 +210,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM interactions ORDER BY date DESC'),
     db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
     db.query('SELECT * FROM tournee_config'),
+    db.query('SELECT * FROM commandes ORDER BY date_commande DESC'),
   ]);
 
   res.json({
@@ -226,6 +227,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     interactions: interactions.rows,
     tasksClient: tasksClient.rows,
     tourneeConfigs: tourneeConfigs.rows,
+    commandes: commandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
   });
 }));
 
@@ -1086,6 +1088,184 @@ router.delete('/interactions/:id', authMiddleware, asyncHandler(async (req, res)
 }));
 
 // ============================================
+// Commandes (linked to clients)
+// ============================================
+
+router.get('/commandes', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM commandes ORDER BY date_commande DESC');
+  res.json(result.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })));
+}));
+
+router.get('/commandes/client/:clientId', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [req.params.clientId]);
+  res.json(result.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })));
+}));
+
+router.post('/commandes', authMiddleware, asyncHandler(async (req, res) => {
+  const c = req.body;
+  if (!c.client_id) return validationError(res, ['client_id est requis']);
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, date_creation)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [c.id, c.client_id, c.easybeer_id || '', c.numero || '', c.date_commande || now, c.date_livraison || '',
+     c.statut || 'en_cours', c.montant_ht || 0, c.montant_ttc || 0, JSON.stringify(c.lignes || []),
+     c.notes || '', c.source || 'easybeer', now]
+  );
+  res.json({ ok: true });
+}));
+
+router.delete('/commandes/:id', authMiddleware, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM commandes WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Fetch orders from EasyBeer for a specific client and sync them
+router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(async (req, res) => {
+  const clientId = req.params.clientId;
+
+  // Find client and its easybeer link
+  const clientResult = await db.query('SELECT c.*, ec.easybeer_id FROM clients c LEFT JOIN easybeer_clients ec ON ec.imported_client_id = c.id WHERE c.id = $1', [clientId]);
+  if (clientResult.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
+
+  const client = clientResult.rows[0];
+  const ebId = client.easybeer_id;
+
+  if (!ebId) {
+    // Try matching by name in easybeer_clients
+    const ebMatch = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE status = 'imported' AND imported_client_id = $1", [clientId]);
+    if (ebMatch.rows.length === 0) {
+      return res.json({ ok: false, message: 'Client non lie a EasyBeer', commandes: [] });
+    }
+  }
+
+  const finalEbId = ebId || (await db.query("SELECT easybeer_id FROM easybeer_clients WHERE status = 'imported' AND imported_client_id = $1", [clientId])).rows[0]?.easybeer_id;
+  if (!finalEbId) return res.json({ ok: false, message: 'Pas de lien EasyBeer', commandes: [] });
+
+  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  const config = configResult.rows[0];
+  if (!config?.username || !config?.api_url) {
+    return res.json({ ok: false, message: 'Configuration EasyBeer incomplete', commandes: [] });
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+  const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+  const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
+
+  // Try fetching orders from EasyBeer API
+  const orderPaths = [
+    `/parametres/client/${finalEbId}/commandes`,
+    `/param%C3%A8tres/client/${finalEbId}/commandes`,
+    `/commandes/client/${finalEbId}`,
+    `/ventes/client/${finalEbId}`,
+    `/factures/client/${finalEbId}`,
+  ];
+
+  let orders = [];
+  let fetchedFrom = '';
+
+  for (const path of orderPaths) {
+    try {
+      const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+      if (resp.ok) {
+        let data = await resp.json();
+        if (!Array.isArray(data)) {
+          data = data.liste || data.results || data.data || data.items || data.commandes || data.factures || [];
+        }
+        if (Array.isArray(data) && data.length > 0) {
+          orders = data;
+          fetchedFrom = path;
+          break;
+        }
+      }
+    } catch { /* try next */ }
+  }
+
+  // Also try the document/facture endpoints
+  if (orders.length === 0) {
+    for (const docType of ['facture', 'bl', 'commande']) {
+      try {
+        const resp = await fetch(`${apiBase}/documents/${docType}/client/${finalEbId}`, { headers, signal: AbortSignal.timeout(15000) });
+        if (resp.ok) {
+          let data = await resp.json();
+          if (!Array.isArray(data)) data = data.liste || data.results || data.data || [];
+          if (Array.isArray(data) && data.length > 0) {
+            orders = data;
+            fetchedFrom = `/documents/${docType}/client/${finalEbId}`;
+            break;
+          }
+        }
+      } catch { /* try next */ }
+    }
+  }
+
+  if (orders.length === 0) {
+    return res.json({ ok: true, message: 'Aucune commande trouvee sur EasyBeer', commandes: [], tried: orderPaths });
+  }
+
+  // Parse and save orders
+  const now = new Date().toISOString();
+  const imported = [];
+
+  for (const order of orders) {
+    const orderId = String(order.id || order.idCommande || order.idFacture || order.numero || '');
+    if (!orderId) continue;
+
+    // Check if already imported
+    const existing = await db.query('SELECT id FROM commandes WHERE easybeer_id = $1 AND client_id = $2', [orderId, clientId]);
+    if (existing.rows.length > 0) continue;
+
+    // Extract order data
+    const numero = order.numero || order.reference || order.ref || orderId;
+    const dateCmd = order.date || order.dateCommande || order.dateCreation || order.datePiece || '';
+    const dateLiv = order.dateLivraison || order.dateExpedition || order.dateBL || '';
+    const statut = (order.statut || order.etat || order.status || '').toLowerCase();
+    const montantHt = parseFloat(order.montantHT || order.totalHT || order.montant_ht || 0) || 0;
+    const montantTtc = parseFloat(order.montantTTC || order.totalTTC || order.montant_ttc || 0) || 0;
+
+    // Extract line items
+    let lignes = [];
+    const rawLignes = order.lignes || order.details || order.articles || order.items || [];
+    if (Array.isArray(rawLignes)) {
+      lignes = rawLignes.map(l => ({
+        produit: l.libelle || l.designation || l.nom || l.produit || '',
+        quantite: parseFloat(l.quantite || l.qte || l.qty || 0) || 0,
+        prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prix || 0) || 0,
+        montant: parseFloat(l.montant || l.total || l.montantHT || 0) || 0,
+      }));
+    }
+
+    // Determine status
+    let finalStatut = 'en_cours';
+    if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee', 'terminée'].some(s => statut.includes(s))) {
+      finalStatut = 'livree';
+    } else if (['annulee', 'annulée', 'cancelled', 'canceled'].some(s => statut.includes(s))) {
+      finalStatut = 'annulee';
+    }
+
+    const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    await db.query(
+      `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, date_creation)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [cmdId, clientId, orderId, numero, dateCmd, dateLiv, finalStatut, montantHt, montantTtc,
+       JSON.stringify(lignes), '', 'easybeer', now]
+    );
+    imported.push({ id: cmdId, numero, statut: finalStatut, montant_ttc: montantTtc });
+  }
+
+  console.log(`[EasyBeer] Synced ${imported.length} commandes for client ${clientId} from ${fetchedFrom}`);
+
+  // Return all commandes for this client
+  const allCommandes = await db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [clientId]);
+  res.json({
+    ok: true,
+    message: `${imported.length} nouvelles commandes importees`,
+    commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
+    fetched_from: fetchedFrom,
+  });
+}));
+
+// ============================================
 // Tasks (Client tasks)
 // ============================================
 
@@ -1410,6 +1590,93 @@ function extractEbFieldsSync(data) {
   };
 }
 
+// Helper: find matching prospect by name, email, or phone
+async function findMatchingProspect(name, email, phone) {
+  if (!name && !email && !phone) return null;
+  // Try exact email match first
+  if (email) {
+    const r = await db.query('SELECT * FROM prospects WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
+    if (r.rows.length > 0) return r.rows[0];
+  }
+  // Try phone match (strip spaces/dashes)
+  if (phone) {
+    const cleanPhone = phone.replace(/[\s\-\.]/g, '');
+    const r = await db.query("SELECT * FROM prospects WHERE REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') = $1 LIMIT 1", [cleanPhone]);
+    if (r.rows.length > 0) return r.rows[0];
+  }
+  // Try exact name match
+  if (name) {
+    const r = await db.query('SELECT * FROM prospects WHERE LOWER(nom_etablissement) = LOWER($1) LIMIT 1', [name]);
+    if (r.rows.length > 0) return r.rows[0];
+  }
+  return null;
+}
+
+// Helper: link a newly created client to a matching prospect
+async function linkClientToProspect(clientId, prospect, now) {
+  // Update client to reference the prospect
+  await db.query('UPDATE clients SET prospect_id = $1 WHERE id = $2', [prospect.id, clientId]);
+  // Move prospect to client_gagne
+  await db.query(
+    'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
+    ['client_gagne', now, prospect.id]
+  );
+  console.log(`[EasyBeer] Client ${clientId} linked to prospect ${prospect.id} (${prospect.nom_etablissement})`);
+}
+
+// Helper: fetch from EasyBeer API with retries and backoff
+async function fetchFromEasyBeerWithRetry(apiBase, headers, id, maxRetries = 4) {
+  const delays = [5000, 10000, 20000, 40000]; // 5s, 10s, 20s, 40s
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Strategy 1: Direct lookup
+    for (const path of [`/parametres/client/detail/${id}`, `/param%C3%A8tres/client/detail/${id}`]) {
+      try {
+        const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+        if (resp.ok) {
+          let found = await resp.json();
+          if (Array.isArray(found)) found = found.find(d => String(d.id || d.idClient) === String(id)) || found[0];
+          if (found && (found.nom || found.libelle || found.raisonSociale || found.name)) {
+            console.log(`[EasyBeer] Fetch reussi via ${path} (attempt ${attempt + 1})`);
+            return found;
+          }
+        }
+      } catch { /* next */ }
+    }
+
+    // Strategy 2: List search
+    for (const path of ['/parametres/client/liste', '/param%C3%A8tres/client/liste']) {
+      try {
+        const resp = await fetch(`${apiBase}${path}`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000 }),
+          signal: AbortSignal.timeout(20000)
+        });
+        if (resp.ok) {
+          let data = await resp.json();
+          let list = Array.isArray(data) ? data : (data.liste || data.results || data.data || data.items || []);
+          if (Array.isArray(list)) {
+            const found = list.find(d => String(d.id || d.idClient) === String(id));
+            if (found) {
+              console.log(`[EasyBeer] Trouve dans liste ${path} (attempt ${attempt + 1})`);
+              return found;
+            }
+          }
+        }
+      } catch { /* next */ }
+    }
+
+    // Wait before retrying (except on last attempt)
+    if (attempt < maxRetries) {
+      const delay = delays[attempt] || 40000;
+      console.log(`[EasyBeer] Attempt ${attempt + 1} failed for id=${id}, retrying in ${delay / 1000}s...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  return null;
+}
+
 // Webhook endpoint (no auth, uses secret header)
 // EasyBeer webhook handler (shared by both routes)
 async function handleEasyBeerWebhook(req, res) {
@@ -1481,7 +1748,7 @@ async function handleEasyBeerWebhook(req, res) {
   // Use shared extractEbFieldsSync function (defined above)
   const extractEbFields = extractEbFieldsSync;
 
-  // Try to enrich with EasyBeer API data in background
+  // Try to enrich with EasyBeer API data in background (with retries and backoff)
   if (id && config?.username && config?.api_url) {
     setTimeout(async () => {
       try {
@@ -1489,45 +1756,7 @@ async function handleEasyBeerWebhook(req, res) {
         const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
         const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
-        let found = null;
-
-        // Strategy 1: Direct lookup via /parametres/client/detail/{id}
-        for (const path of [`/parametres/client/detail/${id}`, `/param%C3%A8tres/client/detail/${id}`]) {
-          try {
-            const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
-            if (resp.ok) {
-              found = await resp.json();
-              if (Array.isArray(found)) found = found.find(d => String(d.id || d.idClient) === String(id)) || found[0];
-              console.log(`[EasyBeer Webhook] Fetch reussi via ${path}`);
-              break;
-            }
-          } catch { /* next */ }
-        }
-
-        // Strategy 2: List via POST /parametres/client/liste and search
-        if (!found) {
-          for (const path of ['/parametres/client/liste', '/param%C3%A8tres/client/liste']) {
-            try {
-              const resp = await fetch(`${apiBase}${path}`, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000 }),
-                signal: AbortSignal.timeout(20000)
-              });
-              if (resp.ok) {
-                let data = await resp.json();
-                let list = Array.isArray(data) ? data : (data.liste || data.results || data.data || data.items || []);
-                if (Array.isArray(list)) {
-                  found = list.find(d => String(d.id || d.idClient) === String(id));
-                  if (found) {
-                    console.log(`[EasyBeer Webhook] Trouve dans liste ${path}`);
-                    break;
-                  }
-                }
-              }
-            } catch { /* next */ }
-          }
-        }
+        const found = await fetchFromEasyBeerWithRetry(apiBase, headers, id, 4);
 
         if (found) {
           const f = extractEbFields(found);
@@ -1565,25 +1794,39 @@ async function handleEasyBeerWebhook(req, res) {
               const clientType = 'BAR_RESTAURANT_GENERAL';
               const nextVisit = await calculateNextVisit(clientType, null, null);
               const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+              // Check if a matching prospect exists
+              const prospect = await findMatchingProspect(f.name, f.email, f.phone);
+
               await db.query(
                 `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
-                 type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, date_creation, date_modification)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+                 type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, prospect_id, date_creation, date_modification)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [clientId, f.name, f.city, f.address, f.postal_code,
                  f.phone, f.phone_mobile, f.email, f.contact_name, clientType, 'ACTIF',
-                 rule.commercial_id, nextVisit || null, f.notes, f.siret, f.tournee, f.latitude, f.longitude, clientNow, clientNow]
+                 prospect?.commercial_id || rule.commercial_id, nextVisit || null,
+                 [prospect?.notes, f.notes].filter(Boolean).join('\n') || '',
+                 f.siret, prospect?.tournee || f.tournee,
+                 f.latitude || prospect?.latitude || 0, f.longitude || prospect?.longitude || 0,
+                 prospect?.id || null, clientNow, clientNow]
               );
               await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
-              console.log(`[EasyBeer Webhook] Auto-import: ${f.name} -> commercial ${rule.commercial_id}`);
+
+              // Link prospect if found
+              if (prospect) {
+                await linkClientToProspect(clientId, prospect, clientNow);
+              }
+
+              console.log(`[EasyBeer Webhook] Auto-import: ${f.name} -> commercial ${prospect?.commercial_id || rule.commercial_id}${prospect ? ' (linked to prospect)' : ''}`);
             }
           }
         } else {
-          console.log(`[EasyBeer Webhook] Impossible de recuperer les details pour id=${id}`);
+          console.log(`[EasyBeer Webhook] Impossible de recuperer les details pour id=${id} apres 5 tentatives`);
         }
       } catch (err) {
         console.error(`[EasyBeer Webhook] Enrichissement echoue:`, err.message);
       }
-    }, 3000);
+    }, 5000); // Initial delay 5s (EasyBeer needs time to propagate)
   }
 
   res.json({ ok: true, received: { type, id } });
@@ -1691,9 +1934,12 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const nextVisit = await calculateNextVisit(clientType, null, null);
   const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+  // Check if a matching prospect exists
+  const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
+
   // Geocode if no coordinates
-  let lat = eb.latitude || 0;
-  let lng = eb.longitude || 0;
+  let lat = eb.latitude || prospect?.latitude || 0;
+  let lng = eb.longitude || prospect?.longitude || 0;
   if ((!lat || !lng) && (eb.address || eb.city)) {
     const geo = await geocodeServer([eb.address, eb.postal_code, eb.city].filter(Boolean).join(' '));
     if (geo) { lat = geo.latitude; lng = geo.longitude; }
@@ -1701,16 +1947,23 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
 
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
-     type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, date_creation, date_modification)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+     type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, prospect_id, date_creation, date_modification)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [clientId, eb.name, eb.city || '', eb.address || '', eb.postal_code || '',
      eb.phone || '', eb.phone_mobile || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
-     commercial_id || req.user.id, nextVisit || null, eb.notes || '', eb.siret || '',
-     tournee || eb.tournee || '', lat, lng, now, now]
+     commercial_id || prospect?.commercial_id || req.user.id, nextVisit || null,
+     [prospect?.notes, eb.notes].filter(Boolean).join('\n') || '',
+     eb.siret || '', tournee || prospect?.tournee || eb.tournee || '', lat, lng,
+     prospect?.id || null, now, now]
   );
 
+  // Link prospect if found
+  if (prospect) {
+    await linkClientToProspect(clientId, prospect, now);
+  }
+
   await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, req.params.id]);
-  res.json({ ok: true, client_id: clientId });
+  res.json({ ok: true, client_id: clientId, linked_prospect: prospect?.id || null });
 }));
 
 router.delete('/easybeer/pending-clients/:id', authMiddleware, asyncHandler(async (req, res) => {

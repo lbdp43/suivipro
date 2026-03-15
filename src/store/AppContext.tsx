@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, ReactNode, use
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
-  Client, Interaction, TaskClient, TourneeConfig,
+  Client, Interaction, TaskClient, TourneeConfig, Commande,
 } from '../types';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
 
@@ -50,7 +50,8 @@ type Action =
   | { type: 'ADD_TASK_CLIENT'; payload: TaskClient }
   | { type: 'UPDATE_TASK_CLIENT'; payload: TaskClient }
   | { type: 'DELETE_TASK_CLIENT'; payload: string }
-  | { type: 'SAVE_TOURNEE_CONFIG'; payload: TourneeConfig };
+  | { type: 'SAVE_TOURNEE_CONFIG'; payload: TourneeConfig }
+  | { type: 'SET_COMMANDES'; payload: Commande[] };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -176,6 +177,9 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, tasksClient: state.tasksClient.map(t => t.id === action.payload.id ? action.payload : t) };
     case 'DELETE_TASK_CLIENT':
       return { ...state, tasksClient: state.tasksClient.filter(t => t.id !== action.payload) };
+    // Commandes
+    case 'SET_COMMANDES':
+      return { ...state, commandes: action.payload };
     // Tournee Config
     case 'SAVE_TOURNEE_CONFIG': {
       const exists = state.tourneeConfigs.some(tc => tc.commercial_id === action.payload.commercial_id);
@@ -227,6 +231,7 @@ interface AppContextType {
   getInteractionsForClient: (clientId: string) => Interaction[];
   getTasksForClient: (clientId: string) => TaskClient[];
   getClientsForCommercial: (commercialId: string) => Client[];
+  getCommandesForClient: (clientId: string) => Commande[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -246,6 +251,7 @@ const emptyState: AppState = {
   interactions: [],
   tasksClient: [],
   tourneeConfigs: [],
+  commandes: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -258,7 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const dispatch: React.Dispatch<Action> = useCallback((action: Action) => {
     rawDispatch(action);
     // Sync to API (fire-and-forget, optimistic)
-    if (action.type !== 'SET_STATE' && action.type !== 'SET_CURRENT_USER') {
+    if (action.type !== 'SET_STATE' && action.type !== 'SET_CURRENT_USER' && action.type !== 'SET_COMMANDES') {
       syncAction(action.type, action.payload);
     }
   }, []);
@@ -364,6 +370,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getInteractionsForClient = useCallback((cid: string) => state.interactions.filter(i => i.client_id === cid), [state.interactions]);
   const getTasksForClient = useCallback((cid: string) => state.tasksClient.filter(t => t.client_id === cid), [state.tasksClient]);
   const getClientsForCommercial = useCallback((cid: string) => state.clients.filter(c => c.commercial_id === cid), [state.clients]);
+  const getCommandesForClient = useCallback((cid: string) => state.commandes.filter(c => c.client_id === cid), [state.commandes]);
 
   const contextValue = useMemo(() => ({
     state,
@@ -386,7 +393,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getInteractionsForClient,
     getTasksForClient,
     getClientsForCommercial,
-  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial]);
+    getCommandesForClient,
+  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient]);
 
   return (
     <AppContext.Provider value={contextValue}>
