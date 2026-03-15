@@ -893,6 +893,202 @@ function sanitizeProspect(p) {
 }
 
 // ============================================
+// Client read handlers
+// ============================================
+
+async function handleGetClients(payload) {
+  let query = `SELECT cl.*, c.nom AS commercial_nom FROM clients cl LEFT JOIN commerciaux c ON cl.commercial_id = c.id`;
+  const params = [];
+  const conditions = [];
+  if (payload.statut) { conditions.push(`cl.statut = $${params.length + 1}`); params.push(payload.statut); }
+  if (payload.type_client) { conditions.push(`cl.type_client = $${params.length + 1}`); params.push(payload.type_client); }
+  if (payload.commercial_id) { conditions.push(`cl.commercial_id = $${params.length + 1}`); params.push(payload.commercial_id); }
+  if (payload.commercial_email) {
+    const comm = await resolveCommercial(payload.commercial_email);
+    if (comm) { conditions.push(`cl.commercial_id = $${params.length + 1}`); params.push(comm.id); }
+  }
+  if (payload.tournee) { conditions.push(`cl.tournee = $${params.length + 1}`); params.push(payload.tournee); }
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY cl.nom';
+  if (payload.search) {
+    const result = await db.query(query, params);
+    const q = payload.search.toLowerCase();
+    return { success: true, clients: result.rows.filter(c =>
+      c.nom?.toLowerCase().includes(q) || c.ville?.toLowerCase().includes(q) ||
+      c.contact?.toLowerCase().includes(q) || c.telephone?.includes(q) || c.email?.toLowerCase().includes(q)
+    )};
+  }
+  const result = await db.query(query, params);
+  return { success: true, clients: result.rows };
+}
+
+async function handleGetClient(payload) {
+  const id = payload.client_id;
+  if (!id) return { success: false, error: 'client_id requis' };
+  const [cRes, iRes, tRes, coRes] = await Promise.all([
+    db.query('SELECT cl.*, c.nom AS commercial_nom FROM clients cl LEFT JOIN commerciaux c ON cl.commercial_id = c.id WHERE cl.id = $1', [id]),
+    db.query('SELECT i.*, c.nom AS commercial_nom FROM interactions i LEFT JOIN commerciaux c ON i.commercial_id = c.id WHERE i.client_id = $1 ORDER BY i.date DESC', [id]),
+    db.query('SELECT * FROM tasks_client WHERE client_id = $1 ORDER BY date_echeance', [id]),
+    db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [id]),
+  ]);
+  if (!cRes.rows[0]) return { success: false, error: 'Client introuvable' };
+  return { success: true, client: cRes.rows[0], interactions: iRes.rows, tasks: tRes.rows, commandes: coRes.rows };
+}
+
+async function handleSearchClients(payload) {
+  const q = payload.query;
+  if (!q) return { success: false, error: 'query requis' };
+  const result = await db.query(
+    `SELECT cl.*, c.nom AS commercial_nom FROM clients cl LEFT JOIN commerciaux c ON cl.commercial_id = c.id
+     WHERE cl.nom ILIKE $1 OR cl.ville ILIKE $1 OR cl.contact ILIKE $1 OR cl.telephone ILIKE $1 OR cl.email ILIKE $1 OR cl.tournee ILIKE $1
+     ORDER BY cl.nom LIMIT 50`, [`%${q}%`]
+  );
+  return { success: true, clients: result.rows };
+}
+
+async function handleGetClientsLateVisits(payload) {
+  const today = new Date().toISOString().split('T')[0];
+  let query = `SELECT cl.*, c.nom AS commercial_nom FROM clients cl LEFT JOIN commerciaux c ON cl.commercial_id = c.id
+    WHERE cl.statut = 'ACTIF' AND cl.next_visit IS NOT NULL AND cl.next_visit < $1`;
+  const params = [today];
+  if (payload.commercial_email) {
+    const comm = await resolveCommercial(payload.commercial_email);
+    if (comm) { query += ` AND cl.commercial_id = $${params.length + 1}`; params.push(comm.id); }
+  }
+  if (payload.tournee) { query += ` AND cl.tournee = $${params.length + 1}`; params.push(payload.tournee); }
+  query += ' ORDER BY cl.next_visit';
+  const result = await db.query(query, params);
+  return { success: true, clients: result.rows };
+}
+
+async function handleGetInteractions(payload) {
+  let query = `SELECT i.*, c.nom AS commercial_nom, cl.nom AS client_nom FROM interactions i
+    LEFT JOIN commerciaux c ON i.commercial_id = c.id LEFT JOIN clients cl ON i.client_id = cl.id`;
+  const params = [];
+  const conditions = [];
+  if (payload.client_id) { conditions.push(`i.client_id = $${params.length + 1}`); params.push(payload.client_id); }
+  if (payload.type) { conditions.push(`i.type = $${params.length + 1}`); params.push(payload.type); }
+  if (payload.commercial_email) {
+    const comm = await resolveCommercial(payload.commercial_email);
+    if (comm) { conditions.push(`i.commercial_id = $${params.length + 1}`); params.push(comm.id); }
+  }
+  if (payload.date_from) { conditions.push(`i.date >= $${params.length + 1}`); params.push(payload.date_from); }
+  if (payload.date_to) { conditions.push(`i.date <= $${params.length + 1}`); params.push(payload.date_to); }
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY i.date DESC LIMIT 100';
+  const result = await db.query(query, params);
+  return { success: true, interactions: result.rows };
+}
+
+async function handleGetClientInteractions(payload) {
+  const id = payload.client_id;
+  if (!id) return { success: false, error: 'client_id requis' };
+  const result = await db.query(
+    `SELECT i.*, c.nom AS commercial_nom FROM interactions i LEFT JOIN commerciaux c ON i.commercial_id = c.id WHERE i.client_id = $1 ORDER BY i.date DESC`, [id]
+  );
+  return { success: true, interactions: result.rows };
+}
+
+async function handleGetTasks(payload) {
+  let query = 'SELECT t.*, cl.nom AS client_nom, c.nom AS commercial_nom FROM tasks_client t LEFT JOIN clients cl ON t.client_id = cl.id LEFT JOIN commerciaux c ON t.commercial_id = c.id';
+  const params = [];
+  const conditions = [];
+  if (payload.statut) { conditions.push(`t.statut = $${params.length + 1}`); params.push(payload.statut); }
+  if (payload.client_id) { conditions.push(`t.client_id = $${params.length + 1}`); params.push(payload.client_id); }
+  if (payload.commercial_email) {
+    const comm = await resolveCommercial(payload.commercial_email);
+    if (comm) { conditions.push(`t.commercial_id = $${params.length + 1}`); params.push(comm.id); }
+  }
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY t.date_echeance';
+  const result = await db.query(query, params);
+  return { success: true, tasks: result.rows };
+}
+
+async function handleGetClientTasks(payload) {
+  const id = payload.client_id;
+  if (!id) return { success: false, error: 'client_id requis' };
+  const result = await db.query('SELECT * FROM tasks_client WHERE client_id = $1 ORDER BY date_echeance', [id]);
+  return { success: true, tasks: result.rows };
+}
+
+async function handleGetCommandes(payload) {
+  let query = `SELECT co.*, cl.nom AS client_nom FROM commandes co LEFT JOIN clients cl ON co.client_id = cl.id`;
+  const params = [];
+  const conditions = [];
+  if (payload.client_id) { conditions.push(`co.client_id = $${params.length + 1}`); params.push(payload.client_id); }
+  if (payload.statut) { conditions.push(`co.statut = $${params.length + 1}`); params.push(payload.statut); }
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY co.date_commande DESC LIMIT 50';
+  const result = await db.query(query, params);
+  return { success: true, commandes: result.rows };
+}
+
+async function handleGetClientCommandes(payload) {
+  const id = payload.client_id;
+  if (!id) return { success: false, error: 'client_id requis' };
+  const result = await db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [id]);
+  return { success: true, commandes: result.rows };
+}
+
+async function handleGetTourneeConfigs(payload) {
+  let query = 'SELECT tc.*, c.nom AS commercial_nom FROM tournee_config tc LEFT JOIN commerciaux c ON tc.commercial_id = c.id';
+  const params = [];
+  if (payload.commercial_email) {
+    const comm = await resolveCommercial(payload.commercial_email);
+    if (comm) { query += ' WHERE tc.commercial_id = $1'; params.push(comm.id); }
+  }
+  const result = await db.query(query, params);
+  return {
+    success: true,
+    configs: result.rows.map(r => ({
+      commercial_id: r.commercial_id,
+      commercial_nom: r.commercial_nom,
+      config: typeof r.config === 'string' ? JSON.parse(r.config) : r.config,
+      week_pattern: r.week_pattern || 'every',
+      notes: r.notes || '',
+      tournee_info: r.tournee_info || '',
+      updated_at: r.updated_at,
+    })),
+  };
+}
+
+async function handleGetAnnuaire(payload) {
+  const params = [];
+  const pConditions = [];
+  const cConditions = [];
+  if (payload.search) {
+    params.push(`%${payload.search}%`);
+    pConditions.push(`(p.nom_etablissement ILIKE $${params.length} OR p.ville ILIKE $${params.length} OR p.telephone ILIKE $${params.length} OR p.siret ILIKE $${params.length})`);
+  }
+  if (payload.entity_type && payload.entity_type !== 'client') {
+    params.push(payload.entity_type);
+    pConditions.push(`COALESCE(p.entity_type, 'prospect') = $${params.length}`);
+  }
+  if (payload.departement) {
+    params.push(payload.departement);
+    pConditions.push(`p.departement = $${params.length}`);
+  }
+  let pQuery = `SELECT p.id, p.nom_etablissement AS nom, p.ville, p.code_postal, p.departement, p.telephone, p.siret, COALESCE(p.entity_type, 'prospect') AS entity_type, 'prospect' AS source FROM prospects p`;
+  if (pConditions.length > 0) pQuery += ' WHERE ' + pConditions.join(' AND ');
+  pQuery += ' LIMIT 100';
+  const pRes = await db.query(pQuery, params);
+
+  let cQuery = `SELECT c.id, c.nom, c.ville, c.code_postal, LEFT(c.code_postal, 2) AS departement, c.telephone, c.siret, 'client' AS entity_type, 'client' AS source FROM clients c`;
+  const cParams = [];
+  if (payload.search) {
+    cParams.push(`%${payload.search}%`);
+    cQuery += ` WHERE (c.nom ILIKE $${cParams.length} OR c.ville ILIKE $${cParams.length} OR c.telephone ILIKE $${cParams.length} OR c.siret ILIKE $${cParams.length})`;
+  }
+  if (payload.entity_type === 'client' || !payload.entity_type) {
+    cQuery += ' LIMIT 100';
+    const cRes = await db.query(cQuery, cParams);
+    return { success: true, entries: [...pRes.rows, ...cRes.rows] };
+  }
+  return { success: true, entries: pRes.rows };
+}
+
+// ============================================
 // Action sets
 // ============================================
 
@@ -900,14 +1096,23 @@ const READ_ACTIONS = new Set([
   'GET_COMMERCIAUX', 'GET_PROSPECTS', 'GET_PROSPECT', 'GET_APPOINTMENTS', 'GET_UPCOMING_APPOINTMENTS',
   'GET_REMINDERS', 'GET_PIPELINE_STAGES', 'GET_STATS', 'SEARCH_PROSPECTS', 'GET_CURRENT_USER',
   'GET_PROSPECT_TIMELINE', 'GET_CALLS',
+  // Clients
+  'GET_CLIENTS', 'GET_CLIENT', 'SEARCH_CLIENTS', 'GET_CLIENTS_LATE_VISITS',
+  // Interactions / Visites
+  'GET_INTERACTIONS', 'GET_CLIENT_INTERACTIONS',
+  // Tasks
+  'GET_TASKS', 'GET_CLIENT_TASKS',
+  // Commandes
+  'GET_COMMANDES', 'GET_CLIENT_COMMANDES',
+  // Tournees
+  'GET_TOURNEE_CONFIGS',
+  // Annuaire
+  'GET_ANNUAIRE',
 ]);
 
 const WRITE_ACTIONS = new Set([
-  'CREATE_PROSPECT', 'DELETE_PROSPECT',
-  'CREATE_APPOINTMENT', 'UPDATE_APPOINTMENT', 'DELETE_APPOINTMENT',
-  'CREATE_REMINDER', 'UPDATE_REMINDER', 'DELETE_REMINDER', 'MARK_REMINDER_DONE',
-  'CREATE_CALL', 'UPDATE_CALL', 'DELETE_CALL',
-  'UPDATE_PROSPECT', 'ASSIGN_PROSPECT', 'MOVE_PROSPECT_STAGE', 'ADD_PROSPECT_NOTE',
+  'CREATE_PROSPECT',
+  'CREATE_APPOINTMENT',
 ]);
 
 // ============================================
@@ -950,6 +1155,24 @@ router.post('/hub/bridge', hubApiKeyAuth, asyncHandler(async (req, res) => {
       case 'GET_CURRENT_USER': result = await handleGetCurrentUser(user_email); break;
       case 'GET_PROSPECT_TIMELINE': result = await handleGetProspectTimeline(payload); break;
       case 'GET_CALLS': result = await handleGetCalls(payload); break;
+      // Clients
+      case 'GET_CLIENTS': result = await handleGetClients(payload); break;
+      case 'GET_CLIENT': result = await handleGetClient(payload); break;
+      case 'SEARCH_CLIENTS': result = await handleSearchClients(payload); break;
+      case 'GET_CLIENTS_LATE_VISITS': result = await handleGetClientsLateVisits(payload); break;
+      // Interactions
+      case 'GET_INTERACTIONS': result = await handleGetInteractions(payload); break;
+      case 'GET_CLIENT_INTERACTIONS': result = await handleGetClientInteractions(payload); break;
+      // Tasks
+      case 'GET_TASKS': result = await handleGetTasks(payload); break;
+      case 'GET_CLIENT_TASKS': result = await handleGetClientTasks(payload); break;
+      // Commandes
+      case 'GET_COMMANDES': result = await handleGetCommandes(payload); break;
+      case 'GET_CLIENT_COMMANDES': result = await handleGetClientCommandes(payload); break;
+      // Tournees
+      case 'GET_TOURNEE_CONFIGS': result = await handleGetTourneeConfigs(payload); break;
+      // Annuaire
+      case 'GET_ANNUAIRE': result = await handleGetAnnuaire(payload); break;
       default: result = { success: false, error: 'Action inconnue' };
     }
     return res.json(result);
@@ -962,22 +1185,8 @@ router.post('/hub/bridge', hubApiKeyAuth, asyncHandler(async (req, res) => {
 
     switch (action) {
       case 'CREATE_PROSPECT': result = await handleCreateProspect(payload, userId, confirmed); break;
-      case 'DELETE_PROSPECT': result = await handleDeleteProspect(payload, confirmed); break;
       case 'CREATE_APPOINTMENT': result = await handleCreateAppointment(payload, userId, confirmed); break;
-      case 'UPDATE_APPOINTMENT': result = await handleUpdateAppointment(payload, confirmed); break;
-      case 'DELETE_APPOINTMENT': result = await handleDeleteAppointment(payload, confirmed); break;
-      case 'CREATE_REMINDER': result = await handleCreateReminder(payload, userId, confirmed); break;
-      case 'UPDATE_REMINDER': result = await handleUpdateReminder(payload, confirmed); break;
-      case 'DELETE_REMINDER': result = await handleDeleteReminder(payload, confirmed); break;
-      case 'MARK_REMINDER_DONE': result = await handleMarkReminderDone(payload, confirmed); break;
-      case 'CREATE_CALL': result = await handleCreateCall(payload, userId, confirmed); break;
-      case 'UPDATE_CALL': result = await handleUpdateCall(payload, confirmed); break;
-      case 'DELETE_CALL': result = await handleDeleteCall(payload, confirmed); break;
-      case 'UPDATE_PROSPECT': result = await handleUpdateProspect(payload, confirmed); break;
-      case 'ASSIGN_PROSPECT': result = await handleAssignProspect(payload, confirmed); break;
-      case 'MOVE_PROSPECT_STAGE': result = await handleMoveProspectStage(payload, confirmed); break;
-      case 'ADD_PROSPECT_NOTE': result = await handleAddProspectNote(payload, confirmed); break;
-      default: result = { success: false, error: 'Action inconnue' };
+      default: result = { success: false, error: 'Action non autorisee. Seules CREATE_PROSPECT et CREATE_APPOINTMENT sont permises en ecriture.' };
     }
     return res.json(result);
   }

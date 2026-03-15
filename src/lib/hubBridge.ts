@@ -3,7 +3,7 @@
 // Allows Claude AI (in Hub iframe) to read/write SuiviPro data
 // ============================================
 
-import type { AppState, Prospect, Appointment, Call, Reminder, PipelineStage } from '../types';
+import type { AppState, Prospect, Appointment, Call, Reminder, PipelineStage, Client, Interaction, TaskClient, Commande } from '../types';
 
 // ============================================
 // Protocol types
@@ -43,25 +43,31 @@ const READ_ACTIONS = new Set([
   'GET_STATS',
   'SEARCH_PROSPECTS',
   'GET_CURRENT_USER',
+  // Clients
+  'GET_CLIENTS',
+  'GET_CLIENT',
+  'SEARCH_CLIENTS',
+  'GET_CLIENTS_LATE_VISITS',
+  // Interactions / Visites
+  'GET_INTERACTIONS',
+  'GET_CLIENT_INTERACTIONS',
+  // Tasks
+  'GET_TASKS',
+  'GET_CLIENT_TASKS',
+  // Commandes
+  'GET_COMMANDES',
+  'GET_CLIENT_COMMANDES',
+  // Tournees
+  'GET_TOURNEE_CONFIGS',
+  // Annuaire
+  'GET_ANNUAIRE',
+  // Commerciaux
+  'GET_COMMERCIAUX',
 ]);
 
 const WRITE_ACTIONS = new Set([
   'CREATE_PROSPECT',
-  'DELETE_PROSPECT',
   'CREATE_APPOINTMENT',
-  'UPDATE_APPOINTMENT',
-  'DELETE_APPOINTMENT',
-  'CREATE_REMINDER',
-  'UPDATE_REMINDER',
-  'DELETE_REMINDER',
-  'MARK_REMINDER_DONE',
-  'CREATE_CALL',
-  'UPDATE_CALL',
-  'DELETE_CALL',
-  'UPDATE_PROSPECT',
-  'MOVE_PROSPECT_STAGE',
-  'ASSIGN_PROSPECT',
-  'ADD_PROSPECT_NOTE',
 ]);
 
 // ============================================
@@ -201,7 +207,156 @@ function handleGetCurrentUser(state: AppState): ActionResult {
 }
 
 // ============================================
-// Write action handlers
+// Client read handlers
+// ============================================
+
+function sanitizeClient(c: Client) {
+  return {
+    id: c.id, nom: c.nom, ville: c.ville, adresse: c.adresse, code_postal: c.code_postal,
+    telephone: c.telephone, telephone_mobile: c.telephone_mobile, email: c.email, contact: c.contact,
+    type_client: c.type_client, statut: c.statut, commercial_id: c.commercial_id,
+    next_visit: c.next_visit, last_visit: c.last_visit, tournee: c.tournee,
+    notes: c.notes, siret: c.siret, date_creation: c.date_creation, date_modification: c.date_modification,
+  };
+}
+
+function handleGetClients(payload: Record<string, unknown>, state: AppState): ActionResult {
+  let clients = state.clients;
+  if (payload.statut) clients = clients.filter(c => c.statut === payload.statut);
+  if (payload.type_client) clients = clients.filter(c => c.type_client === payload.type_client);
+  if (payload.commercial_id) clients = clients.filter(c => c.commercial_id === payload.commercial_id);
+  if (payload.tournee) clients = clients.filter(c => c.tournee === payload.tournee);
+  if (payload.search && typeof payload.search === 'string') {
+    const q = payload.search.toLowerCase();
+    clients = clients.filter(c =>
+      c.nom.toLowerCase().includes(q) || c.ville.toLowerCase().includes(q) ||
+      c.contact.toLowerCase().includes(q) || c.telephone.includes(q) || c.email.toLowerCase().includes(q)
+    );
+  }
+  return { success: true, clients: clients.map(sanitizeClient) };
+}
+
+function handleGetClient(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const id = payload.client_id as string;
+  if (!id) return { success: false, error: 'client_id requis' };
+  const client = state.clients.find(c => c.id === id);
+  if (!client) return { success: false, error: 'Client introuvable' };
+  return {
+    success: true,
+    client: sanitizeClient(client),
+    interactions: state.interactions.filter(i => i.client_id === id),
+    tasks: state.tasksClient.filter(t => t.client_id === id),
+    commandes: state.commandes.filter(co => co.client_id === id),
+  };
+}
+
+function handleSearchClients(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const query = payload.query as string;
+  if (!query) return { success: false, error: 'query requis' };
+  const q = query.toLowerCase();
+  const results = state.clients.filter(c =>
+    c.nom.toLowerCase().includes(q) || c.ville.toLowerCase().includes(q) ||
+    c.contact.toLowerCase().includes(q) || c.telephone.includes(q) ||
+    c.email.toLowerCase().includes(q) || c.tournee.toLowerCase().includes(q)
+  );
+  return { success: true, clients: results.map(sanitizeClient) };
+}
+
+function handleGetClientsLateVisits(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const today = new Date().toISOString().split('T')[0];
+  let clients = state.clients.filter(c => c.statut === 'ACTIF' && c.next_visit && c.next_visit < today);
+  if (payload.commercial_id) clients = clients.filter(c => c.commercial_id === payload.commercial_id);
+  if (payload.tournee) clients = clients.filter(c => c.tournee === payload.tournee);
+  clients.sort((a, b) => (a.next_visit || '').localeCompare(b.next_visit || ''));
+  return { success: true, clients: clients.map(sanitizeClient) };
+}
+
+function handleGetInteractions(payload: Record<string, unknown>, state: AppState): ActionResult {
+  let interactions = state.interactions;
+  if (payload.client_id) interactions = interactions.filter(i => i.client_id === payload.client_id);
+  if (payload.type) interactions = interactions.filter(i => i.type === payload.type);
+  if (payload.commercial_id) interactions = interactions.filter(i => i.commercial_id === payload.commercial_id);
+  if (payload.date_from && typeof payload.date_from === 'string') interactions = interactions.filter(i => i.date >= (payload.date_from as string));
+  if (payload.date_to && typeof payload.date_to === 'string') interactions = interactions.filter(i => i.date <= (payload.date_to as string));
+  interactions = [...interactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100);
+  return { success: true, interactions };
+}
+
+function handleGetClientInteractions(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const id = payload.client_id as string;
+  if (!id) return { success: false, error: 'client_id requis' };
+  const client = state.clients.find(c => c.id === id);
+  if (!client) return { success: false, error: 'Client introuvable' };
+  const interactions = state.interactions.filter(i => i.client_id === id).sort((a, b) => b.date.localeCompare(a.date));
+  return { success: true, client_nom: client.nom, interactions };
+}
+
+function handleGetTasks(payload: Record<string, unknown>, state: AppState): ActionResult {
+  let tasks = state.tasksClient;
+  if (payload.statut) tasks = tasks.filter(t => t.statut === payload.statut);
+  if (payload.client_id) tasks = tasks.filter(t => t.client_id === payload.client_id);
+  if (payload.commercial_id) tasks = tasks.filter(t => t.commercial_id === payload.commercial_id);
+  return { success: true, tasks };
+}
+
+function handleGetClientTasks(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const id = payload.client_id as string;
+  if (!id) return { success: false, error: 'client_id requis' };
+  return { success: true, tasks: state.tasksClient.filter(t => t.client_id === id) };
+}
+
+function handleGetCommandes(payload: Record<string, unknown>, state: AppState): ActionResult {
+  let commandes = state.commandes;
+  if (payload.client_id) commandes = commandes.filter(co => co.client_id === payload.client_id);
+  if (payload.statut) commandes = commandes.filter(co => co.statut === payload.statut);
+  commandes = [...commandes].sort((a, b) => b.date_commande.localeCompare(a.date_commande)).slice(0, 50);
+  return { success: true, commandes };
+}
+
+function handleGetClientCommandes(payload: Record<string, unknown>, state: AppState): ActionResult {
+  const id = payload.client_id as string;
+  if (!id) return { success: false, error: 'client_id requis' };
+  return { success: true, commandes: state.commandes.filter(co => co.client_id === id) };
+}
+
+function handleGetTourneeConfigs(state: AppState): ActionResult {
+  // Tournee configs are not in AppState, delegate to server
+  return { success: false, error: 'Action disponible uniquement via le bridge HTTP serveur' };
+}
+
+function handleGetAnnuaire(payload: Record<string, unknown>, state: AppState): ActionResult {
+  // Annuaire combines prospects + clients. Provide a unified search from state.
+  const query = payload.search as string;
+  let results: any[] = [];
+  if (query) {
+    const q = query.toLowerCase();
+    const matchedProspects = state.prospects.filter(p =>
+      p.nom_etablissement.toLowerCase().includes(q) || p.ville.toLowerCase().includes(q) || p.telephone.includes(q)
+    ).slice(0, 50).map(p => ({ ...sanitizeProspect(p), source: 'prospect' }));
+    const matchedClients = state.clients.filter(c =>
+      c.nom.toLowerCase().includes(q) || c.ville.toLowerCase().includes(q) || c.telephone.includes(q)
+    ).slice(0, 50).map(c => ({ ...sanitizeClient(c), source: 'client' }));
+    results = [...matchedProspects, ...matchedClients];
+  } else {
+    results = [
+      ...state.prospects.slice(0, 100).map(p => ({ ...sanitizeProspect(p), source: 'prospect' })),
+      ...state.clients.slice(0, 100).map(c => ({ ...sanitizeClient(c), source: 'client' })),
+    ];
+  }
+  return { success: true, entries: results, total: state.prospects.length + state.clients.length };
+}
+
+function handleGetCommerciaux(state: AppState): ActionResult {
+  return {
+    success: true,
+    commerciaux: state.commerciaux.map(c => ({
+      id: c.id, nom: c.nom, prenom: c.prenom, email: c.email, role: c.role,
+    })),
+  };
+}
+
+// ============================================
+// Write action handlers (restricted: CREATE_PROSPECT + CREATE_APPOINTMENT only)
 // ============================================
 
 function handleCreateAppointment(
@@ -242,194 +397,6 @@ function handleCreateAppointment(
   return { success: true, appointment };
 }
 
-function handleUpdateAppointment(
-  payload: Record<string, unknown>,
-  state: AppState,
-  dispatch: Dispatch,
-  confirmed: boolean,
-): ActionResult {
-  const { id, ...updates } = payload as any;
-  if (!id) return { success: false, error: 'id requis' };
-
-  const existing = state.appointments.find(a => a.id === id);
-  if (!existing) return { success: false, error: 'RDV introuvable' };
-
-  const prospect = state.prospects.find(p => p.id === existing.prospect_id);
-  const parts: string[] = [];
-  if (updates.compte_rendu) parts.push(`compte-rendu: ${updates.compte_rendu}`);
-  if (updates.notes_compte_rendu) parts.push(`notes de compte-rendu`);
-  if (updates.statut) parts.push(`statut: ${updates.statut}`);
-
-  const description = `Modifier le RDV du ${existing.date} pour "${prospect?.nom_etablissement || 'inconnu'}" — ${parts.join(', ') || 'mise a jour'}`;
-
-  if (!confirmed) {
-    return { success: true, needs_confirmation: true, description };
-  }
-
-  const updated: Appointment = { ...existing, ...updates };
-  dispatch({ type: 'UPDATE_APPOINTMENT', payload: updated });
-  return { success: true, appointment: updated };
-}
-
-function handleCreateReminder(
-  payload: Record<string, unknown>,
-  state: AppState,
-  dispatch: Dispatch,
-  confirmed: boolean,
-): ActionResult {
-  const { prospect_id, date, heure, message } = payload as any;
-  if (!prospect_id || !date || !heure || !message) {
-    return { success: false, error: 'Champs requis: prospect_id, date, heure, message' };
-  }
-
-  const prospect = state.prospects.find(p => p.id === prospect_id);
-  if (!prospect) return { success: false, error: 'Prospect introuvable' };
-
-  const description = `Creer un rappel le ${date} a ${heure} pour "${prospect.nom_etablissement}" : "${message}"`;
-
-  if (!confirmed) {
-    return { success: true, needs_confirmation: true, description };
-  }
-
-  const id = crypto.randomUUID();
-  const reminder: Reminder = {
-    id,
-    prospect_id: prospect_id as string,
-    commercial_id: state.currentUser!.id,
-    date: date as string,
-    heure: heure as string,
-    message: message as string,
-    statut: 'actif',
-  };
-
-  dispatch({ type: 'ADD_REMINDER', payload: reminder });
-  return { success: true, reminder };
-}
-
-function handleUpdateProspect(
-  payload: Record<string, unknown>,
-  state: AppState,
-  dispatch: Dispatch,
-  confirmed: boolean,
-): ActionResult {
-  const { id, ...updates } = payload as any;
-  if (!id) return { success: false, error: 'id requis' };
-
-  const existing = state.prospects.find(p => p.id === id);
-  if (!existing) return { success: false, error: 'Prospect introuvable' };
-
-  // Don't allow changing id or commercial_id
-  delete updates.id;
-  delete updates.commercial_id;
-
-  const changedFields = Object.keys(updates).join(', ');
-  const description = `Modifier "${existing.nom_etablissement}" — champs: ${changedFields}`;
-
-  if (!confirmed) {
-    return { success: true, needs_confirmation: true, description };
-  }
-
-  const updated: Prospect = {
-    ...existing,
-    ...updates,
-    date_modification: new Date().toISOString(),
-  };
-
-  dispatch({ type: 'UPDATE_PROSPECT', payload: updated });
-  return { success: true, prospect: sanitizeProspect(updated) };
-}
-
-function handleMoveProspectStage(
-  payload: Record<string, unknown>,
-  state: AppState,
-  dispatch: Dispatch,
-  confirmed: boolean,
-): ActionResult {
-  const { prospect_id, stage } = payload as any;
-  if (!prospect_id || !stage) return { success: false, error: 'prospect_id et stage requis' };
-
-  const prospect = state.prospects.find(p => p.id === prospect_id);
-  if (!prospect) return { success: false, error: 'Prospect introuvable' };
-
-  const stageColumn = state.pipelineColumns.find(c => c.id === stage);
-  if (!stageColumn) return { success: false, error: `Etape "${stage}" invalide` };
-
-  const description = `Deplacer "${prospect.nom_etablissement}" vers l'etape "${stageColumn.label}"`;
-
-  if (!confirmed) {
-    return { success: true, needs_confirmation: true, description };
-  }
-
-  dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect_id, stage: stage as PipelineStage } });
-  return { success: true, prospect: { id: prospect_id, etape_pipeline: stage } };
-}
-
-function handleCreateCall(
-  payload: Record<string, unknown>,
-  state: AppState,
-  dispatch: Dispatch,
-  confirmed: boolean,
-): ActionResult {
-  const { prospect_id, resultat, notes, duree } = payload as any;
-  if (!prospect_id || !resultat) {
-    return { success: false, error: 'Champs requis: prospect_id, resultat' };
-  }
-
-  const prospect = state.prospects.find(p => p.id === prospect_id);
-  if (!prospect) return { success: false, error: 'Prospect introuvable' };
-
-  const description = `Enregistrer un appel "${resultat}" pour "${prospect.nom_etablissement}"`;
-
-  if (!confirmed) {
-    return { success: true, needs_confirmation: true, description };
-  }
-
-  const id = crypto.randomUUID();
-  const call: Call = {
-    id,
-    prospect_id: prospect_id as string,
-    commercial_id: state.currentUser!.id,
-    date: new Date().toISOString(),
-    duree: (duree as number) || 0,
-    resultat: resultat as Call['resultat'],
-    notes: (notes as string) || '',
-  };
-
-  dispatch({ type: 'ADD_CALL', payload: call });
-  return { success: true, call };
-}
-
-function handleAddProspectNote(
-  payload: Record<string, unknown>,
-  state: AppState,
-  dispatch: Dispatch,
-  confirmed: boolean,
-): ActionResult {
-  const { prospect_id, note } = payload as any;
-  if (!prospect_id || !note) return { success: false, error: 'prospect_id et note requis' };
-
-  const prospect = state.prospects.find(p => p.id === prospect_id);
-  if (!prospect) return { success: false, error: 'Prospect introuvable' };
-
-  const description = `Ajouter une note a "${prospect.nom_etablissement}" : "${(note as string).substring(0, 60)}${(note as string).length > 60 ? '...' : ''}"`;
-
-  if (!confirmed) {
-    return { success: true, needs_confirmation: true, description };
-  }
-
-  const newNotes = prospect.notes
-    ? `${prospect.notes}\n\n[${new Date().toLocaleDateString('fr-FR')}] ${note}`
-    : `[${new Date().toLocaleDateString('fr-FR')}] ${note}`;
-
-  const updated: Prospect = {
-    ...prospect,
-    notes: newNotes,
-    date_modification: new Date().toISOString(),
-  };
-
-  dispatch({ type: 'UPDATE_PROSPECT', payload: updated });
-  return { success: true, prospect: sanitizeProspect(updated) };
-}
 
 // ============================================
 // Main handler
@@ -458,32 +425,37 @@ export function handleSuiviProAction(
       case 'GET_STATS': return handleGetStats(state);
       case 'SEARCH_PROSPECTS': return handleSearchProspects(payload, state);
       case 'GET_CURRENT_USER': return handleGetCurrentUser(state);
+      // Clients
+      case 'GET_CLIENTS': return handleGetClients(payload, state);
+      case 'GET_CLIENT': return handleGetClient(payload, state);
+      case 'SEARCH_CLIENTS': return handleSearchClients(payload, state);
+      case 'GET_CLIENTS_LATE_VISITS': return handleGetClientsLateVisits(payload, state);
+      // Interactions / Visites
+      case 'GET_INTERACTIONS': return handleGetInteractions(payload, state);
+      case 'GET_CLIENT_INTERACTIONS': return handleGetClientInteractions(payload, state);
+      // Tasks
+      case 'GET_TASKS': return handleGetTasks(payload, state);
+      case 'GET_CLIENT_TASKS': return handleGetClientTasks(payload, state);
+      // Commandes
+      case 'GET_COMMANDES': return handleGetCommandes(payload, state);
+      case 'GET_CLIENT_COMMANDES': return handleGetClientCommandes(payload, state);
+      // Tournees
+      case 'GET_TOURNEE_CONFIGS': return handleGetTourneeConfigs(state);
+      // Annuaire
+      case 'GET_ANNUAIRE': return handleGetAnnuaire(payload, state);
+      // Commerciaux
+      case 'GET_COMMERCIAUX': return handleGetCommerciaux(state);
       default: return { success: false, error: 'Action inconnue' };
     }
   }
 
-  // Write actions — need confirmed: true in payload to execute
+  // Write actions — only CREATE_PROSPECT and CREATE_APPOINTMENT allowed
   if (WRITE_ACTIONS.has(action)) {
     const confirmed = payload.confirmed === true;
 
     switch (action) {
       case 'CREATE_APPOINTMENT': return handleCreateAppointment(payload, state, dispatch, confirmed);
-      case 'UPDATE_APPOINTMENT': return handleUpdateAppointment(payload, state, dispatch, confirmed);
-      case 'CREATE_REMINDER': return handleCreateReminder(payload, state, dispatch, confirmed);
-      case 'UPDATE_PROSPECT': return handleUpdateProspect(payload, state, dispatch, confirmed);
-      case 'MOVE_PROSPECT_STAGE': return handleMoveProspectStage(payload, state, dispatch, confirmed);
-      case 'CREATE_CALL': return handleCreateCall(payload, state, dispatch, confirmed);
-      case 'ADD_PROSPECT_NOTE': return handleAddProspectNote(payload, state, dispatch, confirmed);
-      // These actions are handled server-side only (HTTP bridge)
       case 'CREATE_PROSPECT':
-      case 'DELETE_PROSPECT':
-      case 'DELETE_APPOINTMENT':
-      case 'UPDATE_REMINDER':
-      case 'DELETE_REMINDER':
-      case 'MARK_REMINDER_DONE':
-      case 'UPDATE_CALL':
-      case 'DELETE_CALL':
-      case 'ASSIGN_PROSPECT':
         return { success: false, error: 'Action disponible uniquement via le bridge HTTP serveur' };
       default: return { success: false, error: 'Action inconnue' };
     }
