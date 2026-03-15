@@ -87,6 +87,7 @@ export default function SirenePage() {
 
   // Sync form
   const [selectedNafCodes, setSelectedNafCodes] = useState<Set<string>>(new Set());
+  const [customNafInput, setCustomNafInput] = useState('');
   const [deptInput, setDeptInput] = useState('');
   const [lookbackDays, setLookbackDays] = useState(30);
   const [showSyncForm, setShowSyncForm] = useState(false);
@@ -116,6 +117,7 @@ export default function SirenePage() {
   const [zoneSaving, setZoneSaving] = useState(false);
   const [zoneForm, setZoneForm] = useState({
     departements: '03,07,26,38,42,43,63',
+    naf_codes: '',
     lookback_days: 7,
     auto_import: true,
     default_commercial_id: '',
@@ -174,6 +176,7 @@ export default function SirenePage() {
         setZoneConfig(data);
         setZoneForm({
           departements: data.departements || '03,07,26,38,42,43,63',
+          naf_codes: data.naf_codes || '',
           lookback_days: data.lookback_days || 7,
           auto_import: data.auto_import ?? true,
           default_commercial_id: data.default_commercial_id || '',
@@ -261,11 +264,14 @@ export default function SirenePage() {
     setImportResult(null);
     try {
       const departements = deptInput.split(',').map(d => d.trim()).filter(Boolean);
+      // Merge predefined selected + custom NAF codes
+      const customCodes = customNafInput.split(',').map(c => c.trim()).filter(Boolean);
+      const allNafCodes = [...Array.from(selectedNafCodes), ...customCodes];
       const res = await fetch('/api/sirene/sync', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          naf_codes: Array.from(selectedNafCodes),
+          naf_codes: allNafCodes,
           departements,
           lookback_days: lookbackDays,
         }),
@@ -456,6 +462,21 @@ export default function SirenePage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-indigo-700 mb-1">
+                  Codes NAF supplementaires (separes par virgule)
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
+                  placeholder="55.10Z, 93.29Z... (vide = liste predefinie)"
+                  value={zoneForm.naf_codes || ''}
+                  onChange={e => setZoneForm(f => ({ ...f, naf_codes: e.target.value }))}
+                />
+                <p className="text-[10px] text-indigo-400 mt-1">Vide = les 20 codes predefinis (restaurants, bars, caves, etc.)</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-indigo-700 mb-1">
                   <Key className="w-3 h-3 inline mr-1" />
                   Cle API INSEE (portail-api.insee.fr)
                 </label>
@@ -566,7 +587,7 @@ export default function SirenePage() {
           <div className="space-y-4 mb-4">
             {/* NAF codes selection */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-2">Codes NAF a synchroniser (vide = tous)</label>
+              <label className="block text-xs font-medium text-gray-600 mb-2">Codes NAF a synchroniser (vide = tous les predefinis)</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 max-h-48 overflow-y-auto">
                 {nafCodes.map(naf => (
                   <label key={naf.code} className="flex items-center gap-1.5 text-xs p-1.5 rounded hover:bg-gray-50 cursor-pointer">
@@ -585,6 +606,17 @@ export default function SirenePage() {
                     <span className="text-gray-400 truncate">{naf.label}</span>
                   </label>
                 ))}
+              </div>
+              <div className="mt-2">
+                <label className="block text-[10px] text-gray-500 mb-0.5">Codes NAF supplementaires (separes par virgule)</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs"
+                  placeholder="Ex: 93.29Z, 47.19Z, 55.10Z... (n'importe quel code NAF)"
+                  value={customNafInput}
+                  onChange={e => setCustomNafInput(e.target.value)}
+                />
+                <p className="text-[10px] text-gray-400 mt-0.5">Ajoutez des codes NAF hors liste (hotellerie, loisirs, epiceries, etc.)</p>
               </div>
             </div>
 
@@ -735,16 +767,20 @@ export default function SirenePage() {
           </div>
           <div>
             <label className="block text-[10px] text-gray-500 mb-0.5">Code NAF</label>
-            <select
-              className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+            <input
+              type="text"
+              list="naf-codes-list"
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs w-56"
+              placeholder="Tous - tapez un code NAF..."
               value={filterNaf}
               onChange={e => setFilterNaf(e.target.value)}
-            >
+            />
+            <datalist id="naf-codes-list">
               <option value="">Tous</option>
               {nafCodes.map(n => (
                 <option key={n.code} value={n.code}>{n.code} - {n.label}</option>
               ))}
-            </select>
+            </datalist>
           </div>
           <div>
             <label className="block text-[10px] text-gray-500 mb-0.5">Statut</label>
