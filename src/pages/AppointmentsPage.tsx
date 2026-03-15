@@ -5,6 +5,7 @@ import {
   ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -15,6 +16,7 @@ import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, type GoogleCalenda
 
 export default function AppointmentsPage() {
   const { state, dispatch, getProspect } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
 
@@ -41,6 +43,14 @@ export default function AppointmentsPage() {
   const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
   const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
   const [compteRenduEmailProspect, setCompteRenduEmailProspect] = useState<Prospect | null>(null);
+
+  // Reschedule modal state (for decale result)
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [rescheduleRdv, setRescheduleRdv] = useState<Appointment | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleHeureDebut, setRescheduleHeureDebut] = useState('');
+  const [rescheduleHeureFin, setRescheduleHeureFin] = useState('');
+  const [rescheduleNotes, setRescheduleNotes] = useState('');
 
   // Edit prospect inline modal
   const [editProspectData, setEditProspectData] = useState<Prospect | null>(null);
@@ -372,7 +382,53 @@ export default function AppointmentsPage() {
       setCompteRenduEmailProspect(prospect);
     }
 
+    // If decale: open reschedule modal
+    if (compteRenduResult === 'decale') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 7);
+      setRescheduleRdv(compteRenduRdv);
+      setRescheduleDate(tomorrow.toISOString().split('T')[0]);
+      setRescheduleHeureDebut(compteRenduRdv.heure_debut || '09:00');
+      setRescheduleHeureFin(compteRenduRdv.heure_fin || '10:00');
+      setRescheduleNotes('');
+      setShowReschedule(true);
+    }
+
     setShowCompteRendu(false);
+  };
+
+  const confirmReschedule = () => {
+    if (!rescheduleRdv || !rescheduleDate) return;
+
+    // Update old appointment notes
+    dispatch({
+      type: 'UPDATE_APPOINTMENT',
+      payload: {
+        ...rescheduleRdv,
+        notes_compte_rendu: (rescheduleRdv.notes_compte_rendu || '') + (rescheduleNotes ? `\nDecale: ${rescheduleNotes}` : ''),
+      },
+    });
+
+    // Create new appointment
+    const newApt: Appointment = {
+      id: generateId('apt'),
+      prospect_id: rescheduleRdv.prospect_id,
+      client_id: rescheduleRdv.client_id,
+      commercial_id: rescheduleRdv.commercial_id,
+      prospecteur_id: rescheduleRdv.prospecteur_id,
+      date: rescheduleDate,
+      heure_debut: rescheduleHeureDebut,
+      heure_fin: rescheduleHeureFin,
+      lieu: rescheduleRdv.lieu,
+      notes: rescheduleNotes || rescheduleRdv.notes,
+      statut: 'planifie',
+      event_type: 'rdv',
+    };
+    dispatch({ type: 'ADD_APPOINTMENT', payload: newApt });
+
+    toast.success(`Nouveau RDV cree pour le ${rescheduleDate}`);
+    setShowReschedule(false);
+    setRescheduleRdv(null);
   };
 
   // Ouvrir la modale d'export avec les filtres pre-remplis
@@ -1799,6 +1855,54 @@ export default function AppointmentsPage() {
           prospect={compteRenduEmailProspect}
           onClose={() => setCompteRenduEmailProspect(null)}
         />
+      )}
+
+      {/* Reschedule modal after compte-rendu with decale */}
+      {showReschedule && rescheduleRdv && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-violet-500" />
+                Decaler le RDV
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500">RDV actuel</p>
+                <p className="font-semibold text-sm text-gray-900">{getProspect(rescheduleRdv.prospect_id)?.nom_etablissement || 'RDV'}</p>
+                <p className="text-xs text-gray-500 mt-1">{formatDate(rescheduleRdv.date)}{rescheduleRdv.heure_debut && ` - ${rescheduleRdv.heure_debut}`}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nouvelle date *</label>
+                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Heure debut</label>
+                  <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleHeureDebut} onChange={e => setRescheduleHeureDebut(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Heure fin</label>
+                  <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleHeureFin} onChange={e => setRescheduleHeureFin(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Raison / Notes</label>
+                <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Pourquoi ce report ?" value={rescheduleNotes} onChange={e => setRescheduleNotes(e.target.value)} />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>Annuler</button>
+              <button className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50" onClick={confirmReschedule} disabled={!rescheduleDate}>
+                <CalendarClock className="w-4 h-4" /> Confirmer le report
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

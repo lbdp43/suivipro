@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
-  StickyNote, X, FileText, Bell, Users2, Navigation, Edit2,
+  StickyNote, X, FileText, Bell, Users2, Navigation, Edit2, Mail,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -18,7 +18,7 @@ const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 const MONTH_LABELS = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'];
 
-type ViewMode = 'jour' | 'semaine' | 'mois' | 'periode';
+type ViewMode = 'semaine' | 'mois' | 'periode';
 
 function toDateStr(d: Date): string {
   const y = d.getFullYear();
@@ -67,7 +67,7 @@ export default function CompteRenduPage() {
   const toast = useToast();
   const todayStr = toDateStr(new Date());
 
-  const [viewMode, setViewMode] = useState<ViewMode>('jour');
+  const [viewMode, setViewMode] = useState<ViewMode>('semaine');
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -157,9 +157,6 @@ export default function CompteRenduPage() {
 
   // Date range for current view
   const dateRange = useMemo((): { start: string; end: string; dates: string[] } => {
-    if (viewMode === 'jour') {
-      return { start: selectedDate, end: selectedDate, dates: [selectedDate] };
-    }
     if (viewMode === 'semaine') {
       const start = weekDays[0].date;
       const end = weekDays[6].date;
@@ -272,15 +269,20 @@ export default function CompteRenduPage() {
 
     return state.clients.filter((c: Client) => {
       if (!uids.has(c.commercial_id) || c.statut !== 'ACTIF') return false;
-      if (!c.tournee || !zones.includes(c.tournee)) return false;
 
-      // Case 1: Client is late (next_visit < dateStr)
-      if (c.next_visit && c.next_visit < dateStr) return true;
+      // Clients with a specific next_visit on this date (regardless of tournee)
+      if (c.next_visit && c.next_visit === dateStr) return true;
 
-      // Case 2: Client's next_visit falls this week AND zone matches this day
-      if (c.next_visit && c.next_visit >= weekMonday && c.next_visit <= weekSunday) {
-        const assignedDate = getDateForZone(c.tournee, weekMonday);
-        if (assignedDate === dateStr) return true;
+      // Clients with tournee matching this day's zones
+      if (c.tournee && zones.includes(c.tournee)) {
+        // Case 1: Client is late (next_visit < dateStr)
+        if (c.next_visit && c.next_visit < dateStr) return true;
+
+        // Case 2: Client's next_visit falls this week AND zone matches this day
+        if (c.next_visit && c.next_visit >= weekMonday && c.next_visit <= weekSunday) {
+          const assignedDate = getDateForZone(c.tournee, weekMonday);
+          if (assignedDate === dateStr) return true;
+        }
       }
 
       return false;
@@ -296,7 +298,7 @@ export default function CompteRenduPage() {
 
   // Group by day for week/month/period views - now includes clients to visit
   const dayGroups = useMemo(() => {
-    if (viewMode === 'jour') return [];
+    // All views use grouped days
     const groups: { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] = [];
     for (const dateStr of dateRange.dates) {
       const d = new Date(dateStr + 'T12:00:00');
@@ -362,9 +364,9 @@ export default function CompteRenduPage() {
 
   const visitedClientIds = new Set(todayInteractions.map((i: Interaction) => i.client_id));
 
-  // Other days of the week (for day view - show remaining days below selected day)
-  const otherDayGroups = useMemo(() => {
-    if (viewMode !== 'jour') return [];
+  // Other days of the week (unused since jour view removed)
+  const otherDayGroups = useMemo((): { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] => {
+    return [];
     const uids = new Set(effectiveUserIds);
     const groups: { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] = [];
     for (const day of weekDays) {
@@ -836,7 +838,7 @@ export default function CompteRenduPage() {
 
       {/* View mode tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1">
-        {([['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['periode', 'Periode']] as [ViewMode, string][]).map(([mode, label]) => (
+        {([['semaine', 'Semaine'], ['mois', 'Mois'], ['periode', 'Periode']] as [ViewMode, string][]).map(([mode, label]) => (
           <button key={mode} onClick={() => setViewMode(mode)}
             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === mode ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
@@ -845,35 +847,6 @@ export default function CompteRenduPage() {
       </div>
 
       {/* Navigation by view mode */}
-      {viewMode === 'jour' && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <button onClick={() => setWeekOffset(w => w - 1)} className="p-1 rounded hover:bg-gray-100"><ChevronLeft className="w-4 h-4 text-gray-500" /></button>
-            <div className="flex gap-1.5 overflow-x-auto flex-1">
-              {weekDays.map(day => (
-                <button key={day.date} onClick={() => setSelectedDate(day.date)}
-                  className={`flex-1 min-w-[40px] py-1.5 rounded-lg text-center transition-all ${
-                    day.date === selectedDate ? 'bg-brewery-600 text-white shadow-sm'
-                    : day.isToday ? 'bg-brewery-50 text-brewery-700 border border-brewery-200'
-                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                  }`}>
-                  <div className="text-[10px]">{day.short}</div>
-                  <div className="text-sm font-bold">{new Date(day.date + 'T12:00:00').getDate()}</div>
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setWeekOffset(w => w + 1)} className="p-1 rounded hover:bg-gray-100"><ChevronRight className="w-4 h-4 text-gray-500" /></button>
-          </div>
-          {weekOffset !== 0 && (
-            <button onClick={() => { setWeekOffset(0); setSelectedDate(todayStr); }} className="text-[10px] text-brewery-600 hover:underline">Revenir a aujourd'hui</button>
-          )}
-          <p className="text-sm text-gray-500 mt-1">
-            {DAY_LABELS[new Date(selectedDate + 'T12:00:00').getDay()]} {new Date(selectedDate + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-            {dayZones.length > 0 && <span className="ml-2 text-brewery-600">— {dayZones.join(', ')}</span>}
-          </p>
-        </div>
-      )}
-
       {viewMode === 'semaine' && (
         <div className="mb-6 flex items-center gap-3">
           <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 rounded-lg hover:bg-gray-100 border border-gray-200"><ChevronLeft className="w-4 h-4" /></button>
@@ -930,9 +903,9 @@ export default function CompteRenduPage() {
         </div>
       )}
 
-      {/* Stats summary (for non-day views) */}
-      {viewMode !== 'jour' && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {/* Stats summary */}
+      {(
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-indigo-600">{stats.totalRdv}</p>
             <p className="text-[10px] text-gray-500">RDV total</p>
@@ -953,38 +926,6 @@ export default function CompteRenduPage() {
             </p>
             <p className="text-[10px] text-gray-500">Taux CR</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
-            <p className="text-2xl font-bold text-cyan-600">{stats.totalVisites}</p>
-            <p className="text-[10px] text-gray-500">Interactions clients</p>
-          </div>
-
-          {/* Breakdown by interaction type */}
-          <div className="col-span-2 sm:col-span-4 bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs font-medium text-gray-600 mb-2">Detail des interactions clients</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50">
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-                <div>
-                  <p className="text-lg font-bold text-green-700">{stats.visitesParType.VISITE}</p>
-                  <p className="text-[10px] text-green-600">Visites</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50">
-                <PhoneCall className="w-4 h-4 text-blue-600" />
-                <div>
-                  <p className="text-lg font-bold text-blue-700">{stats.visitesParType.APPEL}</p>
-                  <p className="text-[10px] text-blue-600">Appels</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-50">
-                <Calendar className="w-4 h-4 text-purple-600" />
-                <div>
-                  <p className="text-lg font-bold text-purple-700">{stats.visitesParType.RDV_PLANIFIE}</p>
-                  <p className="text-[10px] text-purple-600">RDV planifies</p>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Result breakdown - interactive */}
           {Object.keys(stats.resultCounts).length > 0 && (
@@ -1001,6 +942,7 @@ export default function CompteRenduPage() {
                     commande_plus_tard: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-yellow-200',
                     a_relancer: 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200',
                     pas_interesse: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200',
+                    decale: 'bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200',
                   };
                   const isActive = expandedResult === key;
                   return (
@@ -1018,7 +960,7 @@ export default function CompteRenduPage() {
                 const resultColors: Record<string, string> = {
                   client: 'border-green-200', mail_envoye: 'border-blue-200',
                   commande_plus_tard: 'border-yellow-200', a_relancer: 'border-orange-200',
-                  pas_interesse: 'border-red-200',
+                  pas_interesse: 'border-red-200', decale: 'border-violet-200',
                 };
                 const commercialColors = ['bg-blue-50 border-blue-200', 'bg-purple-50 border-purple-200', 'bg-teal-50 border-teal-200', 'bg-pink-50 border-pink-200', 'bg-amber-50 border-amber-200'];
 
@@ -1039,13 +981,15 @@ export default function CompteRenduPage() {
                     ? state.clients.find((c: Client) => c.id === rdv.client_id)
                     : state.prospects.find((p: any) => p.id === rdv.prospect_id);
                   const phone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
+                  const email = entity?.email || '';
                   const ville = entity?.ville || '';
+                  const entityLink = isClient ? `/clients?id=${rdv.client_id}` : `/prospects?id=${rdv.prospect_id}`;
                   return (
                     <div key={rdv.id} className={`bg-white rounded-lg border ${resultColors[expandedResult] || 'border-gray-200'} p-3`}>
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-800">{name}</span>
+                            <Link to={entityLink} className="text-sm font-medium text-brewery-700 hover:text-brewery-900 hover:underline">{name}</Link>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                               {isClient ? 'Client' : 'Prospect'}
                             </span>
@@ -1060,16 +1004,20 @@ export default function CompteRenduPage() {
                         <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                           {phone && (
                             <a href={`tel:${phone}`} onClick={e => e.stopPropagation()}
-                              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100">
+                              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100" title="Appeler">
                               <Phone className="w-3.5 h-3.5" />
                             </a>
                           )}
-                          {isClient && rdv.client_id && (
-                            <button onClick={() => openQuickNote(rdv.client_id!)}
-                              className="p-1.5 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100">
-                              <StickyNote className="w-3.5 h-3.5" />
-                            </button>
+                          {email && (
+                            <a href={`mailto:${email}`} onClick={e => e.stopPropagation()}
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100" title="Envoyer un email">
+                              <Mail className="w-3.5 h-3.5" />
+                            </a>
                           )}
+                          <button onClick={() => openCrModal(rdv)}
+                            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100" title="Modifier le CR">
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1112,167 +1060,9 @@ export default function CompteRenduPage() {
         </div>
       )}
 
-      {/* Day view content */}
-      {viewMode === 'jour' && (
-        <>
-          {/* RDV Section - collapsible */}
-          <div className="mb-8">
-            <button onClick={() => setShowRdvSection(v => !v)} className="w-full flex items-center gap-2 text-left mb-3 group">
-              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showRdvSection ? '' : '-rotate-90'}`} />
-              <Calendar className="w-5 h-5 text-indigo-500" />
-              <h2 className="text-lg font-semibold text-gray-800">Rendez-vous ({dayAppointments.length})</h2>
-            </button>
-            {showRdvSection && (
-              dayAppointments.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                  <p className="text-sm text-gray-400">Aucun RDV ce jour</p>
-                </div>
-              ) : (
-                renderRdvListGrouped(dayAppointments)
-              )
-            )}
-          </div>
-
-          {/* Visites Section - collapsible */}
-          <div>
-            <button onClick={() => setShowVisitesSection(v => !v)} className="w-full flex items-center gap-2 text-left mb-3 group">
-              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showVisitesSection ? '' : '-rotate-90'}`} />
-              <Building2 className="w-5 h-5 text-green-600" />
-              <h2 className="text-lg font-semibold text-gray-800">
-                Visites Clients ({clientsToVisit.length})
-                {clientsToVisit.length > 0 && (
-                  <span className="text-sm font-normal text-gray-500 ml-2">— {visitedClientIds.size}/{clientsToVisit.length} faites</span>
-                )}
-              </h2>
-              {(() => {
-                const lateCount = clientsToVisit.filter((c: Client) => c.next_visit && c.next_visit < selectedDate).length;
-                const dueCount = clientsToVisit.length - lateCount;
-                return (lateCount > 0 || dueCount > 0) ? (
-                  <div className="flex items-center gap-2 ml-auto">
-                    {lateCount > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">{lateCount} en retard</span>}
-                    {dueCount > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{dueCount} prevus</span>}
-                  </div>
-                ) : null;
-              })()}
-            </button>
-            {showVisitesSection && (
-              clientsToVisit.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                  <p className="text-sm text-gray-400">{dayZones.length === 0 ? 'Aucune tournee configuree ce jour' : 'Aucun client a visiter (en retard ou prevu cette semaine)'}</p>
-                </div>
-              ) : (
-                <div className="space-y-2">{clientsToVisit.map(renderClientCard)}</div>
-              )
-            )}
-          </div>
-
-          {/* Other days of the week */}
-          {otherDayGroups.length > 0 && (
-            <div className="mt-8 space-y-2">
-              <h3 className="text-sm font-semibold text-gray-500 mb-3">Autres jours de la semaine</h3>
-              {otherDayGroups.map(group => {
-                const isOpen = expandedDay === group.date;
-                const rdvDone = group.rdvs.filter(r => !!r.compte_rendu).length;
-                const visitedCount = group.clientsToVisit.filter((c: any) => c._visited).length;
-                const lateCount = group.clientsToVisit.filter((c: Client) => c.next_visit && c.next_visit < group.date).length;
-                const hasContent = group.rdvs.length > 0 || group.clientsToVisit.length > 0 || group.visites.length > 0;
-                return (
-                  <div key={group.date} className={`bg-white rounded-xl border ${group.date === selectedDate ? 'border-brewery-300' : 'border-gray-200'} overflow-hidden`}>
-                    <button onClick={() => { if (hasContent) setExpandedDay(isOpen ? null : group.date); else setSelectedDate(group.date); }}
-                      className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-gray-800">{group.label}</span>
-                          {group.zones.length > 0 && <span className="text-[10px] text-brewery-600 font-medium">{group.zones.join(', ')}</span>}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          {group.rdvs.length > 0 && (
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rdvDone === group.rdvs.length ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                              {group.rdvs.length} RDV {rdvDone > 0 && `(${rdvDone} CR)`}
-                            </span>
-                          )}
-                          {group.clientsToVisit.length > 0 && (
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${visitedCount === group.clientsToVisit.length ? 'bg-green-100 text-green-700' : 'bg-cyan-100 text-cyan-700'}`}>
-                              {visitedCount}/{group.clientsToVisit.length} clients visites
-                            </span>
-                          )}
-                          {lateCount > 0 && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                              {lateCount} en retard
-                            </span>
-                          )}
-                          {group.visites.length > 0 && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
-                              {group.visites.length} interaction{group.visites.length > 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {!hasContent && (
-                            <span className="text-[10px] text-gray-400">Aucune activite</span>
-                          )}
-                        </div>
-                      </div>
-                      {hasContent && <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />}
-                    </button>
-                    {isOpen && hasContent && (
-                      <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
-                        {group.rdvs.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5" /> Rendez-vous ({group.rdvs.length})
-                            </p>
-                            {renderRdvListGrouped(group.rdvs)}
-                          </div>
-                        )}
-                        {group.clientsToVisit.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
-                              <Building2 className="w-3.5 h-3.5" /> Clients a visiter ({group.clientsToVisit.length})
-                              <span className="text-[10px] font-normal text-gray-400 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
-                            </p>
-                            <div className="space-y-2">
-                              {group.clientsToVisit.map(renderClientCard)}
-                            </div>
-                          </div>
-                        )}
-                        {group.visites.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Interactions enregistrees ({group.visites.length})
-                            </p>
-                            <div className="space-y-1.5">
-                              {group.visites.map(v => {
-                                const clientName = getClientName(v.client_id);
-                                const typeColor = v.type === 'VISITE' ? 'bg-green-50' : v.type === 'APPEL' ? 'bg-blue-50' : 'bg-purple-50';
-                                const typeTextColor = v.type === 'VISITE' ? 'text-green-600' : v.type === 'APPEL' ? 'text-blue-600' : 'text-purple-600';
-                                const typeIconColor = v.type === 'VISITE' ? 'text-green-500' : v.type === 'APPEL' ? 'text-blue-500' : 'text-purple-500';
-                                return (
-                                  <div key={v.id} className={`flex items-center gap-2 px-3 py-2 ${typeColor} rounded-lg`}>
-                                    {v.type === 'VISITE' ? <CheckCircle2 className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />
-                                      : v.type === 'APPEL' ? <PhoneCall className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />
-                                      : <Calendar className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />}
-                                    <div className="flex-1 min-w-0">
-                                      <span className="text-sm font-medium text-gray-800">{clientName || v.client_id}</span>
-                                      {v.comment && <p className="text-xs text-gray-500 truncate">{v.comment}</p>}
-                                    </div>
-                                    <span className={`text-[10px] font-medium ${typeTextColor}`}>{INTERACTION_TYPE_LABELS[v.type as InteractionType] || v.type}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
 
       {/* Week / Month / Period grouped view */}
-      {viewMode !== 'jour' && (
+      {(
         <div className="space-y-2">
           {dayGroups.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
