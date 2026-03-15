@@ -587,13 +587,20 @@ export default function CompteRenduPage() {
     const hasCR = !!rdv.compte_rendu;
     const entityName = getEntityName(rdv);
     const rdvOwner = isTeamView ? getCommercialName(rdv.commercial_id) : '';
+    const isClient = !!rdv.client_id;
+    const entity = isClient
+      ? state.clients.find((c: Client) => c.id === rdv.client_id)
+      : state.prospects.find((p: any) => p.id === rdv.prospect_id);
+    const entityPhone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
+    const entityEmail = entity?.email || '';
+    const entityLink = isClient ? `/clients?id=${rdv.client_id}` : `/prospects?id=${rdv.prospect_id}`;
     return (
       <div key={rdv.id} className={`bg-white rounded-xl border ${hasCR ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} p-3`}>
         <div className="flex items-start gap-3">
           {hasCR ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm text-gray-800">{entityName}</span>
+              <Link to={entityLink} className="font-semibold text-sm text-brewery-700 hover:text-brewery-900 hover:underline">{entityName}</Link>
               {rdvOwner && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{rdvOwner}</span>
               )}
@@ -624,18 +631,18 @@ export default function CompteRenduPage() {
               <FileText className="w-3.5 h-3.5" /> Modifier le CR
             </button>
           )}
-          {rdv.client_id && (() => {
-            const c = getClient(rdv.client_id);
-            return c && (c.telephone_mobile || c.telephone) ? (
-              <button
-                onClick={e => { e.stopPropagation(); openVisitModal(c, 'APPEL'); }}
-                className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                title="Appeler et enregistrer"
-              >
-                <Phone className="w-4 h-4" />
-              </button>
-            ) : null;
-          })()}
+          {entityPhone && (
+            <a href={`tel:${entityPhone}`} onClick={e => e.stopPropagation()}
+              className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors" title="Appeler">
+              <Phone className="w-4 h-4" />
+            </a>
+          )}
+          {entityEmail && (
+            <a href={`mailto:${entityEmail}`} onClick={e => e.stopPropagation()}
+              className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors" title="Envoyer un email">
+              <Mail className="w-4 h-4" />
+            </a>
+          )}
         </div>
       </div>
     );
