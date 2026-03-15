@@ -3840,28 +3840,130 @@ router.post('/sirene/sync-near', authMiddleware, adminOnly, asyncHandler(async (
 }));
 
 // Helper function to import a single etablissement as prospect
+// - Detects duplicates by: SIRET column, SIRET in notes, ID sirene_xxx, nom+ville
+// - If duplicate found: enriches existing prospect with missing data
+// - If no duplicate: creates new prospect in nouveau_datagouv pipeline
 async function importEtabAsProspect(etab, commercialId, now, userId) {
-  const existing = await db.query("SELECT id FROM prospects WHERE notes LIKE $1", [`%SIRET: ${etab.siret}%`]);
-  if (existing.rows.length > 0) {
-    await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [existing.rows[0].id, etab.id]);
-    return 'skipped';
-  }
-
   const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf);
   const typeEtab = nafInfo?.type || 'autre';
-  const prospectId = `sirene_${etab.siret}`;
   const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
+  const prospectId = `sirene_${etab.siret}`;
 
+  // 1. Check by SIRET column (fast, indexed)
+  let existing = await db.query("SELECT * FROM prospects WHERE siret = $1 AND siret != ''", [etab.siret]);
+
+  // 2. Check by ID sirene_xxx
+  if (existing.rows.length === 0) {
+    existing = await db.query("SELECT * FROM prospects WHERE id = $1", [prospectId]);
+  }
+
+  // 3. Check by SIRET in notes (legacy)
+  if (existing.rows.length === 0) {
+    existing = await db.query("SELECT * FROM prospects WHERE notes LIKE $1", [`%SIRET: ${etab.siret}%`]);
+  }
+
+  // 4. Check by nom + ville (fuzzy match)
+  if (existing.rows.length === 0 && etab.commune) {
+    const nomSearch = nomEtab.toLowerCase().trim();
+    existing = await db.query(
+      "SELECT * FROM prospects WHERE LOWER(nom_etablissement) = $1 AND LOWER(ville) = $2",
+      [nomSearch, etab.commune.toLowerCase().trim()]
+    );
+  }
+
+  // Duplicate found → enrich existing prospect
+  if (existing.rows.length > 0) {
+    const prospect = existing.rows[0];
+    const updates = [];
+    const params = [];
+    let paramIdx = 1;
+
+    // Enrich SIRET if missing
+    if (!prospect.siret && etab.siret) {
+      params.push(etab.siret);
+      updates.push(`siret = $${paramIdx++}`);
+    }
+
+    // Enrich address if missing/empty
+    if ((!prospect.adresse || prospect.adresse === '') && etab.adresse_voie) {
+      params.push(etab.adresse_voie);
+      updates.push(`adresse = $${paramIdx++}`);
+    }
+
+    // Enrich ville if missing
+    if ((!prospect.ville || prospect.ville === '') && etab.commune) {
+      params.push(etab.commune);
+      updates.push(`ville = $${paramIdx++}`);
+    }
+
+    // Enrich code_postal if missing
+    if ((!prospect.code_postal || prospect.code_postal === '') && etab.code_postal) {
+      params.push(etab.code_postal);
+      updates.push(`code_postal = $${paramIdx++}`);
+    }
+
+    // Enrich departement if missing
+    if ((!prospect.departement || prospect.departement === '') && etab.departement) {
+      params.push(etab.departement);
+      updates.push(`departement = $${paramIdx++}`);
+    }
+
+    // Enrich GPS coords if missing (0,0)
+    if ((!prospect.latitude || prospect.latitude === 0) && etab.latitude) {
+      params.push(etab.latitude);
+      updates.push(`latitude = $${paramIdx++}`);
+    }
+    if ((!prospect.longitude || prospect.longitude === 0) && etab.longitude) {
+      params.push(etab.longitude);
+      updates.push(`longitude = $${paramIdx++}`);
+    }
+
+    // Enrich type if generic
+    if (prospect.type_etablissement === 'autre' && typeEtab !== 'autre') {
+      params.push(typeEtab);
+      updates.push(`type_etablissement = $${paramIdx++}`);
+    }
+
+    // Enrich secteur/libelle NAF if missing
+    if ((!prospect.secteur || prospect.secteur === '') && etab.libelle_naf) {
+      params.push(etab.libelle_naf);
+      updates.push(`secteur = $${paramIdx++}`);
+    }
+
+    // Add SIRET info to notes if not already there
+    if (prospect.notes && !prospect.notes.includes(`SIRET: ${etab.siret}`)) {
+      const newNotes = prospect.notes + `\n--- Enrichi Datagouv ---\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation etab: ${etab.date_creation_etab || 'N/A'}`;
+      params.push(newNotes);
+      updates.push(`notes = $${paramIdx++}`);
+    }
+
+    if (updates.length > 0) {
+      params.push(now);
+      updates.push(`date_modification = $${paramIdx++}`);
+      params.push(prospect.id);
+      await db.query(
+        `UPDATE prospects SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
+        params
+      );
+    }
+
+    // Link the sirene_etablissement to this prospect
+    await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospect.id, etab.id]);
+    if (userId) logActivity(userId, 'enrichi_datagouv', `${nomEtab} (SIRET: ${etab.siret}) → prospect ${prospect.nom_etablissement}`, 'prospect', prospect.id);
+    return updates.length > 0 ? 'enriched' : 'skipped';
+  }
+
+  // No duplicate → create new prospect
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
       adresse, ville, code_postal, departement, secteur, latitude, longitude,
-      etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      etape_pipeline, tags, commercial_id, siret, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
       prospectId, nomEtab, typeEtab, '', '', '',
       etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
       etab.libelle_naf || '', etab.latitude || 0, etab.longitude || 0,
-      'nouveau_datagouv', '[]', commercialId,
+      'nouveau_datagouv', '[]', commercialId, etab.siret,
       `Importe depuis Datagouv\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
       now, now, 30,
     ]
@@ -3879,7 +3981,7 @@ router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(
   if (etablissement_ids.length === 0) return res.status(400).json({ error: 'Aucun etablissement selectionne' });
 
   const now = new Date().toISOString();
-  let imported = 0, skipped = 0;
+  let imported = 0, enriched = 0, skipped = 0;
 
   for (const etabId of etablissement_ids) {
     const etabRes = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [etabId]);
@@ -3888,10 +3990,11 @@ router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(
 
     const result = await importEtabAsProspect(etab, commercial_id, now, req.user.id);
     if (result === 'imported') imported++;
+    else if (result === 'enriched') enriched++;
     else skipped++;
   }
 
-  res.json({ ok: true, imported, skipped });
+  res.json({ ok: true, imported, enriched, skipped });
 }));
 
 // POST /api/sirene/import-all
@@ -3911,22 +4014,23 @@ router.post('/sirene/import-all', authMiddleware, adminOnly, asyncHandler(async 
   }
 
   const result = await db.query(query, params);
-  if (result.rows.length === 0) return res.json({ ok: true, imported: 0, skipped: 0 });
+  if (result.rows.length === 0) return res.json({ ok: true, imported: 0, enriched: 0, skipped: 0 });
 
   const now = new Date().toISOString();
-  let imported = 0, skipped = 0;
+  let imported = 0, enriched = 0, skipped = 0;
 
   for (const etab of result.rows) {
     const r = await importEtabAsProspect(etab, commercial_id, now, null);
     if (r === 'imported') imported++;
+    else if (r === 'enriched') enriched++;
     else skipped++;
   }
 
-  if (imported > 0) {
-    logActivity(req.user.id, 'import_datagouv_bulk', `${imported} etablissements importes`, '', '');
+  if (imported > 0 || enriched > 0) {
+    logActivity(req.user.id, 'import_datagouv_bulk', `${imported} importes, ${enriched} enrichis`, '', '');
   }
 
-  res.json({ ok: true, imported, skipped });
+  res.json({ ok: true, imported, enriched, skipped });
 }));
 
 // GET /api/sirene/stats

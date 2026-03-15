@@ -107,7 +107,7 @@ export default function SirenePage() {
   const [showGeoForm, setShowGeoForm] = useState(false);
 
   // Import result
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; enriched?: number; skipped: number } | null>(null);
 
   // Zone config
   const [zoneConfig, setZoneConfig] = useState<ZoneConfig | null>(null);
@@ -702,7 +702,8 @@ export default function SirenePage() {
             <Check className="w-5 h-5 text-green-600" />
             <span className="text-sm text-green-800 font-medium">
               {importResult.imported} prospect{importResult.imported > 1 ? 's' : ''} importe{importResult.imported > 1 ? 's' : ''}
-              {importResult.skipped > 0 && `, ${importResult.skipped} ignore${importResult.skipped > 1 ? 's' : ''} (doublons)`}
+              {(importResult.enriched || 0) > 0 && `, ${importResult.enriched} existant${(importResult.enriched || 0) > 1 ? 's' : ''} enrichi${(importResult.enriched || 0) > 1 ? 's' : ''}`}
+              {importResult.skipped > 0 && `, ${importResult.skipped} ignore${importResult.skipped > 1 ? 's' : ''}`}
             </span>
           </div>
           <button onClick={() => setImportResult(null)} className="text-green-400 hover:text-green-600">

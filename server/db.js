@@ -544,6 +544,11 @@ async function initDatabase(attempt = 1) {
       `);
     } catch (err) { console.log('sirene_zone_config migration:', err.message); }
 
+    // Migration: add siret column to prospects for dedup
+    try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT DEFAULT ''"); } catch { /* */ }
+    // Create index for fast SIRET lookup
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_prospects_siret ON prospects(siret) WHERE siret != ''"); } catch { /* */ }
+
     // Migration: add latitude/longitude to sirene_etablissements (may have been created without them)
     try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION"); } catch { /* */ }
     try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION"); } catch { /* */ }

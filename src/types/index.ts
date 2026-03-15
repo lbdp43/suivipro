@@ -313,6 +313,7 @@ export interface Prospect {
   etape_pipeline: PipelineStage;
   tags: string[];
   commercial_id: string;
+  siret?: string;
   notes: string;
   date_creation: string;
   date_modification: string;
