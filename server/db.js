@@ -544,6 +544,10 @@ async function initDatabase(attempt = 1) {
       `);
     } catch (err) { console.log('sirene_zone_config migration:', err.message); }
 
+    // Migration: add latitude/longitude to sirene_etablissements (may have been created without them)
+    try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION"); } catch { /* */ }
+    try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION"); } catch { /* */ }
+
     // Migration: add new columns to sirene_sync_logs
     try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS records_auto_imported INTEGER DEFAULT 0"); } catch { /* */ }
     try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'datagouv'"); } catch { /* */ }
