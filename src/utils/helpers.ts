@@ -104,67 +104,105 @@ export function formatDurationTimer(seconds: number): string {
 // ICS Export
 // ============================================
 
+function icsEscape(text: string): string {
+  return (text || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+function icsUid(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}@suivipro`;
+}
+
+function icsDtstamp(): string {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+function icsFormatTime(date: string, time: string): string {
+  const d = date.replace(/-/g, '');
+  if (!time) return `${d}T090000`;
+  return `${d}T${time.replace(':', '')}00`;
+}
+
+function buildICSFile(events: string[]): string {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SuiviPro//NONSGML v1.0//FR',
+    'METHOD:PUBLISH',
+    'CALSCALE:GREGORIAN',
+    ...events,
+    'END:VCALENDAR',
+  ];
+  return lines.join('\r\n');
+}
+
+function triggerICSDownload(icsContent: string, filename: string) {
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.ics') ? filename : `${filename}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 export function generateICS(appointment: Appointment, prospect: Prospect): string {
-  const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
-  const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+  const dtStart = icsFormatTime(appointment.date, appointment.heure_debut);
+  const dtEnd = icsFormatTime(appointment.date, appointment.heure_fin);
   const descParts = [];
-  if (appointment.notes) descParts.push(appointment.notes.replace(/\n/g, '\\n'));
+  if (appointment.notes) descParts.push(appointment.notes);
   if (prospect.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
   if (prospect.telephone) descParts.push(`Tel: ${prospect.telephone}`);
-  const description = descParts.join('\\n');
 
-  return `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SuiviPro//La Brasserie des Plantes//FR
-BEGIN:VEVENT
-DTSTART:${dtStart}
-DTEND:${dtEnd}
-SUMMARY:RDV ${prospect.nom_etablissement}
-DESCRIPTION:${description}
-LOCATION:${appointment.lieu}
-END:VEVENT
-END:VCALENDAR`;
+  const event = [
+    'BEGIN:VEVENT',
+    `UID:${icsUid()}`,
+    `DTSTAMP:${icsDtstamp()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${icsEscape(`RDV ${prospect.nom_etablissement}`)}`,
+    `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+    `LOCATION:${icsEscape(appointment.lieu || '')}`,
+    'END:VEVENT',
+  ].join('\r\n');
+
+  return buildICSFile([event]);
 }
 
 export function downloadICS(appointment: Appointment, prospect: Prospect) {
   const ics = generateICS(appointment, prospect);
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  // Open directly so the OS calendar app handles it
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  triggerICSDownload(ics, `rdv-${prospect.nom_etablissement.replace(/[^a-zA-Z0-9]/g, '_')}.ics`);
 }
 
 export function generateICSClient(appointment: Appointment, client: Client): string {
-  const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
-  const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+  const dtStart = icsFormatTime(appointment.date, appointment.heure_debut);
+  const dtEnd = icsFormatTime(appointment.date, appointment.heure_fin);
   const location = appointment.lieu || [client.adresse, client.ville].filter(Boolean).join(', ') || '';
   const descParts = [];
-  if (appointment.notes) descParts.push(appointment.notes.replace(/\n/g, '\\n'));
+  if (appointment.notes) descParts.push(appointment.notes);
   if (client.contact) descParts.push(`Contact: ${client.contact}`);
   if (client.telephone) descParts.push(`Tel: ${client.telephone}`);
   if (client.telephone_mobile) descParts.push(`Mobile: ${client.telephone_mobile}`);
-  const description = descParts.join('\\n');
 
-  return `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SuiviPro//La Brasserie des Plantes//FR
-BEGIN:VEVENT
-DTSTART:${dtStart}
-DTEND:${dtEnd}
-SUMMARY:RDV ${client.nom}
-DESCRIPTION:${description}
-LOCATION:${location}
-END:VEVENT
-END:VCALENDAR`;
+  const event = [
+    'BEGIN:VEVENT',
+    `UID:${icsUid()}`,
+    `DTSTAMP:${icsDtstamp()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${icsEscape(`RDV ${client.nom}`)}`,
+    `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+    `LOCATION:${icsEscape(location)}`,
+    'END:VEVENT',
+  ].join('\r\n');
+
+  return buildICSFile([event]);
 }
 
 export function downloadICSClient(appointment: Appointment, client: Client) {
   const ics = generateICSClient(appointment, client);
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  triggerICSDownload(ics, `rdv-${client.nom.replace(/[^a-zA-Z0-9]/g, '_')}.ics`);
 }
 
 /**
@@ -179,27 +217,28 @@ export function downloadICSBatch(
 
   const events = appointments.map(rdv => {
     const prospect = getProspect(rdv.prospect_id);
-    const dtStart = `${rdv.date.replace(/-/g, '')}T${rdv.heure_debut.replace(':', '')}00`;
-    const dtEnd = `${rdv.date.replace(/-/g, '')}T${rdv.heure_fin.replace(':', '')}00`;
-    return `BEGIN:VEVENT
-DTSTART:${dtStart}
-DTEND:${dtEnd}
-SUMMARY:RDV ${prospect?.nom_etablissement || 'Inconnu'}
-DESCRIPTION:${rdv.notes}\\nContact: ${prospect?.nom_contact || ''}\\nTel: ${prospect?.telephone || ''}
-LOCATION:${rdv.lieu}
-END:VEVENT`;
-  }).join('\n');
+    const dtStart = icsFormatTime(rdv.date, rdv.heure_debut);
+    const dtEnd = icsFormatTime(rdv.date, rdv.heure_fin);
+    const descParts = [];
+    if (rdv.notes) descParts.push(rdv.notes);
+    if (prospect?.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
+    if (prospect?.telephone) descParts.push(`Tel: ${prospect.telephone}`);
+    return [
+      'BEGIN:VEVENT',
+      `UID:${icsUid()}`,
+      `DTSTAMP:${icsDtstamp()}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${icsEscape(`RDV ${prospect?.nom_etablissement || 'Inconnu'}`)}`,
+      `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+      `LOCATION:${icsEscape(rdv.lieu || '')}`,
+      'END:VEVENT',
+    ].join('\r\n');
+  });
 
-  const ics = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SuiviPro//La Brasserie des Plantes//FR
-${events}
-END:VCALENDAR`;
-
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const ics = buildICSFile(events);
+  const filename = commercialName ? `rdv-${commercialName.replace(/[^a-zA-Z0-9]/g, '_')}.ics` : 'rdv-export.ics';
+  triggerICSDownload(ics, filename);
 }
 
 // ============================================
