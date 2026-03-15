@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Database, Search, Download, RefreshCw, Check, AlertTriangle, X,
+  Database, Search, Download, RefreshCw, Check, AlertTriangle, X, Trash2,
   ChevronDown, ChevronRight, Filter, Building2, MapPin, Clock,
   Settings, Zap, Globe, Key, Save,
 } from 'lucide-react';
@@ -350,10 +350,26 @@ export default function SirenePage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === etablissements.filter(e => !e.imported_as_prospect).length) {
+    if (selectedIds.size === etablissements.length && selectedIds.size > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(etablissements.filter(e => !e.imported_as_prospect).map(e => e.id)));
+      setSelectedIds(new Set(etablissements.map(e => e.id)));
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Supprimer ${selectedIds.size} etablissement(s) selectionne(s) ?`)) return;
+    try {
+      await fetch('/api/sirene/delete-etablissements', {
+        method: 'POST', headers,
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      setSelectedIds(new Set());
+      loadEtablissements();
+      loadStats();
+    } catch (err) {
+      console.error('Delete error:', err);
     }
   };
 
@@ -521,8 +537,30 @@ export default function SirenePage() {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] text-indigo-600 mb-0.5">Codes NAF (virgule)</label>
-                      <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="Vide = 20 codes predefinis" value={zoneForm.naf_codes} onChange={e => setZoneForm(f => ({ ...f, naf_codes: e.target.value }))} />
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-[10px] text-indigo-600">Codes NAF ({zoneForm.naf_codes ? zoneForm.naf_codes.split(',').filter(Boolean).length : 0}/{nafCodes.length})</label>
+                        <button type="button" className="text-[9px] text-indigo-500 hover:text-indigo-700" onClick={() => {
+                          const allCodes = nafCodes.map(n => n.code);
+                          const currentCodes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                          setZoneForm(f => ({ ...f, naf_codes: currentCodes.length === allCodes.length ? '' : allCodes.join(',') }));
+                        }}>{zoneForm.naf_codes.split(',').filter(Boolean).length === nafCodes.length ? 'Tout decocher' : 'Tout cocher'}</button>
+                      </div>
+                      <div className="border border-indigo-200 rounded bg-white max-h-32 overflow-y-auto p-1">
+                        {nafCodes.map(naf => {
+                          const selected = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                          const isChecked = selected.includes(naf.code);
+                          return (
+                            <label key={naf.code} className="flex items-center gap-1.5 px-1 py-0.5 hover:bg-indigo-50 rounded cursor-pointer">
+                              <input type="checkbox" checked={isChecked} className="rounded border-indigo-300" onChange={() => {
+                                const codes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                                const next = isChecked ? codes.filter(c => c !== naf.code) : [...codes, naf.code];
+                                setZoneForm(f => ({ ...f, naf_codes: next.join(',') }));
+                              }} />
+                              <span className="text-[10px] text-gray-700">{naf.code} - {naf.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Cle API INSEE</label>
@@ -642,8 +680,30 @@ export default function SirenePage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] text-indigo-600 mb-0.5">Codes NAF (virgule)</label>
-                <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="11.05Z, 46.34Z... (vide = predefinis)" value={zoneForm.naf_codes} onChange={e => setZoneForm(f => ({ ...f, naf_codes: e.target.value }))} />
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[10px] text-indigo-600">Codes NAF ({zoneForm.naf_codes ? zoneForm.naf_codes.split(',').filter(Boolean).length : 0}/{nafCodes.length})</label>
+                  <button type="button" className="text-[9px] text-indigo-500 hover:text-indigo-700" onClick={() => {
+                    const allCodes = nafCodes.map(n => n.code);
+                    const currentCodes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                    setZoneForm(f => ({ ...f, naf_codes: currentCodes.length === allCodes.length ? '' : allCodes.join(',') }));
+                  }}>{zoneForm.naf_codes.split(',').filter(Boolean).length === nafCodes.length ? 'Tout decocher' : 'Tout cocher'}</button>
+                </div>
+                <div className="border border-indigo-200 rounded bg-white max-h-32 overflow-y-auto p-1">
+                  {nafCodes.map(naf => {
+                    const selected = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                    const isChecked = selected.includes(naf.code);
+                    return (
+                      <label key={naf.code} className="flex items-center gap-1.5 px-1 py-0.5 hover:bg-indigo-50 rounded cursor-pointer">
+                        <input type="checkbox" checked={isChecked} className="rounded border-indigo-300" onChange={() => {
+                          const codes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
+                          const next = isChecked ? codes.filter(c => c !== naf.code) : [...codes, naf.code];
+                          setZoneForm(f => ({ ...f, naf_codes: next.join(',') }));
+                        }} />
+                        <span className="text-[10px] text-gray-700">{naf.code} - {naf.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] text-indigo-600 mb-0.5">Cle API INSEE</label>
@@ -988,19 +1048,28 @@ export default function SirenePage() {
             onClick={toggleSelectAll}
             className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
           >
-            {selectedIds.size === etablissements.filter(e => !e.imported_as_prospect).length && selectedIds.size > 0
+            {selectedIds.size === etablissements.length && selectedIds.size > 0
               ? 'Tout deselectionner'
               : 'Tout selectionner'}
           </button>
           {selectedIds.size > 0 && (
-            <button
-              onClick={importSelected}
-              disabled={importing}
-              className="px-3 py-1.5 text-xs bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50 flex items-center gap-1"
-            >
-              {importing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-              Importer {selectedIds.size} selectionne{selectedIds.size > 1 ? 's' : ''}
-            </button>
+            <>
+              <button
+                onClick={importSelected}
+                disabled={importing}
+                className="px-3 py-1.5 text-xs bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50 flex items-center gap-1"
+              >
+                {importing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                Importer {selectedIds.size} selectionne{selectedIds.size > 1 ? 's' : ''}
+              </button>
+              <button
+                onClick={deleteSelected}
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" />
+                Supprimer ({selectedIds.size})
+              </button>
+            </>
           )}
           <button
             onClick={importAll}

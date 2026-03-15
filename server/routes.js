@@ -4059,7 +4059,7 @@ async function importEtabAsProspect(etab, commercialId, now, userId) {
   const typeEtab = rule?.entity_type === 'distributeur' ? 'distributeur' : (nafInfo?.type || 'autre');
   const entityType = rule?.entity_type || 'prospect';
   const pipelineStage = rule?.pipeline_stage || 'nouveau_datagouv';
-  const ruleCommercial = rule?.commercial_id || commercialId || '';
+  const ruleCommercial = rule?.commercial_id || commercialId || null;
   const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
   const prospectId = `sirene_${etab.siret}`;
 
@@ -4188,6 +4188,14 @@ router.post('/sirene/import-all', authMiddleware, adminOnly, asyncHandler(async 
   }
 
   res.json({ ok: true, imported, duplicates, skipped });
+}));
+
+// POST /api/sirene/delete-etablissements - bulk delete selected
+router.post('/sirene/delete-etablissements', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { ids = [] } = req.body;
+  if (ids.length === 0) return res.status(400).json({ error: 'Aucun etablissement selectionne' });
+  await db.query('DELETE FROM sirene_etablissements WHERE id = ANY($1)', [ids]);
+  res.json({ ok: true, deleted: ids.length });
 }));
 
 // ==========================================

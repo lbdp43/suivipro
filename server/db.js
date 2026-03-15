@@ -93,7 +93,7 @@ async function initDatabase(attempt = 1) {
         longitude DOUBLE PRECISION DEFAULT 0,
         etape_pipeline TEXT NOT NULL DEFAULT 'nouveau',
         tags TEXT NOT NULL DEFAULT '[]',
-        commercial_id TEXT NOT NULL,
+        commercial_id TEXT DEFAULT NULL,
         notes TEXT DEFAULT '',
         date_creation TEXT NOT NULL,
         date_modification TEXT NOT NULL,
@@ -601,6 +601,10 @@ async function initDatabase(attempt = 1) {
 
     // Migration: add entity_type column to prospects
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'prospect'"); } catch { /* */ }
+
+    // Migration: make commercial_id nullable on prospects (allow import without assignment)
+    try { await client.query("ALTER TABLE prospects ALTER COLUMN commercial_id DROP NOT NULL"); } catch { /* */ }
+    try { await client.query("ALTER TABLE prospects ALTER COLUMN commercial_id SET DEFAULT NULL"); } catch { /* */ }
 
     // Migration: add siret column to prospects for dedup
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT DEFAULT ''"); } catch { /* */ }
