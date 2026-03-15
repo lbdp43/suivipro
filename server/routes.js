@@ -1712,6 +1712,189 @@ async function handleEasyBeerWebhook(req, res) {
   const typeLower = type.toLowerCase().replace(/[_.-]/g, '');
   const isClientCreation = ['clientcreation', 'clientcreated', 'newclient', 'tiercreation', 'tiercreated', 'newtier'].includes(typeLower)
     || type.includes('CLIENT') || type.includes('client') || type.includes('TIER') || type.includes('tier');
+  const isCommande = ['commandefacturation', 'commandecreation', 'facturecreation', 'facturecreated', 'commandecreated',
+    'nouvellecommande', 'nouvellefacture', 'blcreation', 'blcreated'].includes(typeLower)
+    || type.includes('COMMANDE') || type.includes('FACTUR') || type.includes('commande') || type.includes('factur');
+
+  // ============================================
+  // Handle COMMANDE / FACTURATION webhooks
+  // ============================================
+  if (isCommande && id && config?.username && config?.api_url) {
+    setTimeout(async () => {
+      try {
+        const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+        const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+        const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
+
+        console.log(`[EasyBeer Webhook] Traitement commande/facture id=${id}...`);
+
+        // Try to fetch the order/invoice details from EasyBeer
+        let orderData = null;
+        let fetchedFrom = '';
+
+        // Try various possible endpoints
+        const orderPaths = [
+          `/ventes/facture/detail/${id}`,
+          `/ventes/facture/${id}`,
+          `/commandes/detail/${id}`,
+          `/commandes/${id}`,
+          `/documents/facture/${id}`,
+          `/documents/commande/${id}`,
+          `/parametres/facture/detail/${id}`,
+          `/param%C3%A8tres/facture/detail/${id}`,
+          `/ventes/bl/detail/${id}`,
+        ];
+
+        for (let attempt = 0; attempt <= 3; attempt++) {
+          for (const path of orderPaths) {
+            try {
+              const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
+              if (resp.ok) {
+                let data = await resp.json();
+                if (Array.isArray(data)) data = data[0];
+                if (data && (data.id || data.numero || data.reference || data.montantTTC || data.montantHT || data.totalTTC)) {
+                  orderData = data;
+                  fetchedFrom = path;
+                  break;
+                }
+              }
+            } catch { /* next */ }
+          }
+          if (orderData) break;
+          if (attempt < 3) {
+            const delay = [5000, 10000, 20000][attempt];
+            console.log(`[EasyBeer Webhook] Commande id=${id} attempt ${attempt + 1} echoue, retry dans ${delay / 1000}s...`);
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+
+        if (!orderData) {
+          console.log(`[EasyBeer Webhook] Impossible de recuperer la commande/facture id=${id}, stockage payload brut`);
+          // Store what we have from the webhook payload itself
+          orderData = body;
+        }
+
+        console.log(`[EasyBeer Webhook] Commande recue: keys=${Object.keys(orderData).join(',')}${fetchedFrom ? ` from ${fetchedFrom}` : ' (payload brut)'}`);
+
+        // Extract order details
+        const numero = String(orderData.numero || orderData.reference || orderData.ref || orderData.numPiece || orderData.num_piece || id);
+        const dateCmd = orderData.date || orderData.dateCommande || orderData.dateCreation || orderData.datePiece || orderData.date_commande || now;
+        const dateLiv = orderData.dateLivraison || orderData.dateExpedition || orderData.dateBL || orderData.date_livraison || '';
+        const montantHt = parseFloat(orderData.montantHT || orderData.totalHT || orderData.montant_ht || orderData.ht || 0) || 0;
+        const montantTtc = parseFloat(orderData.montantTTC || orderData.totalTTC || orderData.montant_ttc || orderData.ttc || 0) || 0;
+        const statutRaw = (orderData.statut || orderData.etat || orderData.status || '').toLowerCase();
+
+        let statut = 'en_cours';
+        if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee', 'terminée', 'validee', 'validée'].some(s => statutRaw.includes(s))) {
+          statut = 'livree';
+        } else if (['annulee', 'annulée', 'cancelled', 'canceled'].some(s => statutRaw.includes(s))) {
+          statut = 'annulee';
+        }
+
+        // Extract line items (produits)
+        let lignes = [];
+        const rawLignes = orderData.lignes || orderData.details || orderData.articles || orderData.items
+          || orderData.lignesFacture || orderData.lignesCommande || orderData.produits || [];
+        if (Array.isArray(rawLignes)) {
+          lignes = rawLignes.map(l => ({
+            produit: l.libelle || l.designation || l.nom || l.produit || l.article || l.description || '',
+            quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || 0) || 0,
+            prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || l.pv || 0) || 0,
+            montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || 0) || 0,
+            tva: parseFloat(l.tauxTVA || l.tva || 0) || 0,
+            reference: l.reference || l.ref || l.code || '',
+          }));
+        }
+
+        // Find which client this order belongs to
+        // Try client id from the order data
+        const ebClientId = String(orderData.clientId || orderData.client_id || orderData.tiersId || orderData.tiers_id
+          || orderData.idClient || orderData.id_client || orderData.acheteurId || '');
+
+        let clientId = null;
+
+        if (ebClientId) {
+          // Look for imported client by easybeer_id
+          const ebMatch = await db.query(
+            "SELECT imported_client_id FROM easybeer_clients WHERE easybeer_id = $1 AND status = 'imported' AND imported_client_id IS NOT NULL",
+            [ebClientId]
+          );
+          if (ebMatch.rows.length > 0) {
+            clientId = ebMatch.rows[0].imported_client_id;
+          }
+        }
+
+        // Also try matching by client name from the order
+        if (!clientId) {
+          const clientName = orderData.clientNom || orderData.client_nom || orderData.nomClient || orderData.raisonSociale
+            || orderData.raison_sociale || orderData.nomTiers || '';
+          if (clientName) {
+            const clientMatch = await db.query('SELECT id FROM clients WHERE LOWER(nom) = LOWER($1) LIMIT 1', [clientName]);
+            if (clientMatch.rows.length > 0) {
+              clientId = clientMatch.rows[0].id;
+            }
+          }
+        }
+
+        if (!clientId) {
+          console.log(`[EasyBeer Webhook] Commande ${numero}: pas de client associe (ebClientId=${ebClientId}), stockage en attente`);
+          // Store in webhooks for manual processing later
+          return;
+        }
+
+        // Check if already imported
+        const existing = await db.query('SELECT id FROM commandes WHERE easybeer_id = $1 AND client_id = $2', [String(id), clientId]);
+        if (existing.rows.length > 0) {
+          console.log(`[EasyBeer Webhook] Commande ${numero} deja importee, mise a jour...`);
+          await db.query(
+            `UPDATE commandes SET statut = $1, montant_ht = $2, montant_ttc = $3, lignes = $4, date_livraison = $5 WHERE easybeer_id = $6 AND client_id = $7`,
+            [statut, montantHt, montantTtc, JSON.stringify(lignes), dateLiv, String(id), clientId]
+          );
+          return;
+        }
+
+        // Create the commande
+        const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        await db.query(
+          `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, date_creation)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [cmdId, clientId, String(id), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
+           JSON.stringify(lignes), '', 'easybeer', now]
+        );
+
+        const lignesStr = lignes.length > 0
+          ? lignes.map(l => `${l.produit} x${l.quantite}`).join(', ')
+          : 'aucun detail produit';
+        console.log(`[EasyBeer Webhook] Commande importee: #${numero} -> client ${clientId}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes (${lignesStr})`);
+
+        // Create notification for the commercial
+        try {
+          const clientData = await db.query('SELECT nom, commercial_id FROM clients WHERE id = $1', [clientId]);
+          if (clientData.rows.length > 0) {
+            const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            await db.query(
+              `INSERT INTO notifications (id, user_id, type, title, message, data, created_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+              [notifId, clientData.rows[0].commercial_id, 'commande',
+               `Nouvelle commande #${numero}`,
+               `${clientData.rows[0].nom} - ${montantTtc.toFixed(2)}€ TTC${lignes.length > 0 ? ` (${lignes.length} produits)` : ''}`,
+               JSON.stringify({ client_id: clientId, commande_id: cmdId, montant_ttc: montantTtc }),
+               now]
+            );
+          }
+        } catch (err) { console.error('[EasyBeer Webhook] Notification error:', err.message); }
+
+      } catch (err) {
+        console.error(`[EasyBeer Webhook] Erreur traitement commande id=${id}:`, err.message);
+      }
+    }, 3000);
+
+    return res.json({ ok: true, received: { type, id }, action: 'commande_processing' });
+  }
+
+  // ============================================
+  // Handle CLIENT creation webhooks
+  // ============================================
 
   // Always create a pending entry when we receive a webhook with an id, even if we can't fetch details
   if (id) {
