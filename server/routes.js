@@ -1593,21 +1593,59 @@ function extractEbFieldsSync(data) {
 // Helper: find matching prospect by name, email, or phone
 async function findMatchingProspect(name, email, phone) {
   if (!name && !email && !phone) return null;
-  // Try exact email match first
   if (email) {
     const r = await db.query('SELECT * FROM prospects WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
     if (r.rows.length > 0) return r.rows[0];
   }
-  // Try phone match (strip spaces/dashes)
   if (phone) {
     const cleanPhone = phone.replace(/[\s\-\.]/g, '');
     const r = await db.query("SELECT * FROM prospects WHERE REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') = $1 LIMIT 1", [cleanPhone]);
     if (r.rows.length > 0) return r.rows[0];
   }
-  // Try exact name match
   if (name) {
     const r = await db.query('SELECT * FROM prospects WHERE LOWER(nom_etablissement) = LOWER($1) LIMIT 1', [name]);
     if (r.rows.length > 0) return r.rows[0];
+  }
+  return null;
+}
+
+// Helper: find matching existing client by name, email, phone, or SIRET
+// Used to link EasyBeer data to clients already imported via Excel
+async function findMatchingClient(name, email, phone, siret) {
+  if (!name && !email && !phone && !siret) return null;
+  // SIRET is a strong identifier
+  if (siret && siret.length >= 9) {
+    const r = await db.query("SELECT * FROM clients WHERE siret = $1 LIMIT 1", [siret]);
+    if (r.rows.length > 0) return r.rows[0];
+  }
+  // Email match
+  if (email) {
+    const r = await db.query('SELECT * FROM clients WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
+    if (r.rows.length > 0) return r.rows[0];
+  }
+  // Phone match (strip formatting)
+  if (phone) {
+    const cleanPhone = phone.replace(/[\s\-\.]/g, '');
+    if (cleanPhone.length >= 8) {
+      const r = await db.query("SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') = $1 OR REPLACE(REPLACE(REPLACE(telephone_mobile, ' ', ''), '-', ''), '.', '') = $1 LIMIT 1", [cleanPhone]);
+      if (r.rows.length > 0) return r.rows[0];
+    }
+  }
+  // Name match (exact, case-insensitive)
+  if (name) {
+    const r = await db.query('SELECT * FROM clients WHERE LOWER(nom) = LOWER($1) LIMIT 1', [name]);
+    if (r.rows.length > 0) return r.rows[0];
+  }
+  // Fuzzy name: try without common suffixes/prefixes and trimmed
+  if (name && name.length > 4) {
+    const normalized = name.trim().toLowerCase()
+      .replace(/^(le |la |l'|les |au |aux |chez )/i, '')
+      .replace(/(sarl|sas|eurl|sa|srl| & cie)$/i, '')
+      .trim();
+    if (normalized.length > 3) {
+      const r = await db.query("SELECT * FROM clients WHERE LOWER(nom) LIKE $1 LIMIT 1", [`%${normalized}%`]);
+      if (r.rows.length > 0) return r.rows[0];
+    }
   }
   return null;
 }
@@ -1807,14 +1845,17 @@ async function handleEasyBeerWebhook(req, res) {
         }
 
         // Find which client this order belongs to
-        // Try client id from the order data
         const ebClientId = String(orderData.clientId || orderData.client_id || orderData.tiersId || orderData.tiers_id
           || orderData.idClient || orderData.id_client || orderData.acheteurId || '');
+        const orderClientName = orderData.clientNom || orderData.client_nom || orderData.nomClient || orderData.raisonSociale
+          || orderData.raison_sociale || orderData.nomTiers || orderData.client || '';
+        const orderClientEmail = orderData.emailClient || orderData.email_client || orderData.clientEmail || '';
+        const orderClientPhone = orderData.telephoneClient || orderData.telephone_client || orderData.clientTelephone || '';
 
         let clientId = null;
 
+        // 1. Try via easybeer_clients link
         if (ebClientId) {
-          // Look for imported client by easybeer_id
           const ebMatch = await db.query(
             "SELECT imported_client_id FROM easybeer_clients WHERE easybeer_id = $1 AND status = 'imported' AND imported_client_id IS NOT NULL",
             [ebClientId]
@@ -1824,14 +1865,20 @@ async function handleEasyBeerWebhook(req, res) {
           }
         }
 
-        // Also try matching by client name from the order
+        // 2. Try matching by name/email/phone against existing clients (imported from Excel)
         if (!clientId) {
-          const clientName = orderData.clientNom || orderData.client_nom || orderData.nomClient || orderData.raisonSociale
-            || orderData.raison_sociale || orderData.nomTiers || '';
-          if (clientName) {
-            const clientMatch = await db.query('SELECT id FROM clients WHERE LOWER(nom) = LOWER($1) LIMIT 1', [clientName]);
-            if (clientMatch.rows.length > 0) {
-              clientId = clientMatch.rows[0].id;
+          const matchedClient = await findMatchingClient(orderClientName, orderClientEmail, orderClientPhone, '');
+          if (matchedClient) {
+            clientId = matchedClient.id;
+            // Also link the easybeer_clients entry if ebClientId exists
+            if (ebClientId) {
+              await db.query(
+                `INSERT INTO easybeer_clients (easybeer_id, name, status, imported_client_id, synced_at, updated_at)
+                VALUES ($1,$2,'imported',$3,$4,$4)
+                ON CONFLICT (easybeer_id) DO UPDATE SET status = 'imported', imported_client_id = $3, updated_at = $4`,
+                [ebClientId, orderClientName, clientId, now]
+              );
+              console.log(`[EasyBeer Webhook] Client ${orderClientName} lie via commande: easybeer_id=${ebClientId} -> ${clientId}`);
             }
           }
         }
@@ -1969,8 +2016,36 @@ async function handleEasyBeerWebhook(req, res) {
           );
           console.log(`[EasyBeer Webhook] Enrichi: ${f.name}, GPS=${f.latitude},${f.longitude}, tournee=${f.tournee}, mobile=${f.phone_mobile}`);
 
-          // Auto-import if assignment rule exists
-          if (f.commercial_email) {
+          // Check if this EasyBeer client matches an existing client (imported from Excel)
+          const existingClient = await findMatchingClient(f.name, f.email, f.phone, f.siret);
+
+          if (existingClient) {
+            // Link EasyBeer entry to existing client - no duplicate creation
+            await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [existingClient.id, id]);
+
+            // Enrich existing client with EasyBeer data (fill in missing fields)
+            await db.query(
+              `UPDATE clients SET
+                telephone_mobile = CASE WHEN (telephone_mobile IS NULL OR telephone_mobile = '') AND $2 != '' THEN $2 ELSE telephone_mobile END,
+                siret = CASE WHEN (siret IS NULL OR siret = '') AND $3 != '' THEN $3 ELSE siret END,
+                tournee = CASE WHEN (tournee IS NULL OR tournee = '') AND $4 != '' THEN $4 ELSE tournee END,
+                latitude = CASE WHEN (latitude IS NULL OR latitude = 0) AND $5::double precision != 0 THEN $5 ELSE latitude END,
+                longitude = CASE WHEN (longitude IS NULL OR longitude = 0) AND $6::double precision != 0 THEN $6 ELSE longitude END,
+                contact = CASE WHEN (contact IS NULL OR contact = '') AND $7 != '' THEN $7 ELSE contact END,
+                date_modification = $8
+              WHERE id = $1`,
+              [existingClient.id, f.phone_mobile, f.siret, f.tournee, f.latitude, f.longitude, f.contact_name, clientNow]
+            );
+
+            // Also link prospect if one matches
+            const prospect = await findMatchingProspect(f.name, f.email, f.phone);
+            if (prospect && !existingClient.prospect_id) {
+              await linkClientToProspect(existingClient.id, prospect, clientNow);
+            }
+
+            console.log(`[EasyBeer Webhook] Client existant lie: ${f.name} (${existingClient.id}) <- easybeer_id=${id}`);
+          } else if (f.commercial_email) {
+            // No existing client found - auto-import if assignment rule exists
             const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [f.commercial_email.toLowerCase()]);
             if (ruleResult.rows.length > 0) {
               const rule = ruleResult.rows[0];
@@ -1978,7 +2053,6 @@ async function handleEasyBeerWebhook(req, res) {
               const nextVisit = await calculateNextVisit(clientType, null, null);
               const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-              // Check if a matching prospect exists
               const prospect = await findMatchingProspect(f.name, f.email, f.phone);
 
               await db.query(
@@ -1995,12 +2069,17 @@ async function handleEasyBeerWebhook(req, res) {
               );
               await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
 
-              // Link prospect if found
               if (prospect) {
                 await linkClientToProspect(clientId, prospect, clientNow);
               }
 
-              console.log(`[EasyBeer Webhook] Auto-import: ${f.name} -> commercial ${prospect?.commercial_id || rule.commercial_id}${prospect ? ' (linked to prospect)' : ''}`);
+              console.log(`[EasyBeer Webhook] Nouveau client cree: ${f.name} -> commercial ${prospect?.commercial_id || rule.commercial_id}`);
+            }
+          } else {
+            // No existing client, no commercial_email -> try matching anyway without rule
+            const prospect = await findMatchingProspect(f.name, f.email, f.phone);
+            if (prospect) {
+              console.log(`[EasyBeer Webhook] Prospect trouve pour ${f.name} mais pas de client existant ni de regle d'attribution`);
             }
           }
         } else {
@@ -2113,14 +2192,44 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const eb = ebClient.rows[0];
   const { commercial_id, type_client, tournee } = req.body;
   const now = new Date().toISOString();
+
+  // Check if a matching client already exists (imported from Excel)
+  const existingClient = await findMatchingClient(eb.name, eb.email, eb.phone, eb.siret);
+
+  if (existingClient) {
+    // Link to existing client instead of creating a duplicate
+    await db.query(
+      `UPDATE clients SET
+        telephone_mobile = CASE WHEN (telephone_mobile IS NULL OR telephone_mobile = '') AND $2 != '' THEN $2 ELSE telephone_mobile END,
+        siret = CASE WHEN (siret IS NULL OR siret = '') AND $3 != '' THEN $3 ELSE siret END,
+        tournee = CASE WHEN (tournee IS NULL OR tournee = '') AND $4 != '' THEN $4 ELSE tournee END,
+        latitude = CASE WHEN (latitude IS NULL OR latitude = 0) AND $5::double precision != 0 THEN $5 ELSE latitude END,
+        longitude = CASE WHEN (longitude IS NULL OR longitude = 0) AND $6::double precision != 0 THEN $6 ELSE longitude END,
+        contact = CASE WHEN (contact IS NULL OR contact = '') AND $7 != '' THEN $7 ELSE contact END,
+        date_modification = $8
+      WHERE id = $1`,
+      [existingClient.id, eb.phone_mobile || '', eb.siret || '', tournee || eb.tournee || '',
+       eb.latitude || 0, eb.longitude || 0, eb.contact_name || '', now]
+    );
+
+    await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [existingClient.id, req.params.id]);
+
+    // Link prospect too if exists
+    const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
+    if (prospect && !existingClient.prospect_id) {
+      await linkClientToProspect(existingClient.id, prospect, now);
+    }
+
+    return res.json({ ok: true, client_id: existingClient.id, linked_existing: true, linked_prospect: prospect?.id || null });
+  }
+
+  // No existing client found - create new one
   const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
   const nextVisit = await calculateNextVisit(clientType, null, null);
   const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-  // Check if a matching prospect exists
   const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
 
-  // Geocode if no coordinates
   let lat = eb.latitude || prospect?.latitude || 0;
   let lng = eb.longitude || prospect?.longitude || 0;
   if ((!lat || !lng) && (eb.address || eb.city)) {
@@ -2140,7 +2249,6 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
      prospect?.id || null, now, now]
   );
 
-  // Link prospect if found
   if (prospect) {
     await linkClientToProspect(clientId, prospect, now);
   }
