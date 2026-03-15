@@ -145,7 +145,8 @@ export default function VisitesPage() {
     setModalClient(client);
     setModalType(type);
     setModalComment('');
-    setModalDate(new Date().toISOString().split('T')[0]);
+    const now = new Date();
+    setModalDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
     setModalRdvHeureDebut('10:00');
     setModalRdvHeureFin('11:00');
     const addr = [client.adresse, client.ville].filter(Boolean).join(', ');
@@ -452,7 +453,9 @@ export default function VisitesPage() {
   const isCurrentWeek = weekOffset === 0;
 
   const renderClient = (client: VisitClient, showVisitInfo = false) => {
-    const isLate = client.next_visit && client.next_visit < new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isLate = client.next_visit && client.next_visit < todayLocal;
     const daysLate = isLate ? Math.abs(daysUntil(client.next_visit)) : 0;
     const gmapsUrl = client.latitude && client.longitude
       ? `https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`

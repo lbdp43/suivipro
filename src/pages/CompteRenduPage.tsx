@@ -21,7 +21,10 @@ const MONTH_LABELS = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Jui
 type ViewMode = 'jour' | 'semaine' | 'mois' | 'periode';
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function getMonday(d: Date): Date {
@@ -227,14 +230,14 @@ export default function CompteRenduPage() {
     const d = new Date(dateStr + 'T12:00:00');
     const day = d.getDay() || 7;
     d.setDate(d.getDate() - day + 1);
-    return d.toISOString().split('T')[0];
+    return toDateStr(d);
   };
 
   // Helper: get Sunday of a week starting from Monday
   const getSundayOf = (mondayStr: string) => {
     const d = new Date(mondayStr + 'T12:00:00');
     d.setDate(d.getDate() + 6);
-    return d.toISOString().split('T')[0];
+    return toDateStr(d);
   };
 
   // Find which day of the week a zone is configured for (to assign weekly clients to correct day)
@@ -247,7 +250,7 @@ export default function CompteRenduPage() {
         const offset = dowNum === 0 ? 6 : dowNum - 1; // Convert to Monday-based offset
         const date = new Date(monday);
         date.setDate(monday.getDate() + offset);
-        return date.toISOString().split('T')[0];
+        return toDateStr(date);
       }
     }
     return null;
@@ -358,6 +361,34 @@ export default function CompteRenduPage() {
   }, [state.interactions, selectedDate, effectiveUserIds]);
 
   const visitedClientIds = new Set(todayInteractions.map((i: Interaction) => i.client_id));
+
+  // Other days of the week (for day view - show remaining days below selected day)
+  const otherDayGroups = useMemo(() => {
+    if (viewMode !== 'jour') return [];
+    const uids = new Set(effectiveUserIds);
+    const groups: { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] = [];
+    for (const day of weekDays) {
+      if (day.date === selectedDate) continue;
+      const d = new Date(day.date + 'T12:00:00');
+      const rdvs = state.appointments.filter((a: Appointment) =>
+        a.date === day.date && (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
+      ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
+      const visites = state.interactions.filter((i: Interaction) =>
+        i.date.substring(0, 10) === day.date && uids.has(i.commercial_id)
+      );
+      const zones = getZonesForDate(day.date);
+      const clients = getClientsToVisitForDate(day.date);
+      groups.push({
+        date: day.date,
+        label: `${DAY_LABELS[d.getDay()]} ${d.getDate()} ${MONTH_LABELS[d.getMonth()]}`,
+        rdvs,
+        visites,
+        zones,
+        clientsToVisit: clients,
+      });
+    }
+    return groups;
+  }, [viewMode, weekDays, selectedDate, state.appointments, state.interactions, effectiveUserIds, parsedConfig, state.clients]);
 
   // Actions (moved to modal handlers above)
 
@@ -1128,6 +1159,109 @@ export default function CompteRenduPage() {
               )
             )}
           </div>
+
+          {/* Other days of the week */}
+          {otherDayGroups.length > 0 && (
+            <div className="mt-8 space-y-2">
+              <h3 className="text-sm font-semibold text-gray-500 mb-3">Autres jours de la semaine</h3>
+              {otherDayGroups.map(group => {
+                const isOpen = expandedDay === group.date;
+                const rdvDone = group.rdvs.filter(r => !!r.compte_rendu).length;
+                const visitedCount = group.clientsToVisit.filter((c: any) => c._visited).length;
+                const lateCount = group.clientsToVisit.filter((c: Client) => c.next_visit && c.next_visit < group.date).length;
+                const hasContent = group.rdvs.length > 0 || group.clientsToVisit.length > 0 || group.visites.length > 0;
+                return (
+                  <div key={group.date} className={`bg-white rounded-xl border ${group.date === selectedDate ? 'border-brewery-300' : 'border-gray-200'} overflow-hidden`}>
+                    <button onClick={() => { if (hasContent) setExpandedDay(isOpen ? null : group.date); else setSelectedDate(group.date); }}
+                      className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-gray-800">{group.label}</span>
+                          {group.zones.length > 0 && <span className="text-[10px] text-brewery-600 font-medium">{group.zones.join(', ')}</span>}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          {group.rdvs.length > 0 && (
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rdvDone === group.rdvs.length ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                              {group.rdvs.length} RDV {rdvDone > 0 && `(${rdvDone} CR)`}
+                            </span>
+                          )}
+                          {group.clientsToVisit.length > 0 && (
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${visitedCount === group.clientsToVisit.length ? 'bg-green-100 text-green-700' : 'bg-cyan-100 text-cyan-700'}`}>
+                              {visitedCount}/{group.clientsToVisit.length} clients visites
+                            </span>
+                          )}
+                          {lateCount > 0 && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                              {lateCount} en retard
+                            </span>
+                          )}
+                          {group.visites.length > 0 && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                              {group.visites.length} interaction{group.visites.length > 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {!hasContent && (
+                            <span className="text-[10px] text-gray-400">Aucune activite</span>
+                          )}
+                        </div>
+                      </div>
+                      {hasContent && <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />}
+                    </button>
+                    {isOpen && hasContent && (
+                      <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
+                        {group.rdvs.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5" /> Rendez-vous ({group.rdvs.length})
+                            </p>
+                            {renderRdvListGrouped(group.rdvs)}
+                          </div>
+                        )}
+                        {group.clientsToVisit.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5" /> Clients a visiter ({group.clientsToVisit.length})
+                              <span className="text-[10px] font-normal text-gray-400 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
+                            </p>
+                            <div className="space-y-2">
+                              {group.clientsToVisit.map(renderClientCard)}
+                            </div>
+                          </div>
+                        )}
+                        {group.visites.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Interactions enregistrees ({group.visites.length})
+                            </p>
+                            <div className="space-y-1.5">
+                              {group.visites.map(v => {
+                                const clientName = getClientName(v.client_id);
+                                const typeColor = v.type === 'VISITE' ? 'bg-green-50' : v.type === 'APPEL' ? 'bg-blue-50' : 'bg-purple-50';
+                                const typeTextColor = v.type === 'VISITE' ? 'text-green-600' : v.type === 'APPEL' ? 'text-blue-600' : 'text-purple-600';
+                                const typeIconColor = v.type === 'VISITE' ? 'text-green-500' : v.type === 'APPEL' ? 'text-blue-500' : 'text-purple-500';
+                                return (
+                                  <div key={v.id} className={`flex items-center gap-2 px-3 py-2 ${typeColor} rounded-lg`}>
+                                    {v.type === 'VISITE' ? <CheckCircle2 className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />
+                                      : v.type === 'APPEL' ? <PhoneCall className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />
+                                      : <Calendar className={`w-4 h-4 ${typeIconColor} flex-shrink-0`} />}
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-sm font-medium text-gray-800">{clientName || v.client_id}</span>
+                                      {v.comment && <p className="text-xs text-gray-500 truncate">{v.comment}</p>}
+                                    </div>
+                                    <span className={`text-[10px] font-medium ${typeTextColor}`}>{INTERACTION_TYPE_LABELS[v.type as InteractionType] || v.type}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
