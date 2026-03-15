@@ -1102,6 +1102,9 @@ export default function ClientsPage() {
             )}
           </div>
 
+          {/* Scrollable content: Tasks, Commandes, Historique */}
+          <div className="flex-1 overflow-y-auto">
+
           {/* Tasks */}
           <div className="px-4 pt-3 pb-1">
             <div className="flex items-center justify-between mb-2">
@@ -1185,7 +1188,7 @@ export default function ClientsPage() {
           )}
 
           {/* Interaction history */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Historique ({selectedInteractions.length})</h3>
             {selectedInteractions.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-6">Aucune interaction enregistree</p>
@@ -1218,6 +1221,8 @@ export default function ClientsPage() {
               </div>
             )}
           </div>
+
+          </div>{/* end scrollable content */}
         </div>
       )}
 
