@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
-  MessageCircle, Building2, CheckCheck, ClipboardCheck, ListTodo, GitBranch, Contact,
+  MessageCircle, Building2, CheckCheck, ClipboardCheck, ListTodo, GitBranch, Contact, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { isToday } from '../utils/helpers';
@@ -48,7 +48,10 @@ export default function Layout() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const notifRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
   const { state, logout } = useApp();
   const today = new Date().toISOString().split('T')[0];
   // Badge = rappels en retard filtrés par utilisateur
@@ -92,6 +95,35 @@ export default function Layout() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
+  // Auto-open sidebar section when navigating to a child route
+  useEffect(() => {
+    const navItems_all = [
+      { to: '/prospects', children: ['/pipeline', '/appels'] },
+      { to: '/rdv', children: ['/pipeline-cr'] },
+      { to: '/compte-rendu', children: ['/tournees'] },
+      { to: '/guide', children: ['/documents', '/emails'] },
+      { to: '/admin', children: ['/import', '/sirene'] },
+    ];
+    for (const item of navItems_all) {
+      if (item.children.some(c => location.pathname === c || location.pathname.startsWith(c + '/'))) {
+        setOpenSections(prev => {
+          const next = new Set(prev);
+          next.add(item.to);
+          return next;
+        });
+      }
+    }
+  }, [location.pathname]);
+
+  const toggleSection = (to: string) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(to)) next.delete(to);
+      else next.add(to);
+      return next;
+    });
+  };
+
   // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -117,25 +149,36 @@ export default function Layout() {
     setUnreadCount(0);
   };
 
-  const navItems = [
+  const navItems: {
+    to: string;
+    icon: any;
+    label: string;
+    adminOnly: boolean;
+    children?: { to: string; icon: any; label: string; adminOnly?: boolean }[];
+  }[] = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: false },
-    { to: '/pipeline', icon: Kanban, label: 'Pipeline', adminOnly: false },
-    { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false },
-    { to: '/appels', icon: Phone, label: 'Appels', adminOnly: false },
-    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
-    { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
-    { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
-    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
-    { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
-    { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false },
-    { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR', adminOnly: false },
     { to: '/taches', icon: ListTodo, label: 'Taches', adminOnly: false },
-    { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
+    { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
+    { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false, children: [
+      { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
+      { to: '/appels', icon: Phone, label: 'Appels' },
+    ]},
+    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false, children: [
+      { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR' },
+    ]},
+    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
+    { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false, children: [
+      { to: '/tournees', icon: Map, label: 'Tournees' },
+    ]},
+    { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false, children: [
+      { to: '/documents', icon: FileText, label: 'Documents' },
+      { to: '/emails', icon: Mail, label: 'Emails' },
+    ]},
+    { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true, children: [
+      { to: '/import', icon: Upload, label: 'Import/Export' },
+      { to: '/sirene', icon: ScanLine, label: 'SIRENE / Datagouv' },
+    ]},
     { to: '/annuaire', icon: Contact, label: 'Annuaire', adminOnly: false },
-    { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: true },
-    { to: '/sirene', icon: ScanLine, label: 'SIRENE / Datagouv', adminOnly: true },
-    { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false },
-    { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
@@ -175,28 +218,104 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {visibleNavItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-brewery-50 text-brewery-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`
-              }
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              <span>{item.label}</span>
-              {item.to === '/rappels' && urgentReminders > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {urgentReminders}
-                </span>
-              )}
-            </NavLink>
-          ))}
+          {visibleNavItems.map(item => {
+            const hasChildren = item.children && item.children.length > 0;
+            const isOpen = openSections.has(item.to);
+            const isParentActive = location.pathname === item.to ||
+              (hasChildren && item.children!.some(c => location.pathname === c.to || location.pathname.startsWith(c.to + '/')));
+
+            if (hasChildren) {
+              return (
+                <div key={item.to}>
+                  {/* Parent item */}
+                  <div className="flex items-center">
+                    <NavLink
+                      to={item.to}
+                      end
+                      onClick={() => {
+                        if (!isOpen) toggleSection(item.to);
+                        setSidebarOpen(false);
+                      }}
+                      className={() =>
+                        `flex-1 flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium transition-colors ${
+                          isParentActive
+                            ? 'bg-brewery-50 text-brewery-700'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        }`
+                      }
+                    >
+                      <item.icon className="w-5 h-5 flex-shrink-0" />
+                      <span>{item.label}</span>
+                    </NavLink>
+                    <button
+                      onClick={() => toggleSection(item.to)}
+                      className={`p-2.5 rounded-r-lg transition-colors ${
+                        isParentActive
+                          ? 'bg-brewery-50 text-brewery-700'
+                          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                      }`}
+                      aria-label={isOpen ? 'Replier' : 'Deplier'}
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                    </button>
+                  </div>
+                  {/* Children */}
+                  {isOpen && (
+                    <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-gray-100 pl-2">
+                      {item.children!
+                        .filter(child => !child.adminOnly || isAdmin)
+                        .map(child => (
+                        <NavLink
+                          key={child.to}
+                          to={child.to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                              isActive
+                                ? 'bg-brewery-50 text-brewery-700'
+                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                            }`
+                          }
+                        >
+                          <child.icon className="w-4 h-4 flex-shrink-0" />
+                          <span>{child.label}</span>
+                          {child.to === '/rappels' && urgentReminders > 0 && (
+                            <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                              {urgentReminders}
+                            </span>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Standalone item
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-brewery-50 text-brewery-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`
+                }
+              >
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <span>{item.label}</span>
+                {item.to === '/rappels' && urgentReminders > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {urgentReminders}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* External links */}
