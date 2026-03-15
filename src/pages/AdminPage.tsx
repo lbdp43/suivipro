@@ -1427,7 +1427,7 @@ export default function AdminPage() {
                 return (
                   <div key={cmd.id} className="p-4 bg-orange-50 rounded-lg border border-orange-100">
                     <div className="flex items-start justify-between mb-2">
-                      <div>
+                      <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-semibold text-gray-900">#{cmd.numero || cmd.easybeer_id}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
@@ -1441,11 +1441,6 @@ export default function AdminPage() {
                         {cmd.client_name && (
                           <p className="text-xs text-gray-600 mb-1">Client EasyBeer : <strong>{cmd.client_name}</strong></p>
                         )}
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          {cmd.date_commande && <span>{new Date(cmd.date_commande).toLocaleDateString('fr-FR')}</span>}
-                          {cmd.montant_ht > 0 && <span>{cmd.montant_ht.toFixed(2)} € HT</span>}
-                          {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
-                        </div>
                       </div>
                       <button
                         onClick={async () => {
@@ -1464,20 +1459,73 @@ export default function AdminPage() {
                       </button>
                     </div>
 
-                    {/* Lignes produits */}
-                    {lignes.length > 0 && (
-                      <div className="mb-3 p-2 bg-white rounded border border-orange-100">
-                        <p className="text-[10px] text-gray-400 mb-1 font-medium">Produits :</p>
-                        {lignes.slice(0, 6).map((l: any, i: number) => (
-                          <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
-                            <span className="truncate flex-1">{l.produit || '—'}</span>
-                            <span className="flex-shrink-0 ml-2 text-gray-500">x{l.quantite}</span>
-                            {l.montant > 0 && <span className="flex-shrink-0 ml-2 font-medium">{l.montant.toFixed(2)} €</span>}
+                    {/* Details de la commande */}
+                    <div className="mb-3 p-3 bg-white rounded-lg border border-orange-100 space-y-2">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3 h-3 text-gray-400" />
+                          <span className="text-gray-500">Commande :</span>
+                          <span className="font-medium text-gray-800">{cmd.date_commande ? new Date(cmd.date_commande).toLocaleDateString('fr-FR') : '—'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3 h-3 text-gray-400" />
+                          <span className="text-gray-500">Livraison :</span>
+                          <span className="font-medium text-gray-800">{cmd.date_livraison ? new Date(cmd.date_livraison).toLocaleDateString('fr-FR') : '—'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <TrendingUp className="w-3 h-3 text-gray-400" />
+                          <span className="text-gray-500">Montant HT :</span>
+                          <span className="font-medium text-gray-800">{cmd.montant_ht > 0 ? `${cmd.montant_ht.toFixed(2)} €` : '—'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <TrendingUp className="w-3 h-3 text-blue-500" />
+                          <span className="text-gray-500">Montant TTC :</span>
+                          <span className="font-semibold text-gray-900">{cmd.montant_ttc > 0 ? `${cmd.montant_ttc.toFixed(2)} €` : '—'}</span>
+                        </div>
+                        {cmd.notes && (
+                          <div className="col-span-2 flex items-start gap-1.5">
+                            <span className="text-gray-500">Notes :</span>
+                            <span className="text-gray-700">{cmd.notes}</span>
                           </div>
-                        ))}
-                        {lignes.length > 6 && <p className="text-[10px] text-gray-400 mt-1">+{lignes.length - 6} autres produits</p>}
+                        )}
                       </div>
-                    )}
+
+                      {/* Lignes produits */}
+                      {lignes.length > 0 && (
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-1.5">Produits ({lignes.length})</p>
+                          <div className="space-y-1">
+                            {lignes.map((l: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-gray-50 rounded">
+                                <span className="truncate flex-1 text-gray-700">{l.produit || '—'}</span>
+                                <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                                  <span className="text-gray-500">x{l.quantite}</span>
+                                  {l.prix_unitaire > 0 && <span className="text-gray-400">{l.prix_unitaire.toFixed(2)} €/u</span>}
+                                  {l.montant > 0 && <span className="font-medium text-gray-700">{l.montant.toFixed(2)} €</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Raw data toggle */}
+                      {cmd.raw_data && cmd.raw_data !== '{}' && (() => {
+                        let rawObj: Record<string, unknown> = {};
+                        try { rawObj = JSON.parse(cmd.raw_data); } catch { /* */ }
+                        if (Object.keys(rawObj).length === 0) return null;
+                        return (
+                          <details className="pt-2 border-t border-gray-100">
+                            <summary className="cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium">
+                              Voir les donnees brutes EasyBeer
+                            </summary>
+                            <pre className="mt-1.5 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600 max-h-60 overflow-y-auto">
+                              {JSON.stringify(rawObj, null, 2)}
+                            </pre>
+                          </details>
+                        );
+                      })()}
+                    </div>
 
                     {/* Assignment UI */}
                     {isAssigning ? (
