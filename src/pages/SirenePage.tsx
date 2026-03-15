@@ -78,6 +78,12 @@ export default function SirenePage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [importCommercialId, setImportCommercialId] = useState('');
 
+  // Geo search
+  const [geoLat, setGeoLat] = useState('');
+  const [geoLng, setGeoLng] = useState('');
+  const [geoRadius, setGeoRadius] = useState(10);
+  const [showGeoForm, setShowGeoForm] = useState(false);
+
   // Import result
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
 
@@ -255,14 +261,9 @@ export default function SirenePage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
           <Database className="w-6 h-6 text-sky-500" />
-          SIRENE / Datagouv
+          Import Datagouv
         </h1>
-        {!apiConfigured && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Cle API SIRENE non configuree (SIRENE_API_KEY)
-          </div>
-        )}
+        <span className="text-xs text-gray-400">API recherche-entreprises.api.gouv.fr (aucune cle requise)</span>
       </div>
 
       {/* Stats */}
@@ -362,17 +363,80 @@ export default function SirenePage() {
           </div>
         )}
 
-        <button
-          onClick={launchSync}
-          disabled={syncing || !apiConfigured}
-          className="px-4 py-2.5 bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {syncing ? (
-            <><RefreshCw className="w-4 h-4 animate-spin" /> Synchronisation en cours...</>
-          ) : (
-            <><Download className="w-4 h-4" /> Lancer la synchronisation</>
-          )}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={launchSync}
+            disabled={syncing}
+            className="px-4 py-2.5 bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {syncing ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Synchronisation en cours...</>
+            ) : (
+              <><Download className="w-4 h-4" /> Sync par departement / NAF</>
+            )}
+          </button>
+          <button
+            onClick={() => setShowGeoForm(!showGeoForm)}
+            disabled={syncing}
+            className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm font-medium disabled:opacity-50"
+          >
+            <MapPin className="w-4 h-4" /> Recherche geographique
+          </button>
+        </div>
+
+        {showGeoForm && (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+            <h4 className="text-xs font-semibold text-green-800">Recherche par proximite geographique</h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[10px] text-green-700 mb-0.5">Latitude</label>
+                <input type="text" className="w-full px-2 py-1.5 border border-green-200 rounded-lg text-xs"
+                  placeholder="45.0428" value={geoLat} onChange={e => setGeoLat(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-green-700 mb-0.5">Longitude</label>
+                <input type="text" className="w-full px-2 py-1.5 border border-green-200 rounded-lg text-xs"
+                  placeholder="3.8847" value={geoLng} onChange={e => setGeoLng(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-green-700 mb-0.5">Rayon (km)</label>
+                <input type="number" className="w-full px-2 py-1.5 border border-green-200 rounded-lg text-xs"
+                  value={geoRadius} onChange={e => setGeoRadius(parseInt(e.target.value) || 10)} min={1} max={100} />
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                if (!geoLat || !geoLng) return;
+                setSyncing(true);
+                try {
+                  const nafCodesToUse = selectedNafCodes.size > 0 ? Array.from(selectedNafCodes) : [];
+                  const res = await fetch('/api/sirene/sync-near', {
+                    method: 'POST', headers,
+                    body: JSON.stringify({ latitude: parseFloat(geoLat), longitude: parseFloat(geoLng), radius: geoRadius, naf_codes: nafCodesToUse }),
+                  });
+                  const data = await res.json();
+                  if (data.ok) {
+                    const pollInterval = setInterval(async () => {
+                      const logsRes = await fetch('/api/sirene/sync-logs', { headers });
+                      const logs = await logsRes.json();
+                      if (logs[0]?.status !== 'running') {
+                        clearInterval(pollInterval);
+                        setSyncing(false);
+                        loadEtablissements();
+                        loadStats();
+                        loadSyncLogs();
+                      }
+                    }, 5000);
+                  }
+                } catch (err) { console.error(err); setSyncing(false); }
+              }}
+              disabled={syncing || !geoLat || !geoLng}
+              className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-medium disabled:opacity-50 flex items-center gap-1"
+            >
+              <Search className="w-3 h-3" /> Lancer la recherche geographique
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Import result */}
