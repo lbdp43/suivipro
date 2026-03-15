@@ -97,6 +97,9 @@ export default function ClientsPage() {
   // Frequency config from DB
   const [frequencyConfig, setFrequencyConfig] = useState<Record<string, number | null>>({});
 
+  // Tournee configs
+  const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; week_pattern: string }>>({});
+
   const isAdmin = state.currentUser?.role === 'admin';
 
   // Load frequency config from DB
@@ -110,6 +113,24 @@ export default function ClientsPage() {
         const config: Record<string, number | null> = {};
         rows.forEach(r => { config[r.type_client] = r.frequency_days; });
         setFrequencyConfig(config);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Load tournee configs
+  useEffect(() => {
+    const token = localStorage.getItem('suivipro_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/tournee-config', { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => {
+        const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
+        rows.forEach(r => {
+          const cfg = typeof r.config === 'string' ? JSON.parse(r.config) : r.config;
+          map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
+        });
+        setTourneeConfigs(map);
       })
       .catch(() => {});
   }, []);
@@ -519,16 +540,19 @@ export default function ClientsPage() {
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const lateCount = state.clients.filter(c => getVisitStatus(c) === 'LATE').length;
 
-  // Planning view data
+  // Planning view data - based on tournee configs (day -> sectors -> clients)
   const planningData = useMemo(() => {
-    // Get the Monday of the selected week
     const now = new Date();
     const dayOfWeek = now.getDay();
     const monday = new Date(now);
     monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (planningWeekOffset * 7));
     monday.setHours(0, 0, 0, 0);
 
-    const days: { date: Date; dateStr: string; label: string }[] = [];
+    // Week number for even/odd pattern
+    const startOfYear = new Date(monday.getFullYear(), 0, 1);
+    const weekNumber = Math.ceil(((monday.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+
+    const days: { date: Date; dateStr: string; label: string; dayKey: string }[] = [];
     const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
     for (let i = 0; i < 6; i++) {
       const d = new Date(monday);
@@ -537,27 +561,27 @@ export default function ClientsPage() {
         date: d,
         dateStr: d.toISOString().split('T')[0],
         label: `${dayNames[i]} ${d.getDate()}/${d.getMonth() + 1}`,
+        dayKey: String(i + 1), // 1=Lun, 2=Mar, etc.
       });
     }
 
     const weekStart = days[0].dateStr;
-    const weekEnd = days[days.length - 1].dateStr;
 
-    // Clients to visit this week: next_visit in [weekStart, weekEnd] OR late (next_visit < weekStart)
+    // Determine which commercial(s) to show
+    const targetCommercialId = filterCommercial || (!isAdmin && state.currentUser ? state.currentUser.id : '');
+
+    // Get active clients
     let clientsBase = state.clients.filter(c => c.statut === 'ACTIF');
-    if (!isAdmin && state.currentUser) {
+    if (targetCommercialId) {
+      clientsBase = clientsBase.filter(c => c.commercial_id === targetCommercialId);
+    } else if (!isAdmin && state.currentUser) {
       clientsBase = clientsBase.filter(c => c.commercial_id === state.currentUser!.id);
     }
-    if (filterCommercial) {
-      clientsBase = clientsBase.filter(c => c.commercial_id === filterCommercial);
-    }
 
+    // Late clients (next_visit in the past)
     const lateClients = clientsBase.filter(c => c.next_visit && c.next_visit < weekStart);
-    const weekClients = clientsBase.filter(c => c.next_visit && c.next_visit >= weekStart && c.next_visit <= weekEnd);
-
-    // Group by tournee
-    const groupByTournee = (clients: typeof clientsBase) => {
-      const groups: Record<string, typeof clientsBase> = {};
+    const groupByTournee = (clients: Client[]) => {
+      const groups: Record<string, Client[]> = {};
       clients.forEach(c => {
         const key = c.tournee || 'Sans secteur';
         if (!groups[key]) groups[key] = [];
@@ -565,20 +589,59 @@ export default function ClientsPage() {
       });
       return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
     };
-
-    // Group week clients by day then tournee
-    const byDay = days.map(day => ({
-      ...day,
-      groups: groupByTournee(weekClients.filter(c => c.next_visit === day.dateStr)),
-      count: weekClients.filter(c => c.next_visit === day.dateStr).length,
-    }));
-
     const lateGroups = groupByTournee(lateClients);
 
-    const weekLabel = `${days[0].date.getDate()}/${days[0].date.getMonth() + 1} - ${days[days.length - 1].date.getDate()}/${days[days.length - 1].date.getMonth() + 1}/${days[days.length - 1].date.getFullYear()}`;
+    // Build day data from tournee configs
+    type DayData = {
+      date: Date;
+      dateStr: string;
+      label: string;
+      dayKey: string;
+      sectors: { zone: string; clients: Client[]; visitDueClients: Client[] }[];
+      totalClients: number;
+      visitDueCount: number;
+    };
 
-    return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal: weekClients.length };
-  }, [state.clients, planningWeekOffset, isAdmin, state.currentUser, filterCommercial]);
+    const byDay: DayData[] = days.map(day => {
+      // Collect zones for this day from all relevant tournee configs
+      const zonesToShow = new Set<string>();
+      const commercialIds = targetCommercialId ? [targetCommercialId] : Object.keys(tourneeConfigs);
+
+      for (const commId of commercialIds) {
+        const tc = tourneeConfigs[commId];
+        if (!tc) continue;
+        // Check week pattern
+        if (tc.week_pattern === 'even' && weekNumber % 2 !== 0) continue;
+        if (tc.week_pattern === 'odd' && weekNumber % 2 !== 1) continue;
+        const dayZones = tc.config[day.dayKey];
+        if (Array.isArray(dayZones)) {
+          dayZones.forEach(z => { if (typeof z === 'string') zonesToShow.add(z); });
+        }
+      }
+
+      // For each zone, find matching clients
+      const sectors = Array.from(zonesToShow).sort().map(zone => {
+        const zoneClients = clientsBase.filter(c =>
+          c.tournee && c.tournee.toLowerCase() === zone.toLowerCase()
+        );
+        // Clients whose next_visit is due (today or past)
+        const visitDueClients = zoneClients.filter(c =>
+          c.next_visit && c.next_visit <= day.dateStr
+        );
+        return { zone, clients: zoneClients, visitDueClients };
+      });
+
+      const totalClients = sectors.reduce((sum, s) => sum + s.clients.length, 0);
+      const visitDueCount = sectors.reduce((sum, s) => sum + s.visitDueClients.length, 0);
+
+      return { ...day, sectors, totalClients, visitDueCount };
+    });
+
+    const weekLabel = `${days[0].date.getDate()}/${days[0].date.getMonth() + 1} - ${days[days.length - 1].date.getDate()}/${days[days.length - 1].date.getMonth() + 1}/${days[days.length - 1].date.getFullYear()}`;
+    const weekTotal = byDay.reduce((sum, d) => sum + d.totalClients, 0);
+
+    return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal };
+  }, [state.clients, planningWeekOffset, isAdmin, state.currentUser, filterCommercial, tourneeConfigs]);
 
   // Duplicate detection
   const normalize = (s: string) =>
@@ -875,7 +938,7 @@ export default function ClientsPage() {
               </button>
               <div className="text-center">
                 <span className="font-semibold text-sm text-gray-900">Semaine du {planningData.weekLabel}</span>
-                <span className="text-xs text-gray-500 ml-2">({planningData.weekTotal} visite{planningData.weekTotal > 1 ? 's' : ''})</span>
+                <span className="text-xs text-gray-500 ml-2">({planningData.weekTotal} client{planningData.weekTotal > 1 ? 's' : ''})</span>
               </div>
               <div className="flex items-center gap-1">
                 {planningWeekOffset !== 0 && (
@@ -940,37 +1003,63 @@ export default function ClientsPage() {
                         {day.label}
                         {isToday && <span className="ml-2 px-1.5 py-0.5 bg-brewery-600 text-white rounded text-[10px]">Aujourd'hui</span>}
                       </h3>
-                      <span className="text-xs text-gray-400">{day.count} visite{day.count > 1 ? 's' : ''}</span>
+                      <div className="flex items-center gap-2">
+                        {day.visitDueCount > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
+                            {day.visitDueCount} a visiter
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
+                      </div>
                     </div>
-                    {day.groups.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">Aucune visite prevue</p>
+                    {day.sectors.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">Aucun secteur prevu ce jour</p>
                     ) : (
-                      <div className="space-y-2">
-                        {day.groups.map(([tournee, clients]) => (
-                          <div key={tournee}>
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Map className="w-3 h-3 text-gray-400" />
-                              <span className="text-xs font-medium text-gray-600">{tournee}</span>
-                              <span className="text-[10px] text-gray-400">({clients.length})</span>
+                      <div className="space-y-3">
+                        {day.sectors.map(sector => (
+                          <div key={sector.zone}>
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <Map className="w-3.5 h-3.5 text-indigo-400" />
+                              <span className="text-xs font-semibold text-indigo-600">{sector.zone}</span>
+                              <span className="text-[10px] text-gray-400">{sector.clients.length} client{sector.clients.length > 1 ? 's' : ''}</span>
+                              {sector.visitDueClients.length > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded">
+                                  {sector.visitDueClients.length} en attente
+                                </span>
+                              )}
                             </div>
-                            <div className="flex flex-wrap gap-1.5 ml-4">
-                              {clients.map(c => {
-                                const comm = getCommercial(c.commercial_id);
-                                return (
-                                  <button
-                                    key={c.id}
-                                    onClick={() => setSearchParams({ id: c.id })}
-                                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm ${
-                                      isToday ? 'bg-white border-brewery-200 text-brewery-700 hover:bg-brewery-100' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    <span className="font-medium">{c.nom}</span>
-                                    <span className="text-gray-400 ml-1">{c.ville}</span>
-                                    {isAdmin && comm && <span className="text-[10px] text-gray-300 ml-1">• {comm.prenom}</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
+                            {sector.clients.length === 0 ? (
+                              <p className="text-[10px] text-gray-300 italic ml-5">Aucun client dans ce secteur</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5 ml-5">
+                                {sector.clients.map(c => {
+                                  const comm = getCommercial(c.commercial_id);
+                                  const isDue = c.next_visit && c.next_visit <= day.dateStr;
+                                  const isLate = c.next_visit && c.next_visit < new Date().toISOString().split('T')[0];
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      onClick={() => setSearchParams({ id: c.id })}
+                                      className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm ${
+                                        isLate ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                                        : isDue ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100'
+                                        : isToday ? 'bg-white border-brewery-200 text-brewery-700 hover:bg-brewery-100'
+                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <span className="font-medium">{c.nom}</span>
+                                      <span className="text-gray-400 ml-1">{c.ville}</span>
+                                      {isDue && c.next_visit && (
+                                        <span className="text-[9px] ml-1 opacity-60">
+                                          ({c.next_visit.substring(5).replace('-', '/')})
+                                        </span>
+                                      )}
+                                      {isAdmin && comm && <span className="text-[10px] text-gray-300 ml-1">• {comm.prenom}</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
