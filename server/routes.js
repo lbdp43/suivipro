@@ -3113,7 +3113,6 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
   interactionsMonthByType.rows.forEach(r => { monthByType[r.type] = parseInt(r.count); });
 
   // Appointments/RDV for the week (prospection + client)
-  const weekEndStr = new Date(monday.getTime() + 6 * 86400000).toISOString().split('T')[0];
   const weekAppointments = await db.query(
     `SELECT a.*, p.nom_etablissement as prospect_nom, c.nom as client_nom
      FROM appointments a
