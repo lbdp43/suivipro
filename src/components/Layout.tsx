@@ -200,16 +200,6 @@ export default function Layout() {
         {/* External links */}
         <div className="px-3 pb-2 space-y-1">
           <a
-            href="https://crm-lbdp-production.up.railway.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4 flex-shrink-0" />
-            <span>CRM LBDP</span>
-            <span className="ml-auto text-[10px] text-blue-400">Ouvrir</span>
-          </a>
-          <a
             href="https://suivi-horaires-alternants-production.up.railway.app/admin"
             target="_blank"
             rel="noopener noreferrer"
