@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Search, RefreshCw, MapPin, Building2, Users, Shield, Truck,
   Handshake, ChevronDown, ChevronRight, Plus, Trash2, Save, Settings, X, Tag, Package,
+  Filter, Phone, Calendar, Eye,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -93,6 +94,8 @@ export default function AnnuairePage() {
   const [filterType, setFilterType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDept, setFilterDept] = useState('');
+  const [filterCommercial, setFilterCommercial] = useState('');
+  const [filterActivity, setFilterActivity] = useState('');
 
   // Import rules
   const [rules, setRules] = useState<ImportRule[]>([]);
@@ -121,6 +124,8 @@ export default function AnnuairePage() {
       if (filterType) params.set('entity_type', filterType);
       if (searchQuery) params.set('search', searchQuery);
       if (filterDept) params.set('departement', filterDept);
+      if (filterCommercial) params.set('commercial_id', filterCommercial);
+      if (filterActivity) params.set('activity', filterActivity);
       params.set('limit', '300');
 
       const res = await fetch(`/api/annuaire?${params}`, { headers });
@@ -130,7 +135,7 @@ export default function AnnuairePage() {
     } catch (err) {
       console.error('Error loading annuaire:', err);
     }
-  }, [filterType, searchQuery, filterDept]);
+  }, [filterType, searchQuery, filterDept, filterCommercial, filterActivity]);
 
   const loadRules = useCallback(async () => {
     if (!isAdmin) return; // Only admins can access import rules
@@ -190,7 +195,7 @@ export default function AnnuairePage() {
 
   useEffect(() => {
     if (!loading) loadEntries();
-  }, [filterType, searchQuery, filterDept]);
+  }, [filterType, searchQuery, filterDept, filterCommercial, filterActivity]);
 
   const saveRule = async (rule: Partial<ImportRule>) => {
     setSavingRule(true);
@@ -311,6 +316,38 @@ export default function AnnuairePage() {
             value={filterDept}
             onChange={e => setFilterDept(e.target.value)}
           />
+        </div>
+        <div>
+          <select
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            value={filterCommercial}
+            onChange={e => setFilterCommercial(e.target.value)}
+          >
+            <option value="">Tous les utilisateurs</option>
+            <optgroup label="Commerciaux">
+              {state.commerciaux.filter(c => c.role === 'commercial' || c.role === 'admin').map(c => (
+                <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Prospection">
+              {state.commerciaux.filter(c => c.role === 'prospection').map(c => (
+                <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+        <div>
+          <select
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            value={filterActivity}
+            onChange={e => setFilterActivity(e.target.value)}
+          >
+            <option value="">Toute activite</option>
+            <option value="visite">Ont eu des visites</option>
+            <option value="rdv">Ont eu des RDV</option>
+            <option value="appel">Ont eu des appels</option>
+            <option value="aucune">Aucune activite</option>
+          </select>
         </div>
         {isAdmin && (
           <>
@@ -616,6 +653,7 @@ export default function AnnuairePage() {
                 <th className="px-2 py-2 text-left">Dept</th>
                 <th className="px-2 py-2 text-left">Telephone</th>
                 <th className="px-2 py-2 text-left">SIRET</th>
+                <th className="px-2 py-2 text-left">Commercial</th>
                 <th className="px-2 py-2 text-left">Pipeline</th>
                 <th className="px-2 py-2 text-left">Source</th>
               </tr>
@@ -623,7 +661,7 @@ export default function AnnuairePage() {
             <tbody>
               {entries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                     Aucune entite trouvee.
                   </td>
                 </tr>
@@ -656,6 +694,12 @@ export default function AnnuairePage() {
                     <td className="px-2 py-2 text-gray-600">{entry.departement}</td>
                     <td className="px-2 py-2 text-gray-600">{entry.telephone}</td>
                     <td className="px-2 py-2 text-gray-400 font-mono text-[10px]">{entry.siret}</td>
+                    <td className="px-2 py-2 text-[10px] text-gray-500">
+                      {(() => {
+                        const comm = state.commerciaux.find(c => c.id === entry.commercial_id);
+                        return comm ? `${comm.prenom} ${comm.nom?.charAt(0)}.` : '';
+                      })()}
+                    </td>
                     <td className="px-2 py-2">
                       {entry.etape_pipeline && (
                         <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">

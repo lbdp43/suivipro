@@ -3464,7 +3464,7 @@ router.delete('/import-rules/:id', authMiddleware, adminOnly, asyncHandler(async
 
 // GET /api/annuaire - unified view of prospects + clients
 router.get('/annuaire', authMiddleware, asyncHandler(async (req, res) => {
-  const { entity_type, search, departement, ville, type_etablissement, limit = 200 } = req.query;
+  const { entity_type, search, departement, ville, type_etablissement, commercial_id, activity, limit = 200 } = req.query;
 
   // Query prospects
   let prospectQuery = `SELECT id, nom_etablissement as nom, type_etablissement, ville, code_postal, departement,
@@ -3493,6 +3493,20 @@ router.get('/annuaire', authMiddleware, asyncHandler(async (req, res) => {
     prospectParams.push(type_etablissement);
     prospectQuery += ` AND type_etablissement = $${prospectParams.length}`;
   }
+  if (commercial_id) {
+    prospectParams.push(commercial_id);
+    prospectQuery += ` AND commercial_id = $${prospectParams.length}`;
+  }
+  if (activity === 'visite') {
+    prospectQuery += ` AND id IN (SELECT DISTINCT prospect_id FROM interactions WHERE type = 'VISITE' AND prospect_id IS NOT NULL)`;
+  } else if (activity === 'rdv') {
+    prospectQuery += ` AND id IN (SELECT DISTINCT prospect_id FROM rdvs WHERE prospect_id IS NOT NULL)`;
+  } else if (activity === 'appel') {
+    prospectQuery += ` AND id IN (SELECT DISTINCT prospect_id FROM interactions WHERE type = 'APPEL' AND prospect_id IS NOT NULL)`;
+  } else if (activity === 'aucune') {
+    prospectQuery += ` AND id NOT IN (SELECT DISTINCT prospect_id FROM interactions WHERE prospect_id IS NOT NULL)
+      AND id NOT IN (SELECT DISTINCT prospect_id FROM rdvs WHERE prospect_id IS NOT NULL)`;
+  }
 
   // Query clients
   let clientQuery = `SELECT id, nom, type_client as type_etablissement, ville, code_postal,
@@ -3520,6 +3534,20 @@ router.get('/annuaire', authMiddleware, asyncHandler(async (req, res) => {
   if (clientQuery && ville) {
     clientParams.push(`%${ville}%`);
     clientQuery += ` AND ville ILIKE $${clientParams.length}`;
+  }
+  if (clientQuery && commercial_id) {
+    clientParams.push(commercial_id);
+    clientQuery += ` AND commercial_id = $${clientParams.length}`;
+  }
+  if (clientQuery && activity === 'visite') {
+    clientQuery += ` AND id IN (SELECT DISTINCT client_id FROM interactions WHERE type = 'VISITE' AND client_id IS NOT NULL)`;
+  } else if (clientQuery && activity === 'rdv') {
+    clientQuery += ` AND id IN (SELECT DISTINCT client_id FROM rdvs WHERE client_id IS NOT NULL)`;
+  } else if (clientQuery && activity === 'appel') {
+    clientQuery += ` AND id IN (SELECT DISTINCT client_id FROM interactions WHERE type = 'APPEL' AND client_id IS NOT NULL)`;
+  } else if (clientQuery && activity === 'aucune') {
+    clientQuery += ` AND id NOT IN (SELECT DISTINCT client_id FROM interactions WHERE client_id IS NOT NULL)
+      AND id NOT IN (SELECT DISTINCT client_id FROM rdvs WHERE client_id IS NOT NULL)`;
   }
 
   const prospects = await db.query(prospectQuery, prospectParams);
