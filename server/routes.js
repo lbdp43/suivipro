@@ -3361,10 +3361,8 @@ async function fetchNearPoint(lat, lng, radius = 10, nafCodes = [], page = 1) {
 
 const INSEE_BASE_URL = 'https://api.insee.fr/api-sirene/3.11';
 
-// Build zone filter for INSEE query (uses codePostalEtablissement with wildcard)
-function buildInseeZoneFilter(departements) {
-  return departements.map(d => `codePostalEtablissement:${d}*`).join(' OR ');
-}
+// Build zone filter — filtering by department is done server-side (not in Lucene)
+// because codePostalEtablissement wildcards cause syntax errors in INSEE API
 
 // Parse INSEE result -> array of etablissements
 function parseInseeResult(etab) {
@@ -3394,17 +3392,12 @@ function parseInseeResult(etab) {
 }
 
 // Fetch from INSEE API with date filter
-async function fetchInsee(nafCode, dateFrom, departements, cursor = 0, apiKey = '') {
-  const zoneFilter = buildInseeZoneFilter(departements);
-  // activitePrincipaleEtablissement, etatAdministratifEtablissement, codePostalEtablissement
-  // are historized fields → must be inside periode()
+// Department filtering is done server-side after fetching results
+async function fetchInsee(nafCode, dateFrom, cursor = 0, apiKey = '') {
+  // NAF codes contain dots (56.10A) → quote them for Lucene
+  // activitePrincipaleEtablissement + etatAdministratifEtablissement are historized → inside periode()
   // dateCreationEtablissement is NOT historized → outside periode()
-  // NAF codes contain dots (56.10A) which are special in Lucene → quote them
-  const escapedNaf = `"${nafCode}"`;
-  const query = [
-    `periode(activitePrincipaleEtablissement:${escapedNaf} AND etatAdministratifEtablissement:A AND (${zoneFilter}))`,
-    `AND dateCreationEtablissement:[${dateFrom} TO *]`,
-  ].join(' ');
+  const query = `periode(activitePrincipaleEtablissement:"${nafCode}" AND etatAdministratifEtablissement:A) AND dateCreationEtablissement:[${dateFrom} TO *]`;
 
   const params = new URLSearchParams({
     q: query,
@@ -3433,13 +3426,14 @@ async function fetchInsee(nafCode, dateFrom, departements, cursor = 0, apiKey = 
 }
 
 // Fetch all pages from INSEE with rate limiting (30 req/min)
-async function fetchAllInsee(nafCode, dateFrom, departements, apiKey) {
+// Returns raw etablissements; caller filters by department
+async function fetchAllInsee(nafCode, dateFrom, apiKey) {
   const allResults = [];
   let cursor = 0;
   let total = 0;
 
   do {
-    const data = await fetchInsee(nafCode, dateFrom, departements, cursor, apiKey);
+    const data = await fetchInsee(nafCode, dateFrom, cursor, apiKey);
     total = data.header?.total || 0;
     const items = data.etablissements || [];
     allResults.push(...items);
@@ -3550,15 +3544,19 @@ router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (
     let totalFetched = 0, totalInserted = 0, totalUpdated = 0, totalAutoImported = 0;
     try {
       for (const nafCode of nafCodes) {
-        console.log(`[INSEE ZONE] Fetching NAF ${nafCode} since ${dateFrom} in depts ${departements.join(',')}...`);
-        const rawEtabs = await fetchAllInsee(nafCode, dateFrom, departements, apiKey);
-        console.log(`[INSEE ZONE]   -> ${rawEtabs.length} etablissements`);
+        console.log(`[INSEE ZONE] Fetching NAF ${nafCode} since ${dateFrom}...`);
+        const rawEtabs = await fetchAllInsee(nafCode, dateFrom, apiKey);
+        console.log(`[INSEE ZONE]   -> ${rawEtabs.length} etablissements (avant filtre dept)`);
 
         for (const rawEtab of rawEtabs) {
-          totalFetched++;
           const etab = parseInseeResult(rawEtab);
           if (!etab.siret) continue;
 
+          // Filter by department server-side (postal code prefix)
+          const etabDept = etab.code_postal ? etab.code_postal.substring(0, 2) : etab.departement;
+          if (departements.length > 0 && !departements.includes(etabDept)) continue;
+
+          totalFetched++;
           const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf || n.code === etab.code_naf.replace('.', ''));
 
           // Try to enrich with lat/lng from data.gouv.fr
@@ -3995,14 +3993,18 @@ export async function runZoneSync() {
   try {
     for (const nafCode of nafCodes) {
       console.log(`[CRON] NAF ${nafCode} depuis ${dateFrom}...`);
-      const rawEtabs = await fetchAllInsee(nafCode, dateFrom, departements, apiKey);
-      console.log(`[CRON]   -> ${rawEtabs.length} etablissements`);
+      const rawEtabs = await fetchAllInsee(nafCode, dateFrom, apiKey);
+      console.log(`[CRON]   -> ${rawEtabs.length} etablissements (avant filtre dept)`);
 
       for (const rawEtab of rawEtabs) {
-        totalFetched++;
         const etab = parseInseeResult(rawEtab);
         if (!etab.siret) continue;
 
+        // Filter by department server-side
+        const etabDept = etab.code_postal ? etab.code_postal.substring(0, 2) : etab.departement;
+        if (departements.length > 0 && !departements.includes(etabDept)) continue;
+
+        totalFetched++;
         const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf || n.code === etab.code_naf.replace('.', ''));
 
         // Enrich with coords
