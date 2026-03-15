@@ -193,9 +193,26 @@ async function initDatabase(attempt = 1) {
         records_fetched INTEGER DEFAULT 0,
         records_inserted INTEGER DEFAULT 0,
         records_updated INTEGER DEFAULT 0,
+        records_auto_imported INTEGER DEFAULT 0,
         error_message TEXT,
         naf_codes TEXT,
-        departements TEXT
+        departements TEXT,
+        source TEXT DEFAULT 'datagouv',
+        is_cron BOOLEAN DEFAULT FALSE
+      );
+
+      CREATE TABLE IF NOT EXISTS sirene_zone_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        departements TEXT NOT NULL DEFAULT '03,07,26,38,42,43,63',
+        naf_codes TEXT NOT NULL DEFAULT '',
+        lookback_days INTEGER DEFAULT 7,
+        auto_import BOOLEAN DEFAULT TRUE,
+        default_commercial_id TEXT DEFAULT '',
+        cron_enabled BOOLEAN DEFAULT TRUE,
+        cron_schedule TEXT DEFAULT '0 6 * * 1',
+        insee_api_key TEXT DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT '',
+        CHECK (id = 1)
       );
 
       CREATE TABLE IF NOT EXISTS documents (
@@ -507,6 +524,30 @@ async function initDatabase(attempt = 1) {
         await client.query("UPDATE commerciaux SET role = 'admin' WHERE prenom = 'Etienne' AND role = 'commercial'");
       }
     } catch (err) { console.log('Etienne migration:', err.message); }
+
+    // Migration: sirene_zone_config table
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sirene_zone_config (
+          id INTEGER PRIMARY KEY DEFAULT 1,
+          departements TEXT NOT NULL DEFAULT '03,07,26,38,42,43,63',
+          naf_codes TEXT NOT NULL DEFAULT '',
+          lookback_days INTEGER DEFAULT 7,
+          auto_import BOOLEAN DEFAULT TRUE,
+          default_commercial_id TEXT DEFAULT '',
+          cron_enabled BOOLEAN DEFAULT TRUE,
+          cron_schedule TEXT DEFAULT '0 6 * * 1',
+          insee_api_key TEXT DEFAULT '',
+          updated_at TEXT NOT NULL DEFAULT '',
+          CHECK (id = 1)
+        )
+      `);
+    } catch (err) { console.log('sirene_zone_config migration:', err.message); }
+
+    // Migration: add new columns to sirene_sync_logs
+    try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS records_auto_imported INTEGER DEFAULT 0"); } catch { /* */ }
+    try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'datagouv'"); } catch { /* */ }
+    try { await client.query("ALTER TABLE sirene_sync_logs ADD COLUMN IF NOT EXISTS is_cron BOOLEAN DEFAULT FALSE"); } catch { /* */ }
 
     // Migration: add nouveau_datagouv pipeline column if not exists
     try {

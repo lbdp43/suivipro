@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Database, Search, Download, RefreshCw, Check, AlertTriangle, X,
   ChevronDown, ChevronRight, Filter, Building2, MapPin, Clock,
+  Settings, Zap, Globe, Key, Save,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -38,10 +39,31 @@ interface SyncLog {
   records_fetched: number;
   records_inserted: number;
   records_updated: number;
+  records_auto_imported: number;
   error_message: string;
   naf_codes: string;
   departements: string;
+  source: string;
+  is_cron: boolean;
 }
+
+interface ZoneConfig {
+  departements: string;
+  naf_codes: string;
+  lookback_days: number;
+  auto_import: boolean;
+  default_commercial_id: string;
+  cron_enabled: boolean;
+  cron_schedule: string;
+  insee_api_key: string;
+  updated_at: string;
+}
+
+const DEPT_LABELS: Record<string, string> = {
+  '03': 'Allier', '07': 'Ardeche', '26': 'Drome', '38': 'Isere',
+  '42': 'Loire', '43': 'Haute-Loire', '63': 'Puy-de-Dome',
+  '01': 'Ain', '15': 'Cantal', '69': 'Rhone', '73': 'Savoie', '74': 'Haute-Savoie',
+};
 
 interface SireneStats {
   total: number;
@@ -87,6 +109,20 @@ export default function SirenePage() {
   // Import result
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
 
+  // Zone config
+  const [zoneConfig, setZoneConfig] = useState<ZoneConfig | null>(null);
+  const [showZoneConfig, setShowZoneConfig] = useState(false);
+  const [zoneSyncing, setZoneSyncing] = useState(false);
+  const [zoneSaving, setZoneSaving] = useState(false);
+  const [zoneForm, setZoneForm] = useState({
+    departements: '03,07,26,38,42,43,63',
+    lookback_days: 7,
+    auto_import: true,
+    default_commercial_id: '',
+    cron_enabled: true,
+    insee_api_key: '',
+  });
+
   const token = localStorage.getItem('suivipro_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -130,6 +166,77 @@ export default function SirenePage() {
     }
   }, [filterDept, filterNaf, filterImported]);
 
+  const loadZoneConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sirene/zone-config', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setZoneConfig(data);
+        setZoneForm({
+          departements: data.departements || '03,07,26,38,42,43,63',
+          lookback_days: data.lookback_days || 7,
+          auto_import: data.auto_import ?? true,
+          default_commercial_id: data.default_commercial_id || '',
+          cron_enabled: data.cron_enabled ?? true,
+          insee_api_key: data.insee_api_key || '',
+        });
+      }
+    } catch (err) {
+      console.error('Error loading zone config:', err);
+    }
+  }, []);
+
+  const saveZoneConfig = async () => {
+    setZoneSaving(true);
+    try {
+      const res = await fetch('/api/sirene/zone-config', {
+        method: 'PUT', headers,
+        body: JSON.stringify(zoneForm),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setZoneConfig(data.config);
+        setShowZoneConfig(false);
+      }
+    } catch (err) {
+      console.error('Error saving zone config:', err);
+    } finally {
+      setZoneSaving(false);
+    }
+  };
+
+  const launchZoneSync = async () => {
+    setZoneSyncing(true);
+    try {
+      const res = await fetch('/api/sirene/sync-zone', {
+        method: 'POST', headers,
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        setZoneSyncing(false);
+        return;
+      }
+      if (data.ok) {
+        const pollInterval = setInterval(async () => {
+          await loadSyncLogs();
+          const logsRes = await fetch('/api/sirene/sync-logs', { headers });
+          const logs = await logsRes.json();
+          if (logs[0]?.status !== 'running') {
+            clearInterval(pollInterval);
+            setZoneSyncing(false);
+            loadEtablissements();
+            loadStats();
+          }
+        }, 5000);
+      }
+    } catch (err) {
+      console.error('Zone sync error:', err);
+      setZoneSyncing(false);
+    }
+  };
+
   const loadSyncLogs = useCallback(async () => {
     try {
       const res = await fetch('/api/sirene/sync-logs', { headers });
@@ -141,7 +248,7 @@ export default function SirenePage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadConfig(), loadStats(), loadEtablissements(), loadSyncLogs()])
+    Promise.all([loadConfig(), loadStats(), loadEtablissements(), loadSyncLogs(), loadZoneConfig()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -290,12 +397,161 @@ export default function SirenePage() {
         </div>
       )}
 
+      {/* Zone Config + Auto Sync */}
+      <div className="bg-white rounded-xl border border-indigo-200 p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-indigo-500" />
+            Zone de prospection & Sync automatique
+            {zoneConfig?.cron_enabled && (
+              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">CRON actif</span>
+            )}
+          </h2>
+          <button
+            onClick={() => setShowZoneConfig(!showZoneConfig)}
+            className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+          >
+            <Settings className="w-3 h-3" />
+            {showZoneConfig ? 'Masquer config' : 'Configurer'}
+          </button>
+        </div>
+
+        {/* Zone summary */}
+        {zoneConfig && !showZoneConfig && (
+          <div className="mb-4 space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {zoneConfig.departements.split(',').map(d => d.trim()).filter(Boolean).map(dept => (
+                <span key={dept} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium">
+                  {dept} {DEPT_LABELS[dept] ? `- ${DEPT_LABELS[dept]}` : ''}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-4 text-xs text-gray-500">
+              <span>Lookback: {zoneConfig.lookback_days}j</span>
+              <span>Auto-import: {zoneConfig.auto_import ? 'Oui' : 'Non'}</span>
+              <span>Cle INSEE: {zoneConfig.insee_api_key ? 'Configuree' : 'Non configuree'}</span>
+              {zoneConfig.default_commercial_id && (
+                <span>Commercial: {state.commerciaux.find(c => c.id === zoneConfig.default_commercial_id)?.prenom || zoneConfig.default_commercial_id}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Zone config form */}
+        {showZoneConfig && (
+          <div className="space-y-4 mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-indigo-700 mb-1">
+                  Departements (separes par virgule)
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
+                  placeholder="03,07,26,38,42,43,63"
+                  value={zoneForm.departements}
+                  onChange={e => setZoneForm(f => ({ ...f, departements: e.target.value }))}
+                />
+                <p className="text-[10px] text-indigo-400 mt-1">Corridor Rhone-Alpes / Auvergne</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-indigo-700 mb-1">
+                  <Key className="w-3 h-3 inline mr-1" />
+                  Cle API INSEE (portail-api.insee.fr)
+                </label>
+                <input
+                  type="password"
+                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
+                  placeholder={zoneForm.insee_api_key === '***configured***' ? 'Cle deja configuree' : 'X-INSEE-Api-Key-Integration'}
+                  value={zoneForm.insee_api_key === '***configured***' ? '' : zoneForm.insee_api_key}
+                  onChange={e => setZoneForm(f => ({ ...f, insee_api_key: e.target.value || (zoneConfig?.insee_api_key ? '***configured***' : '') }))}
+                />
+                <p className="text-[10px] text-indigo-400 mt-1">Gratuite sur portail-api.insee.fr - necessaire pour le filtre par date</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-indigo-700 mb-1">Lookback (jours)</label>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
+                  value={zoneForm.lookback_days}
+                  onChange={e => setZoneForm(f => ({ ...f, lookback_days: parseInt(e.target.value) || 7 }))}
+                  min={1} max={90}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-indigo-700 mb-1">Commercial par defaut</label>
+                <select
+                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm"
+                  value={zoneForm.default_commercial_id}
+                  onChange={e => setZoneForm(f => ({ ...f, default_commercial_id: e.target.value }))}
+                >
+                  <option value="">-- Aucun --</option>
+                  {state.commerciaux.map(c => (
+                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={zoneForm.auto_import}
+                    onChange={e => setZoneForm(f => ({ ...f, auto_import: e.target.checked }))}
+                    className="rounded border-indigo-300"
+                  />
+                  <span className="text-xs text-indigo-700">Auto-import</span>
+                </label>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={zoneForm.cron_enabled}
+                    onChange={e => setZoneForm(f => ({ ...f, cron_enabled: e.target.checked }))}
+                    className="rounded border-indigo-300"
+                  />
+                  <span className="text-xs text-indigo-700">CRON lundi 6h</span>
+                </label>
+              </div>
+            </div>
+            <button
+              onClick={saveZoneConfig}
+              disabled={zoneSaving}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+            >
+              {zoneSaving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              Enregistrer la configuration
+            </button>
+          </div>
+        )}
+
+        {/* Zone sync button */}
+        <div className="flex gap-3">
+          <button
+            onClick={launchZoneSync}
+            disabled={zoneSyncing || syncing}
+            className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {zoneSyncing ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Sync zone en cours...</>
+            ) : (
+              <><Zap className="w-4 h-4" /> Sync ma zone (INSEE)</>
+            )}
+          </button>
+          <p className="text-xs text-gray-400 self-center">
+            Utilise l'API INSEE avec filtre date natif - ne ramene que les <strong>nouveaux</strong> etablissements
+          </p>
+        </div>
+      </div>
+
       {/* Sync section */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
             <Search className="w-4 h-4 text-sky-500" />
-            Synchronisation SIRENE
+            Synchronisation manuelle (data.gouv.fr)
           </h2>
           <button
             onClick={() => setShowSyncForm(!showSyncForm)}
@@ -646,15 +902,20 @@ export default function SirenePage() {
                       {new Date(log.started_at).toLocaleString('fr-FR')}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {log.records_fetched} recuperes, {log.records_inserted} nouveaux, {log.records_updated} maj
+                  <div className="text-xs text-gray-500 flex items-center gap-2">
+                    {log.source === 'insee' && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px]">INSEE</span>}
+                    {log.is_cron && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px]">CRON</span>}
+                    {log.records_fetched} recup, {log.records_inserted} nouveaux, {log.records_updated} maj
+                    {(log.records_auto_imported || 0) > 0 && (
+                      <span className="text-green-600 font-medium">, {log.records_auto_imported} auto-importes</span>
+                    )}
                   </div>
                 </div>
                 {log.error_message && (
                   <p className="text-xs text-red-600 mt-1">{log.error_message}</p>
                 )}
                 {log.naf_codes && (
-                  <p className="text-[10px] text-gray-400 mt-1">NAF: {log.naf_codes}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">NAF: {log.naf_codes} | Depts: {log.departements}</p>
                 )}
               </div>
             ))}

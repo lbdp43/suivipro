@@ -5,8 +5,9 @@ import rateLimit from 'express-rate-limit';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import cron from 'node-cron';
 import { dbReady } from './server/db.js';
-import apiRoutes from './server/routes.js';
+import apiRoutes, { runZoneSync } from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 // hub-bridge is already mounted inside routes.js via router.use(hubBridgeRouter)
 // import hubBridgeRoutes from './server/hub-bridge.js';
@@ -35,7 +36,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
       imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
-      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", ...hubOrigins],
+      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr", ...hubOrigins],
       fontSrc: ["'self'"],
       frameSrc: ["'self'", ...hubOrigins],
     },
@@ -101,4 +102,16 @@ dbReady.then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`SuiviPro API + Frontend running on port ${PORT}`);
   });
+
+  // CRON: Sync zone INSEE every Monday at 6:00 UTC
+  cron.schedule('0 6 * * 1', async () => {
+    console.log('[CRON] Lancement sync zone hebdomadaire (lundi 6h UTC)...');
+    try {
+      await runZoneSync();
+    } catch (err) {
+      console.error('[CRON] Erreur sync zone:', err.message);
+    }
+  }, { timezone: 'Europe/Paris' });
+
+  console.log('CRON schedule: sync zone INSEE every Monday at 6:00 (Europe/Paris)');
 });

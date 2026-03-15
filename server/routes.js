@@ -3355,6 +3355,276 @@ async function fetchNearPoint(lat, lng, radius = 10, nafCodes = [], page = 1) {
   return response.json();
 }
 
+// ============================================
+// INSEE API (Sirene v3.11) - pour le CRON sync avec filtre date natif
+// ============================================
+
+const INSEE_BASE_URL = 'https://api.insee.fr/api-sirene/3.11';
+
+// Build zone filter for INSEE query
+function buildInseeZoneFilter(departements) {
+  return departements.map(d => `codeDepartementEtablissement:${d}`).join(' OR ');
+}
+
+// Parse INSEE result -> array of etablissements
+function parseInseeResult(etab) {
+  const periodes = etab.periodesEtablissement || [];
+  const dernierePeriode = periodes[0] || {};
+  const adresse = etab.adresseEtablissement || {};
+  const unite = etab.uniteLegale || {};
+
+  return {
+    siret: etab.siret || '',
+    siren: etab.siren || '',
+    nom: unite.denominationUniteLegale || unite.nomUniteLegale || [unite.prenomUsuelUniteLegale, unite.nomUsageUniteLegale || unite.nomUniteLegale].filter(Boolean).join(' ') || 'Non renseigne',
+    enseigne: dernierePeriode.enseigne1Etablissement || null,
+    code_naf: dernierePeriode.activitePrincipaleEtablissement || '',
+    libelle_naf: null, // INSEE ne fournit pas le libelle
+    date_creation_etab: etab.dateCreationEtablissement || null,
+    adresse_voie: [adresse.numeroVoieEtablissement, adresse.typeVoieEtablissement, adresse.libelleVoieEtablissement].filter(Boolean).join(' ') || null,
+    code_postal: adresse.codePostalEtablissement || null,
+    commune: adresse.libelleCommuneEtablissement || null,
+    code_commune: adresse.codeCommuneEtablissement || null,
+    departement: adresse.codePostalEtablissement ? adresse.codePostalEtablissement.substring(0, 2) : '',
+    latitude: null, // INSEE ne fournit pas les coords
+    longitude: null,
+    etat_admin: dernierePeriode.etatAdministratifEtablissement || 'A',
+    tranche_effectif: etab.trancheEffectifsEtablissement || null,
+  };
+}
+
+// Fetch from INSEE API with date filter
+async function fetchInsee(nafCode, dateFrom, departements, cursor = 0, apiKey = '') {
+  const zoneFilter = buildInseeZoneFilter(departements);
+  const query = [
+    `periode(activitePrincipaleEtablissement:${nafCode})`,
+    `AND etatAdministratifEtablissement:A`,
+    `AND dateCreationEtablissement:[${dateFrom} TO *]`,
+    `AND (${zoneFilter})`,
+  ].join(' ');
+
+  const params = new URLSearchParams({
+    q: query,
+    nombre: '100',
+    debut: String(cursor),
+  });
+
+  const response = await fetch(`${INSEE_BASE_URL}/siret?${params}`, {
+    headers: {
+      'Accept': 'application/json',
+      'X-INSEE-Api-Key-Integration': apiKey,
+    },
+  });
+
+  if (response.status === 404) {
+    // No results
+    return { header: { total: 0 }, etablissements: [] };
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`INSEE API error ${response.status}: ${text}`);
+  }
+
+  return response.json();
+}
+
+// Fetch all pages from INSEE with rate limiting (30 req/min)
+async function fetchAllInsee(nafCode, dateFrom, departements, apiKey) {
+  const allResults = [];
+  let cursor = 0;
+  let total = 0;
+
+  do {
+    const data = await fetchInsee(nafCode, dateFrom, departements, cursor, apiKey);
+    total = data.header?.total || 0;
+    const items = data.etablissements || [];
+    allResults.push(...items);
+    cursor += items.length;
+    // Rate limit: 30 req/min -> wait 2100ms
+    if (cursor < total) await new Promise(r => setTimeout(r, 2100));
+  } while (cursor < total);
+
+  return allResults;
+}
+
+// Enrichir un etab INSEE avec les coords de data.gouv.fr
+async function enrichWithDatagouv(siret) {
+  try {
+    const response = await fetch(`${DATAGOUV_BASE_URL}/search?q=${siret}&per_page=1&minimal=true&include=siege,matching_etablissements`, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'suivipro-brasserie/3.0' },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.results && data.results.length > 0) {
+      const siege = data.results[0].siege || {};
+      const matching = data.results[0].matching_etablissements || [];
+      const found = matching.find(e => e.siret === siret) || siege;
+      if (found.latitude && found.longitude) {
+        return { latitude: found.latitude, longitude: found.longitude };
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+// ============================================
+// Zone Config & CRON sync routes
+// ============================================
+
+// GET /api/sirene/zone-config
+router.get('/sirene/zone-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  let config = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  if (config.rows.length === 0) {
+    await db.query(
+      `INSERT INTO sirene_zone_config (id, departements, updated_at) VALUES (1, '03,07,26,38,42,43,63', $1)`,
+      [new Date().toISOString()]
+    );
+    config = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  }
+  const row = config.rows[0];
+  // Mask API key for frontend
+  res.json({
+    ...row,
+    insee_api_key: row.insee_api_key ? '***configured***' : '',
+  });
+}));
+
+// PUT /api/sirene/zone-config
+router.put('/sirene/zone-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, cron_schedule, insee_api_key } = req.body;
+
+  // Upsert
+  await db.query(
+    `INSERT INTO sirene_zone_config (id, departements, naf_codes, lookback_days, auto_import, default_commercial_id, cron_enabled, cron_schedule, insee_api_key, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (id) DO UPDATE SET
+       departements = COALESCE(NULLIF($1, ''), sirene_zone_config.departements),
+       naf_codes = COALESCE($2, sirene_zone_config.naf_codes),
+       lookback_days = COALESCE($3, sirene_zone_config.lookback_days),
+       auto_import = COALESCE($4, sirene_zone_config.auto_import),
+       default_commercial_id = COALESCE($5, sirene_zone_config.default_commercial_id),
+       cron_enabled = COALESCE($6, sirene_zone_config.cron_enabled),
+       cron_schedule = COALESCE($7, sirene_zone_config.cron_schedule),
+       insee_api_key = CASE WHEN $8 = '***configured***' THEN sirene_zone_config.insee_api_key WHEN $8 IS NOT NULL AND $8 != '' THEN $8 ELSE sirene_zone_config.insee_api_key END,
+       updated_at = $9`,
+    [
+      departements || '', naf_codes || '', lookback_days || 7,
+      auto_import !== undefined ? auto_import : true,
+      default_commercial_id || '', cron_enabled !== undefined ? cron_enabled : true,
+      cron_schedule || '0 6 * * 1', insee_api_key || '',
+      new Date().toISOString(),
+    ]
+  );
+
+  const updated = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  res.json({ ok: true, config: { ...updated.rows[0], insee_api_key: updated.rows[0].insee_api_key ? '***configured***' : '' } });
+}));
+
+// POST /api/sirene/sync-zone - Manual or CRON zone sync (uses INSEE API)
+router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const configRes = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  if (configRes.rows.length === 0) return res.status(400).json({ error: 'Zone non configuree. Configurez d\'abord la zone.' });
+
+  const config = configRes.rows[0];
+  const apiKey = config.insee_api_key || process.env.SIRENE_API_KEY || '';
+  if (!apiKey) return res.status(400).json({ error: 'Cle API INSEE non configuree. Ajoutez-la dans la configuration de zone ou en variable d\'environnement SIRENE_API_KEY.' });
+
+  const departements = config.departements.split(',').map(d => d.trim()).filter(Boolean);
+  const nafCodes = config.naf_codes ? config.naf_codes.split(',').map(c => c.trim()).filter(Boolean) : NAF_CODES.map(n => n.code);
+  const lookbackDays = config.lookback_days || 7;
+  const dateFrom = new Date(Date.now() - lookbackDays * 86400000).toISOString().split('T')[0];
+
+  const logRes = await db.query(
+    `INSERT INTO sirene_sync_logs (started_at, naf_codes, departements, source, is_cron)
+     VALUES ($1, $2, $3, 'insee', $4) RETURNING id`,
+    [new Date().toISOString(), nafCodes.join(','), departements.join(','), req.body.is_cron || false]
+  );
+  const syncLogId = logRes.rows[0].id;
+
+  // Run in background
+  (async () => {
+    let totalFetched = 0, totalInserted = 0, totalUpdated = 0, totalAutoImported = 0;
+    try {
+      for (const nafCode of nafCodes) {
+        console.log(`[INSEE ZONE] Fetching NAF ${nafCode} since ${dateFrom} in depts ${departements.join(',')}...`);
+        const rawEtabs = await fetchAllInsee(nafCode, dateFrom, departements, apiKey);
+        console.log(`[INSEE ZONE]   -> ${rawEtabs.length} etablissements`);
+
+        for (const rawEtab of rawEtabs) {
+          totalFetched++;
+          const etab = parseInseeResult(rawEtab);
+          if (!etab.siret) continue;
+
+          const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf || n.code === etab.code_naf.replace('.', ''));
+
+          // Try to enrich with lat/lng from data.gouv.fr
+          const coords = await enrichWithDatagouv(etab.siret);
+          if (coords) {
+            etab.latitude = coords.latitude;
+            etab.longitude = coords.longitude;
+          }
+          // Small delay for data.gouv enrichment rate limit
+          await new Promise(r => setTimeout(r, 200));
+
+          const dbResult = await db.query(
+            `INSERT INTO sirene_etablissements (siret, siren, nom, enseigne, code_naf, libelle_naf, date_creation_etab,
+              adresse_voie, code_postal, commune, code_commune, departement,
+              latitude, longitude, etat_admin, tranche_effectif, date_sync, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            ON CONFLICT (siret) DO UPDATE SET
+              nom = EXCLUDED.nom, enseigne = EXCLUDED.enseigne,
+              etat_admin = EXCLUDED.etat_admin, tranche_effectif = EXCLUDED.tranche_effectif,
+              latitude = COALESCE(EXCLUDED.latitude, sirene_etablissements.latitude),
+              longitude = COALESCE(EXCLUDED.longitude, sirene_etablissements.longitude),
+              date_sync = EXCLUDED.date_sync
+            RETURNING (xmax = 0) AS is_insert, id`,
+            [
+              etab.siret, etab.siren, etab.nom, etab.enseigne,
+              etab.code_naf, etab.libelle_naf || nafInfo?.label || '',
+              etab.date_creation_etab,
+              etab.adresse_voie, etab.code_postal,
+              etab.commune, etab.code_commune, etab.departement,
+              etab.latitude, etab.longitude,
+              etab.etat_admin, etab.tranche_effectif,
+              new Date().toISOString(), new Date().toISOString(),
+            ]
+          );
+
+          const isNew = dbResult.rows[0]?.is_insert;
+          if (isNew) totalInserted++;
+          else totalUpdated++;
+
+          // Auto-import as prospect if enabled
+          if (isNew && config.auto_import && config.default_commercial_id) {
+            const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
+            if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
+              const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null);
+              if (result === 'imported') totalAutoImported++;
+            }
+          }
+        }
+      }
+
+      await db.query(
+        `UPDATE sirene_sync_logs SET finished_at = $2, status = 'success',
+         records_fetched = $3, records_inserted = $4, records_updated = $5, records_auto_imported = $6
+         WHERE id = $1`,
+        [syncLogId, new Date().toISOString(), totalFetched, totalInserted, totalUpdated, totalAutoImported]
+      );
+      console.log(`[INSEE ZONE] Sync done: ${totalFetched} fetched, ${totalInserted} new, ${totalUpdated} updated, ${totalAutoImported} auto-imported`);
+    } catch (error) {
+      console.error('[INSEE ZONE] Sync error:', error.message);
+      await db.query(
+        `UPDATE sirene_sync_logs SET finished_at = $2, status = 'error', error_message = $3 WHERE id = $1`,
+        [syncLogId, new Date().toISOString(), error.message]
+      );
+    }
+  })();
+
+  res.json({ ok: true, sync_log_id: syncLogId, message: `Sync zone INSEE lancee: ${nafCodes.length} codes NAF x ${departements.length} departements, depuis ${dateFrom}` });
+}));
+
 // GET /api/sirene/config
 router.get('/sirene/config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   res.json({
@@ -3683,5 +3953,115 @@ router.get('/sirene/stats', authMiddleware, adminOnly, asyncHandler(async (req, 
 
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
 router.use(hubBridgeRouter);
+
+// Exported function for CRON scheduler
+export async function runZoneSync() {
+  const configRes = await db.query('SELECT * FROM sirene_zone_config WHERE id = 1');
+  if (configRes.rows.length === 0) {
+    console.log('[CRON] Zone non configuree, sync ignoree');
+    return;
+  }
+
+  const config = configRes.rows[0];
+  if (!config.cron_enabled) {
+    console.log('[CRON] Sync automatique desactivee');
+    return;
+  }
+
+  const apiKey = config.insee_api_key || process.env.SIRENE_API_KEY || '';
+  if (!apiKey) {
+    console.log('[CRON] Pas de cle API INSEE configuree, sync ignoree');
+    return;
+  }
+
+  const departements = config.departements.split(',').map(d => d.trim()).filter(Boolean);
+  const nafCodes = config.naf_codes ? config.naf_codes.split(',').map(c => c.trim()).filter(Boolean) : NAF_CODES.map(n => n.code);
+  const lookbackDays = config.lookback_days || 7;
+  const dateFrom = new Date(Date.now() - lookbackDays * 86400000).toISOString().split('T')[0];
+
+  console.log(`[CRON] Lancement sync zone: ${nafCodes.length} NAF x ${departements.length} depts, depuis ${dateFrom}`);
+
+  const logRes = await db.query(
+    `INSERT INTO sirene_sync_logs (started_at, naf_codes, departements, source, is_cron)
+     VALUES ($1, $2, $3, 'insee', TRUE) RETURNING id`,
+    [new Date().toISOString(), nafCodes.join(','), departements.join(',')]
+  );
+  const syncLogId = logRes.rows[0].id;
+
+  let totalFetched = 0, totalInserted = 0, totalUpdated = 0, totalAutoImported = 0;
+  try {
+    for (const nafCode of nafCodes) {
+      console.log(`[CRON] NAF ${nafCode} depuis ${dateFrom}...`);
+      const rawEtabs = await fetchAllInsee(nafCode, dateFrom, departements, apiKey);
+      console.log(`[CRON]   -> ${rawEtabs.length} etablissements`);
+
+      for (const rawEtab of rawEtabs) {
+        totalFetched++;
+        const etab = parseInseeResult(rawEtab);
+        if (!etab.siret) continue;
+
+        const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf || n.code === etab.code_naf.replace('.', ''));
+
+        // Enrich with coords
+        const coords = await enrichWithDatagouv(etab.siret);
+        if (coords) {
+          etab.latitude = coords.latitude;
+          etab.longitude = coords.longitude;
+        }
+        await new Promise(r => setTimeout(r, 200));
+
+        const dbResult = await db.query(
+          `INSERT INTO sirene_etablissements (siret, siren, nom, enseigne, code_naf, libelle_naf, date_creation_etab,
+            adresse_voie, code_postal, commune, code_commune, departement,
+            latitude, longitude, etat_admin, tranche_effectif, date_sync, created_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          ON CONFLICT (siret) DO UPDATE SET
+            nom = EXCLUDED.nom, enseigne = EXCLUDED.enseigne,
+            etat_admin = EXCLUDED.etat_admin, tranche_effectif = EXCLUDED.tranche_effectif,
+            latitude = COALESCE(EXCLUDED.latitude, sirene_etablissements.latitude),
+            longitude = COALESCE(EXCLUDED.longitude, sirene_etablissements.longitude),
+            date_sync = EXCLUDED.date_sync
+          RETURNING (xmax = 0) AS is_insert, id`,
+          [
+            etab.siret, etab.siren, etab.nom, etab.enseigne,
+            etab.code_naf, etab.libelle_naf || nafInfo?.label || '',
+            etab.date_creation_etab,
+            etab.adresse_voie, etab.code_postal,
+            etab.commune, etab.code_commune, etab.departement,
+            etab.latitude, etab.longitude,
+            etab.etat_admin, etab.tranche_effectif,
+            new Date().toISOString(), new Date().toISOString(),
+          ]
+        );
+
+        const isNew = dbResult.rows[0]?.is_insert;
+        if (isNew) totalInserted++;
+        else totalUpdated++;
+
+        if (isNew && config.auto_import && config.default_commercial_id) {
+          const etabRow = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [dbResult.rows[0].id]);
+          if (etabRow.rows.length > 0 && !etabRow.rows[0].imported_as_prospect) {
+            const result = await importEtabAsProspect(etabRow.rows[0], config.default_commercial_id, new Date().toISOString(), null);
+            if (result === 'imported') totalAutoImported++;
+          }
+        }
+      }
+    }
+
+    await db.query(
+      `UPDATE sirene_sync_logs SET finished_at = $2, status = 'success',
+       records_fetched = $3, records_inserted = $4, records_updated = $5, records_auto_imported = $6
+       WHERE id = $1`,
+      [syncLogId, new Date().toISOString(), totalFetched, totalInserted, totalUpdated, totalAutoImported]
+    );
+    console.log(`[CRON] Sync terminee: ${totalFetched} recup, ${totalInserted} nouveaux, ${totalAutoImported} auto-importes`);
+  } catch (error) {
+    console.error('[CRON] Sync error:', error.message);
+    await db.query(
+      `UPDATE sirene_sync_logs SET finished_at = $2, status = 'error', error_message = $3 WHERE id = $1`,
+      [syncLogId, new Date().toISOString(), error.message]
+    );
+  }
+}
 
 export default router;
