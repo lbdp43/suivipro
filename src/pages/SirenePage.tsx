@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Database, Search, Download, RefreshCw, Check, AlertTriangle, X, Trash2,
   ChevronDown, ChevronRight, Filter, Building2, MapPin, Clock,
-  Settings, Zap, Globe, Key, Save,
+  Settings, Zap, Globe, Key, Save, Plus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -138,6 +138,10 @@ export default function SirenePage() {
 
   // Entity types from DB
   const [entityTypes, setEntityTypes] = useState<{ id: string; label: string }[]>([]);
+  const [showNewEntityForm, setShowNewEntityForm] = useState(false);
+  const [newEntityId, setNewEntityId] = useState('');
+  const [newEntityLabel, setNewEntityLabel] = useState('');
+  const [creatingEntity, setCreatingEntity] = useState(false);
 
   const token = localStorage.getItem('suivipro_token');
   const headers: Record<string, string> = {
@@ -154,6 +158,25 @@ export default function SirenePage() {
       setEntityTypes(data.map((et: any) => ({ id: et.id, label: et.label })));
     } catch (err) { console.error('Error loading entity types:', err); }
   }, []);
+
+  const createEntityType = async () => {
+    if (!newEntityId || !newEntityLabel) return;
+    setCreatingEntity(true);
+    try {
+      const res = await fetch('/api/entity-types', {
+        method: 'POST', headers,
+        body: JSON.stringify({ id: newEntityId, label: newEntityLabel, icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false }),
+      });
+      const data = await res.json();
+      if (data.error) { alert(data.error); return; }
+      await loadEntityTypes();
+      setZoneForm(f => ({ ...f, entity_type: newEntityId }));
+      setNewEntityId('');
+      setNewEntityLabel('');
+      setShowNewEntityForm(false);
+    } catch (err) { console.error('Error creating entity type:', err); }
+    finally { setCreatingEntity(false); }
+  };
 
   const loadConfig = useCallback(async () => {
     try {
@@ -535,20 +558,25 @@ export default function SirenePage() {
                     </div>
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
-                      <select className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
-                        {entityTypes.length > 0 ? entityTypes.map(et => (
-                          <option key={et.id} value={et.id}>{et.label}</option>
-                        )) : (
-                          <>
-                            <option value="prospect">Prospect</option>
-                            <option value="client">Client</option>
-                            <option value="concurrent">Concurrent</option>
-                            <option value="distributeur">Distributeur</option>
-                            <option value="partenaire">Partenaire</option>
-                            <option value="fournisseur">Fournisseur</option>
-                          </>
-                        )}
-                      </select>
+                      <div className="flex gap-1">
+                        <select className="flex-1 px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
+                          {entityTypes.length > 0 ? entityTypes.map(et => (
+                            <option key={et.id} value={et.id}>{et.label}</option>
+                          )) : (
+                            <>
+                              <option value="prospect">Prospect</option>
+                              <option value="client">Client</option>
+                              <option value="concurrent">Concurrent</option>
+                              <option value="distributeur">Distributeur</option>
+                              <option value="partenaire">Partenaire</option>
+                              <option value="fournisseur">Fournisseur</option>
+                            </>
+                          )}
+                        </select>
+                        <button type="button" onClick={() => setShowNewEntityForm(true)} className="px-1.5 py-1.5 border border-indigo-300 text-indigo-600 rounded hover:bg-indigo-100 flex-shrink-0" title="Creer un type">
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
@@ -711,14 +739,25 @@ export default function SirenePage() {
               </div>
               <div>
                 <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
-                <select className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
-                  <option value="prospect">Prospect</option>
-                  <option value="client">Client</option>
-                  <option value="concurrent">Concurrent</option>
-                  <option value="distributeur">Distributeur</option>
-                  <option value="partenaire">Partenaire</option>
-                  <option value="fournisseur">Fournisseur</option>
-                </select>
+                <div className="flex gap-1">
+                  <select className="flex-1 px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
+                    {entityTypes.length > 0 ? entityTypes.map(et => (
+                      <option key={et.id} value={et.id}>{et.label}</option>
+                    )) : (
+                      <>
+                        <option value="prospect">Prospect</option>
+                        <option value="client">Client</option>
+                        <option value="concurrent">Concurrent</option>
+                        <option value="distributeur">Distributeur</option>
+                        <option value="partenaire">Partenaire</option>
+                        <option value="fournisseur">Fournisseur</option>
+                      </>
+                    )}
+                  </select>
+                  <button type="button" onClick={() => setShowNewEntityForm(true)} className="px-1.5 py-1.5 border border-indigo-300 text-indigo-600 rounded hover:bg-indigo-100 flex-shrink-0" title="Creer un type">
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
@@ -1281,6 +1320,58 @@ export default function SirenePage() {
                   <span className="font-bold text-sky-600">{item.count}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal creation rapide d'un type d'entite */}
+      {showNewEntityForm && (
+        <div className="modal-backdrop" onClick={() => setShowNewEntityForm(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-indigo-500" />
+                Nouveau type d'entite
+              </h3>
+              <button onClick={() => setShowNewEntityForm(false)} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Identifiant (unique, sans espaces)</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="ex: grossiste"
+                  value={newEntityId}
+                  onChange={e => setNewEntityId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nom affiche</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="ex: Grossiste"
+                  value={newEntityLabel}
+                  onChange={e => setNewEntityLabel(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={createEntityType}
+                  disabled={!newEntityId || !newEntityLabel || creatingEntity}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {creatingEntity ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Creer
+                </button>
+                <button onClick={() => setShowNewEntityForm(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
+                  Annuler
+                </button>
+              </div>
             </div>
           </div>
         </div>
