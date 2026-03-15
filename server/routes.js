@@ -3221,6 +3221,385 @@ router.get('/commerciaux/last-seen', authMiddleware, adminOnly, asyncHandler(asy
   res.json(result.rows);
 }));
 
+// ============================================
+// SIRENE API Integration (INSEE / DataGouv)
+// ============================================
+
+const SIRENE_BASE_URL = 'https://api.insee.fr/api-sirene/3.11';
+const SIRENE_API_KEY = process.env.SIRENE_API_KEY || '';
+
+const NAF_CODES = [
+  { code: '56.10A', label: 'Restauration traditionnelle', type: 'bar_restaurant' },
+  { code: '56.10B', label: 'Cafeterias et libres-services', type: 'bar_restaurant' },
+  { code: '56.10C', label: 'Restauration rapide', type: 'bar_restaurant' },
+  { code: '56.21Z', label: 'Services des traiteurs', type: 'traiteur' },
+  { code: '56.29A', label: 'Restauration collective sous contrat', type: 'autre' },
+  { code: '56.29B', label: 'Autres services de restauration', type: 'autre' },
+  { code: '56.30Z', label: 'Debits de boissons', type: 'bar_restaurant' },
+  { code: '47.25Z', label: 'Cavistes', type: 'cave' },
+  { code: '46.34Z', label: 'Commerce de gros de boissons', type: 'distributeur' },
+  { code: '46.17B', label: 'Intermediaires boissons et tabac', type: 'distributeur' },
+  { code: '46.39B', label: 'Commerce de gros alimentaire', type: 'distributeur' },
+  { code: '11.01Z', label: 'Distilleries / Spiritueux', type: 'autre' },
+  { code: '11.02A', label: 'Vins effervescents', type: 'autre' },
+  { code: '11.02B', label: 'Vinification', type: 'autre' },
+  { code: '11.03Z', label: 'Cidre et vins de fruits', type: 'autre' },
+  { code: '11.04Z', label: 'Boissons fermentees', type: 'autre' },
+  { code: '11.05Z', label: 'Fabrication de biere', type: 'autre' },
+  { code: '11.06Z', label: 'Fabrication de malt', type: 'autre' },
+  { code: '11.07A', label: 'Eaux de table', type: 'autre' },
+  { code: '11.07B', label: 'Boissons rafraichissantes', type: 'autre' },
+];
+
+// Parse a SIRENE establishment into our format
+function parseSireneEtablissement(etab) {
+  const adresse = etab.adresseEtablissement || {};
+  const periodes = etab.periodesEtablissement || [];
+  const current = periodes[0] || {};
+
+  return {
+    siret: etab.siret,
+    siren: etab.siren,
+    nom: [
+      current.denominationUsuelleEtablissement,
+      etab.uniteLegale?.denominationUniteLegale,
+      [etab.uniteLegale?.prenomUsuelUniteLegale, etab.uniteLegale?.nomUniteLegale].filter(Boolean).join(' '),
+    ].find(Boolean) || 'Non renseigne',
+    enseigne: current.enseigne1Etablissement || null,
+    code_naf: current.activitePrincipaleEtablissement,
+    date_creation_etab: etab.dateCreationEtablissement,
+    adresse_numero: adresse.numeroVoieEtablissement,
+    adresse_voie: [adresse.typeVoieEtablissement, adresse.libelleVoieEtablissement].filter(Boolean).join(' '),
+    code_postal: adresse.codePostalEtablissement,
+    commune: adresse.libelleCommuneEtablissement,
+    code_commune: adresse.codeCommuneEtablissement,
+    departement: (adresse.codePostalEtablissement || '').slice(0, 2),
+    etat_admin: current.etatAdministratifEtablissement || 'A',
+    tranche_effectif: etab.trancheEffectifsEtablissement,
+  };
+}
+
+// Fetch establishments from SIRENE API with pagination
+async function fetchSireneEtablissements(nafCode, dateFrom, departements = []) {
+  const allResults = [];
+  let cursor = 0;
+  let total = 0;
+
+  do {
+    const queryParts = [
+      `periode(activitePrincipaleEtablissement:${nafCode} AND etatAdministratifEtablissement:A)`,
+      `AND dateCreationEtablissement:[${dateFrom} TO *]`,
+    ];
+    if (departements.length > 0) {
+      const deptFilter = departements.map(d => `codePostalEtablissement:${d}*`).join(' OR ');
+      queryParts.push(`AND (${deptFilter})`);
+    }
+
+    const params = new URLSearchParams({
+      q: queryParts.join(' '),
+      nombre: '100',
+      debut: String(cursor),
+    });
+
+    const response = await fetch(`${SIRENE_BASE_URL}/siret?${params}`, {
+      headers: {
+        'Accept': 'application/json',
+        'X-INSEE-Api-Key-Integration': SIRENE_API_KEY,
+      },
+    });
+
+    if (response.status === 404) break; // No results
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`SIRENE API error ${response.status}: ${text}`);
+    }
+
+    const data = await response.json();
+    total = data.header?.total || 0;
+    const items = data.etablissements || [];
+    allResults.push(...items);
+    cursor += items.length;
+
+    // Rate limit: 30 req/min -> wait 2.1s between requests
+    if (cursor < total) await new Promise(r => setTimeout(r, 2100));
+  } while (cursor < total);
+
+  return allResults;
+}
+
+// GET /api/sirene/config - Get NAF codes and SIRENE config
+router.get('/sirene/config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  res.json({
+    naf_codes: NAF_CODES,
+    api_configured: !!SIRENE_API_KEY,
+  });
+}));
+
+// GET /api/sirene/sync-logs - Get sync history
+router.get('/sirene/sync-logs', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    'SELECT * FROM sirene_sync_logs ORDER BY started_at DESC LIMIT 20'
+  );
+  res.json(result.rows);
+}));
+
+// GET /api/sirene/etablissements - List imported establishments
+router.get('/sirene/etablissements', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { departement, code_naf, imported, limit = 100 } = req.query;
+  let query = 'SELECT * FROM sirene_etablissements WHERE 1=1';
+  const params = [];
+
+  if (departement) {
+    params.push(departement);
+    query += ` AND departement = $${params.length}`;
+  }
+  if (code_naf) {
+    params.push(code_naf);
+    query += ` AND code_naf = $${params.length}`;
+  }
+  if (imported === 'true') {
+    query += ' AND imported_as_prospect IS NOT NULL';
+  } else if (imported === 'false') {
+    query += ' AND imported_as_prospect IS NULL';
+  }
+
+  params.push(parseInt(limit) || 100);
+  query += ` ORDER BY created_at DESC LIMIT $${params.length}`;
+
+  const result = await db.query(query, params);
+  res.json(result.rows);
+}));
+
+// POST /api/sirene/sync - Launch a SIRENE sync
+router.post('/sirene/sync', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  if (!SIRENE_API_KEY) {
+    return res.status(400).json({ error: 'SIRENE_API_KEY non configuree. Ajoutez la variable d\'environnement.' });
+  }
+
+  const { naf_codes = [], departements = [], lookback_days = 30 } = req.body;
+  const codesToSync = naf_codes.length > 0
+    ? NAF_CODES.filter(n => naf_codes.includes(n.code))
+    : NAF_CODES;
+
+  const dateFrom = new Date(Date.now() - lookback_days * 86400000).toISOString().split('T')[0];
+
+  // Create sync log
+  const logRes = await db.query(
+    `INSERT INTO sirene_sync_logs (started_at, naf_codes, departements)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [new Date().toISOString(), codesToSync.map(n => n.code).join(','), (departements || []).join(',')]
+  );
+  const syncLogId = logRes.rows[0].id;
+
+  // Run sync in background
+  (async () => {
+    let totalFetched = 0, totalInserted = 0, totalUpdated = 0;
+    try {
+      for (const { code, label } of codesToSync) {
+        console.log(`[SIRENE] Syncing ${code} - ${label}...`);
+        const rawResults = await fetchSireneEtablissements(code, dateFrom, departements);
+        console.log(`[SIRENE]   -> ${rawResults.length} results`);
+        totalFetched += rawResults.length;
+
+        const nafInfo = NAF_CODES.find(n => n.code === code);
+
+        for (const raw of rawResults) {
+          const parsed = parseSireneEtablissement(raw);
+          const result = await db.query(
+            `INSERT INTO sirene_etablissements (siret, siren, nom, enseigne, code_naf, libelle_naf, date_creation_etab,
+              adresse_numero, adresse_voie, code_postal, commune, code_commune, departement,
+              etat_admin, tranche_effectif, date_sync, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            ON CONFLICT (siret) DO UPDATE SET
+              nom = EXCLUDED.nom,
+              enseigne = EXCLUDED.enseigne,
+              etat_admin = EXCLUDED.etat_admin,
+              tranche_effectif = EXCLUDED.tranche_effectif,
+              date_sync = EXCLUDED.date_sync
+            RETURNING (xmax = 0) AS is_insert`,
+            [
+              parsed.siret, parsed.siren, parsed.nom, parsed.enseigne,
+              parsed.code_naf, nafInfo?.label || '', parsed.date_creation_etab,
+              parsed.adresse_numero, parsed.adresse_voie, parsed.code_postal,
+              parsed.commune, parsed.code_commune, parsed.departement,
+              parsed.etat_admin, parsed.tranche_effectif,
+              new Date().toISOString(), new Date().toISOString(),
+            ]
+          );
+          if (result.rows[0]?.is_insert) totalInserted++;
+          else totalUpdated++;
+        }
+      }
+
+      await db.query(
+        `UPDATE sirene_sync_logs SET finished_at = $2, status = 'success',
+         records_fetched = $3, records_inserted = $4, records_updated = $5
+         WHERE id = $1`,
+        [syncLogId, new Date().toISOString(), totalFetched, totalInserted, totalUpdated]
+      );
+      console.log(`[SIRENE] Sync done: ${totalFetched} fetched, ${totalInserted} inserted, ${totalUpdated} updated`);
+    } catch (error) {
+      console.error('[SIRENE] Sync error:', error.message);
+      await db.query(
+        `UPDATE sirene_sync_logs SET finished_at = $2, status = 'error', error_message = $3 WHERE id = $1`,
+        [syncLogId, new Date().toISOString(), error.message]
+      );
+    }
+  })();
+
+  res.json({ ok: true, sync_log_id: syncLogId, message: 'Synchronisation lancee en arriere-plan' });
+}));
+
+// POST /api/sirene/import-prospects - Import SIRENE establishments as prospects
+router.post('/sirene/import-prospects', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { etablissement_ids = [], commercial_id } = req.body;
+  if (!commercial_id) return res.status(400).json({ error: 'commercial_id requis' });
+  if (etablissement_ids.length === 0) return res.status(400).json({ error: 'Aucun etablissement selectionne' });
+
+  const now = new Date().toISOString();
+  let imported = 0;
+  let skipped = 0;
+
+  for (const etabId of etablissement_ids) {
+    const etabRes = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [etabId]);
+    const etab = etabRes.rows[0];
+    if (!etab) { skipped++; continue; }
+    if (etab.imported_as_prospect) { skipped++; continue; }
+
+    // Check if a prospect with this SIRET already exists
+    const existing = await db.query(
+      "SELECT id FROM prospects WHERE notes LIKE $1",
+      [`%SIRET: ${etab.siret}%`]
+    );
+    if (existing.rows.length > 0) {
+      await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [existing.rows[0].id, etabId]);
+      skipped++;
+      continue;
+    }
+
+    // Map NAF code to establishment type
+    const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf);
+    const typeEtab = nafInfo?.type || 'autre';
+
+    const prospectId = `sirene_${etab.siret}`;
+    const adresseComplete = [etab.adresse_numero, etab.adresse_voie].filter(Boolean).join(' ');
+    const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
+
+    await db.query(
+      `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
+        adresse, ville, code_postal, departement, secteur, latitude, longitude,
+        etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [
+        prospectId, nomEtab, typeEtab, '', '', '',
+        adresseComplete, etab.commune || '', etab.code_postal || '', etab.departement || '',
+        etab.libelle_naf || '', 0, 0,
+        'nouveau_datagouv', '[]', commercial_id,
+        `Importe depuis SIRENE/Datagouv\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
+        now, now, 30,
+      ]
+    );
+
+    await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etabId]);
+    logActivity(req.user.id, 'import_sirene', `${nomEtab} (SIRET: ${etab.siret})`, 'prospect', prospectId);
+    imported++;
+  }
+
+  res.json({ ok: true, imported, skipped });
+}));
+
+// POST /api/sirene/import-all - Import all non-imported establishments as prospects
+router.post('/sirene/import-all', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { commercial_id, departements = [], naf_codes = [] } = req.body;
+  if (!commercial_id) return res.status(400).json({ error: 'commercial_id requis' });
+
+  let query = 'SELECT id FROM sirene_etablissements WHERE imported_as_prospect IS NULL AND etat_admin = \'A\'';
+  const params = [];
+  if (departements.length > 0) {
+    params.push(departements);
+    query += ` AND departement = ANY($${params.length})`;
+  }
+  if (naf_codes.length > 0) {
+    params.push(naf_codes);
+    query += ` AND code_naf = ANY($${params.length})`;
+  }
+
+  const result = await db.query(query, params);
+  const ids = result.rows.map(r => r.id);
+
+  // Reuse the import-prospects logic
+  if (ids.length === 0) return res.json({ ok: true, imported: 0, skipped: 0 });
+
+  const now = new Date().toISOString();
+  let imported = 0, skipped = 0;
+
+  for (const etabId of ids) {
+    const etabRes = await db.query('SELECT * FROM sirene_etablissements WHERE id = $1', [etabId]);
+    const etab = etabRes.rows[0];
+    if (!etab) { skipped++; continue; }
+
+    const existing = await db.query("SELECT id FROM prospects WHERE notes LIKE $1", [`%SIRET: ${etab.siret}%`]);
+    if (existing.rows.length > 0) {
+      await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [existing.rows[0].id, etabId]);
+      skipped++;
+      continue;
+    }
+
+    const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf);
+    const typeEtab = nafInfo?.type || 'autre';
+    const prospectId = `sirene_${etab.siret}`;
+    const adresseComplete = [etab.adresse_numero, etab.adresse_voie].filter(Boolean).join(' ');
+    const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
+
+    await db.query(
+      `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
+        adresse, ville, code_postal, departement, secteur, latitude, longitude,
+        etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [
+        prospectId, nomEtab, typeEtab, '', '', '',
+        adresseComplete, etab.commune || '', etab.code_postal || '', etab.departement || '',
+        etab.libelle_naf || '', 0, 0,
+        'nouveau_datagouv', '[]', commercial_id,
+        `Importe depuis SIRENE/Datagouv\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
+        now, now, 30,
+      ]
+    );
+
+    await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etabId]);
+    imported++;
+  }
+
+  if (imported > 0) {
+    logActivity(req.user.id, 'import_sirene_bulk', `${imported} etablissements importes`, '', '');
+  }
+
+  res.json({ ok: true, imported, skipped });
+}));
+
+// GET /api/sirene/stats - Dashboard stats for SIRENE data
+router.get('/sirene/stats', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const total = await db.query('SELECT COUNT(*) as count FROM sirene_etablissements');
+  const notImported = await db.query('SELECT COUNT(*) as count FROM sirene_etablissements WHERE imported_as_prospect IS NULL AND etat_admin = \'A\'');
+  const imported = await db.query('SELECT COUNT(*) as count FROM sirene_etablissements WHERE imported_as_prospect IS NOT NULL');
+  const byNaf = await db.query(
+    'SELECT code_naf, libelle_naf, COUNT(*) as count FROM sirene_etablissements WHERE etat_admin = \'A\' GROUP BY code_naf, libelle_naf ORDER BY count DESC'
+  );
+  const byDept = await db.query(
+    'SELECT departement, COUNT(*) as count FROM sirene_etablissements WHERE etat_admin = \'A\' GROUP BY departement ORDER BY count DESC LIMIT 20'
+  );
+  const lastSync = await db.query('SELECT * FROM sirene_sync_logs ORDER BY started_at DESC LIMIT 1');
+
+  res.json({
+    total: parseInt(total.rows[0].count),
+    not_imported: parseInt(notImported.rows[0].count),
+    imported: parseInt(imported.rows[0].count),
+    by_naf: byNaf.rows,
+    by_departement: byDept.rows,
+    last_sync: lastSync.rows[0] || null,
+  });
+}));
+
 // Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
 router.use(hubBridgeRouter);
 

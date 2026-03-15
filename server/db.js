@@ -162,6 +162,41 @@ async function initDatabase(attempt = 1) {
         sort_order INTEGER DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS sirene_etablissements (
+        id SERIAL PRIMARY KEY,
+        siret TEXT UNIQUE NOT NULL,
+        siren TEXT NOT NULL,
+        nom TEXT,
+        enseigne TEXT,
+        code_naf TEXT NOT NULL,
+        libelle_naf TEXT,
+        date_creation_etab TEXT,
+        adresse_numero TEXT,
+        adresse_voie TEXT,
+        code_postal TEXT,
+        commune TEXT,
+        code_commune TEXT,
+        departement TEXT,
+        etat_admin TEXT DEFAULT 'A',
+        tranche_effectif TEXT,
+        date_sync TEXT,
+        imported_as_prospect TEXT DEFAULT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sirene_sync_logs (
+        id SERIAL PRIMARY KEY,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        status TEXT DEFAULT 'running',
+        records_fetched INTEGER DEFAULT 0,
+        records_inserted INTEGER DEFAULT 0,
+        records_updated INTEGER DEFAULT 0,
+        error_message TEXT,
+        naf_codes TEXT,
+        departements TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS documents (
         id TEXT PRIMARY KEY,
         nom TEXT NOT NULL,
@@ -472,6 +507,19 @@ async function initDatabase(attempt = 1) {
       }
     } catch (err) { console.log('Etienne migration:', err.message); }
 
+    // Migration: add nouveau_datagouv pipeline column if not exists
+    try {
+      const existingCol = await client.query("SELECT id FROM pipeline_columns WHERE id = 'nouveau_datagouv'");
+      if (existingCol.rows.length === 0) {
+        // Shift all existing columns sort_order +1
+        await client.query("UPDATE pipeline_columns SET sort_order = sort_order + 1");
+        await client.query(
+          "INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ('nouveau_datagouv', 'Importe Datagouv', '#0ea5e9', 0)"
+        );
+        console.log('Added nouveau_datagouv pipeline column.');
+      }
+    } catch (err) { console.log('Pipeline datagouv migration:', err.message); }
+
     // ============================================
     // Seed data (only if empty)
     // ============================================
@@ -514,15 +562,16 @@ async function initDatabase(attempt = 1) {
 
       // Pipeline columns
       const cols = [
-        ['nouveau', 'Nouveau', '#6b7280', 0],
-        ['a_contacter', 'A contacter', '#3b82f6', 1],
-        ['contacte', 'Contacte', '#8b5cf6', 2],
-        ['proposition', 'Proposition', '#f97316', 3],
-        ['negociation', 'Negociation', '#ef4444', 4],
-        ['gagne', 'RDV', '#22c55e', 5],
-        ['client_gagne', 'Gagne', '#16a34a', 6],
-        ['perdu', 'Perdu', '#dc2626', 7],
-        ['ne_pas_contacter', 'Ne pas contacter', '#991b1b', 8],
+        ['nouveau_datagouv', 'Importe Datagouv', '#0ea5e9', 0],
+        ['nouveau', 'Nouveau', '#6b7280', 1],
+        ['a_contacter', 'A contacter', '#3b82f6', 2],
+        ['contacte', 'Contacte', '#8b5cf6', 3],
+        ['proposition', 'Proposition', '#f97316', 4],
+        ['negociation', 'Negociation', '#ef4444', 5],
+        ['gagne', 'RDV', '#22c55e', 6],
+        ['client_gagne', 'Gagne', '#16a34a', 7],
+        ['perdu', 'Perdu', '#dc2626', 8],
+        ['ne_pas_contacter', 'Ne pas contacter', '#991b1b', 9],
       ];
       for (const c of cols) {
         await client.query('INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ($1,$2,$3,$4)', c);

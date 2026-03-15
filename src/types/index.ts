@@ -51,6 +51,7 @@ export const ESTABLISHMENT_ICONS: Record<EstablishmentType, string> = {
 };
 
 export type PipelineStage =
+  | 'nouveau_datagouv'
   | 'nouveau'
   | 'a_contacter'
   | 'contacte'
@@ -62,6 +63,7 @@ export type PipelineStage =
   | 'ne_pas_contacter';
 
 export const PIPELINE_LABELS: Record<PipelineStage, string> = {
+  nouveau_datagouv: 'Importe Datagouv',
   nouveau: 'Nouveau',
   a_contacter: 'A contacter',
   contacte: 'Contacte',
@@ -74,6 +76,7 @@ export const PIPELINE_LABELS: Record<PipelineStage, string> = {
 };
 
 export const PIPELINE_COLORS: Record<PipelineStage, string> = {
+  nouveau_datagouv: '#0ea5e9',
   nouveau: '#6b7280',
   a_contacter: '#3b82f6',
   contacte: '#8b5cf6',

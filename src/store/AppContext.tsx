@@ -198,7 +198,7 @@ function reducer(state: AppState, action: Action): AppState {
 // ============================================
 
 const defaultPipelineColumns: PipelineColumn[] = ([
-  'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
+  'nouveau_datagouv', 'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
 ] as PipelineStage[]).map(key => ({
   id: key,
   label: PIPELINE_LABELS[key],
