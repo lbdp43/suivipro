@@ -400,7 +400,11 @@ export default function CompteRenduPage() {
   // Actions (moved to modal handlers above)
 
   const getProspectName = (id: string) => state.prospects.find((p: any) => p.id === id)?.nom_etablissement || '';
-  const getClientName = (id: string) => state.clients.find((c: Client) => c.id === id)?.nom || '';
+  const getClientName = (id: string) => {
+    const c = state.clients.find((c: Client) => c.id === id);
+    if (!c) return '';
+    return c.contact ? `${c.nom} (${c.contact})` : c.nom;
+  };
   const getEntityName = (rdv: Appointment) => (rdv.client_id ? getClientName(rdv.client_id) : '') || (rdv.prospect_id ? getProspectName(rdv.prospect_id) : '') || 'N/A';
   const getCommercialName = (id: string) => {
     const c = state.commerciaux.find((c: any) => c.id === id);
