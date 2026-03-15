@@ -989,19 +989,25 @@ export default function CompteRenduPage() {
           {/* Result breakdown - interactive */}
           {Object.keys(stats.resultCounts).length > 0 && (
             <div className="col-span-2 sm:col-span-4 bg-white rounded-xl border border-gray-200 p-3">
-              <p className="text-xs font-medium text-gray-600 mb-2">Resultats des RDV</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-600">Resultats des RDV</p>
+                <p className="text-[10px] text-gray-400 italic">Cliquez pour voir le detail</p>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(stats.resultCounts).map(([key, count]) => {
                   const colors: Record<string, string> = {
-                    client: 'bg-green-100 text-green-700', mail_envoye: 'bg-blue-100 text-blue-700',
-                    commande_plus_tard: 'bg-yellow-100 text-yellow-700', a_relancer: 'bg-orange-100 text-orange-700',
-                    pas_interesse: 'bg-red-100 text-red-700',
+                    client: 'bg-green-100 text-green-700 hover:bg-green-200 border-green-200',
+                    mail_envoye: 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200',
+                    commande_plus_tard: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-yellow-200',
+                    a_relancer: 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200',
+                    pas_interesse: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200',
                   };
                   const isActive = expandedResult === key;
                   return (
                     <button key={key} onClick={() => setExpandedResult(isActive ? null : key)}
-                      className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${colors[key] || 'bg-gray-100 text-gray-600'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105' : 'hover:scale-105'}`}>
+                      className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-pointer transition-all ${colors[key] || 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105 shadow-sm' : 'hover:scale-105 hover:shadow-sm'}`}>
                       {APPOINTMENT_RESULT_LABELS[key] || key}: {count}
+                      <ChevronDown className={`w-3 h-3 transition-transform ${isActive ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />
                     </button>
                   );
                 })}
