@@ -3356,6 +3356,136 @@ async function fetchNearPoint(lat, lng, radius = 10, nafCodes = [], page = 1) {
 }
 
 // ============================================
+// Import Rules CRUD
+// ============================================
+
+// GET /api/import-rules
+router.get('/import-rules', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM sirene_import_rules ORDER BY sort_order ASC, id ASC');
+  res.json(result.rows);
+}));
+
+// POST /api/import-rules
+router.post('/import-rules', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { naf_code, naf_label, entity_type, pipeline_stage, auto_import, commercial_id } = req.body;
+  if (!naf_code || !entity_type) return res.status(400).json({ error: 'naf_code et entity_type requis' });
+
+  const now = new Date().toISOString();
+  const maxOrder = await db.query('SELECT COALESCE(MAX(sort_order), 0) + 1 as next FROM sirene_import_rules');
+  const result = await db.query(
+    `INSERT INTO sirene_import_rules (naf_code, naf_label, entity_type, pipeline_stage, auto_import, commercial_id, sort_order, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING *`,
+    [naf_code, naf_label || '', entity_type, pipeline_stage || 'nouveau_datagouv', auto_import ?? true, commercial_id || '', maxOrder.rows[0].next, now]
+  );
+  res.json(result.rows[0]);
+}));
+
+// PUT /api/import-rules/:id
+router.put('/import-rules/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { naf_code, naf_label, entity_type, pipeline_stage, auto_import, commercial_id } = req.body;
+  const now = new Date().toISOString();
+  const result = await db.query(
+    `UPDATE sirene_import_rules SET naf_code = $2, naf_label = $3, entity_type = $4, pipeline_stage = $5,
+     auto_import = $6, commercial_id = $7, updated_at = $8 WHERE id = $1 RETURNING *`,
+    [req.params.id, naf_code, naf_label || '', entity_type, pipeline_stage || 'nouveau_datagouv', auto_import ?? true, commercial_id || '', now]
+  );
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Regle non trouvee' });
+  res.json(result.rows[0]);
+}));
+
+// DELETE /api/import-rules/:id
+router.delete('/import-rules/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM sirene_import_rules WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
+// Annuaire (unified directory)
+// ============================================
+
+// GET /api/annuaire - unified view of prospects + clients
+router.get('/annuaire', authMiddleware, asyncHandler(async (req, res) => {
+  const { entity_type, search, departement, ville, type_etablissement, limit = 200 } = req.query;
+
+  // Query prospects
+  let prospectQuery = `SELECT id, nom_etablissement as nom, type_etablissement, ville, code_postal, departement,
+    telephone, email, adresse, latitude, longitude, etape_pipeline, commercial_id, notes, siret,
+    COALESCE(entity_type, 'prospect') as entity_type, date_creation, date_modification, 'prospect' as source
+    FROM prospects WHERE 1=1`;
+  const prospectParams = [];
+
+  if (entity_type && entity_type !== 'client') {
+    prospectParams.push(entity_type);
+    prospectQuery += ` AND COALESCE(entity_type, 'prospect') = $${prospectParams.length}`;
+  }
+  if (search) {
+    prospectParams.push(`%${search}%`);
+    prospectQuery += ` AND (nom_etablissement ILIKE $${prospectParams.length} OR ville ILIKE $${prospectParams.length} OR siret ILIKE $${prospectParams.length})`;
+  }
+  if (departement) {
+    prospectParams.push(departement);
+    prospectQuery += ` AND departement = $${prospectParams.length}`;
+  }
+  if (ville) {
+    prospectParams.push(`%${ville}%`);
+    prospectQuery += ` AND ville ILIKE $${prospectParams.length}`;
+  }
+  if (type_etablissement) {
+    prospectParams.push(type_etablissement);
+    prospectQuery += ` AND type_etablissement = $${prospectParams.length}`;
+  }
+
+  // Query clients
+  let clientQuery = `SELECT id, nom, type_client as type_etablissement, ville, code_postal,
+    CASE WHEN code_postal != '' THEN LEFT(code_postal, 2) ELSE '' END as departement,
+    telephone, email, adresse, latitude, longitude, '' as etape_pipeline, commercial_id, notes, siret,
+    'client' as entity_type, date_creation, date_modification, 'client' as source
+    FROM clients WHERE 1=1`;
+  const clientParams = [];
+
+  if (entity_type && entity_type !== 'client') {
+    // If filtering by non-client type, skip clients entirely
+    clientQuery = null;
+  }
+  if (clientQuery && entity_type === 'client') {
+    // Keep all clients
+  }
+  if (clientQuery && search) {
+    clientParams.push(`%${search}%`);
+    clientQuery += ` AND (nom ILIKE $${clientParams.length} OR ville ILIKE $${clientParams.length} OR siret ILIKE $${clientParams.length})`;
+  }
+  if (clientQuery && departement) {
+    clientParams.push(departement);
+    clientQuery += ` AND LEFT(code_postal, 2) = $${clientParams.length}`;
+  }
+  if (clientQuery && ville) {
+    clientParams.push(`%${ville}%`);
+    clientQuery += ` AND ville ILIKE $${clientParams.length}`;
+  }
+
+  const prospects = await db.query(prospectQuery, prospectParams);
+  const clients = clientQuery ? await db.query(clientQuery, clientParams) : { rows: [] };
+
+  // Merge and sort by date_modification DESC
+  let allEntries = [...prospects.rows, ...clients.rows];
+  allEntries.sort((a, b) => (b.date_modification || '').localeCompare(a.date_modification || ''));
+  allEntries = allEntries.slice(0, parseInt(limit) || 200);
+
+  // Stats
+  const statsResult = await db.query(`
+    SELECT COALESCE(entity_type, 'prospect') as entity_type, COUNT(*) as count FROM prospects GROUP BY COALESCE(entity_type, 'prospect')
+  `);
+  const clientCount = await db.query('SELECT COUNT(*) as count FROM clients');
+  const entityStats = {};
+  for (const row of statsResult.rows) {
+    entityStats[row.entity_type] = parseInt(row.count);
+  }
+  entityStats['client'] = parseInt(clientCount.rows[0].count);
+
+  res.json({ entries: allEntries, stats: entityStats });
+}));
+
+// ============================================
 // INSEE API (Sirene v3.11) - pour le CRON sync avec filtre date natif
 // ============================================
 
@@ -3844,8 +3974,15 @@ router.post('/sirene/sync-near', authMiddleware, adminOnly, asyncHandler(async (
 // - If duplicate found: enriches existing prospect with missing data
 // - If no duplicate: creates new prospect in nouveau_datagouv pipeline
 async function importEtabAsProspect(etab, commercialId, now, userId) {
+  // Look up import rule for this NAF code
+  const ruleRes = await db.query('SELECT * FROM sirene_import_rules WHERE naf_code = $1 LIMIT 1', [etab.code_naf]);
+  const rule = ruleRes.rows[0] || null;
+
   const nafInfo = NAF_CODES.find(n => n.code === etab.code_naf);
-  const typeEtab = nafInfo?.type || 'autre';
+  const typeEtab = rule?.entity_type === 'distributeur' ? 'distributeur' : (nafInfo?.type || 'autre');
+  const entityType = rule?.entity_type || 'prospect';
+  const pipelineStage = rule?.pipeline_stage || 'nouveau_datagouv';
+  const ruleCommercial = rule?.commercial_id || commercialId;
   const nomEtab = etab.enseigne || etab.nom || 'Non renseigne';
   const prospectId = `sirene_${etab.siret}`;
 
@@ -3953,24 +4090,24 @@ async function importEtabAsProspect(etab, commercialId, now, userId) {
     return updates.length > 0 ? 'enriched' : 'skipped';
   }
 
-  // No duplicate → create new prospect
+  // No duplicate → create new entry (prospect/concurrent/distributeur/partenaire)
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
       adresse, ville, code_postal, departement, secteur, latitude, longitude,
-      etape_pipeline, tags, commercial_id, siret, notes, date_creation, date_modification, score)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      etape_pipeline, tags, commercial_id, siret, entity_type, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
     [
       prospectId, nomEtab, typeEtab, '', '', '',
       etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
       etab.libelle_naf || '', etab.latitude || 0, etab.longitude || 0,
-      'nouveau_datagouv', '[]', commercialId, etab.siret,
-      `Importe depuis Datagouv\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
+      pipelineStage, '[]', ruleCommercial, etab.siret, entityType,
+      `Importe depuis Datagouv (${entityType})\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
       now, now, 30,
     ]
   );
 
   await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etab.id]);
-  if (userId) logActivity(userId, 'import_datagouv', `${nomEtab} (SIRET: ${etab.siret})`, 'prospect', prospectId);
+  if (userId) logActivity(userId, 'import_datagouv', `${nomEtab} (${entityType}) (SIRET: ${etab.siret})`, 'prospect', prospectId);
   return 'imported';
 }
 

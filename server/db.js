@@ -544,6 +544,65 @@ async function initDatabase(attempt = 1) {
       `);
     } catch (err) { console.log('sirene_zone_config migration:', err.message); }
 
+    // Migration: sirene_import_rules table
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sirene_import_rules (
+          id SERIAL PRIMARY KEY,
+          naf_code TEXT NOT NULL,
+          naf_label TEXT DEFAULT '',
+          entity_type TEXT NOT NULL DEFAULT 'prospect',
+          pipeline_stage TEXT DEFAULT 'nouveau_datagouv',
+          auto_import BOOLEAN DEFAULT TRUE,
+          commercial_id TEXT DEFAULT '',
+          sort_order INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT '',
+          updated_at TEXT NOT NULL DEFAULT ''
+        )
+      `);
+      // Seed default rules if empty
+      const ruleCount = await client.query('SELECT COUNT(*) as c FROM sirene_import_rules');
+      if (parseInt(ruleCount.rows[0].c) === 0) {
+        const now = new Date().toISOString();
+        const defaultRules = [
+          // Prospects (restaurants, bars, cafes, traiteurs)
+          ['56.10A', 'Restauration traditionnelle', 'prospect', 'nouveau_datagouv', true, 1],
+          ['56.10B', 'Cafeterias et libres-services', 'prospect', 'nouveau_datagouv', true, 2],
+          ['56.10C', 'Restauration rapide', 'prospect', 'nouveau_datagouv', true, 3],
+          ['56.21Z', 'Services des traiteurs', 'prospect', 'nouveau_datagouv', true, 4],
+          ['56.29A', 'Restauration collective sous contrat', 'prospect', 'nouveau_datagouv', true, 5],
+          ['56.29B', 'Autres services de restauration', 'prospect', 'nouveau_datagouv', true, 6],
+          ['56.30Z', 'Debits de boissons', 'prospect', 'nouveau_datagouv', true, 7],
+          ['47.25Z', 'Cavistes', 'prospect', 'nouveau_datagouv', true, 8],
+          // Distributeurs
+          ['46.34Z', 'Commerce de gros de boissons', 'distributeur', 'nouveau_datagouv', true, 9],
+          ['46.17B', 'Intermediaires boissons et tabac', 'distributeur', 'nouveau_datagouv', true, 10],
+          ['46.39B', 'Commerce de gros alimentaire', 'distributeur', 'nouveau_datagouv', true, 11],
+          // Concurrents (producteurs boissons)
+          ['11.01Z', 'Distilleries / Spiritueux', 'concurrent', 'nouveau_datagouv', false, 12],
+          ['11.02A', 'Vins effervescents', 'concurrent', 'nouveau_datagouv', false, 13],
+          ['11.02B', 'Vinification', 'concurrent', 'nouveau_datagouv', false, 14],
+          ['11.03Z', 'Cidre et vins de fruits', 'concurrent', 'nouveau_datagouv', false, 15],
+          ['11.04Z', 'Boissons fermentees', 'concurrent', 'nouveau_datagouv', false, 16],
+          ['11.05Z', 'Fabrication de biere', 'concurrent', 'nouveau_datagouv', false, 17],
+          ['11.06Z', 'Fabrication de malt', 'concurrent', 'nouveau_datagouv', false, 18],
+          ['11.07A', 'Eaux de table', 'concurrent', 'nouveau_datagouv', false, 19],
+          ['11.07B', 'Boissons rafraichissantes', 'concurrent', 'nouveau_datagouv', false, 20],
+        ];
+        for (const [naf, label, type, stage, autoImport, order] of defaultRules) {
+          await client.query(
+            `INSERT INTO sirene_import_rules (naf_code, naf_label, entity_type, pipeline_stage, auto_import, sort_order, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+            [naf, label, type, stage, autoImport, order, now]
+          );
+        }
+        console.log('Seeded 20 default import rules');
+      }
+    } catch (err) { console.log('sirene_import_rules migration:', err.message); }
+
+    // Migration: add entity_type column to prospects
+    try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'prospect'"); } catch { /* */ }
+
     // Migration: add siret column to prospects for dedup
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT DEFAULT ''"); } catch { /* */ }
     // Create index for fast SIRET lookup

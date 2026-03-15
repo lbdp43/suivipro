@@ -26,6 +26,7 @@ const TasksPage = lazy(() => import('./pages/TasksPage'));
 const CompteRenduPage = lazy(() => import('./pages/CompteRenduPage'));
 const PipelineCRPage = lazy(() => import('./pages/PipelineCRPage'));
 const SirenePage = lazy(() => import('./pages/SirenePage'));
+const AnnuairePage = lazy(() => import('./pages/AnnuairePage'));
 
 function PageLoader() {
   return (
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="/taches" element={<TasksPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/import" element={<AdminRoute><ImportPage /></AdminRoute>} />
+          <Route path="/annuaire" element={<AnnuairePage />} />
           <Route path="/sirene" element={<AdminRoute><SirenePage /></AdminRoute>} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/profil" element={<ProfilePage />} />
