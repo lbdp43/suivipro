@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { format, parseISO, subYears } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { generateId } from '../utils/helpers';
+import { apiPost, apiPut } from '../api/client';
 
 // ============================================
 // CR Column definition
@@ -78,7 +79,7 @@ function getColumnId(apt: Appointment, columns: CRColumnDef[]): string {
 // Component
 // ============================================
 export default function PipelineCRPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
 
   // Columns state
@@ -154,10 +155,16 @@ export default function PipelineCRPage() {
     if (confirm(`Supprimer l'etape "${col.label}" ? Les RDV seront deplaces vers "RDV en attente".`)) {
       setColumns(prev => prev.filter(c => c.id !== col.id));
       // Move any appointments from deleted column back to en_attente
-      state.appointments.forEach(a => {
+      state.appointments.forEach(async (a) => {
         const cr = a.compte_rendu as string | undefined;
         if (cr === col.id) {
-          dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...a, compte_rendu: '' as AppointmentResult } });
+          const updated = { ...a, compte_rendu: '' as AppointmentResult };
+          try {
+            await apiPut(`/appointments/${a.id}`, updated);
+            dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+          } catch {
+            toast.error('Erreur lors de la mise a jour du RDV');
+          }
         }
       });
     }
@@ -301,7 +308,7 @@ export default function PipelineCRPage() {
 
   const handleDragLeave = () => setDragOverColumn(null);
 
-  const handleDrop = (e: DragEvent, colId: string) => {
+  const handleDrop = async (e: DragEvent, colId: string) => {
     e.preventDefault();
     const aptId = e.dataTransfer.getData('text/plain');
     if (!aptId) return;
@@ -325,21 +332,25 @@ export default function PipelineCRPage() {
 
     const newCR = colId === 'en_attente' ? '' : colId;
 
-    dispatch({
-      type: 'UPDATE_APPOINTMENT',
-      payload: {
-        ...apt,
-        compte_rendu: newCR as AppointmentResult,
-        statut: 'termine',
-      },
-    });
+    const updated = {
+      ...apt,
+      compte_rendu: newCR as AppointmentResult,
+      statut: 'termine' as const,
+    };
 
-    const colLabel = columns.find(c => c.id === colId)?.label || colId;
-    toast.success(
-      colId === 'client'
-        ? 'Client gagne ! Le prospect a ete converti.'
-        : `Compte-rendu mis a jour: ${colLabel}`
-    );
+    try {
+      await apiPut(`/appointments/${apt.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+
+      const colLabel = columns.find(c => c.id === colId)?.label || colId;
+      toast.success(
+        colId === 'client'
+          ? 'Client gagne ! Le prospect a ete converti.'
+          : `Compte-rendu mis a jour: ${colLabel}`
+      );
+    } catch {
+      toast.error('Erreur lors de la mise a jour du RDV');
+    }
 
     setDraggedId(null);
     setDragOverColumn(null);
@@ -364,40 +375,43 @@ export default function PipelineCRPage() {
     setRescheduleNotes('');
   };
 
-  const confirmReschedule = () => {
+  const confirmReschedule = async () => {
     if (!rescheduleApt || !rescheduleDate) return;
 
-    // Mark old appointment as "decale"
-    dispatch({
-      type: 'UPDATE_APPOINTMENT',
-      payload: {
+    try {
+      // Mark old appointment as "decale"
+      const updatedApt = {
         ...rescheduleApt,
         compte_rendu: 'decale' as AppointmentResult,
         notes_compte_rendu: `Decale au ${format(parseISO(rescheduleDate), 'dd/MM/yyyy', { locale: fr })}${rescheduleNotes ? '. ' + rescheduleNotes : ''}`,
-        statut: 'termine',
-      },
-    });
+        statut: 'termine' as const,
+      };
+      await apiPut(`/appointments/${rescheduleApt.id}`, updatedApt);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updatedApt });
 
-    // Create new appointment
-    const newApt: Appointment = {
-      id: generateId('apt'),
-      prospect_id: rescheduleApt.prospect_id,
-      client_id: rescheduleApt.client_id,
-      commercial_id: rescheduleApt.commercial_id,
-      prospecteur_id: rescheduleApt.prospecteur_id,
-      date: rescheduleDate,
-      heure_debut: rescheduleHeureDebut,
-      heure_fin: rescheduleHeureFin,
-      lieu: rescheduleApt.lieu,
-      notes: rescheduleNotes || rescheduleApt.notes,
-      statut: 'planifie',
-      event_type: 'rdv',
-    };
+      // Create new appointment
+      const newApt: Appointment = {
+        id: generateId('apt'),
+        prospect_id: rescheduleApt.prospect_id,
+        client_id: rescheduleApt.client_id,
+        commercial_id: rescheduleApt.commercial_id,
+        prospecteur_id: rescheduleApt.prospecteur_id,
+        date: rescheduleDate,
+        heure_debut: rescheduleHeureDebut,
+        heure_fin: rescheduleHeureFin,
+        lieu: rescheduleApt.lieu,
+        notes: rescheduleNotes || rescheduleApt.notes,
+        statut: 'planifie',
+        event_type: 'rdv',
+      };
+      await apiPost('/appointments', newApt);
+      dispatchLocal({ type: 'ADD_APPOINTMENT', payload: newApt });
 
-    dispatch({ type: 'ADD_APPOINTMENT', payload: newApt });
-
-    toast.success(`RDV decale au ${format(parseISO(rescheduleDate), 'dd MMMM yyyy', { locale: fr })}`);
-    setRescheduleApt(null);
+      toast.success(`RDV decale au ${format(parseISO(rescheduleDate), 'dd MMMM yyyy', { locale: fr })}`);
+      setRescheduleApt(null);
+    } catch (err) {
+      toast.error('Erreur lors du decalage du RDV');
+    }
   };
 
   // ============================================

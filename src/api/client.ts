@@ -192,6 +192,10 @@ export function apiDelete(path: string) {
   return withRetry(() => request(path, { method: 'DELETE' }));
 }
 
+export function apiPatch(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }));
+}
+
 // ============================================
 // Sync actions to API (called after dispatch)
 // ============================================

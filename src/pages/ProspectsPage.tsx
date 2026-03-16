@@ -9,7 +9,8 @@ import {
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { ocrProspect, convertProspectToClient } from '../api/client';
+import { ocrProspect, convertProspectToClient, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import { useToast } from '../components/Toast';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
@@ -22,7 +23,8 @@ import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, 
 import FilterPresets from '../components/FilterPresets';
 
 export default function ProspectsPage() {
-  const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const toast = useToast();
   const { startCall } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -90,23 +92,42 @@ export default function ProspectsPage() {
 
   const TAG_COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
 
-  const saveNewTag = () => {
+  const saveNewTag = async () => {
     if (!newTagName.trim()) return;
     if (editingTag) {
-      dispatch({ type: 'UPDATE_TAG', payload: { ...editingTag, nom: newTagName.trim(), couleur: newTagColor } });
+      const payload = { ...editingTag, nom: newTagName.trim(), couleur: newTagColor };
+      try {
+        await apiPut(`/tags/${editingTag.id}`, payload);
+        dispatchLocal({ type: 'UPDATE_TAG', payload });
+      } catch (err) {
+        toast.error(`Erreur mise a jour tag: ${(err as Error).message}`);
+        return;
+      }
       setEditingTag(null);
     } else {
-      dispatch({ type: 'ADD_TAG', payload: { id: generateId('tag'), nom: newTagName.trim(), couleur: newTagColor } });
+      const payload = { id: generateId('tag'), nom: newTagName.trim(), couleur: newTagColor };
+      try {
+        await apiPost('/tags', payload);
+        dispatchLocal({ type: 'ADD_TAG', payload });
+      } catch (err) {
+        toast.error(`Erreur creation tag: ${(err as Error).message}`);
+        return;
+      }
     }
     setNewTagName('');
     setNewTagColor('#6366f1');
   };
 
-  const deleteTag = (tagId: string) => {
+  const deleteTag = async (tagId: string) => {
     if (!confirm('Supprimer ce tag ? Il sera retire de tous les prospects.')) return;
-    dispatch({ type: 'DELETE_TAG', payload: tagId });
-    // Remove tag from current form data if selected
-    setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagId) }));
+    try {
+      await apiDelete(`/tags/${tagId}`);
+      dispatchLocal({ type: 'DELETE_TAG', payload: tagId });
+      // Remove tag from current form data if selected
+      setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagId) }));
+    } catch (err) {
+      toast.error(`Erreur suppression tag: ${(err as Error).message}`);
+    }
   };
 
   const startEditTag = (tag: TagType) => {
@@ -140,48 +161,60 @@ export default function ProspectsPage() {
   const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
   const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
 
-  const saveCompteRendu = () => {
+  const saveCompteRendu = async () => {
     if (!compteRenduRdv || !compteRenduValid) return;
-    dispatch({
-      type: 'UPDATE_APPOINTMENT',
-      payload: {
-        ...compteRenduRdv,
-        statut: 'termine',
-        compte_rendu: compteRenduResult,
-        notes_compte_rendu: compteRenduNotes,
-      },
-    });
+    const updatedRdv = {
+      ...compteRenduRdv,
+      statut: 'termine' as const,
+      compte_rendu: compteRenduResult,
+      notes_compte_rendu: compteRenduNotes,
+    };
+    try {
+      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updatedRdv });
+    } catch (err) {
+      toast.error(`Erreur mise a jour RDV: ${(err as Error).message}`);
+      return;
+    }
     const prospect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
     if (prospect) {
       const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+      let newStage: PipelineStage | null = null;
       if (compteRenduResult === 'client') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'client_gagne' } });
+        newStage = 'client_gagne';
       } else if (compteRenduResult === 'pas_interesse') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
+        newStage = 'perdu';
       } else if (compteRenduResult === 'mail_envoye') {
-        if (!terminal.includes(prospect.etape_pipeline)) {
-          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
-        }
+        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
       } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
-        if (!terminal.includes(prospect.etape_pipeline)) {
-          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'proposition' } });
+        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
+      }
+      if (newStage) {
+        try {
+          await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
+        } catch (err) {
+          toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
         }
       }
     }
     if (compteRenduRappel && compteRenduRappelDate) {
       const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
-      dispatch({
-        type: 'ADD_REMINDER',
-        payload: {
-          id: generateId('rem'),
-          prospect_id: compteRenduRdv.prospect_id,
-          commercial_id: compteRenduRdv.commercial_id,
-          date: compteRenduRappelDate,
-          heure: '09:00',
-          message: autoMessage,
-          statut: 'actif',
-        },
-      });
+      const reminderPayload = {
+        id: generateId('rem'),
+        prospect_id: compteRenduRdv.prospect_id,
+        commercial_id: compteRenduRdv.commercial_id,
+        date: compteRenduRappelDate,
+        heure: '09:00',
+        message: autoMessage,
+        statut: 'actif' as const,
+      };
+      try {
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+      } catch (err) {
+        toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+      }
     }
     setShowCompteRendu(false);
   };
@@ -215,55 +248,78 @@ export default function ProspectsPage() {
     setShowBulkAction('none');
   };
 
-  const bulkChangeStage = (stage: PipelineStage) => {
+  const bulkChangeStage = async (stage: PipelineStage) => {
     const now = new Date().toISOString();
-    selectedIds.forEach(id => {
+    let errors = 0;
+    for (const id of selectedIds) {
       const prospect = state.prospects.find(p => p.id === id);
       if (prospect) {
-        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, etape_pipeline: stage, date_modification: now } });
+        const payload = { ...prospect, etape_pipeline: stage, date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
       }
-    });
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
     setShowBulkAction('none');
     exitSelectionMode();
   };
 
-  const bulkChangeSecteur = () => {
+  const bulkChangeSecteur = async () => {
     if (!bulkSecteur.trim()) return;
     const now = new Date().toISOString();
-    selectedIds.forEach(id => {
+    let errors = 0;
+    for (const id of selectedIds) {
       const prospect = state.prospects.find(p => p.id === id);
       if (prospect) {
-        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, secteur: bulkSecteur.trim(), date_modification: now } });
+        const payload = { ...prospect, secteur: bulkSecteur.trim(), date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
       }
-    });
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
     setBulkSecteur('');
     setShowBulkAction('none');
     exitSelectionMode();
   };
 
-  const bulkToggleTag = (tagId: string) => {
+  const bulkToggleTag = async (tagId: string) => {
     const now = new Date().toISOString();
     // If all selected prospects have this tag, remove it. Otherwise, add it.
     const allHaveTag = [...selectedIds].every(id => {
       const p = state.prospects.find(pr => pr.id === id);
       return p?.tags.includes(tagId);
     });
-    selectedIds.forEach(id => {
+    let errors = 0;
+    for (const id of selectedIds) {
       const prospect = state.prospects.find(p => p.id === id);
       if (prospect) {
         const newTags = allHaveTag
           ? prospect.tags.filter(t => t !== tagId)
           : prospect.tags.includes(tagId) ? prospect.tags : [...prospect.tags, tagId];
-        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, tags: newTags, date_modification: now } });
+        const payload = { ...prospect, tags: newTags, date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
       }
-    });
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
   };
 
-  const bulkDelete = () => {
+  const bulkDelete = async () => {
     if (!confirm(`Supprimer ${selectedIds.size} prospect(s) ?`)) return;
-    selectedIds.forEach(id => {
-      dispatch({ type: 'DELETE_PROSPECT', payload: id });
-    });
+    let errors = 0;
+    for (const id of selectedIds) {
+      try {
+        await apiDelete(`/prospects/${id}`);
+        dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+      } catch { errors++; }
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non supprimes`);
     exitSelectionMode();
   };
 
@@ -273,14 +329,18 @@ export default function ProspectsPage() {
     setQuickNoteText(prospect.notes);
   };
 
-  const saveQuickNote = () => {
+  const saveQuickNote = async () => {
     if (!quickNoteId) return;
     const prospect = state.prospects.find(p => p.id === quickNoteId);
     if (prospect) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() },
-      });
+      const payload = { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() };
+      try {
+        await apiPut(`/prospects/${quickNoteId}`, payload);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      } catch (err) {
+        toast.error(`Erreur sauvegarde note: ${(err as Error).message}`);
+        return;
+      }
     }
     setQuickNoteId(null);
   };
@@ -538,32 +598,40 @@ export default function ProspectsPage() {
       }
     }
 
-    if (editingProspect) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect,
-      });
-    } else {
-      dispatch({
-        type: 'ADD_PROSPECT',
-        payload: {
+    try {
+      if (editingProspect) {
+        const payload = { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect;
+        await apiPut(`/prospects/${editingProspect.id}`, payload);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      } else {
+        const payload = {
           ...formData,
           ...geoData,
           id: generateId('p'),
           date_creation: now,
           date_modification: now,
-        } as Prospect,
-      });
+        } as Prospect;
+        await apiPost('/prospects', payload);
+        dispatchLocal({ type: 'ADD_PROSPECT', payload });
+      }
+      setShowForm(false);
+      setForceCreate(false);
+    } catch (err) {
+      toast.error(`Erreur sauvegarde prospect: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowForm(false);
-    setForceCreate(false);
   };
 
-  const deleteProspect = (id: string) => {
+  const deleteProspect = async (id: string) => {
     if (confirm('Supprimer ce prospect ?')) {
-      dispatch({ type: 'DELETE_PROSPECT', payload: id });
-      setSearchParams({});
+      try {
+        await apiDelete(`/prospects/${id}`);
+        dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+        setSearchParams({});
+      } catch (err) {
+        toast.error(`Erreur suppression prospect: ${(err as Error).message}`);
+      }
     }
   };
 
@@ -1391,14 +1459,17 @@ export default function ProspectsPage() {
                     });
                     if (result?.client_id) {
                       // Update prospect stage to client_gagne
-                      dispatch({
-                        type: 'UPDATE_PROSPECT',
-                        payload: {
-                          ...convertProspect,
-                          etape_pipeline: 'client_gagne' as PipelineStage,
-                          date_modification: new Date().toISOString(),
-                        },
-                      });
+                      const updatedProspect = {
+                        ...convertProspect,
+                        etape_pipeline: 'client_gagne' as PipelineStage,
+                        date_modification: new Date().toISOString(),
+                      };
+                      try {
+                        await apiPut(`/prospects/${convertProspect.id}`, updatedProspect);
+                        dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
+                      } catch {
+                        // Conversion succeeded but local update failed; reload anyway
+                      }
                       // Reload state to get the new client
                       window.location.reload();
                     }
@@ -1505,20 +1576,23 @@ export default function ProspectsPage() {
               <button
                 className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-1.5 disabled:opacity-50"
                 disabled={!reminderMessage.trim() || !reminderDate}
-                onClick={() => {
-                  dispatch({
-                    type: 'ADD_REMINDER',
-                    payload: {
-                      id: generateId('rem'),
-                      prospect_id: reminderProspect.id,
-                      commercial_id: state.currentUser?.id || 'com-1',
-                      date: reminderDate,
-                      heure: reminderHeure,
-                      message: reminderMessage.trim(),
-                      statut: 'actif',
-                    },
-                  });
-                  setReminderProspect(null);
+                onClick={async () => {
+                  const payload = {
+                    id: generateId('rem'),
+                    prospect_id: reminderProspect.id,
+                    commercial_id: state.currentUser?.id || 'com-1',
+                    date: reminderDate,
+                    heure: reminderHeure,
+                    message: reminderMessage.trim(),
+                    statut: 'actif' as const,
+                  };
+                  try {
+                    await apiPost('/reminders', payload);
+                    dispatchLocal({ type: 'ADD_REMINDER', payload });
+                    setReminderProspect(null);
+                  } catch (err) {
+                    toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+                  }
                 }}
               >
                 <Bell className="w-3.5 h-3.5" /> Creer le rappel

@@ -581,38 +581,44 @@ export default function ClientsPage() {
   };
 
   // Task helpers
-  const addTask = () => {
+  const addTask = async () => {
     if (!taskTitle.trim() || !taskClientId) return;
-    dispatch({
-      type: 'ADD_TASK_CLIENT',
-      payload: {
-        id: generateId('task'),
-        titre: taskTitle.trim(),
-        description: '',
-        statut: 'A_FAIRE',
-        priorite: 'MOYENNE',
-        date_echeance: taskDate || null,
-        commercial_id: state.currentUser?.id || '',
-        client_id: taskClientId,
-        date_creation: new Date().toISOString(),
-        completed_at: null,
-      },
-    });
-    setShowTaskForm(false);
-    setTaskTitle('');
-    setTaskDate('');
+    const payload = {
+      id: generateId('task'),
+      titre: taskTitle.trim(),
+      description: '',
+      statut: 'A_FAIRE' as const,
+      priorite: 'MOYENNE' as const,
+      date_echeance: taskDate || null,
+      commercial_id: state.currentUser?.id || '',
+      client_id: taskClientId,
+      date_creation: new Date().toISOString(),
+      completed_at: null,
+    };
+    try {
+      await apiPost('/tasks-client', payload);
+      dispatchLocal({ type: 'ADD_TASK_CLIENT', payload });
+      setShowTaskForm(false);
+      setTaskTitle('');
+      setTaskDate('');
+    } catch {
+      toast.error('Erreur lors de l\'ajout de la tâche');
+    }
   };
 
-  const toggleTask = (task: TaskClient) => {
+  const toggleTask = async (task: TaskClient) => {
     const isComplete = task.statut === 'TERMINEE';
-    dispatch({
-      type: 'UPDATE_TASK_CLIENT',
-      payload: {
-        ...task,
-        statut: isComplete ? 'A_FAIRE' : 'TERMINEE',
-        completed_at: isComplete ? null : new Date().toISOString(),
-      },
-    });
+    const payload = {
+      ...task,
+      statut: (isComplete ? 'A_FAIRE' : 'TERMINEE') as TaskClient['statut'],
+      completed_at: isComplete ? null : new Date().toISOString(),
+    };
+    try {
+      await apiPut(`/tasks-client/${task.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload });
+    } catch {
+      toast.error('Erreur lors de la mise à jour de la tâche');
+    }
   };
 
   // Filter & sort
@@ -1728,7 +1734,7 @@ export default function ClientsPage() {
                           {formatDate(task.date_echeance)}
                         </span>
                       )}
-                      <button onClick={() => dispatch({ type: 'DELETE_TASK_CLIENT', payload: task.id })} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50">
+                      <button onClick={async () => { try { await apiDelete(`/tasks-client/${task.id}`); dispatchLocal({ type: 'DELETE_TASK_CLIENT', payload: task.id }); } catch { toast.error('Erreur lors de la suppression de la tâche'); } }} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50">
                         <X className="w-3 h-3 text-gray-400 hover:text-red-500" />
                       </button>
                     </div>

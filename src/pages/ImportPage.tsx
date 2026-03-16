@@ -7,9 +7,10 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
 import { generateId, exportProspectsCSV, geocodeBatch, toLocalDateStr } from '../utils/helpers';
+import { apiPost, apiPut, apiDelete } from '../api/client';
 
 export default function ImportPage() {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; geocoded: number; duplicates: number } | null>(null);
   const [importing, setImporting] = useState(false);
@@ -357,7 +358,12 @@ export default function ImportPage() {
       });
 
       if (newProspects.length > 0) {
-        dispatch({ type: 'IMPORT_PROSPECTS', payload: newProspects });
+        try {
+          await apiPost('/prospects/import', newProspects);
+          dispatchLocal({ type: 'IMPORT_PROSPECTS', payload: newProspects });
+        } catch (err) {
+          toast.error('Erreur lors de l\'import des prospects');
+        }
       }
     } catch (err) {
       errors.push('Erreur de lecture du fichier. Verifiez le format (Excel .xlsx ou .csv).');
@@ -839,7 +845,7 @@ export default function ImportPage() {
     }
   };
 
-  const handleCrossAction = (action: 'delete' | 'gagne') => {
+  const handleCrossAction = async (action: 'delete' | 'gagne') => {
     if (crossSelected.size === 0) return;
     const selectedIds = [...crossSelected];
     const label = action === 'delete' ? 'SUPPRIMER' : 'passer en "RDV / Gagne"';
@@ -848,14 +854,25 @@ export default function ImportPage() {
 
     for (const id of selectedIds) {
       if (action === 'delete') {
-        dispatch({ type: 'DELETE_PROSPECT', payload: id });
+        try {
+          await apiDelete(`/prospects/${id}`);
+          dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+        } catch (err) {
+          toast.error('Erreur lors de la suppression du prospect');
+        }
       } else {
         const prospect = state.prospects.find(p => p.id === id);
         if (prospect) {
-          dispatch({
-            type: 'UPDATE_PROSPECT',
-            payload: { ...prospect, etape_pipeline: 'gagne' as PipelineStage, date_modification: new Date().toISOString() },
-          });
+          const updated = { ...prospect, etape_pipeline: 'gagne' as PipelineStage, date_modification: new Date().toISOString() };
+          try {
+            await apiPut(`/prospects/${id}`, updated);
+            dispatchLocal({
+              type: 'UPDATE_PROSPECT',
+              payload: updated,
+            });
+          } catch (err) {
+            toast.error('Erreur lors de la mise a jour du prospect');
+          }
         }
       }
     }

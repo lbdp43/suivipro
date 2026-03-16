@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
+import { apiPost, apiPut, apiDelete } from '../api/client';
 import { Commercial, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
@@ -95,7 +96,7 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
 }
 
 export default function AdminPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>('team');
 
@@ -529,38 +530,44 @@ export default function AdminPage() {
     setShowPassword(false);
   };
 
-  const saveUser = () => {
+  const saveUser = async () => {
     if (!userForm.prenom || !userForm.email) return;
 
-    if (editingUser) {
-      const updated: Commercial = {
-        ...editingUser,
-        prenom: userForm.prenom,
-        nom: userForm.nom,
-        email: userForm.email,
-        telephone: userForm.telephone,
-        role: userForm.role,
-        password: userForm.password || editingUser.password,
-      };
-      dispatch({ type: 'UPDATE_COMMERCIAL', payload: updated });
-    } else {
-      if (!userForm.password) return;
-      const newUser: Commercial = {
-        id: generateId('com'),
-        prenom: userForm.prenom,
-        nom: userForm.nom,
-        email: userForm.email,
-        telephone: userForm.telephone,
-        role: userForm.role,
-        password: userForm.password,
-        objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
-      };
-      dispatch({ type: 'ADD_COMMERCIAL', payload: newUser });
+    try {
+      if (editingUser) {
+        const updated: Commercial = {
+          ...editingUser,
+          prenom: userForm.prenom,
+          nom: userForm.nom,
+          email: userForm.email,
+          telephone: userForm.telephone,
+          role: userForm.role,
+          password: userForm.password || editingUser.password,
+        };
+        await apiPut(`/commerciaux/${editingUser.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_COMMERCIAL', payload: updated });
+      } else {
+        if (!userForm.password) return;
+        const newUser: Commercial = {
+          id: generateId('com'),
+          prenom: userForm.prenom,
+          nom: userForm.nom,
+          email: userForm.email,
+          telephone: userForm.telephone,
+          role: userForm.role,
+          password: userForm.password,
+          objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+        };
+        await apiPost('/commerciaux', newUser);
+        dispatchLocal({ type: 'ADD_COMMERCIAL', payload: newUser });
+      }
+      setShowUserForm(false);
+    } catch (error) {
+      toast.error('Erreur lors de la sauvegarde de l\'utilisateur.');
     }
-    setShowUserForm(false);
   };
 
-  const deleteUser = (user: Commercial) => {
+  const deleteUser = async (user: Commercial) => {
     if (user.id === state.currentUser?.id) {
       toast.warning('Vous ne pouvez pas supprimer votre propre compte.');
       return;
@@ -571,7 +578,12 @@ export default function AdminPage() {
       return;
     }
     if (confirm(`Supprimer ${user.prenom} ${user.nom} ? Cette action est irreversible.`)) {
-      dispatch({ type: 'DELETE_COMMERCIAL', payload: user.id });
+      try {
+        await apiDelete(`/commerciaux/${user.id}`);
+        dispatchLocal({ type: 'DELETE_COMMERCIAL', payload: user.id });
+      } catch (error) {
+        toast.error('Erreur lors de la suppression de l\'utilisateur.');
+      }
     }
   };
 
@@ -584,16 +596,22 @@ export default function AdminPage() {
     setObjectivesForm({ ...commercial.objectifs });
   };
 
-  const saveObjectives = () => {
+  const saveObjectives = async () => {
     if (!editingObjectives) return;
     const commercial = state.commerciaux.find(c => c.id === editingObjectives);
     if (commercial) {
-      dispatch({
-        type: 'UPDATE_COMMERCIAL',
-        payload: { ...commercial, objectifs: objectivesForm },
-      });
+      const updated = { ...commercial, objectifs: objectivesForm };
+      try {
+        await apiPut(`/commerciaux/${commercial.id}`, updated);
+        dispatchLocal({
+          type: 'UPDATE_COMMERCIAL',
+          payload: updated,
+        });
+        setEditingObjectives(null);
+      } catch (error) {
+        toast.error('Erreur lors de la sauvegarde des objectifs.');
+      }
     }
-    setEditingObjectives(null);
   };
 
   // ============================================
@@ -612,19 +630,32 @@ export default function AdminPage() {
     setShowTagForm(true);
   };
 
-  const saveTag = () => {
+  const saveTag = async () => {
     if (!tagForm.nom) return;
-    if (editingTag) {
-      dispatch({ type: 'UPDATE_TAG', payload: { ...editingTag, ...tagForm } });
-    } else {
-      dispatch({ type: 'ADD_TAG', payload: { id: generateId('tag'), ...tagForm } });
+    try {
+      if (editingTag) {
+        const updated = { ...editingTag, ...tagForm };
+        await apiPut(`/tags/${editingTag.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_TAG', payload: updated });
+      } else {
+        const newTag = { id: generateId('tag'), ...tagForm };
+        await apiPost('/tags', newTag);
+        dispatchLocal({ type: 'ADD_TAG', payload: newTag });
+      }
+      setShowTagForm(false);
+    } catch (error) {
+      toast.error('Erreur lors de la sauvegarde du tag.');
     }
-    setShowTagForm(false);
   };
 
-  const deleteTag = (id: string) => {
+  const deleteTag = async (id: string) => {
     if (confirm('Supprimer ce tag ?')) {
-      dispatch({ type: 'DELETE_TAG', payload: id });
+      try {
+        await apiDelete(`/tags/${id}`);
+        dispatchLocal({ type: 'DELETE_TAG', payload: id });
+      } catch (error) {
+        toast.error('Erreur lors de la suppression du tag.');
+      }
     }
   };
 

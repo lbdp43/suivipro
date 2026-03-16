@@ -6,16 +6,16 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS, PipelineStage, ReminderStatus } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts, toLocalDateStr } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
-  const { state, dispatch, getProspect } = useApp();
+  const { state, dispatchLocal, getProspect } = useApp();
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
@@ -60,12 +60,16 @@ export default function AppointmentsPage() {
     if (p) setEditProspectData({ ...p });
   };
 
-  const saveEditProspect = () => {
+  const saveEditProspect = async () => {
     if (!editProspectData) return;
-    dispatch({
-      type: 'UPDATE_PROSPECT',
-      payload: { ...editProspectData, date_modification: new Date().toISOString() },
-    });
+    const payload = { ...editProspectData, date_modification: new Date().toISOString() };
+    try {
+      await apiPut(`/prospects/${editProspectData.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      toast.success('Prospect mis a jour');
+    } catch (err: unknown) {
+      toast.error(`Erreur mise a jour prospect: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
     setEditProspectData(null);
   };
 
@@ -226,7 +230,7 @@ export default function AppointmentsPage() {
     setShowForm(true);
   };
 
-  const saveAppointment = () => {
+  const saveAppointment = async () => {
     const isEvent = formData.event_type !== 'rdv';
     // Pour un RDV classique, prospect/client requis. Pour un evenement, titre requis.
     if (!isEvent && !formData.prospect_id && !formData.client_id) return;
@@ -239,62 +243,83 @@ export default function AppointmentsPage() {
       prospecteur_id: formData.prospecteur_id || state.currentUser?.id || 'com-1',
     };
 
-    if (editing) {
-      dispatch({
-        type: 'UPDATE_APPOINTMENT',
-        payload: { ...editing, ...baseData } as Appointment,
-      });
-    } else {
-      // Gestion de la recurrence
-      if (formData.recurrence === 'weekly' && formData.recurrence_days.length > 0 && formData.recurrence_end_date) {
-        const startDate = new Date(formData.date);
-        const endDate = new Date(formData.recurrence_end_date);
-        const current = new Date(startDate);
+    try {
+      if (editing) {
+        const payload = { ...editing, ...baseData } as Appointment;
+        await apiPut(`/appointments/${editing.id}`, payload);
+        dispatchLocal({
+          type: 'UPDATE_APPOINTMENT',
+          payload,
+        });
+      } else {
+        // Gestion de la recurrence
+        if (formData.recurrence === 'weekly' && formData.recurrence_days.length > 0 && formData.recurrence_end_date) {
+          const startDate = new Date(formData.date);
+          const endDate = new Date(formData.recurrence_end_date);
+          const current = new Date(startDate);
 
-        while (current <= endDate) {
-          const dayOfWeek = current.getDay();
-          if (formData.recurrence_days.includes(dayOfWeek)) {
-            const dateStr = toLocalDateStr(current);
-            dispatch({
-              type: 'ADD_APPOINTMENT',
-              payload: {
+          while (current <= endDate) {
+            const dayOfWeek = current.getDay();
+            if (formData.recurrence_days.includes(dayOfWeek)) {
+              const dateStr = toLocalDateStr(current);
+              const payload = {
                 ...baseData,
                 id: generateId('rdv'),
                 date: dateStr,
                 created_at: new Date().toISOString(),
-              } as Appointment,
-            });
+              } as Appointment;
+              await apiPost('/appointments', payload);
+              dispatchLocal({
+                type: 'ADD_APPOINTMENT',
+                payload,
+              });
+            }
+            current.setDate(current.getDate() + 1);
           }
-          current.setDate(current.getDate() + 1);
-        }
-      } else {
-        dispatch({
-          type: 'ADD_APPOINTMENT',
-          payload: {
+        } else {
+          const payload = {
             ...baseData,
             id: generateId('rdv'),
             created_at: new Date().toISOString(),
-          } as Appointment,
-        });
-      }
-
-      // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
-      if (!isEvent) {
-        const prospect = state.prospects.find(p => p.id === formData.prospect_id);
-        if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-          dispatch({
-            type: 'MOVE_PROSPECT',
-            payload: { id: prospect.id, stage: 'gagne' },
+          } as Appointment;
+          await apiPost('/appointments', payload);
+          dispatchLocal({
+            type: 'ADD_APPOINTMENT',
+            payload,
           });
         }
+
+        // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
+        if (!isEvent) {
+          const prospect = state.prospects.find(p => p.id === formData.prospect_id);
+          if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+            await apiPatch(`/prospects/${prospect.id}/stage`, {
+              etape_pipeline: 'gagne',
+              date_modification: new Date().toISOString(),
+            });
+            dispatchLocal({
+              type: 'MOVE_PROSPECT',
+              payload: { id: prospect.id, stage: 'gagne' },
+            });
+          }
+        }
       }
+      setShowForm(false);
+      toast.success(editing ? 'RDV mis a jour' : 'RDV cree');
+    } catch (err: unknown) {
+      toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
-    setShowForm(false);
   };
 
-  const deleteAppointment = (id: string) => {
+  const deleteAppointment = async (id: string) => {
     if (confirm('Supprimer ce RDV ?')) {
-      dispatch({ type: 'DELETE_APPOINTMENT', payload: id });
+      try {
+        await apiDelete(`/appointments/${id}`);
+        dispatchLocal({ type: 'DELETE_APPOINTMENT', payload: id });
+        toast.success('RDV supprime');
+      } catch (err: unknown) {
+        toast.error(`Erreur suppression: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      }
     }
   };
 
@@ -326,109 +351,133 @@ export default function AppointmentsPage() {
   // Validation: notes required + rappel date required when rappel is forced
   const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
 
-  const saveCompteRendu = () => {
+  const saveCompteRendu = async () => {
     if (!compteRenduRdv || !compteRenduValid) return;
 
-    // Update the appointment with compte_rendu and mark as termine
-    // notes_compte_rendu is separate from the original appointment notes
-    dispatch({
-      type: 'UPDATE_APPOINTMENT',
-      payload: {
+    try {
+      // Update the appointment with compte_rendu and mark as termine
+      // notes_compte_rendu is separate from the original appointment notes
+      const updatedRdv = {
         ...compteRenduRdv,
-        statut: 'termine',
+        statut: 'termine' as AppointmentStatus,
         compte_rendu: compteRenduResult,
         notes_compte_rendu: compteRenduNotes,
-      },
-    });
+      };
+      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
+      dispatchLocal({
+        type: 'UPDATE_APPOINTMENT',
+        payload: updatedRdv,
+      });
 
-    // Update prospect pipeline based on result
-    const prospect = getProspect(compteRenduRdv.prospect_id);
-    if (prospect) {
-      const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
-      if (compteRenduResult === 'client') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'client_gagne' } });
-      } else if (compteRenduResult === 'pas_interesse') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
-      } else if (compteRenduResult === 'mail_envoye') {
-        if (!terminal.includes(prospect.etape_pipeline)) {
-          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+      // Update prospect pipeline based on result
+      const prospect = getProspect(compteRenduRdv.prospect_id);
+      if (prospect) {
+        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+        let newStage: PipelineStage | null = null;
+        if (compteRenduResult === 'client') {
+          newStage = 'client_gagne';
+        } else if (compteRenduResult === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (compteRenduResult === 'mail_envoye') {
+          if (!terminal.includes(prospect.etape_pipeline)) {
+            newStage = 'negociation';
+          }
+        } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
+          if (!terminal.includes(prospect.etape_pipeline)) {
+            newStage = 'proposition';
+          }
         }
-      } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
-        if (!terminal.includes(prospect.etape_pipeline)) {
-          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'proposition' } });
+        if (newStage) {
+          await apiPatch(`/prospects/${prospect.id}/stage`, {
+            etape_pipeline: newStage,
+            date_modification: new Date().toISOString(),
+          });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
         }
       }
-    }
 
-    // Create reminder if rappel is active
-    if (compteRenduRappel && compteRenduRappelDate) {
-      const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
-      dispatch({
-        type: 'ADD_REMINDER',
-        payload: {
+      // Create reminder if rappel is active
+      if (compteRenduRappel && compteRenduRappelDate) {
+        const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
+        const reminderPayload = {
           id: generateId('rem'),
           prospect_id: compteRenduRdv.prospect_id,
           commercial_id: compteRenduRdv.commercial_id,
           date: compteRenduRappelDate,
           heure: '09:00',
           message: autoMessage,
-          statut: 'actif',
-        },
-      });
-    }
+          statut: 'actif' as ReminderStatus,
+        };
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({
+          type: 'ADD_REMINDER',
+          payload: reminderPayload,
+        });
+      }
 
-    // If mail_envoye: open email modal after saving
-    if (compteRenduResult === 'mail_envoye' && prospect) {
-      setCompteRenduEmailProspect(prospect);
-    }
+      // If mail_envoye: open email modal after saving
+      if (compteRenduResult === 'mail_envoye' && prospect) {
+        setCompteRenduEmailProspect(prospect);
+      }
 
-    // If decale: open reschedule modal
-    if (compteRenduResult === 'decale') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 7);
-      setRescheduleRdv(compteRenduRdv);
-      setRescheduleDate(toLocalDateStr(tomorrow));
-      setRescheduleHeureDebut(compteRenduRdv.heure_debut || '09:00');
-      setRescheduleHeureFin(compteRenduRdv.heure_fin || '10:00');
-      setRescheduleNotes('');
-      setShowReschedule(true);
-    }
+      // If decale: open reschedule modal
+      if (compteRenduResult === 'decale') {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 7);
+        setRescheduleRdv(compteRenduRdv);
+        setRescheduleDate(toLocalDateStr(tomorrow));
+        setRescheduleHeureDebut(compteRenduRdv.heure_debut || '09:00');
+        setRescheduleHeureFin(compteRenduRdv.heure_fin || '10:00');
+        setRescheduleNotes('');
+        setShowReschedule(true);
+      }
 
-    setShowCompteRendu(false);
+      setShowCompteRendu(false);
+      toast.success('Compte-rendu enregistre');
+    } catch (err: unknown) {
+      toast.error(`Erreur compte-rendu: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
-  const confirmReschedule = () => {
+  const confirmReschedule = async () => {
     if (!rescheduleRdv || !rescheduleDate) return;
 
-    // Update old appointment notes
-    dispatch({
-      type: 'UPDATE_APPOINTMENT',
-      payload: {
+    try {
+      // Update old appointment notes
+      const updatedOldApt = {
         ...rescheduleRdv,
         notes_compte_rendu: (rescheduleRdv.notes_compte_rendu || '') + (rescheduleNotes ? `\nDecale: ${rescheduleNotes}` : ''),
-      },
-    });
+      };
+      await apiPut(`/appointments/${rescheduleRdv.id}`, updatedOldApt);
+      dispatchLocal({
+        type: 'UPDATE_APPOINTMENT',
+        payload: updatedOldApt,
+      });
 
-    // Create new appointment
-    const newApt: Appointment = {
-      id: generateId('apt'),
-      prospect_id: rescheduleRdv.prospect_id,
-      client_id: rescheduleRdv.client_id,
-      commercial_id: rescheduleRdv.commercial_id,
-      prospecteur_id: rescheduleRdv.prospecteur_id,
-      date: rescheduleDate,
-      heure_debut: rescheduleHeureDebut,
-      heure_fin: rescheduleHeureFin,
-      lieu: rescheduleRdv.lieu,
-      notes: rescheduleNotes || rescheduleRdv.notes,
-      statut: 'planifie',
-      event_type: 'rdv',
-    };
-    dispatch({ type: 'ADD_APPOINTMENT', payload: newApt });
+      // Create new appointment
+      const newApt: Appointment = {
+        id: generateId('apt'),
+        prospect_id: rescheduleRdv.prospect_id,
+        client_id: rescheduleRdv.client_id,
+        commercial_id: rescheduleRdv.commercial_id,
+        prospecteur_id: rescheduleRdv.prospecteur_id,
+        date: rescheduleDate,
+        heure_debut: rescheduleHeureDebut,
+        heure_fin: rescheduleHeureFin,
+        lieu: rescheduleRdv.lieu,
+        notes: rescheduleNotes || rescheduleRdv.notes,
+        statut: 'planifie',
+        event_type: 'rdv',
+      };
+      await apiPost('/appointments', newApt);
+      dispatchLocal({ type: 'ADD_APPOINTMENT', payload: newApt });
 
-    toast.success(`Nouveau RDV cree pour le ${rescheduleDate}`);
-    setShowReschedule(false);
-    setRescheduleRdv(null);
+      toast.success(`Nouveau RDV cree pour le ${rescheduleDate}`);
+      setShowReschedule(false);
+      setRescheduleRdv(null);
+    } catch (err: unknown) {
+      toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   // Ouvrir la modale d'export avec les filtres pre-remplis

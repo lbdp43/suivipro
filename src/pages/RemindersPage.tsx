@@ -5,11 +5,14 @@ import {
   AlertCircle, BellRing, CalendarClock, MessageSquare, User,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
+import { apiPost, apiPut, apiDelete } from '../api/client';
 import { Reminder, ReminderStatus } from '../types';
 import { generateId, formatDate, isToday, toLocalDateStr } from '../utils/helpers';
 
 export default function RemindersPage() {
-  const { state, dispatch, getProspect } = useApp();
+  const { state, dispatchLocal, getProspect } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -50,28 +53,40 @@ export default function RemindersPage() {
   const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < toLocalDateStr(new Date()));
   const completedReminders = reminders.filter(r => r.statut === 'termine');
 
-  const saveReminder = () => {
+  const saveReminder = async () => {
     if (!formData.prospect_id || !formData.date) return;
     const prospect = getProspect(formData.prospect_id);
-    dispatch({
-      type: 'ADD_REMINDER',
-      payload: {
-        id: generateId('rem'),
-        prospect_id: formData.prospect_id,
-        commercial_id: state.currentUser?.id || 'com-1',
-        date: formData.date,
-        heure: formData.heure,
-        message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
-        statut: 'actif',
-      },
-    });
-    setShowForm(false);
-    setFormData({ prospect_id: '', date: '', heure: '09:00', message: '' });
+    const payload = {
+      id: generateId('rem'),
+      prospect_id: formData.prospect_id,
+      commercial_id: state.currentUser?.id || 'com-1',
+      date: formData.date,
+      heure: formData.heure,
+      message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
+      statut: 'actif' as const,
+    };
+    try {
+      await apiPost('/reminders', payload);
+      dispatchLocal({ type: 'ADD_REMINDER', payload });
+      toast.success('Rappel programme');
+      setShowForm(false);
+      setFormData({ prospect_id: '', date: '', heure: '09:00', message: '' });
+    } catch (err) {
+      toast.error(`Erreur creation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
-  const markComplete = (id: string) => {
+  const markComplete = async (id: string) => {
     const rem = state.reminders.find(r => r.id === id);
-    if (rem) dispatch({ type: 'UPDATE_REMINDER', payload: { ...rem, statut: 'termine' } });
+    if (!rem) return;
+    const payload = { ...rem, statut: 'termine' as const };
+    try {
+      await apiPut(`/reminders/${id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel termine');
+    } catch (err) {
+      toast.error(`Erreur mise a jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   const openSnoozeModal = (rem: Reminder) => {
@@ -82,21 +97,25 @@ export default function RemindersPage() {
     setSnoozeNote('');
   };
 
-  const executeSnooze = () => {
+  const executeSnooze = async () => {
     if (!snoozeTarget || !snoozeDate) return;
     const newMessage = snoozeNote
       ? `${snoozeTarget.message}\n[Reporte] ${snoozeNote}`
       : snoozeTarget.message;
-    dispatch({
-      type: 'UPDATE_REMINDER',
-      payload: {
-        ...snoozeTarget,
-        date: snoozeDate,
-        message: newMessage,
-        statut: 'actif' as ReminderStatus,
-      },
-    });
-    setSnoozeTarget(null);
+    const payload = {
+      ...snoozeTarget,
+      date: snoozeDate,
+      message: newMessage,
+      statut: 'actif' as ReminderStatus,
+    };
+    try {
+      await apiPut(`/reminders/${snoozeTarget.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel reporte');
+      setSnoozeTarget(null);
+    } catch (err) {
+      toast.error(`Erreur report rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   const snoozeQuickOptions = [
@@ -112,8 +131,14 @@ export default function RemindersPage() {
     setSnoozeDate(toLocalDateStr(date));
   };
 
-  const deleteReminder = (id: string) => {
-    dispatch({ type: 'DELETE_REMINDER', payload: id });
+  const deleteReminder = async (id: string) => {
+    try {
+      await apiDelete(`/reminders/${id}`);
+      dispatchLocal({ type: 'DELETE_REMINDER', payload: id });
+      toast.success('Rappel supprime');
+    } catch (err) {
+      toast.error(`Erreur suppression rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   const openEditModal = (rem: Reminder) => {
@@ -121,20 +146,28 @@ export default function RemindersPage() {
     setEditForm({ date: rem.date, heure: rem.heure, message: rem.message });
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editTarget || !editForm.date) return;
-    dispatch({
-      type: 'UPDATE_REMINDER',
-      payload: { ...editTarget, date: editForm.date, heure: editForm.heure, message: editForm.message },
-    });
-    setEditTarget(null);
+    const payload = { ...editTarget, date: editForm.date, heure: editForm.heure, message: editForm.message };
+    try {
+      await apiPut(`/reminders/${editTarget.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel modifie');
+      setEditTarget(null);
+    } catch (err) {
+      toast.error(`Erreur modification rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
-  const reactivateReminder = (rem: Reminder) => {
-    dispatch({
-      type: 'UPDATE_REMINDER',
-      payload: { ...rem, statut: 'actif' as ReminderStatus },
-    });
+  const reactivateReminder = async (rem: Reminder) => {
+    const payload = { ...rem, statut: 'actif' as ReminderStatus };
+    try {
+      await apiPut(`/reminders/${rem.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel reactive');
+    } catch (err) {
+      toast.error(`Erreur reactivation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   // Quick reminder options

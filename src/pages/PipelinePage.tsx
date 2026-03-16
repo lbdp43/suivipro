@@ -3,13 +3,14 @@ import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, 
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
+import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const { startCall } = useCallModal();
   const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -146,11 +147,17 @@ export default function PipelinePage() {
     setDragOverColumn(null);
   };
 
-  const handleDrop = (e: DragEvent, stageId: string) => {
+  const handleDrop = async (e: DragEvent, stageId: string) => {
     e.preventDefault();
     const prospectId = e.dataTransfer.getData('text/plain');
     if (prospectId) {
-      dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
+      try {
+        const date_modification = new Date().toISOString();
+        await apiPatch(`/prospects/${prospectId}/stage`, { etape_pipeline: stageId, date_modification });
+        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
+      } catch {
+        toast.error('Erreur lors du deplacement du prospect');
+      }
     }
     setDraggedId(null);
     setDragOverColumn(null);
@@ -167,16 +174,19 @@ export default function PipelinePage() {
     setEditColor(col.color);
   };
 
-  const saveEditColumn = () => {
+  const saveEditColumn = async () => {
     if (!editingColumn || !editLabel.trim()) return;
-    dispatch({
-      type: 'UPDATE_PIPELINE_COLUMN',
-      payload: { ...editingColumn, label: editLabel.trim(), color: editColor },
-    });
-    setEditingColumn(null);
+    const updated = { ...editingColumn, label: editLabel.trim(), color: editColor };
+    try {
+      await apiPut(`/pipeline-columns/${editingColumn.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_PIPELINE_COLUMN', payload: updated });
+      setEditingColumn(null);
+    } catch {
+      toast.error('Erreur lors de la mise a jour de l\'etape');
+    }
   };
 
-  const deleteColumn = (col: PipelineColumn) => {
+  const deleteColumn = async (col: PipelineColumn) => {
     if (columns.length <= 1) {
       toast.warning('Impossible de supprimer la derniere etape.');
       return;
@@ -187,38 +197,56 @@ export default function PipelinePage() {
       ? `Supprimer l'etape "${col.label}" ?\n\n${count} prospect(s) seront deplaces vers "${firstOther?.label}".`
       : `Supprimer l'etape "${col.label}" ?`;
     if (confirm(msg)) {
-      dispatch({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });
+      try {
+        await apiDelete(`/pipeline-columns/${col.id}`);
+        dispatchLocal({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });
+      } catch {
+        toast.error('Erreur lors de la suppression de l\'etape');
+      }
     }
   };
 
-  const addColumn = () => {
+  const addColumn = async () => {
     if (!newLabel.trim()) return;
     const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (columns.some(c => c.id === id)) {
       toast.warning('Une etape avec cet identifiant existe deja');
       return;
     }
-    dispatch({
-      type: 'ADD_PIPELINE_COLUMN',
-      payload: { id: id as PipelineStage, label: newLabel.trim(), color: newColor },
-    });
-    setNewLabel('');
-    setNewColor('#6b7280');
-    setShowAddForm(false);
+    const newCol = { id: id as PipelineStage, label: newLabel.trim(), color: newColor };
+    try {
+      await apiPost('/pipeline-columns', newCol);
+      dispatchLocal({ type: 'ADD_PIPELINE_COLUMN', payload: newCol });
+      setNewLabel('');
+      setNewColor('#6b7280');
+      setShowAddForm(false);
+    } catch {
+      toast.error('Erreur lors de l\'ajout de l\'etape');
+    }
   };
 
-  const moveColumnUp = (index: number) => {
+  const moveColumnUp = async (index: number) => {
     if (index <= 0) return;
     const newColumns = [...columns];
     [newColumns[index - 1], newColumns[index]] = [newColumns[index], newColumns[index - 1]];
-    dispatch({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+    try {
+      await apiPut('/pipeline-columns-reorder', { order: newColumns.map((c, i) => ({ id: c.id, sort_order: i })) });
+      dispatchLocal({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+    } catch {
+      toast.error('Erreur lors du reordonnancement des etapes');
+    }
   };
 
-  const moveColumnDown = (index: number) => {
+  const moveColumnDown = async (index: number) => {
     if (index >= columns.length - 1) return;
     const newColumns = [...columns];
     [newColumns[index], newColumns[index + 1]] = [newColumns[index + 1], newColumns[index]];
-    dispatch({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+    try {
+      await apiPut('/pipeline-columns-reorder', { order: newColumns.map((c, i) => ({ id: c.id, sort_order: i })) });
+      dispatchLocal({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+    } catch {
+      toast.error('Erreur lors du reordonnancement des etapes');
+    }
   };
 
   const presetColors = [

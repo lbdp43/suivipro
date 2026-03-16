@@ -6,7 +6,9 @@ import {
   ChevronLeft, ChevronRight, Users, X, Check, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
+import { apiPut } from '../api/client';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -46,7 +48,8 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
 const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam', 0: 'Dim' };
 
 export default function MapPage() {
-  const { state, dispatch, getProspect } = useApp();
+  const { state, dispatch, dispatchLocal, getProspect } = useApp();
+  const toast = useToast();
   const { startCall } = useCallModal();
   const [selectedTypes, setSelectedTypes] = usePersistedState<EstablishmentType[]>('map_types', []);
   const [selectedStages, setSelectedStages] = usePersistedState<PipelineStage[]>('map_stages', []);
@@ -753,7 +756,15 @@ export default function MapPage() {
                                   {rdv.statut === 'planifie' && (
                                     <button
                                       className="p-1.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
-                                      onClick={() => dispatch({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, statut: 'confirme' } })}
+                                      onClick={async () => {
+                                        try {
+                                          const updated = { ...rdv, statut: 'confirme' as const };
+                                          await apiPut(`/appointments/${rdv.id}`, updated);
+                                          dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+                                        } catch (err) {
+                                          toast.error('Erreur lors de la confirmation du RDV');
+                                        }
+                                      }}
                                       title="Confirmer"
                                     >
                                       <Check className="w-3 h-3" />

@@ -7,11 +7,14 @@ import {
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
+import { apiPut, apiDelete } from '../api/client';
 import { Call, CallResult, CALL_RESULT_LABELS } from '../types';
 import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 
 export default function CallsPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterResult, setFilterResult] = useState<CallResult | ''>('');
   const [editingCall, setEditingCall] = useState<Call | null>(null);
@@ -68,18 +71,28 @@ export default function CallsPage() {
     setEditForm({ resultat: call.resultat, notes: call.notes, duree: call.duree });
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingCall) return;
-    dispatch({
-      type: 'UPDATE_CALL',
-      payload: { ...editingCall, resultat: editForm.resultat, notes: editForm.notes, duree: editForm.duree },
-    });
-    setEditingCall(null);
+    const payload = { ...editingCall, resultat: editForm.resultat, notes: editForm.notes, duree: editForm.duree };
+    try {
+      await apiPut(`/calls/${editingCall.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_CALL', payload });
+      toast.success('Appel mis a jour');
+      setEditingCall(null);
+    } catch (err: unknown) {
+      toast.error(`Erreur mise a jour appel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
-  const deleteCall = (id: string) => {
+  const deleteCall = async (id: string) => {
     if (confirm('Supprimer cet appel ?')) {
-      dispatch({ type: 'DELETE_CALL', payload: id });
+      try {
+        await apiDelete(`/calls/${id}`);
+        dispatchLocal({ type: 'DELETE_CALL', payload: id });
+        toast.success('Appel supprime');
+      } catch (err: unknown) {
+        toast.error(`Erreur suppression appel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      }
     }
   };
 
