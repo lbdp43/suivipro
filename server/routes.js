@@ -2494,29 +2494,63 @@ router.post('/clients/geocode-missing', authMiddleware, asyncHandler(async (req,
 
 // Import clients from Excel (bulk)
 router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => {
-  const { clients } = req.body;
+  const { clients, newCommerciaux } = req.body;
   if (!Array.isArray(clients) || clients.length === 0) {
     return res.status(400).json({ error: 'Liste de clients requise' });
   }
 
-  let imported = 0;
-  for (const c of clients) {
-    const now = new Date().toISOString();
-    const clientType = c.type_client || 'BAR_RESTAURANT_GENERAL';
-    const nextVisit = await calculateNextVisit(clientType, c.custom_recurrence || null, null);
-    await db.query(
-      `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
-       type_client, statut, commercial_id, next_visit, notes, custom_recurrence, tournee, siret,
-       latitude, longitude, date_creation, date_modification)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-      [c.id, c.nom, c.ville || '', c.adresse || '', c.code_postal || '',
-       c.telephone || '', c.telephone_mobile || '', c.email || '', c.contact || '',
-       clientType, 'ACTIF', c.commercial_id, nextVisit || null, c.notes || '',
-       c.custom_recurrence || null, c.tournee || '', c.siret || '', c.latitude || 0, c.longitude || 0, now, now]
-    );
-    imported++;
+  const commerciauxCreated = [];
+
+  // Auto-create missing commercials if provided (admin only)
+  if (isAdmin(req) && Array.isArray(newCommerciaux) && newCommerciaux.length > 0) {
+    for (const nc of newCommerciaux) {
+      try {
+        // Check if email already exists
+        const existing = await db.query('SELECT id FROM commerciaux WHERE LOWER(email) = LOWER($1)', [nc.email]);
+        if (existing.rows.length > 0) continue;
+
+        const hashedPwd = bcrypt.hashSync(nc.password || 'Changeme1', 10);
+        const comId = nc.id || `com-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        await db.query(
+          'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+          [comId, nc.prenom || '', nc.nom || '', nc.email, nc.telephone || '', nc.role || 'commercial', hashedPwd, JSON.stringify(nc.objectifs || {})]
+        );
+        commerciauxCreated.push({ id: comId, email: nc.email, prenom: nc.prenom || '', nom: nc.nom || '' });
+      } catch (err) {
+        console.error('Error creating commercial:', nc.email, err.message);
+      }
+    }
   }
-  res.json({ ok: true, imported });
+
+  let imported = 0;
+  let skipped = 0;
+  const importErrors = [];
+
+  for (const c of clients) {
+    try {
+      const now = new Date().toISOString();
+      const clientType = c.type_client || 'BAR_RESTAURANT_GENERAL';
+      const nextVisit = await calculateNextVisit(clientType, c.custom_recurrence || null, null);
+      await db.query(
+        `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
+         type_client, statut, commercial_id, next_visit, last_visit, notes, custom_recurrence, tournee, siret,
+         latitude, longitude, date_creation, date_modification)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+        [c.id, c.nom, c.ville || '', c.adresse || '', c.code_postal || '',
+         c.telephone || '', c.telephone_mobile || '', c.email || '', c.contact || '',
+         clientType, 'ACTIF', c.commercial_id, nextVisit || null, c.last_visit || null, c.notes || '',
+         c.custom_recurrence || null, c.tournee || '', c.siret || '', c.latitude || 0, c.longitude || 0, now, now]
+      );
+      imported++;
+    } catch (err) {
+      if (err.code === '23505') {
+        skipped++;
+      } else {
+        importErrors.push(`${c.nom}: ${err.message}`);
+      }
+    }
+  }
+  res.json({ ok: true, imported, skipped, commerciauxCreated, errors: importErrors });
 }));
 
 // ============================================

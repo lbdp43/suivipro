@@ -52,7 +52,8 @@ type Action =
   | { type: 'UPDATE_TASK_CLIENT'; payload: TaskClient }
   | { type: 'DELETE_TASK_CLIENT'; payload: string }
   | { type: 'SAVE_TOURNEE_CONFIG'; payload: TourneeConfig }
-  | { type: 'SET_COMMANDES'; payload: Commande[] };
+  | { type: 'SET_COMMANDES'; payload: Commande[] }
+  | { type: 'IMPORT_CLIENTS'; payload: Client[] };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -149,6 +150,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, clients: state.clients.map(c => c.id === action.payload.id ? action.payload : c) };
     case 'DELETE_CLIENT':
       return { ...state, clients: state.clients.filter(c => c.id !== action.payload) };
+    case 'IMPORT_CLIENTS':
+      return { ...state, clients: [...state.clients, ...action.payload] };
     // Interactions
     case 'ADD_INTERACTION': {
       const newInteractions = [action.payload, ...state.interactions];
