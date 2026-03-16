@@ -74,8 +74,8 @@ const sections: GuideSection[] = [
         ],
       },
       {
-        subtitle: 'Notifications et Hub',
-        text: 'La **cloche** en haut a droite affiche vos notifications non lues. Le bouton **Hub** ouvre le panneau de communication interne pour echanger avec votre equipe en temps reel.',
+        subtitle: 'Notifications',
+        text: 'La **cloche** en haut a droite affiche vos notifications non lues.',
       },
     ],
   },

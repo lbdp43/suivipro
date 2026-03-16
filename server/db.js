@@ -18,11 +18,10 @@ try {
   console.log('DATABASE_URL is set but could not be parsed as URL');
 }
 
+const isLocal = process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('127.0.0.1');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost')
-    ? false
-    : { rejectUnauthorized: false },
+  ssl: isLocal ? false : { rejectUnauthorized: process.env.NODE_ENV === 'production' },
 });
 
 // ============================================
@@ -411,13 +410,6 @@ async function initDatabase(attempt = 1) {
     // ============================================
     // Migrations for existing databases
     // ============================================
-    // Hub per-user credentials
-    try {
-      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS hub_email TEXT DEFAULT ''");
-    } catch { /* column may already exist */ }
-    try {
-      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS hub_password TEXT DEFAULT ''");
-    } catch { /* column may already exist */ }
 
     try {
       await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS compte_rendu TEXT DEFAULT \'\'');
@@ -610,6 +602,16 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT DEFAULT ''"); } catch { /* */ }
     // Create index for fast SIRET lookup
     try { await client.query("CREATE INDEX IF NOT EXISTS idx_prospects_siret ON prospects(siret) WHERE siret != ''"); } catch { /* */ }
+
+    // Performance indexes for frequent queries
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_prospects_commercial_id ON prospects(commercial_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_calls_prospect_id ON calls(prospect_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_appointments_prospect_id ON appointments(prospect_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_reminders_prospect_id ON reminders(prospect_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_clients_commercial_id ON clients(commercial_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_interactions_client_id ON interactions(client_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_commandes_client_id ON commandes(client_id)"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_tournee_config_commercial_id ON tournee_config(commercial_id)"); } catch { /* */ }
 
     // Migration: add latitude/longitude to sirene_etablissements (may have been created without them)
     try { await client.query("ALTER TABLE sirene_etablissements ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION"); } catch { /* */ }

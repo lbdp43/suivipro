@@ -493,24 +493,6 @@ export default function ProspectsPage() {
   const prospectRdv = selectedProspect ? getAppointmentsForProspect(selectedProspect.id) : [];
   const prospectReminders = selectedProspect ? getRemindersForProspect(selectedProspect.id) : [];
 
-  // Send prospect context to Hub Claude iframe when a prospect is selected
-  useEffect(() => {
-    if (!selectedProspect) return;
-    window.dispatchEvent(new CustomEvent('hub:prospect-context', {
-      detail: {
-        id: selectedProspect.id,
-        nom: selectedProspect.nom_etablissement,
-        nom_etablissement: selectedProspect.nom_etablissement,
-        type_etablissement: selectedProspect.type_etablissement,
-        email: selectedProspect.email,
-        telephone: selectedProspect.telephone,
-        statut: selectedProspect.etape_pipeline,
-        notes: selectedProspect.notes,
-        ville: selectedProspect.ville,
-        commercial_id: selectedProspect.commercial_id,
-      },
-    }));
-  }, [selectedProspect?.id]);
 
   const [formData, setFormData] = useState<Partial<Prospect>>({});
 

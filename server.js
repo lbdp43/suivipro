@@ -9,8 +9,6 @@ import cron from 'node-cron';
 import { dbReady } from './server/db.js';
 import apiRoutes, { runZoneSync } from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
-// hub-bridge is already mounted inside routes.js via router.use(hubBridgeRouter)
-// import hubBridgeRoutes from './server/hub-bridge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
@@ -21,13 +19,6 @@ const app = express();
 // Trust Railway's reverse proxy (fixes X-Forwarded-For / rate-limit)
 app.set('trust proxy', 1);
 
-// Hub URLs for CSP (strip trailing slash)
-const HUB_API_URL = process.env.HUB_API_URL || process.env.VITE_HUB_API_URL || '';
-const HUB_FRONTEND_URL = process.env.VITE_HUB_FRONTEND_URL || '';
-const hubOrigins = [HUB_API_URL, HUB_FRONTEND_URL]
-  .map(u => { try { return new URL(u).origin; } catch { return ''; } })
-  .filter(Boolean);
-
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
@@ -36,9 +27,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
       imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
-      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr", ...hubOrigins],
+      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr"],
       fontSrc: ["'self'"],
-      frameSrc: ["'self'", ...hubOrigins],
+      frameSrc: ["'self'"],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -68,13 +59,28 @@ app.use('/api/auth/login', rateLimit({
   message: { error: 'Trop de tentatives de connexion, reessayez dans 15 minutes' },
 }));
 
+// Rate limiting sur les webhooks et imports
+app.use('/api/webhook', rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de webhooks, reessayez dans une minute' },
+}));
+app.use('/api/prospects/import', rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop d\'imports, reessayez dans une minute' },
+}));
+
 // Body parser — 10mb pour les uploads de documents
 app.use(express.json({ limit: '10mb' }));
 
 // API routes
 app.use('/api', apiRoutes);
 app.use('/api', googleCalendarRoutes);
-// hubBridgeRoutes already mounted via apiRoutes (routes.js line 868)
 
 // Serve static files from dist (production)
 if (existsSync(DIST)) {

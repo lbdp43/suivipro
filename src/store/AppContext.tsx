@@ -347,6 +347,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const token = getToken();
     if (!token || loading) return;
 
+    let consecutiveErrors = 0;
     const poll = async () => {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() < pollPausedUntilRef.current) return;
@@ -360,8 +361,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
           },
         });
-      } catch {
-        // Silently ignore polling errors
+        consecutiveErrors = 0;
+      } catch (err) {
+        consecutiveErrors++;
+        console.error(`[Polling] Erreur #${consecutiveErrors}:`, err);
+        if (consecutiveErrors === 3) {
+          console.warn('[Polling] 3 erreurs consecutives - connexion serveur perdue');
+        }
       }
     };
 

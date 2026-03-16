@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { createWorker } from 'tesseract.js';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
-import hubBridgeRouter from './hub-bridge.js';
+
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -157,7 +157,7 @@ function parseProspect(p) {
 
 function parseCommercial(c) {
   if (!c) return c;
-  const { password: _, ...u } = c;
+  const { password: _, hub_password: __, hub_email: ___, ...u } = c;
   return { ...u, objectifs: JSON.parse(u.objectifs || '{}') };
 }
 
@@ -671,15 +671,32 @@ router.get('/documents', authMiddleware, asyncHandler(async (req, res) => {
   res.json(result.rows);
 }));
 
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  'text/plain', 'text/csv',
+]);
+const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024; // 5MB
+
 router.post('/documents', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { id, nom, categorie, description, nom_fichier, type_mime, taille, contenu } = req.body;
   if (!nom || !nom_fichier || !contenu) {
     return res.status(400).json({ error: 'nom, nom_fichier et contenu sont requis' });
   }
+  if (type_mime && !ALLOWED_MIME_TYPES.has(type_mime)) {
+    return res.status(400).json({ error: `Type de fichier non autorise: ${type_mime}` });
+  }
+  if (taille && taille > MAX_DOCUMENT_SIZE) {
+    return res.status(400).json({ error: 'Fichier trop volumineux (max 5 Mo)' });
+  }
   await db.query(
     `INSERT INTO documents (id, nom, categorie, description, nom_fichier, type_mime, taille, contenu, uploaded_by, date_creation)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id, nom, categorie || 'autre', description || '', nom_fichier, type_mime || 'application/octet-stream', taille || 0, contenu, req.user.id, new Date().toISOString()]
+    [id, nom, categorie || 'autre', description || '', nom_fichier, type_mime || 'application/pdf', taille || 0, contenu, req.user.id, new Date().toISOString()]
   );
   res.json({ ok: true });
 }));
@@ -690,9 +707,11 @@ router.get('/documents/:id/download', authMiddleware, asyncHandler(async (req, r
   if (!doc) return res.status(404).json({ error: 'Document non trouve' });
 
   const buffer = Buffer.from(doc.contenu, 'base64');
-  res.setHeader('Content-Type', doc.type_mime);
-  res.setHeader('Content-Disposition', `attachment; filename="${doc.nom_fichier}"`);
+  const safeName = doc.nom_fichier.replace(/[^a-zA-Z0-9._-]/g, '_');
+  res.setHeader('Content-Type', doc.type_mime || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
   res.setHeader('Content-Length', buffer.length);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
 }));
 
@@ -811,154 +830,6 @@ router.post('/ocr-prospect', authMiddleware, asyncHandler(async (req, res) => {
   }
 }));
 
-// ============================================
-// Hub LBDP proxy — per-user credentials
-// ============================================
-
-// Per-user Hub token cache: { [userId]: { token, expiry } }
-const hubTokenCacheByUser = {};
-
-// Login to Hub with given credentials, return token
-async function hubLogin(email, password) {
-  const HUB_API_URL = process.env.HUB_API_URL;
-  if (!HUB_API_URL) throw new Error('HUB_API_URL non configure');
-
-  const hubRes = await fetch(`${HUB_API_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (!hubRes.ok) {
-    const msg = hubRes.status === 401 ? 'Identifiants Hub incorrects' : `Hub login failed (${hubRes.status})`;
-    throw new Error(msg);
-  }
-
-  const data = await hubRes.json();
-  return data.token;
-}
-
-// Get a Hub token for the current user (with cache)
-async function getHubTokenForUser(userId) {
-  const cached = hubTokenCacheByUser[userId];
-  if (cached && Date.now() < cached.expiry - 60_000) {
-    return cached.token;
-  }
-
-  // Fetch user's Hub credentials from DB
-  const result = await db.query('SELECT hub_email, hub_password FROM commerciaux WHERE id = $1', [userId]);
-  if (result.rows.length === 0) throw new Error('Utilisateur introuvable');
-
-  const { hub_email, hub_password } = result.rows[0];
-  if (!hub_email || !hub_password) {
-    throw new Error('HUB_NOT_CONFIGURED');
-  }
-
-  const decryptedPassword = decrypt(hub_password);
-  const token = await hubLogin(hub_email, decryptedPassword);
-
-  hubTokenCacheByUser[userId] = {
-    token,
-    expiry: Date.now() + 23 * 60 * 60 * 1000,
-  };
-
-  return token;
-}
-
-// Get Hub token for the authenticated user
-router.get('/hub/token', authMiddleware, async (req, res) => {
-  if (!process.env.HUB_API_URL) {
-    return res.status(503).json({ error: 'HUB_API_URL non configure' });
-  }
-
-  try {
-    const token = await getHubTokenForUser(req.user.id);
-    res.json({ token });
-  } catch (err) {
-    if (err.message === 'HUB_NOT_CONFIGURED') {
-      return res.status(404).json({ error: 'hub_not_configured', message: 'Identifiants Hub non configures' });
-    }
-    console.error('Hub token proxy error:', err.message);
-    res.status(502).json({ error: err.message || 'Impossible de contacter le Hub' });
-  }
-});
-
-// Check if user has Hub credentials configured
-router.get('/hub/status', authMiddleware, async (req, res) => {
-  try {
-    const result = await db.query('SELECT hub_email FROM commerciaux WHERE id = $1', [req.user.id]);
-    const configured = !!(result.rows[0]?.hub_email);
-    res.json({ configured, hub_email: result.rows[0]?.hub_email || '' });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Save Hub credentials for the authenticated user
-router.post('/hub/credentials', authMiddleware, async (req, res) => {
-  const { hub_email, hub_password } = req.body;
-
-  if (!hub_email || !hub_password) {
-    return res.status(400).json({ error: 'Email et mot de passe Hub requis' });
-  }
-
-  if (!process.env.HUB_API_URL) {
-    return res.status(503).json({ error: 'HUB_API_URL non configure' });
-  }
-
-  try {
-    // Verify credentials work before saving
-    await hubLogin(hub_email, hub_password);
-
-    // Encrypt password and save
-    const encryptedPassword = encrypt(hub_password);
-    await db.query(
-      'UPDATE commerciaux SET hub_email = $1, hub_password = $2 WHERE id = $3',
-      [hub_email, encryptedPassword, req.user.id]
-    );
-
-    // Clear cache to use new credentials
-    delete hubTokenCacheByUser[req.user.id];
-
-    res.json({ success: true, message: 'Identifiants Hub enregistres' });
-  } catch (err) {
-    console.error('Hub credentials save error:', err.message);
-    res.status(400).json({ error: err.message || 'Identifiants Hub invalides' });
-  }
-});
-
-// List Hub channels for the authenticated user
-router.get('/hub/channels', authMiddleware, async (req, res) => {
-  if (!process.env.HUB_API_URL) {
-    return res.status(503).json({ error: 'HUB_API_URL non configure' });
-  }
-
-  try {
-    const token = await getHubTokenForUser(req.user.id);
-    const HUB_API_URL = process.env.HUB_API_URL;
-
-    const hubRes = await fetch(`${HUB_API_URL}/channels`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!hubRes.ok) {
-      const text = await hubRes.text();
-      console.error('Hub channels error:', hubRes.status, text);
-      return res.status(hubRes.status).json({ error: 'Impossible de recuperer les canaux' });
-    }
-
-    const data = await hubRes.json();
-    // Normalize: accept both array and { channels: [] }
-    const channels = Array.isArray(data) ? data : (data.channels || data.data || []);
-    res.json({ channels });
-  } catch (err) {
-    if (err.message === 'HUB_NOT_CONFIGURED') {
-      return res.status(404).json({ error: 'hub_not_configured' });
-    }
-    console.error('Hub channels proxy error:', err.message);
-    res.status(502).json({ error: 'Impossible de contacter le Hub' });
-  }
-});
 
 // ============================================
 // Clients (CRM) CRUD
@@ -1276,7 +1147,7 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
     return res.json({ ok: false, message: 'Configuration EasyBeer incomplete', commandes: [] });
   }
 
-  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
@@ -1949,7 +1820,7 @@ async function handleEasyBeerWebhook(req, res) {
   if (isCommande && id && config?.username && config?.api_url) {
     setTimeout(async () => {
       try {
-        const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+        const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
         const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
         const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
@@ -2232,7 +2103,7 @@ async function handleEasyBeerWebhook(req, res) {
   if (id && config?.username && config?.api_url) {
     setTimeout(async () => {
       try {
-        const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+        const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
         const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
         const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
@@ -2368,6 +2239,8 @@ router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) =>
   if (password === '***') {
     const existing = await db.query('SELECT password FROM easybeer_config WHERE id = 1');
     finalPassword = existing.rows.length > 0 ? existing.rows[0].password : '';
+  } else if (finalPassword) {
+    finalPassword = encrypt(finalPassword);
   }
   await db.query(
     `INSERT INTO easybeer_config (id, username, password, api_url, webhook_secret, updated_at)
@@ -2383,7 +2256,7 @@ router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req
   // If password is masked, retrieve the real one from DB
   if (password === '***') {
     const existing = await db.query('SELECT password FROM easybeer_config WHERE id = 1');
-    password = existing.rows.length > 0 ? existing.rows[0].password : '';
+    password = existing.rows.length > 0 ? decrypt(existing.rows[0].password) : '';
   }
   const baseUrl = (api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
@@ -2527,7 +2400,7 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
     return res.json({ ok: false, message: 'Configuration EasyBeer incomplete' });
   }
 
-  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64');
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
@@ -4673,8 +4546,7 @@ router.get('/sirene/stats', authMiddleware, adminOnly, asyncHandler(async (req, 
   });
 }));
 
-// Mount Hub Bridge (HTTP API for Hub backend → SuiviPro data)
-router.use(hubBridgeRouter);
+
 
 // Exported function for CRON scheduler - iterates all active configs
 export async function runZoneSync() {

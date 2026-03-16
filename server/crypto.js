@@ -4,12 +4,20 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
+let encryptionWarningLogged = false;
 function getKey() {
   const key = process.env.ENCRYPTION_KEY;
-  if (!key) return null;
+  if (!key) {
+    if (!encryptionWarningLogged) {
+      console.warn('[SECURITY WARNING] ENCRYPTION_KEY non definie - les donnees sensibles seront stockees en clair. Definissez ENCRYPTION_KEY (64 hex chars) en production.');
+      encryptionWarningLogged = true;
+    }
+    return null;
+  }
   // Accept hex key (64 chars = 32 bytes) or raw 32-byte string
   if (key.length === 64) return Buffer.from(key, 'hex');
   if (key.length === 32) return Buffer.from(key, 'utf8');
+  console.warn('[SECURITY WARNING] ENCRYPTION_KEY invalide - doit etre 64 hex chars ou 32 bytes');
   return null;
 }
 
