@@ -100,6 +100,7 @@ export default function Layout() {
     const navItems_all = [
       { to: '/prospects', children: ['/pipeline', '/appels'] },
       { to: '/rdv', children: ['/pipeline-cr'] },
+      { to: '/clients', children: ['/clients/planning'] },
       { to: '/compte-rendu', children: ['/tournees'] },
       { to: '/guide', children: ['/documents', '/emails'] },
       { to: '/admin', children: ['/import', '/sirene'] },
@@ -166,7 +167,9 @@ export default function Layout() {
     { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false, children: [
       { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR' },
     ]},
-    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
+    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false, children: [
+      { to: '/clients/planning', icon: Calendar, label: 'Planning semaine' },
+    ]},
     { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false, children: [
       { to: '/tournees', icon: Map, label: 'Tournees' },
     ]},

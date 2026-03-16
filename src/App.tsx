@@ -27,6 +27,7 @@ const CompteRenduPage = lazy(() => import('./pages/CompteRenduPage'));
 const PipelineCRPage = lazy(() => import('./pages/PipelineCRPage'));
 const SirenePage = lazy(() => import('./pages/SirenePage'));
 const AnnuairePage = lazy(() => import('./pages/AnnuairePage'));
+const ClientsPlanningPage = lazy(() => import('./pages/ClientsPlanningPage'));
 
 function PageLoader() {
   return (
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/rappels" element={<RemindersPage />} />
           <Route path="/emails" element={<EmailsPage />} />
           <Route path="/clients" element={<ClientsPage />} />
+          <Route path="/clients/planning" element={<ClientsPlanningPage />} />
           <Route path="/tournees" element={<TourneesPage />} />
           <Route path="/visites" element={<VisitesPage />} />
           <Route path="/compte-rendu" element={<CompteRenduPage />} />
