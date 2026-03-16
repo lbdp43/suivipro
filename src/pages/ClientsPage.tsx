@@ -117,7 +117,7 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'supprimer_visites'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'supprimer_visites' | 'retirer_recurrence'>('none');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkNextVisit, setBulkNextVisit] = useState('');
   const [bulkVisiteComment, setBulkVisiteComment] = useState('');
@@ -215,7 +215,7 @@ export default function ClientsPage() {
     : [];
 
   const getEffectiveFrequency = (typeClient: string, customRecurrence: number | null): number | null => {
-    if (customRecurrence) return customRecurrence;
+    if (customRecurrence !== null && customRecurrence !== undefined) return customRecurrence || null; // 0 means no recurrence
     return frequencyConfig[typeClient] ?? (CLIENT_VISIT_FREQUENCIES as Record<string, number | null>)[typeClient] ?? null;
   };
 
@@ -240,7 +240,7 @@ export default function ClientsPage() {
     // Visite action uses bulkVisiteComment, others use bulkValue
     if (bulkAction === 'visite') {
       if (!bulkVisiteComment.trim()) { toast.error('Le commentaire est obligatoire'); return; }
-    } else if (bulkAction === 'supprimer_visites') {
+    } else if (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') {
       // No value needed
     } else if (!bulkValue.trim() && bulkAction !== 'recurrence') {
       return;
@@ -307,6 +307,45 @@ export default function ClientsPage() {
       }
       if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
       if (count > 0) toast.success(`${count} client(s) : prochaines visites supprimées`);
+      exitSelectionMode();
+      return;
+    }
+
+    if (bulkAction === 'retirer_recurrence') {
+      const clientsAvecRecurrence = Array.from(selectedIds)
+        .map(id => state.clients.find(c => c.id === id))
+        .filter((c): c is Client => !!c && getEffectiveFrequency(c.type_client, c.custom_recurrence) !== null);
+
+      const clientsSansRecurrence = Array.from(selectedIds)
+        .map(id => state.clients.find(c => c.id === id))
+        .filter((c): c is Client => !!c && getEffectiveFrequency(c.type_client, c.custom_recurrence) === null && !!c.next_visit);
+
+      const totalToUpdate = clientsAvecRecurrence.length + clientsSansRecurrence.length;
+
+      if (totalToUpdate === 0) {
+        toast.error('Aucun client à modifier dans la sélection');
+        return;
+      }
+
+      const msg = `Retirer la récurrence et supprimer les prochaines visites de ${totalToUpdate} client(s) ?\n\n` +
+        (clientsAvecRecurrence.length > 0 ? `- ${clientsAvecRecurrence.length} client(s) : récurrence retirée + visite supprimée\n` : '') +
+        (clientsSansRecurrence.length > 0 ? `- ${clientsSansRecurrence.length} client(s) sans récurrence : visite supprimée` : '');
+
+      if (!confirm(msg)) return;
+
+      const allClientsToUpdate = [...clientsAvecRecurrence, ...clientsSansRecurrence];
+      for (const client of allClientsToUpdate) {
+        const updated: Client = { ...client, next_visit: null, custom_recurrence: 0, date_modification: now };
+        try {
+          await apiPut(`/clients/${client.id}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+          count++;
+        } catch {
+          errors++;
+        }
+      }
+      if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
+      if (count > 0) toast.success(`${count} client(s) : récurrence retirée et visites supprimées`);
       exitSelectionMode();
       return;
     }
@@ -1075,6 +1114,7 @@ export default function ClientsPage() {
               <option value="statut">Changer le statut</option>
               <option value="next_visit">Definir date de visite</option>
               <option value="recurrence">Recurrence + prochaine visite</option>
+              <option value="retirer_recurrence">Retirer récurrence + supprimer visites</option>
               <option value="supprimer_visites">Supprimer visites (sans récurrence)</option>
             </select>
 
@@ -1157,6 +1197,17 @@ export default function ClientsPage() {
               </div>
             )}
 
+            {bulkAction === 'retirer_recurrence' && (
+              <span className="text-xs text-gray-500 italic">
+                Retire la récurrence et supprime les prochaines visites de tous les clients sélectionnés ({
+                  Array.from(selectedIds).filter(id => {
+                    const c = state.clients.find(cl => cl.id === id);
+                    return c && (getEffectiveFrequency(c.type_client, c.custom_recurrence) !== null || c.next_visit);
+                  }).length
+                } client(s) à modifier sur {selectedIds.size})
+              </span>
+            )}
+
             {bulkAction === 'supprimer_visites' && (
               <span className="text-xs text-gray-500 italic">
                 Supprime next_visit des clients sélectionnés qui n'ont pas de récurrence ({
@@ -1171,10 +1222,10 @@ export default function ClientsPage() {
             {bulkAction !== 'none' && (
               <button
                 onClick={applyBulkAction}
-                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : bulkAction === 'supprimer_visites' ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
+                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
                 className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
               >
-                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : 'Appliquer'}
+                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
               </button>
             )}
             <button

@@ -968,6 +968,8 @@ const CLIENT_VISIT_FREQUENCIES = {
 };
 
 async function calculateNextVisit(typeClient, customRecurrence, lastVisitStr) {
+  // customRecurrence === 0 means "no recurrence" explicitly
+  if (customRecurrence === 0) return null;
   let frequency = customRecurrence;
   if (!frequency) {
     // Check DB config first, then fallback to hardcoded
@@ -1025,7 +1027,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
     [clientId, c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
      c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
      c.statut || 'ACTIF', commercialId, nextVisit || null, c.last_visit || null,
-     c.notes || '', c.custom_recurrence || null, c.latitude || 0, c.longitude || 0,
+     c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
      c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
   );
   const created = await db.query('SELECT * FROM clients WHERE id = $1', [clientId]);
@@ -1049,7 +1051,7 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
     [c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
      c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
      c.statut || 'ACTIF', c.commercial_id || req.user.id, c.next_visit || null, c.last_visit || null,
-     c.notes || '', c.custom_recurrence || null, c.latitude || 0, c.longitude || 0,
+     c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
      c.siret || '', c.tournee || '', c.date_modification || now, req.params.id]
   );
   res.json({ ok: true });
