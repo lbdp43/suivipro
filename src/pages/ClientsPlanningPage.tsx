@@ -23,22 +23,44 @@ export default function ClientsPlanningPage() {
   const location = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Get the scrollable parent (main element from Layout)
+  const getScrollParent = useCallback(() => {
+    if (scrollRef.current) {
+      // Walk up to find the actual scrollable container (main.overflow-auto from Layout)
+      let el: HTMLElement | null = scrollRef.current;
+      while (el) {
+        if (el.tagName === 'MAIN' || (el.scrollHeight > el.clientHeight && el.clientHeight > 0)) {
+          return el;
+        }
+        el = el.parentElement;
+      }
+    }
+    return scrollRef.current;
+  }, []);
+
   // Restore scroll position on mount (when coming back from client page)
   useEffect(() => {
     const saved = sessionStorage.getItem('planning_scroll');
-    if (saved && scrollRef.current) {
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo(0, parseInt(saved, 10));
-      });
+    if (saved) {
+      // Wait for DOM to be fully rendered with data
+      const timer = setTimeout(() => {
+        const scrollEl = getScrollParent();
+        if (scrollEl) {
+          scrollEl.scrollTo(0, parseInt(saved, 10));
+        }
+        sessionStorage.removeItem('planning_scroll');
+      }, 150);
+      return () => clearTimeout(timer);
     }
-  }, []);
+  }, [getScrollParent]);
 
   // Save scroll position before navigating away
   const saveScrollPosition = useCallback(() => {
-    if (scrollRef.current) {
-      sessionStorage.setItem('planning_scroll', String(scrollRef.current.scrollTop));
+    const scrollEl = getScrollParent();
+    if (scrollEl) {
+      sessionStorage.setItem('planning_scroll', String(scrollEl.scrollTop));
     }
-  }, []);
+  }, [getScrollParent]);
 
   const [planningWeekOffset, setPlanningWeekOffset] = useState(0);
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
