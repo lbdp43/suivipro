@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X,
+  ClipboardCheck, X, Mail, FileText, Filter,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -54,6 +54,10 @@ export default function ClientsPlanningPage() {
   const [crModalRdv, setCrModalRdv] = useState<Appointment | null>(null);
   const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
   const [crSaving, setCrSaving] = useState<string | null>(null);
+
+  // Results card state
+  const [resultsPeriod, setResultsPeriod] = usePersistedState<'semaine' | 'mois' | 'trimestre' | 'tout'>('planning_results_period', 'semaine');
+  const [expandedResult, setExpandedResult] = useState<string | null>(null);
 
   const openCrModal = (rdv: Appointment) => {
     setCrModalRdv(rdv);
@@ -218,6 +222,92 @@ export default function ClientsPlanningPage() {
     return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal, rdvByDate };
   }, [state.clients, state.appointments, planningWeekOffset, isAdmin, state.currentUser, filterCommercials, tourneeConfigs]);
 
+  // Results card data - filtered by period
+  const resultsData = useMemo(() => {
+    const now = new Date();
+    const todayStr = toLocalDateStr(now);
+    let startDate = '';
+    let endDate = todayStr;
+    let periodLabel = '';
+
+    if (resultsPeriod === 'semaine') {
+      // Use same week as planningData
+      const dayOfWeek = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (planningWeekOffset * 7));
+      monday.setHours(0, 0, 0, 0);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      startDate = toLocalDateStr(monday);
+      endDate = toLocalDateStr(sunday);
+      periodLabel = `Sem. ${monday.getDate()}/${monday.getMonth() + 1} - ${sunday.getDate()}/${sunday.getMonth() + 1}`;
+    } else if (resultsPeriod === 'mois') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      startDate = toLocalDateStr(firstDay);
+      endDate = toLocalDateStr(lastDay);
+      const monthNames = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'];
+      periodLabel = monthNames[now.getMonth()] + ' ' + now.getFullYear();
+    } else if (resultsPeriod === 'trimestre') {
+      const quarter = Math.floor(now.getMonth() / 3);
+      const firstDay = new Date(now.getFullYear(), quarter * 3, 1);
+      const lastDay = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+      startDate = toLocalDateStr(firstDay);
+      endDate = toLocalDateStr(lastDay);
+      periodLabel = `T${quarter + 1} ${now.getFullYear()}`;
+    } else {
+      // tout
+      startDate = '2000-01-01';
+      endDate = '2099-12-31';
+      periodLabel = 'Totalite';
+    }
+
+    const targetCommercialId = filterCommercials.size === 1 ? Array.from(filterCommercials)[0] : (!isAdmin && state.currentUser ? state.currentUser.id : '');
+
+    const filteredAppointments = state.appointments.filter(rdv => {
+      if (rdv.statut === 'annule') return false;
+      const rdvDate = rdv.date.split('T')[0];
+      if (rdvDate < startDate || rdvDate > endDate) return false;
+      if (targetCommercialId && rdv.commercial_id !== targetCommercialId) return false;
+      if (!targetCommercialId && !isAdmin && state.currentUser && rdv.commercial_id !== state.currentUser.id) return false;
+      return true;
+    });
+
+    const resultCounts: Record<string, number> = {};
+    let rdvWithCR = 0;
+    filteredAppointments.forEach(a => {
+      if (a.compte_rendu) {
+        resultCounts[a.compte_rendu] = (resultCounts[a.compte_rendu] || 0) + 1;
+        rdvWithCR++;
+      }
+    });
+    // Add "sans_cr" for past appointments without CR
+    const sansCr = filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayStr).length;
+    if (sansCr > 0) {
+      resultCounts.sans_cr = sansCr;
+    }
+
+    return { resultCounts, filteredAppointments, totalRdv: filteredAppointments.length, rdvWithCR, periodLabel, startDate, endDate };
+  }, [state.appointments, resultsPeriod, planningWeekOffset, filterCommercials, isAdmin, state.currentUser]);
+
+  const getResultEntityName = (rdv: Appointment) => {
+    if (rdv.client_id) {
+      const c = state.clients.find((cl: Client) => cl.id === rdv.client_id);
+      return c?.nom || 'Client inconnu';
+    }
+    const p = state.prospects.find((pr: any) => pr.id === rdv.prospect_id);
+    return p?.nom_etablissement || 'Prospect inconnu';
+  };
+
+  const getResultEntityInfo = (rdv: Appointment) => {
+    if (rdv.client_id) {
+      const c = state.clients.find((cl: Client) => cl.id === rdv.client_id);
+      return { phone: c?.telephone_mobile || c?.telephone || '', email: c?.email || '', ville: c?.ville || '', link: `/clients?id=${rdv.client_id}`, isClient: true };
+    }
+    const p = state.prospects.find((pr: any) => pr.id === rdv.prospect_id);
+    return { phone: p?.telephone || '', email: p?.email || '', ville: p?.ville || '', link: `/prospects?id=${rdv.prospect_id}`, isClient: false };
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {/* Week navigation */}
@@ -240,6 +330,143 @@ export default function ClientsPlanningPage() {
           </button>
         </div>
       </div>
+
+      {/* Resultats des RDV - interactive card with period selector */}
+      {resultsData.totalRdv > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          {/* Header with period selector */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-indigo-500" />
+              <p className="text-sm font-semibold text-gray-700">Resultats des RDV</p>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">{resultsData.totalRdv} RDV</span>
+            </div>
+            <p className="text-[10px] text-gray-400 italic hidden sm:block">Cliquez pour voir le detail</p>
+          </div>
+
+          {/* Period selector */}
+          <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+            <Filter className="w-3.5 h-3.5 text-gray-400" />
+            {([
+              { key: 'semaine' as const, label: 'Cette semaine' },
+              { key: 'mois' as const, label: 'Ce mois' },
+              { key: 'trimestre' as const, label: 'Trimestre' },
+              { key: 'tout' as const, label: 'Totalite' },
+            ]).map(p => (
+              <button
+                key={p.key}
+                onClick={() => { setResultsPeriod(p.key); setExpandedResult(null); }}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+                  resultsPeriod === p.key
+                    ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300'
+                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <span className="text-[10px] text-gray-400 ml-1">({resultsData.periodLabel})</span>
+          </div>
+
+          {/* Stats summary */}
+          <div className="flex items-center gap-3 mb-3 text-[11px]">
+            <span className="text-gray-500"><strong className="text-green-600">{resultsData.rdvWithCR}</strong> CR saisis</span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-500">Taux CR: <strong className={resultsData.totalRdv > 0 && resultsData.rdvWithCR / resultsData.totalRdv >= 0.8 ? 'text-green-600' : 'text-orange-600'}>{resultsData.totalRdv > 0 ? Math.round((resultsData.rdvWithCR / resultsData.totalRdv) * 100) : 0}%</strong></span>
+          </div>
+
+          {/* Result badges */}
+          {Object.keys(resultsData.resultCounts).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(resultsData.resultCounts).map(([key, count]) => {
+                const colors: Record<string, string> = {
+                  client: 'bg-green-100 text-green-700 hover:bg-green-200 border-green-200',
+                  mail_envoye: 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200',
+                  commande_plus_tard: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-yellow-200',
+                  a_relancer: 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200',
+                  pas_interesse: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200',
+                  decale: 'bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200',
+                  sans_cr: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300',
+                };
+                const isActive = expandedResult === key;
+                return (
+                  <button key={key} onClick={() => setExpandedResult(isActive ? null : key)}
+                    className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-pointer transition-all ${colors[key] || 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105 shadow-sm' : 'hover:scale-105 hover:shadow-sm'}`}>
+                    {key === 'sans_cr' ? 'Sans CR' : (APPOINTMENT_RESULT_LABELS[key] || key)}: {count}
+                    <ChevronDown className={`w-3 h-3 transition-transform ${isActive ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Expanded result detail */}
+          {expandedResult && (() => {
+            const todayDate = toLocalDateStr(new Date());
+            const rdvsForResult = expandedResult === 'sans_cr'
+              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayDate)
+              : resultsData.filteredAppointments.filter(a => a.compte_rendu === expandedResult);
+            const resultColors: Record<string, string> = {
+              client: 'border-green-200', mail_envoye: 'border-blue-200',
+              commande_plus_tard: 'border-yellow-200', a_relancer: 'border-orange-200',
+              pas_interesse: 'border-red-200', decale: 'border-violet-200',
+              sans_cr: 'border-gray-300',
+            };
+
+            return (
+              <div className="mt-3 border-t pt-3 space-y-2">
+                <p className="text-xs text-gray-500 font-medium">
+                  {expandedResult === 'sans_cr' ? 'Sans compte-rendu' : (APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult)} ({rdvsForResult.length})
+                </p>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {rdvsForResult.map(rdv => {
+                    const name = getResultEntityName(rdv);
+                    const info = getResultEntityInfo(rdv);
+                    return (
+                      <div key={rdv.id} className={`bg-white rounded-lg border ${resultColors[expandedResult] || 'border-gray-200'} p-3`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link to={info.link} className="text-sm font-medium text-brewery-700 hover:text-brewery-900 hover:underline">{name}</Link>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${info.isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                {info.isClient ? 'Client' : 'Prospect'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
+                              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date.split('T')[0]}</span>
+                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>
+                              {info.ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{info.ville}</span>}
+                            </div>
+                            {rdv.notes_compte_rendu && <p className="text-xs text-gray-500 italic mt-1 truncate">{rdv.notes_compte_rendu}</p>}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                            {info.phone && (
+                              <a href={`tel:${info.phone.replace(/\s/g, '')}`} onClick={e => e.stopPropagation()}
+                                className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100" title="Appeler">
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            {info.email && (
+                              <a href={`mailto:${info.email}`} onClick={e => e.stopPropagation()}
+                                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100" title="Email">
+                                <Mail className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            <button onClick={() => openCrModal(rdv)}
+                              className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100" title="Modifier le CR">
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Late clients - collapsible */}
       {planningData.lateCount > 0 && (
