@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, MapPin, User, Edit2, Calendar,
   CheckCircle2, PhoneCall, Navigation, Clock, AlertTriangle,
-  ListTodo, Plus, Check, StickyNote, Save,
+  ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
 import {
-  Client, CLIENT_TYPE_LABELS, InteractionType, INTERACTION_TYPE_LABELS,
+  Client, CLIENT_TYPE_LABELS, ClientStatus, InteractionType, INTERACTION_TYPE_LABELS,
   TaskClient,
 } from '../types';
 import { generateId, formatDate, toLocalDateStr } from '../utils/helpers';
@@ -162,6 +162,32 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
     finally { setNoteSaving(false); }
   };
 
+  const toggleStatus = async () => {
+    const updated: Client = {
+      ...client,
+      statut: (client.statut === 'ACTIF' ? 'INACTIF' : 'ACTIF') as ClientStatus,
+      date_modification: new Date().toISOString(),
+    };
+    if (updated.statut === 'INACTIF') {
+      updated.next_visit = null;
+    }
+    try {
+      await apiPut(`/clients/${client.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+      toast.success(updated.statut === 'ACTIF' ? 'Client reactive' : 'Client desactive');
+    } catch { toast.error('Erreur lors du changement de statut'); }
+  };
+
+  const deleteClient = async () => {
+    if (!confirm('Supprimer ce client ? Cette action est irreversible.')) return;
+    try {
+      await apiDelete(`/clients/${client.id}`);
+      dispatchLocal({ type: 'DELETE_CLIENT', payload: client.id });
+      toast.success('Client supprime');
+      onClose();
+    } catch { toast.error('Erreur lors de la suppression du client'); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div
@@ -172,9 +198,20 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
         <div className="p-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-bold text-gray-900 truncate flex-1">{client.nom}</h2>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 ml-2">
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
+            <div className="flex items-center gap-1 ml-2">
+              <a href={`/clients?id=${client.id}`} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="Modifier">
+                <Edit2 className="w-4 h-4" />
+              </a>
+              <button onClick={toggleStatus} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title={client.statut === 'ACTIF' ? 'Desactiver' : 'Reactiver'}>
+                {client.statut === 'ACTIF' ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+              <button onClick={deleteClient} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Supprimer">
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
           </div>
 
           {/* Badges */}
