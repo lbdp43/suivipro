@@ -212,6 +212,7 @@ const defaultPipelineColumns: PipelineColumn[] = ([
 interface AppContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
+  dispatchLocal: React.Dispatch<Action>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
@@ -383,6 +384,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const contextValue = useMemo(() => ({
     state,
     dispatch,
+    dispatchLocal: rawDispatch,
     login,
     logout,
     loading,
@@ -403,7 +405,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getClientsForCommercial,
     getCommandesForClient,
     pausePolling,
-  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient, pausePolling]);
+  }), [state, dispatch, rawDispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient, pausePolling]);
 
   return (
     <AppContext.Provider value={contextValue}>

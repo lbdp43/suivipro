@@ -63,7 +63,7 @@ function getDaysInRange(start: string, end: string): string[] {
 }
 
 export default function CompteRenduPage() {
-  const { state, dispatch, getClient } = useApp();
+  const { state, dispatch, dispatchLocal, getClient } = useApp();
   const toast = useToast();
   const todayStr = toDateStr(new Date());
 
@@ -430,7 +430,7 @@ export default function CompteRenduPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(updated),
       });
-      dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       toast.success('Note enregistree');
       setNoteClientId(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
@@ -492,7 +492,7 @@ export default function CompteRenduPage() {
         body: JSON.stringify(interaction),
       });
       if (!res.ok) throw new Error();
-      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
 
       // Save client notes if changed
       const full = getClient(visitModalClient.id);
@@ -503,7 +503,7 @@ export default function CompteRenduPage() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(updated),
         });
-        dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       }
 
       toast.success(visitModalType === 'VISITE' ? `Visite enregistree pour ${visitModalClient.nom}` : `Appel enregistre pour ${visitModalClient.nom}`);
@@ -535,7 +535,7 @@ export default function CompteRenduPage() {
         body: JSON.stringify(interaction),
       });
       if (!res.ok) throw new Error();
-      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
 
       // Create appointment
       const rdvId = generateId();
@@ -555,7 +555,7 @@ export default function CompteRenduPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(rdv),
       });
-      if (rdvRes.ok) dispatch({ type: 'ADD_APPOINTMENT', payload: rdv });
+      if (rdvRes.ok) dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdv });
       toast.success(`RDV planifie pour ${rdvModalClient.nom}`);
       setRdvModalClient(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
@@ -578,7 +578,7 @@ export default function CompteRenduPage() {
         body: JSON.stringify(updated),
       });
       if (res.ok) {
-        dispatch({ type: 'UPDATE_APPOINTMENT', payload: updated });
+        dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
         toast.success('Compte rendu enregistre');
         setCrModalRdv(null);
       }

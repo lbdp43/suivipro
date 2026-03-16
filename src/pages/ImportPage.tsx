@@ -9,7 +9,7 @@ import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPEL
 import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 
 export default function ImportPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; geocoded: number; duplicates: number } | null>(null);
   const [importing, setImporting] = useState(false);
@@ -627,7 +627,7 @@ export default function ImportPage() {
         } else {
           // Also update local state
           for (const c of newClients) {
-            dispatch({ type: 'ADD_CLIENT', payload: { ...c, statut: 'ACTIF', next_visit: null, prospect_id: null, date_creation: now, date_modification: now } as any });
+            dispatchLocal({ type: 'ADD_CLIENT', payload: { ...c, statut: 'ACTIF', next_visit: null, prospect_id: null, date_creation: now, date_modification: now } as any });
           }
         }
       }

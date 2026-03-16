@@ -244,7 +244,7 @@ function ProspectionZonePicker({ entries, allZones, onAdd, onRemove, onSlotsChan
 }
 
 export default function TourneesPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
   const [configs, setConfigs] = useState<TourneeConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -578,7 +578,7 @@ export default function TourneesPage() {
           body: JSON.stringify(updated),
         });
         if (res.ok) {
-          dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
         }
       }
       toast.success(`${selectedClientIds.size} client(s) affecte(s) a "${assignTournee.trim()}"`);

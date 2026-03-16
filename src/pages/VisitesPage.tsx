@@ -75,7 +75,7 @@ interface VisitesDataAll {
 type VisitesData = VisitesDataSingle | VisitesDataAll;
 
 export default function VisitesPage() {
-  const { state, dispatch, getClient } = useApp();
+  const { state, dispatch, dispatchLocal, getClient } = useApp();
   const toast = useToast();
   const [data, setData] = useState<VisitesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -212,6 +212,7 @@ export default function VisitesPage() {
     try {
       const now = new Date().toISOString();
       const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
       const interaction = {
         id: generateId('int'),
         client_id: modalClient.id,
@@ -221,7 +222,13 @@ export default function VisitesPage() {
         comment: modalComment.trim(),
         date_creation: now,
       };
-      dispatch({ type: 'ADD_INTERACTION', payload: interaction });
+      const res = await fetch('/api/interactions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(interaction),
+      });
+      if (!res.ok) { toast.error('Erreur lors de l\'enregistrement'); return; }
+      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
 
       // Save client notes if changed
       const full = getClient(modalClient.id);
@@ -229,32 +236,33 @@ export default function VisitesPage() {
         const updated: Client = { ...full, notes: modalClientNotes, date_modification: now };
         await fetch(`/api/clients/${modalClient.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers,
           body: JSON.stringify(updated),
         });
-        dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       }
 
       // For RDV_PLANIFIE, also create an appointment
       if (modalType === 'RDV_PLANIFIE' && modalDate) {
         const rdvId = generateId('rdv');
-        dispatch({
-          type: 'ADD_APPOINTMENT',
-          payload: {
-            id: rdvId,
-            prospect_id: '',
-            client_id: modalClient.id,
-            commercial_id: modalRdvCommercialId || state.currentUser?.id || '',
-            prospecteur_id: state.currentUser?.id || '',
-            date: modalDate,
-            heure_debut: modalRdvHeureDebut,
-            heure_fin: modalRdvHeureFin,
-            lieu: modalRdvLieu,
-            notes: [modalRdvNotes, modalComment.trim()].filter(Boolean).join('\n'),
-            statut: 'planifie',
-            created_at: now,
-          },
-        });
+        const rdvPayload = {
+          id: rdvId,
+          prospect_id: '',
+          client_id: modalClient.id,
+          commercial_id: modalRdvCommercialId || state.currentUser?.id || '',
+          prospecteur_id: state.currentUser?.id || '',
+          date: modalDate,
+          heure_debut: modalRdvHeureDebut,
+          heure_fin: modalRdvHeureFin,
+          lieu: modalRdvLieu,
+          notes: [modalRdvNotes, modalComment.trim()].filter(Boolean).join('\n'),
+          statut: 'planifie' as const,
+          created_at: now,
+        };
+        try {
+          const rdvRes = await fetch('/api/appointments', { method: 'POST', headers, body: JSON.stringify(rdvPayload) });
+          if (rdvRes.ok) dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
+        } catch { /* secondary */ }
         toast.success('RDV planifie');
         setModalCreatedRdvId(rdvId);
         setModalShowConfirmation(true);
@@ -284,17 +292,31 @@ export default function VisitesPage() {
     }
   };
 
-  const saveEditClient = () => {
+  const saveEditClient = async () => {
     if (!editClient) return;
     const updated: Client = {
       ...editClient,
       ...editForm,
       date_modification: new Date().toISOString(),
     };
-    dispatch({ type: 'UPDATE_CLIENT', payload: updated });
-    toast.success('Client mis a jour');
-    setEditClient(null);
-    loadData(weekOffset, viewMode);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch(`/api/clients/${editClient.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        toast.success('Client mis a jour');
+        setEditClient(null);
+        loadData(weekOffset, viewMode);
+      } else {
+        toast.error('Erreur lors de la mise a jour');
+      }
+    } catch {
+      toast.error('Erreur lors de la mise a jour');
+    }
   };
 
   const openQuickNote = (clientId: string) => {
@@ -316,7 +338,7 @@ export default function VisitesPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(updated),
       });
-      dispatch({ type: 'UPDATE_CLIENT', payload: updated });
+      dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       toast.success('Note enregistree');
       setNoteClientId(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
