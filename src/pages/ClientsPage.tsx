@@ -86,9 +86,11 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite'>('none');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkNextVisit, setBulkNextVisit] = useState('');
+  const [bulkVisiteComment, setBulkVisiteComment] = useState('');
+  const [bulkVisiteType, setBulkVisiteType] = useState<InteractionType>('VISITE');
 
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
@@ -199,7 +201,12 @@ export default function ClientsPage() {
   };
 
   const applyBulkAction = async () => {
-    if (!bulkValue.trim() && bulkAction !== 'recurrence') return;
+    // Visite action uses bulkVisiteComment, others use bulkValue
+    if (bulkAction === 'visite') {
+      if (!bulkVisiteComment.trim()) { toast.error('Le commentaire est obligatoire'); return; }
+    } else if (!bulkValue.trim() && bulkAction !== 'recurrence') {
+      return;
+    }
     const now = new Date().toISOString();
 
     // Pause polling to prevent server state from overwriting during bulk operations
@@ -207,6 +214,36 @@ export default function ClientsPage() {
 
     let count = 0;
     let errors = 0;
+
+    if (bulkAction === 'visite') {
+      for (const id of selectedIds) {
+        const client = state.clients.find(c => c.id === id);
+        if (!client) continue;
+        const interaction = {
+          id: generateId('int'),
+          client_id: id,
+          commercial_id: state.currentUser?.id || '',
+          type: bulkVisiteType,
+          date: now,
+          comment: bulkVisiteComment.trim(),
+          date_creation: now,
+        };
+        try {
+          await apiPost('/interactions', interaction);
+          dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+          count++;
+        } catch {
+          errors++;
+        }
+      }
+      if (errors > 0) toast.error(`${errors} visite(s) non enregistree(s)`);
+      if (count > 0) toast.success(`${count} visite(s) enregistree(s)`);
+      setBulkVisiteComment('');
+      setBulkVisiteType('VISITE');
+      exitSelectionMode();
+      return;
+    }
+
     for (const id of selectedIds) {
       const client = state.clients.find(c => c.id === id);
       if (!client) continue;
@@ -956,9 +993,10 @@ export default function ClientsPage() {
             <select
               className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-gray-700"
               value={bulkAction}
-              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); }}
+              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); setBulkVisiteComment(''); setBulkVisiteType('VISITE'); }}
             >
               <option value="none">Choisir une action…</option>
+              <option value="visite">Enregistrer une visite</option>
               {isAdmin && <option value="commercial">Changer le commercial</option>}
               <option value="tournee">Changer la tournée</option>
               <option value="type">Changer le type</option>
@@ -967,6 +1005,25 @@ export default function ClientsPage() {
               <option value="recurrence">Recurrence + prochaine visite</option>
             </select>
 
+            {bulkAction === 'visite' && (
+              <div className="flex items-center gap-2 flex-1">
+                <select
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkVisiteType}
+                  onChange={e => setBulkVisiteType(e.target.value as InteractionType)}
+                >
+                  <option value="VISITE">Visite</option>
+                  <option value="APPEL">Appel</option>
+                </select>
+                <input
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white flex-1 min-w-[200px]"
+                  placeholder="Commentaire (obligatoire)…"
+                  value={bulkVisiteComment}
+                  onChange={e => setBulkVisiteComment(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && bulkVisiteComment.trim()) applyBulkAction(); }}
+                />
+              </div>
+            )}
             {bulkAction === 'commercial' && (
               <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" value={bulkValue} onChange={e => setBulkValue(e.target.value)}>
                 <option value="">Choisir…</option>
@@ -1030,10 +1087,10 @@ export default function ClientsPage() {
             {bulkAction !== 'none' && (
               <button
                 onClick={applyBulkAction}
-                disabled={!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence'}
+                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
                 className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
               >
-                Appliquer
+                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : 'Appliquer'}
               </button>
             )}
             <button
