@@ -258,12 +258,25 @@ export default function TourneesPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [editProspectionZones, setEditProspectionZones] = useState<{ zone: string; slots: number }[]>([]);
 
-  // Unique zones from clients
+  // Unique zones from clients + tournee configs
   const allZones = useMemo(() => {
     const set = new Set<string>();
     state.clients.forEach(c => { if (c.tournee) set.add(c.tournee); });
+    // Include zones from all tournee configs
+    configs.forEach(tc => {
+      const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+      if (cfg) Object.values(cfg).forEach((zones: any) => {
+        if (Array.isArray(zones)) zones.forEach((z: string) => { if (z && typeof z === 'string') set.add(z); });
+      });
+    });
+    state.tourneeConfigs?.forEach((tc: any) => {
+      const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+      if (cfg) Object.values(cfg).forEach((zones: any) => {
+        if (Array.isArray(zones)) zones.forEach((z: string) => { if (z && typeof z === 'string') set.add(z); });
+      });
+    });
     return Array.from(set).sort();
-  }, [state.clients]);
+  }, [state.clients, configs, state.tourneeConfigs]);
 
   const token = localStorage.getItem('suivipro_token');
   const isAdmin = state.currentUser?.role === 'admin';

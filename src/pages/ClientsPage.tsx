@@ -47,8 +47,8 @@ export default function ClientsPage() {
   const [filterTypes, setFilterTypes] = useState<Set<ClientType>>(new Set());
   const [filterStatus, setFilterStatus] = useState<ClientStatus | ''>('');
   const [filterVisit, setFilterVisit] = useState<VisitFilter>('all');
-  const [filterCommercial, setFilterCommercial] = useState<string>('');
-  const [filterTournee, setFilterTournee] = useState<string>('');
+  const [filterCommercials, setFilterCommercials] = useState<Set<string>>(new Set());
+  const [filterTournees, setFilterTournees] = useState<Set<string>>(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
@@ -86,8 +86,9 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence'>('none');
   const [bulkValue, setBulkValue] = useState('');
+  const [bulkNextVisit, setBulkNextVisit] = useState('');
 
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
@@ -198,12 +199,10 @@ export default function ClientsPage() {
   };
 
   const applyBulkAction = async () => {
-    if (!bulkValue.trim()) return;
+    if (!bulkValue.trim() && bulkAction !== 'recurrence') return;
     const now = new Date().toISOString();
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
 
+    let count = 0;
     for (const id of selectedIds) {
       const client = state.clients.find(c => c.id === id);
       if (!client) continue;
@@ -213,9 +212,14 @@ export default function ClientsPage() {
       if (bulkAction === 'type') updated.type_client = bulkValue as ClientType;
       if (bulkAction === 'statut') updated.statut = bulkValue as ClientStatus;
       if (bulkAction === 'next_visit') updated.next_visit = bulkValue;
+      if (bulkAction === 'recurrence') {
+        updated.custom_recurrence = bulkValue ? parseInt(bulkValue) : null;
+        if (bulkNextVisit) updated.next_visit = bulkNextVisit;
+      }
       dispatch({ type: 'UPDATE_CLIENT', payload: updated });
-      fetch(`/api/clients/${id}`, { method: 'PUT', headers, body: JSON.stringify(updated) }).catch(() => {});
+      count++;
     }
+    toast.success(`${count} client(s) mis à jour`);
     exitSelectionMode();
   };
 
@@ -227,12 +231,25 @@ export default function ClientsPage() {
     exitSelectionMode();
   };
 
-  // Get unique tournees
+  // Get unique tournees (from clients + tournee configs)
   const allTournees = useMemo(() => {
     const set = new Set<string>();
     state.clients.forEach(c => { if (c.tournee) set.add(c.tournee); });
+    // Include zones from locally loaded tournee configs
+    Object.values(tourneeConfigs).forEach(tc => {
+      Object.values(tc.config).forEach(zones => {
+        if (Array.isArray(zones)) zones.forEach(z => { if (z && typeof z === 'string') set.add(z); });
+      });
+    });
+    // Include zones from state tournee configs (loaded at login)
+    state.tourneeConfigs?.forEach((tc: any) => {
+      const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+      if (cfg) Object.values(cfg).forEach((zones: any) => {
+        if (Array.isArray(zones)) zones.forEach((z: string) => { if (z && typeof z === 'string') set.add(z); });
+      });
+    });
     return Array.from(set).sort();
-  }, [state.clients]);
+  }, [state.clients, tourneeConfigs, state.tourneeConfigs]);
 
   // Form state
   const emptyForm = (): Partial<Client> => ({
@@ -520,11 +537,11 @@ export default function ClientsPage() {
         return true;
       });
     }
-    if (filterCommercial) {
-      list = list.filter(c => c.commercial_id === filterCommercial);
+    if (filterCommercials.size > 0) {
+      list = list.filter(c => filterCommercials.has(c.commercial_id));
     }
-    if (filterTournee) {
-      list = list.filter(c => c.tournee === filterTournee);
+    if (filterTournees.size > 0) {
+      list = list.filter(c => filterTournees.has(c.tournee));
     }
 
     if (sortDate === 'recent') {
@@ -534,7 +551,7 @@ export default function ClientsPage() {
     }
 
     return list;
-  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercial, filterTournee, sortDate, isAdmin, state.currentUser]);
+  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -568,7 +585,7 @@ export default function ClientsPage() {
     const weekStart = days[0].dateStr;
 
     // Determine which commercial(s) to show
-    const targetCommercialId = filterCommercial || (!isAdmin && state.currentUser ? state.currentUser.id : '');
+    const targetCommercialId = filterCommercials.size === 1 ? Array.from(filterCommercials)[0] : (!isAdmin && state.currentUser ? state.currentUser.id : '');
 
     // Get active clients
     let clientsBase = state.clients.filter(c => c.statut === 'ACTIF');
@@ -641,7 +658,7 @@ export default function ClientsPage() {
     const weekTotal = byDay.reduce((sum, d) => sum + d.totalClients, 0);
 
     return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal };
-  }, [state.clients, planningWeekOffset, isAdmin, state.currentUser, filterCommercial, tourneeConfigs]);
+  }, [state.clients, planningWeekOffset, isAdmin, state.currentUser, filterCommercials, tourneeConfigs]);
 
   // Duplicate detection
   const normalize = (s: string) =>
@@ -751,52 +768,105 @@ export default function ClientsPage() {
 
           {/* Filters */}
           {showFilters && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-              <select
-                value={filterStatus}
-                onChange={e => { setFilterStatus(e.target.value as ClientStatus | ''); setCurrentPage(0); }}
-                className="border border-gray-200 rounded-lg text-sm px-2 py-1.5"
-              >
-                <option value="">Tous statuts</option>
-                <option value="ACTIF">Actif</option>
-                <option value="INACTIF">Inactif</option>
-              </select>
-
-              <select
-                value={filterVisit}
-                onChange={e => { setFilterVisit(e.target.value as VisitFilter); setCurrentPage(0); }}
-                className="border border-gray-200 rounded-lg text-sm px-2 py-1.5"
-              >
-                <option value="all">Toutes visites</option>
-                <option value="late">En retard</option>
-                <option value="today">Aujourd'hui</option>
-                <option value="upcoming">A venir</option>
-                <option value="no_recurrence">Sans recurrence</option>
-              </select>
-
-              {isAdmin && (
+            <div className="space-y-3 mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
                 <select
-                  value={filterCommercial}
-                  onChange={e => { setFilterCommercial(e.target.value); setCurrentPage(0); }}
+                  value={filterStatus}
+                  onChange={e => { setFilterStatus(e.target.value as ClientStatus | ''); setCurrentPage(0); }}
                   className="border border-gray-200 rounded-lg text-sm px-2 py-1.5"
                 >
-                  <option value="">Tous commerciaux</option>
-                  {state.commerciaux.map(c => (
-                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
-                  ))}
+                  <option value="">Tous statuts</option>
+                  <option value="ACTIF">Actif</option>
+                  <option value="INACTIF">Inactif</option>
                 </select>
+
+                <select
+                  value={filterVisit}
+                  onChange={e => { setFilterVisit(e.target.value as VisitFilter); setCurrentPage(0); }}
+                  className="border border-gray-200 rounded-lg text-sm px-2 py-1.5"
+                >
+                  <option value="all">Toutes visites</option>
+                  <option value="late">En retard</option>
+                  <option value="today">Aujourd'hui</option>
+                  <option value="upcoming">A venir</option>
+                  <option value="no_recurrence">Sans recurrence</option>
+                </select>
+              </div>
+
+              {/* Multi-select commerciaux (tags) */}
+              {isAdmin && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-xs font-medium text-gray-600">Commerciaux</span>
+                    {filterCommercials.size > 0 && (
+                      <button onClick={() => { setFilterCommercials(new Set()); setCurrentPage(0); }} className="text-xs text-red-500 hover:text-red-700">Effacer</button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {state.commerciaux.map(c => {
+                      const active = filterCommercials.has(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setFilterCommercials(prev => {
+                              const next = new Set(prev);
+                              if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+                              return next;
+                            });
+                            setCurrentPage(0);
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            active
+                              ? 'bg-brewery-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {c.prenom} {c.nom}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
-              <select
-                value={filterTournee}
-                onChange={e => { setFilterTournee(e.target.value); setCurrentPage(0); }}
-                className="border border-gray-200 rounded-lg text-sm px-2 py-1.5"
-              >
-                <option value="">Toutes tournees</option>
-                {allTournees.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              {/* Multi-select tournees (tags) */}
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs font-medium text-gray-600">Tournees</span>
+                  {filterTournees.size > 0 && (
+                    <button onClick={() => { setFilterTournees(new Set()); setCurrentPage(0); }} className="text-xs text-red-500 hover:text-red-700">Effacer</button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {allTournees.map(t => {
+                    const active = filterTournees.has(t);
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => {
+                          setFilterTournees(prev => {
+                            const next = new Set(prev);
+                            if (next.has(t)) next.delete(t); else next.add(t);
+                            return next;
+                          });
+                          setCurrentPage(0);
+                        }}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                          active
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                  {allTournees.length === 0 && (
+                    <span className="text-xs text-gray-400">Aucune tournee configuree</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -858,7 +928,7 @@ export default function ClientsPage() {
             <select
               className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-gray-700"
               value={bulkAction}
-              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); }}
+              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); }}
             >
               <option value="none">Choisir une action…</option>
               {isAdmin && <option value="commercial">Changer le commercial</option>}
@@ -866,6 +936,7 @@ export default function ClientsPage() {
               <option value="type">Changer le type</option>
               <option value="statut">Changer le statut</option>
               <option value="next_visit">Definir date de visite</option>
+              <option value="recurrence">Recurrence + prochaine visite</option>
             </select>
 
             {bulkAction === 'commercial' && (
@@ -906,11 +977,32 @@ export default function ClientsPage() {
                 onChange={e => setBulkValue(e.target.value)}
               />
             )}
+            {bulkAction === 'recurrence' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white w-20"
+                  placeholder="Jours"
+                  value={bulkValue}
+                  onChange={e => setBulkValue(e.target.value)}
+                />
+                <span className="text-xs text-gray-500">jours</span>
+                <input
+                  type="date"
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkNextVisit}
+                  onChange={e => setBulkNextVisit(e.target.value)}
+                  placeholder="Prochaine visite"
+                />
+                <span className="text-xs text-gray-400">(opt.)</span>
+              </div>
+            )}
 
             {bulkAction !== 'none' && (
               <button
                 onClick={applyBulkAction}
-                disabled={!bulkValue && bulkAction !== 'statut'}
+                disabled={!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence'}
                 className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
               >
                 Appliquer

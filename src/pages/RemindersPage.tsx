@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
@@ -18,8 +18,13 @@ export default function RemindersPage() {
     message: '',
   });
 
-  // Filtre par auteur
-  const [filterCommercial, setFilterCommercial] = useState('');
+  // Filtre par auteur (persiste dans localStorage)
+  const [filterCommercial, setFilterCommercial] = useState(() => {
+    return localStorage.getItem('reminders_filter_commercial') || '';
+  });
+  useEffect(() => {
+    localStorage.setItem('reminders_filter_commercial', filterCommercial);
+  }, [filterCommercial]);
 
   // Modale reporter
   const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
