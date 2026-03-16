@@ -230,7 +230,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           date: memoDate,
           heure: memoHeure,
           message: memoMessage.trim(),
-          statut: 'actif',
+          statut: 'actif' as const,
         };
         await apiPost('/reminders', reminderPayload);
         dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
@@ -249,7 +249,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           heure_fin: rdvHeureFin,
           lieu: rdvLieu,
           notes: rdvNotes,
-          statut: 'planifie',
+          statut: 'planifie' as const,
           created_at: new Date().toISOString(),
         };
         await apiPost('/appointments', rdvPayload);
