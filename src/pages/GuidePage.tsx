@@ -1,870 +1,1050 @@
-import {
-  LayoutDashboard, Kanban, Users, Phone, Calendar, Bell, Mail, Map, Upload,
-  FileText, Tag, ArrowRight, CheckCircle2, XCircle, Clock, TrendingUp,
-  MessageSquare, Star, Search, Filter, MousePointer, BookOpen, Info,
-  Building2, MapPin, ClipboardCheck, ListTodo, Activity, CheckCheck,
-} from 'lucide-react';
+import { useState } from 'react';
 
-const PIPELINE_STAGES = [
-  { id: 'nouveau', label: 'Nouveau', color: '#6b7280', desc: 'Prospect tout juste ajoute dans le systeme. Aucun contact n\'a encore ete etabli.' },
-  { id: 'a_contacter', label: 'A contacter', color: '#3b82f6', desc: 'Prospect identifie comme interessant. Il faut le contacter (appel, email, visite).' },
-  { id: 'contacte', label: 'Contacte', color: '#8b5cf6', desc: 'Un premier contact a ete etabli (appel, email envoye). En attente de retour.' },
-  { id: 'proposition', label: 'Proposition', color: '#f97316', desc: 'Une offre commerciale ou un catalogue a ete presente. Le prospect reflechit.' },
-  { id: 'negociation', label: 'Negociation', color: '#ef4444', desc: 'Le prospect est interesse, on negocie les conditions (prix, quantites, delais).' },
-  { id: 'gagne', label: 'RDV', color: '#22c55e', desc: 'Un rendez-vous de degustation ou de presentation est planifie.' },
-  { id: 'client_gagne', label: 'Gagne', color: '#16a34a', desc: 'Le prospect est devenu client ! La vente est conclue.' },
-  { id: 'perdu', label: 'Perdu', color: '#dc2626', desc: 'Le prospect n\'est pas interesse ou a choisi un concurrent.' },
-  { id: 'ne_pas_contacter', label: 'Ne pas contacter', color: '#991b1b', desc: 'Prospect qui ne souhaite plus etre contacte (demande explicite, blacklist).' },
-];
+const ROLE_FILTERS = [
+  { id: 'all', label: 'Tous', color: 'bg-gray-100 text-gray-800' },
+  { id: 'commercial', label: 'Commercial', color: 'bg-emerald-100 text-emerald-800' },
+  { id: 'admin', label: 'Admin', color: 'bg-blue-100 text-blue-800' },
+  { id: 'prospection', label: 'Prospection', color: 'bg-purple-100 text-purple-800' }
+]
 
-const CALL_RESULTS = [
-  { label: 'Repondu', color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-4 h-4" />, desc: 'Le prospect a decroche et un echange a eu lieu.' },
-  { label: 'Pas de reponse', color: 'bg-red-100 text-red-700', icon: <XCircle className="w-4 h-4" />, desc: 'Personne n\'a repondu au telephone.' },
-  { label: 'Messagerie', color: 'bg-amber-100 text-amber-700', icon: <MessageSquare className="w-4 h-4" />, desc: 'Un message vocal a ete laisse sur le repondeur.' },
-  { label: 'Injoignable', color: 'bg-gray-100 text-gray-700', icon: <XCircle className="w-4 h-4" />, desc: 'Le numero ne fonctionne pas ou est injoignable.' },
-];
+interface ContentItem {
+  subtitle?: string
+  text?: string
+  list?: string[]
+}
 
-const RDV_STATUSES = [
-  { label: 'Planifie', color: 'bg-amber-100 text-amber-700', desc: 'Le rendez-vous est programme mais pas encore confirme.' },
-  { label: 'Confirme', color: 'bg-green-100 text-green-700', desc: 'Le prospect a confirme sa disponibilite.' },
-  { label: 'Termine', color: 'bg-gray-100 text-gray-600', desc: 'Le rendez-vous a eu lieu. Il faut remplir le compte-rendu.' },
-  { label: 'Annule', color: 'bg-red-100 text-red-700', desc: 'Le rendez-vous a ete annule.' },
-];
+interface GuideSection {
+  id: string
+  title: string
+  icon: string
+  roles: string[]
+  content: ContentItem[]
+}
 
-const COMPTE_RENDU_OPTIONS = [
-  { label: 'Client', color: 'bg-green-100 text-green-700', pipeline: 'Gagne', desc: 'Le prospect est devenu client ! Il passe automatiquement en etape "Gagne".' },
-  { label: 'Mail envoye', color: 'bg-blue-100 text-blue-700', pipeline: 'Negociation', desc: 'Un email de suivi a ete envoye. Le prospect passe en "Negociation".' },
-  { label: 'Commande plus tard', color: 'bg-amber-100 text-amber-700', pipeline: 'Proposition', desc: 'Le prospect est interesse mais commandera plus tard. Il passe en "Proposition".' },
-  { label: 'A relancer', color: 'bg-purple-100 text-purple-700', pipeline: 'Proposition', desc: 'Il faut relancer le prospect. Il passe en "Proposition".' },
-  { label: 'Pas interesse', color: 'bg-red-100 text-red-700', pipeline: 'Perdu', desc: 'Le prospect n\'est pas interesse. Il passe en "Perdu".' },
-];
+const sections: GuideSection[] = [
+  {
+    id: 'premiers-pas',
+    title: 'Connexion et premiers pas',
+    icon: '🚀',
+    roles: ['all'],
+    content: [
+      {
+        subtitle: 'Se connecter',
+        text: 'Ouvrez l\'application et saisissez votre **identifiant** (votre prenom) et votre **mot de passe**. Cliquez sur "Se connecter" pour acceder a votre espace.'
+      },
+      {
+        subtitle: 'Premiere connexion',
+        text: 'Lors de votre premiere connexion, l\'application vous demandera de **changer votre mot de passe**. Saisissez un nouveau mot de passe (minimum 4 caracteres) et confirmez-le. Ce mot de passe sera utilise pour toutes vos connexions futures.'
+      },
+      {
+        subtitle: 'Les 3 roles de l\'application',
+        text: 'Chaque utilisateur a un role qui determine ce qu\'il peut faire :',
+        list: [
+          '**Commercial** : Gere ses prospects et clients, passe des appels, prend des rendez-vous, planifie ses tournees et gere ses taches.',
+          '**Admin (Administrateur)** : Supervise tous les commerciaux, voit toutes les donnees, configure le systeme, gere les utilisateurs, les imports et les integrations.',
+          '**Prospection** : Consulte en lecture seule l\'ensemble des plannings, prospects et clients de tous les commerciaux pour coordonner l\'activite.'
+        ]
+      },
+      {
+        subtitle: 'Naviguer dans l\'application',
+        text: 'La barre laterale a gauche vous permet d\'acceder a toutes les sections. Elle est organisee en sous-dossiers depliables :',
+        list: [
+          '**Accueil** : Votre tableau de bord avec les KPIs et le resume d\'activite.',
+          '**Taches** : Gestion des taches a faire, en cours et terminees.',
+          '**Rappels** : Vos rappels avec un badge indiquant les rappels urgents.',
+          '**Prospects** : Pipeline commercial et historique des appels.',
+          '**Prospects & RDV** : Rendez-vous et pipeline des comptes-rendus.',
+          '**Clients** : Liste des clients et planning semaine.',
+          '**Visites et CR** : Visites clients, tournees et comptes-rendus.',
+          '**Guide** : Cette aide, les documents et les modeles d\'emails.',
+          '**Administration** : Import/export et SIRENE (admin seulement).'
+        ]
+      },
+      {
+        subtitle: 'Notifications',
+        text: 'La cloche en haut a droite affiche vos **notifications non lues** (nouveaux prospects, rappels, etc.). Un badge rouge indique le nombre de notifications. Cliquez pour les consulter et les marquer comme lues.'
+      },
+      {
+        subtitle: 'Hub LBDP',
+        text: 'Le bouton Hub en haut a droite ouvre le panneau de **communication interne**. Vous pouvez y echanger des messages avec votre equipe en temps reel.'
+      }
+    ]
+  },
+  {
+    id: 'dashboard',
+    title: 'Tableau de bord (Dashboard)',
+    icon: '📊',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Vue d\'ensemble',
+        text: 'Le Dashboard est votre page d\'accueil. Il affiche un **resume de votre activite commerciale** avec des indicateurs cles en temps reel.'
+      },
+      {
+        subtitle: 'Indicateurs (KPIs)',
+        text: 'En haut de page, vous trouvez vos metriques principales :',
+        list: [
+          '**Appels aujourd\'hui / cette semaine / ce mois** : Nombre d\'appels passes.',
+          '**RDV cette semaine / ce mois** : Nombre de rendez-vous programmes.',
+          '**Taux de conversion** : Pourcentage de prospects devenus clients.',
+          '**Taux de reponse** : Pourcentage d\'appels decroches.',
+          '**Duree moyenne des appels** : Temps moyen de vos appels telephoniques.'
+        ]
+      },
+      {
+        subtitle: 'Classement equipe',
+        text: 'Le classement compare les performances de toute l\'equipe :',
+        list: [
+          '**Par appels** : Qui a passe le plus d\'appels.',
+          '**Par RDV** : Qui a le plus de rendez-vous.',
+          '**Par prospects** : Qui a ajoute le plus de prospects.',
+          '**Par CA** : Classement par chiffre d\'affaires.',
+          '**Par visites** : Nombre de visites effectuees.',
+          '**Par couverture** : Taux de couverture du portefeuille client.'
+        ]
+      },
+      {
+        subtitle: 'Analyse des resultats RDV',
+        text: 'Le Dashboard affiche une **analyse detaillee** des resultats de vos rendez-vous par semaine (Client, Mail envoye, Commande plus tard, A relancer, Pas interesse). Vous pouvez **filtrer par commercial** et **naviguer entre les mois**.'
+      },
+      {
+        subtitle: 'Graphiques',
+        text: 'Des graphiques visuels (camemberts, barres) vous montrent la **repartition des resultats d\'appels** et les **tendances de RDV** au fil du temps.'
+      },
+      {
+        subtitle: 'Vue Admin vs Commercial',
+        text: 'Les **administrateurs** voient les statistiques de toute l\'equipe avec des filtres par commercial. Les **commerciaux** voient uniquement leurs propres donnees.'
+      }
+    ]
+  },
+  {
+    id: 'pipeline',
+    title: 'Pipeline commercial',
+    icon: '📋',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Principe du pipeline',
+        text: 'Le pipeline est un **tableau Kanban** qui visualise vos prospects par etape de progression commerciale. Chaque prospect est une carte que vous faites avancer d\'une colonne a l\'autre.'
+      },
+      {
+        subtitle: 'Les etapes du pipeline',
+        text: 'Les etapes par defaut sont :',
+        list: [
+          '**Importe Datagouv** : Prospects importes automatiquement depuis la base SIRENE.',
+          '**Nouveau** : Prospect tout juste ajoute dans le systeme.',
+          '**A contacter** : Prospect identifie comme interessant, a contacter.',
+          '**Contacte** : Un premier contact a ete etabli (appel, email).',
+          '**Proposition** : Une offre commerciale a ete presentee.',
+          '**Negociation** : On negocie les conditions (prix, quantites, delais).',
+          '**RDV** : Un rendez-vous de degustation ou presentation est planifie.',
+          '**Gagne** : Le prospect est devenu client !',
+          '**Perdu** : Le prospect n\'est pas interesse.',
+          '**Ne pas contacter** : Prospect qui ne souhaite plus etre contacte.'
+        ]
+      },
+      {
+        subtitle: 'Personnaliser les colonnes',
+        text: 'Cliquez sur l\'icone **engrenage** pour acceder aux parametres du pipeline. Vous pouvez **creer, renommer, reordonner et supprimer** des colonnes selon votre processus commercial.'
+      },
+      {
+        subtitle: 'Deplacer un prospect',
+        text: 'Faites **glisser-deposer** une carte d\'une colonne a l\'autre pour faire progresser un prospect. Les changements sont sauvegardes automatiquement.'
+      },
+      {
+        subtitle: 'Filtrer le pipeline',
+        text: 'Utilisez les filtres en haut pour affiner l\'affichage :',
+        list: [
+          '**Par secteur** : Filtrer par zone geographique.',
+          '**Par code postal / departement** : Zoom geographique.',
+          '**Par commercial** : Voir uniquement les prospects d\'un commercial.',
+          '**Avec RDV** : Afficher uniquement les prospects avec un RDV planifie.'
+        ]
+      },
+      {
+        subtitle: 'Actions rapides',
+        text: 'Depuis une carte prospect, vous pouvez ajouter des **notes rapides**, envoyer un **email depuis un modele**, ou consulter les **tags** du prospect.'
+      }
+    ]
+  },
+  {
+    id: 'prospects',
+    title: 'Gestion des prospects',
+    icon: '👥',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'La page Prospects',
+        text: 'La page Prospects affiche la **liste complete** de vos prospects avec recherche et filtres avances. Chaque prospect est une carte avec ses informations essentielles.'
+      },
+      {
+        subtitle: 'Creer un prospect',
+        text: 'Cliquez sur **"+ Nouveau prospect"** pour ajouter un prospect. Renseignez au minimum le **nom d\'etablissement**, puis ajoutez les informations complementaires : adresse, telephone, email, type d\'activite, secteur, score, etc.'
+      },
+      {
+        subtitle: 'Fiche prospect',
+        text: 'Cliquez sur un prospect pour ouvrir sa fiche detaillee. Vous y trouverez :',
+        list: [
+          '**Informations generales** : Nom, adresse, contact, telephone, email.',
+          '**Historique des interactions** : Appels, emails, visites passes.',
+          '**Rendez-vous** : Liste des RDV passes et a venir.',
+          '**Rappels** : Rappels programmes pour ce prospect.',
+          '**Tags** : Etiquettes pour categoriser (bar, restaurant, cave, etc.).',
+          '**Score** : Note de 1 a 5 pour evaluer le potentiel.',
+          '**Notes** : Zone de texte libre pour vos observations.'
+        ]
+      },
+      {
+        subtitle: 'Recherche et filtres',
+        text: 'Utilisez la barre de recherche pour trouver un prospect par **nom, adresse ou telephone**. Les filtres permettent de trier par etape pipeline, secteur, code postal, tags, ou commercial assigne.'
+      },
+      {
+        subtitle: 'Import et export',
+        text: 'Les **administrateurs** peuvent importer des prospects depuis un fichier Excel/CSV ou depuis la base SIRENE. L\'export permet de telecharger toute la base en CSV.'
+      }
+    ]
+  },
+  {
+    id: 'appels',
+    title: 'Appels telephoniques',
+    icon: '📞',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Enregistrer un appel',
+        text: 'Depuis la fiche d\'un prospect ou la page Appels, cliquez sur **"Nouvel appel"**. Selectionnez le prospect, indiquez le **resultat** et ajoutez des **notes**.'
+      },
+      {
+        subtitle: 'Resultats d\'appel',
+        text: 'Chaque appel est enregistre avec un resultat :',
+        list: [
+          '**Repondu** : Le prospect a decroche et un echange a eu lieu.',
+          '**Pas de reponse** : Personne n\'a repondu au telephone.',
+          '**Messagerie** : Un message vocal a ete laisse sur le repondeur.',
+          '**Injoignable** : Le numero ne fonctionne pas ou est injoignable.'
+        ]
+      },
+      {
+        subtitle: 'Statistiques d\'appels',
+        text: 'En haut de la page, consultez vos metriques :',
+        list: [
+          '**Appels aujourd\'hui** : Nombre d\'appels passes dans la journee.',
+          '**Appels cette semaine** : Total de la semaine en cours.',
+          '**Taux de reponse global** : Pourcentage d\'appels decroches sur l\'ensemble.',
+          '**Taux de reponse semaine** : Pourcentage pour la semaine courante.'
+        ]
+      },
+      {
+        subtitle: 'Historique',
+        text: 'L\'historique chronologique affiche tous vos appels avec pagination. Vous pouvez **filtrer par resultat** (repondu, pas de reponse, etc.) et **rechercher** par nom de prospect ou notes.'
+      },
+      {
+        subtitle: 'Click-to-call',
+        text: 'Sur mobile, cliquez directement sur le **numero de telephone** d\'un prospect pour lancer l\'appel. L\'application vous proposera ensuite d\'enregistrer le resultat.'
+      }
+    ]
+  },
+  {
+    id: 'rdv',
+    title: 'Rendez-vous (RDV)',
+    icon: '📅',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Planifier un RDV',
+        text: 'Depuis la page RDV ou la fiche d\'un prospect, cliquez sur **"+ Nouveau RDV"**. Renseignez le **prospect ou client**, la **date et l\'heure**, le **lieu**, le **type d\'evenement** et les **notes**.'
+      },
+      {
+        subtitle: 'Types d\'evenements',
+        text: 'Vous pouvez creer differents types d\'evenements :',
+        list: [
+          '**RDV** : Rendez-vous commercial classique.',
+          '**Reunion** : Reunion interne ou externe.',
+          '**Boutique** : Evenement en boutique.',
+          '**Depot** : Livraison ou depot.',
+          '**Marche** : Presence sur un marche.',
+          '**Autre** : Tout autre type d\'evenement.'
+        ]
+      },
+      {
+        subtitle: 'Statuts de RDV',
+        text: 'Chaque RDV passe par differents statuts :',
+        list: [
+          '**Planifie** : Le RDV est programme mais pas encore confirme.',
+          '**Confirme** : Le prospect a confirme sa disponibilite.',
+          '**Termine** : Le RDV a eu lieu, il faut remplir le compte-rendu.',
+          '**Annule** : Le RDV a ete annule.'
+        ]
+      },
+      {
+        subtitle: 'Vues d\'affichage',
+        text: 'Trois vues sont disponibles :',
+        list: [
+          '**Liste** : Tous les RDV en liste simple avec filtres.',
+          '**Agenda** : Vue calendrier avec Google Calendar integre.',
+          '**Planning** : Vue semaine avec les creneaux horaires.'
+        ]
+      },
+      {
+        subtitle: 'Compte-rendu de RDV',
+        text: 'Apres un RDV termine, cliquez sur **"Compte-rendu"** pour enregistrer le resultat :',
+        list: [
+          '**Client** : Le prospect est devenu client ! Il passe automatiquement en "Gagne".',
+          '**Mail envoye** : Un email de suivi a ete envoye. Passage en "Negociation".',
+          '**Commande plus tard** : Le prospect commandera plus tard. Passage en "Proposition".',
+          '**A relancer** : Il faut relancer le prospect. Un rappel est cree automatiquement.',
+          '**RDV decale** : Le RDV est repousse a une nouvelle date.',
+          '**Pas interesse** : Le prospect n\'est pas interesse. Passage en "Perdu".'
+        ]
+      },
+      {
+        subtitle: 'Recurrence',
+        text: 'Vous pouvez creer des RDV **recurrents hebdomadaires**. Definissez une date de fin pour la recurrence. Utile pour les visites regulieres chez les clients.'
+      },
+      {
+        subtitle: 'Detection de conflits',
+        text: 'L\'application detecte automatiquement les **conflits horaires** et vous alerte si deux RDV se chevauchent.'
+      },
+      {
+        subtitle: 'Export calendrier',
+        text: 'Exportez vos RDV au format **ICS** pour les importer dans Google Agenda, Outlook ou Apple Calendar. Vous pouvez exporter un seul RDV ou tous les RDV de la semaine.'
+      }
+    ]
+  },
+  {
+    id: 'rappels',
+    title: 'Rappels',
+    icon: '🔔',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Creer un rappel',
+        text: 'Cliquez sur **"+ Nouveau rappel"** pour programmer un rappel lie a un prospect. Indiquez la **date**, l\'**heure** et le **message** du rappel.'
+      },
+      {
+        subtitle: 'Organisation des rappels',
+        text: 'Les rappels sont organises en 4 categories :',
+        list: [
+          '**Aujourd\'hui** : Rappels urgents pour la journee en cours (fond rouge).',
+          '**A venir** : Rappels programmes pour les prochains jours.',
+          '**En retard** : Rappels dont la date est depassee (a traiter en priorite).',
+          '**Termines** : Historique des rappels deja traites.'
+        ]
+      },
+      {
+        subtitle: 'Actions sur un rappel',
+        text: 'Pour chaque rappel, vous pouvez :',
+        list: [
+          '**Terminer** : Marquer le rappel comme fait.',
+          '**Reporter** : Repousser la date du rappel.',
+          '**Modifier** : Changer le message ou la date.',
+          '**Supprimer** : Effacer definitivement le rappel.'
+        ]
+      },
+      {
+        subtitle: 'Badge dans la navigation',
+        text: 'Un **badge rouge** sur l\'icone Rappels dans la barre laterale indique le nombre de rappels urgents (aujourd\'hui + en retard). Ce badge ne compte que **vos propres rappels**.'
+      }
+    ]
+  },
+  {
+    id: 'emails',
+    title: 'Emails et modeles',
+    icon: '✉️',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Modeles d\'emails',
+        text: 'La page Emails permet de creer et gerer des **modeles d\'emails** reutilisables. Chaque modele a un **nom**, un **type** (presentation, suivi, relance, etc.) et un **contenu**.'
+      },
+      {
+        subtitle: 'Utiliser un modele',
+        text: 'Depuis la fiche d\'un prospect ou le pipeline, cliquez sur l\'icone **email**. Selectionnez un modele, personnalisez-le si besoin, puis **copiez le contenu** pour l\'envoyer depuis votre messagerie.'
+      },
+      {
+        subtitle: 'Variables dynamiques',
+        text: 'Les modeles supportent des **variables** qui sont automatiquement remplacees par les donnees du prospect (nom, prenom, etc.).'
+      },
+      {
+        subtitle: 'Gestion des modeles',
+        text: 'Vous pouvez **creer**, **modifier**, **dupliquer** et **supprimer** des modeles. Les modeles sont partages entre tous les utilisateurs.'
+      }
+    ]
+  },
+  {
+    id: 'clients',
+    title: 'Gestion des clients',
+    icon: '🏢',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'La page Clients',
+        text: 'La page Clients affiche tous vos clients actifs. Un client est un **prospect converti** apres un RDV reussi ou cree manuellement. Chaque client a une fiche detaillee avec ses informations, son historique et ses visites.'
+      },
+      {
+        subtitle: 'Informations client',
+        text: 'Chaque fiche client contient :',
+        list: [
+          '**Nom d\'etablissement** et type (bar, restaurant, cave, etc.).',
+          '**Adresse complete** avec code postal et ville.',
+          '**Contact** : Nom, telephone, email.',
+          '**Commercial** responsable du client.',
+          '**Tournee** : Zone geographique assignee.',
+          '**Statut** : ACTIF, INACTIF ou SUSPENDU.',
+          '**Frequence de visite** : Recurrence personnalisee en jours.',
+          '**Prochaine visite** : Date calculee automatiquement.'
+        ]
+      },
+      {
+        subtitle: 'Statuts de visite',
+        text: 'Chaque client a un indicateur de visite :',
+        list: [
+          '**En retard** (rouge) : La date de visite est depassee. Prioritaire.',
+          '**Aujourd\'hui** (vert) : Visite prevue aujourd\'hui.',
+          '**A venir** (bleu) : Visite programmee dans le futur.',
+          '**Pas de recurrence** (gris) : Aucune frequence de visite configuree.',
+          '**Inactif** (gris) : Client desactive.'
+        ]
+      },
+      {
+        subtitle: 'Filtres avances',
+        text: 'Filtrez vos clients par :',
+        list: [
+          '**Type** d\'etablissement (bar, restaurant, cave, etc.).',
+          '**Statut** (actif, inactif, suspendu).',
+          '**Statut de visite** (en retard, aujourd\'hui, a venir).',
+          '**Commercial** responsable.',
+          '**Tournee** assignee.',
+          '**Sans type / sans tournee** pour reperer les fiches incompletes.'
+        ]
+      },
+      {
+        subtitle: 'Actions sur un client',
+        text: 'Depuis la fiche client, vous pouvez :',
+        list: [
+          '**Click-to-call** : Appeler directement en cliquant sur le numero.',
+          '**Click-to-email** : Envoyer un email avec un modele.',
+          '**Navigation GPS** : Ouvrir l\'adresse dans Google Maps.',
+          '**Enregistrer une interaction** : Visite, appel, email ou autre.',
+          '**Planifier un RDV** : Creer un rendez-vous pour ce client.',
+          '**Creer une tache** : Associer une tache au client.',
+          '**Exporter en ICS** : Ajouter le prochain RDV au calendrier.'
+        ]
+      },
+      {
+        subtitle: 'Selection multiple',
+        text: 'Selectionnez plusieurs clients pour effectuer des **actions de masse** : changer le commercial, modifier la tournee, ajuster la recurrence de visite, modifier la date de prochaine visite, desactiver ou reactiver des clients.'
+      }
+    ]
+  },
+  {
+    id: 'planning-clients',
+    title: 'Planning semaine clients',
+    icon: '📆',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Vue planning',
+        text: 'Le Planning semaine affiche vos clients organises **par jour de la semaine** en fonction de leurs tournees configurees. Chaque jour montre le nombre de RDV prevus.'
+      },
+      {
+        subtitle: 'Naviguer entre les semaines',
+        text: 'Utilisez les **fleches gauche/droite** pour passer a la semaine precedente ou suivante. La semaine courante est selectionnee par defaut.'
+      },
+      {
+        subtitle: 'Clients en retard',
+        text: 'Les clients en retard de visite apparaissent dans une **section speciale repliable** en haut de la page, avec un badge rouge indiquant le nombre de jours de retard.'
+      },
+      {
+        subtitle: 'Filtre par commercial',
+        text: 'Les administrateurs peuvent filtrer par commercial pour voir le planning de chaque membre de l\'equipe. Les commerciaux voient leur propre planning par defaut.'
+      },
+      {
+        subtitle: 'Modale client',
+        text: 'Cliquez sur un client dans le planning pour ouvrir une **modale detaillee** avec ses informations, son historique et des boutons d\'action rapide (modifier, actif/inactif, supprimer).'
+      }
+    ]
+  },
+  {
+    id: 'tournees',
+    title: 'Tournees',
+    icon: '🗺️',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Principe des tournees',
+        text: 'Les tournees definissent **quels jours vous visitez quelles zones**. Chaque commercial configure ses tournees pour organiser ses visites geographiquement.'
+      },
+      {
+        subtitle: 'Configurer vos tournees',
+        text: 'Depuis la page Tournees, assignez des **zones a chaque jour de la semaine**. Par exemple : Lundi = "Zone Nord", Mardi = "Vallee du Rhone", etc. Vous pouvez selectionner des zones existantes dans la liste.'
+      },
+      {
+        subtitle: 'Recurrence des tournees',
+        text: 'Les tournees supportent differents modes de recurrence :',
+        list: [
+          '**Toutes les semaines** : La meme tournee chaque semaine.',
+          '**Semaines paires** : Uniquement les semaines paires.',
+          '**Semaines impaires** : Uniquement les semaines impaires.'
+        ]
+      },
+      {
+        subtitle: 'Zones de prospection prioritaires',
+        text: 'Vous pouvez definir des **zones prioritaires de prospection** pour chaque jour, en plus des tournees clients. Ces zones s\'affichent dans le planning pour vous rappeler ou prospecter.'
+      },
+      {
+        subtitle: 'Compteur de RDV',
+        text: 'Chaque jour affiche le **nombre de RDV** prevus pour le commercial, permettant d\'equilibrer la charge de travail sur la semaine.'
+      },
+      {
+        subtitle: 'Navigation semaine',
+        text: 'Naviguez entre les semaines pour voir les tournees planifiees et les visites associees a chaque periode.'
+      }
+    ]
+  },
+  {
+    id: 'visites',
+    title: 'Visites clients',
+    icon: '📋',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Vue des visites',
+        text: 'La page Visites affiche vos clients a visiter cette semaine, organises **par jour** selon les tournees configurees. C\'est votre outil principal de suivi terrain.'
+      },
+      {
+        subtitle: 'Clients en retard',
+        text: 'Les clients dont la visite est **en retard** apparaissent en haut avec un fond rouge. Le nombre de jours de retard est indique. Ils sont prioritaires.'
+      },
+      {
+        subtitle: 'Enregistrer une visite',
+        text: 'Cliquez sur un client pour ouvrir la modale d\'action. Vous pouvez enregistrer :',
+        list: [
+          '**Visite** : Visite effectuee sur place.',
+          '**Appel** : Appel telephonique au client.',
+          '**RDV** : Planifier ou enregistrer un rendez-vous.',
+          '**Email** : Envoyer un email depuis un modele.'
+        ]
+      },
+      {
+        subtitle: 'Mise a jour automatique',
+        text: 'Quand vous enregistrez une visite, la **date de derniere visite** est mise a jour et la **prochaine visite** est recalculee automatiquement selon la frequence configuree.'
+      },
+      {
+        subtitle: 'Vue equipe (Admin)',
+        text: 'Les administrateurs peuvent voir les visites de **tous les commerciaux** avec un filtre par commercial. Utile pour suivre l\'activite terrain de l\'equipe.'
+      },
+      {
+        subtitle: 'Export ICS',
+        text: 'Exportez les visites de la semaine au format **ICS** pour les ajouter a votre calendrier.'
+      }
+    ]
+  },
+  {
+    id: 'compte-rendu',
+    title: 'Rapport Journalier / Compte-rendu',
+    icon: '✅',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Vues disponibles',
+        text: 'La page Compte-rendu offre plusieurs vues pour suivre vos activites :',
+        list: [
+          '**Vue jour** : Bilan de la journee avec toutes les interactions.',
+          '**Vue semaine** : Resume de la semaine avec regroupement par jour.',
+          '**Vue mois** : Vue mensuelle avec les tendances.',
+          '**Vue periode** : Selectionnez une periode personnalisee.'
+        ]
+      },
+      {
+        subtitle: 'Types d\'interactions',
+        text: 'Le rapport journalier recense toutes vos interactions :',
+        list: [
+          '**Visites** : Visites effectuees chez les clients.',
+          '**Appels** : Appels telephoniques passes.',
+          '**RDV** : Rendez-vous (planifies, realises, annules).',
+          '**Taches** : Taches terminees dans la journee.'
+        ]
+      },
+      {
+        subtitle: 'Resultats des RDV',
+        text: 'Les resultats des rendez-vous sont affiches de maniere **interactive** avec des statistiques par type de resultat. Vous pouvez voir les resultats par commercial en vue equipe.'
+      },
+      {
+        subtitle: 'Regroupement par commercial',
+        text: 'En **vue equipe** (admin), les RDV sont regroupes par commercial pour comparer les performances.'
+      },
+      {
+        subtitle: 'Detection de conflits',
+        text: 'Le rapport journalier detecte les **conflits horaires** entre vos RDV et les signale visuellement.'
+      },
+      {
+        subtitle: 'Notes rapides',
+        text: 'Ajoutez des **notes rapides** sur vos clients directement depuis le rapport journalier.'
+      }
+    ]
+  },
+  {
+    id: 'pipeline-cr',
+    title: 'Pipeline CR (suivi des comptes-rendus)',
+    icon: '📑',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Principe',
+        text: 'Le Pipeline CR est un tableau **Kanban** dedie au suivi des resultats de rendez-vous. Chaque RDV termine est place dans une colonne correspondant a son resultat.'
+      },
+      {
+        subtitle: 'Colonnes par defaut',
+        text: 'Les colonnes representent les differents resultats :',
+        list: [
+          '**RDV en attente** : RDV termines sans compte-rendu renseigne.',
+          '**RDV decale** : Rendez-vous repousses a une nouvelle date.',
+          '**Mail envoye** : Un email de suivi a ete envoye.',
+          '**Commande plus tard** : Le prospect commandera plus tard.',
+          '**A relancer** : Prospects a relancer.',
+          '**Client gagne** : Prospect converti en client.',
+          '**Pas interesse** : Prospect non interesse.'
+        ]
+      },
+      {
+        subtitle: 'Actions rapides',
+        text: 'Depuis une carte, vous pouvez **appeler**, **envoyer un email**, ou **planifier un nouveau RDV** directement.'
+      },
+      {
+        subtitle: 'Personnalisation',
+        text: 'Comme le pipeline principal, les colonnes sont **personnalisables** : ajoutez, renommez ou supprimez des colonnes selon votre processus.'
+      }
+    ]
+  },
+  {
+    id: 'taches',
+    title: 'Gestion des taches',
+    icon: '📝',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Creer une tache',
+        text: 'Cliquez sur **"+ Nouvelle tache"** pour creer une tache. Renseignez le **titre**, la **description**, la **priorite**, la **categorie**, la **date d\'echeance** et l\'**assignation** (a un commercial ou un client).'
+      },
+      {
+        subtitle: 'Statuts de tache',
+        text: 'Chaque tache passe par 3 statuts :',
+        list: [
+          '**A faire** : Tache en attente de traitement.',
+          '**En cours** : Tache commencee.',
+          '**Terminee** : Tache achevee.'
+        ]
+      },
+      {
+        subtitle: 'Priorites',
+        text: 'Trois niveaux de priorite :',
+        list: [
+          '**Haute** : Tache urgente et importante.',
+          '**Moyenne** : Tache a traiter dans les delais normaux.',
+          '**Basse** : Tache non urgente.'
+        ]
+      },
+      {
+        subtitle: 'Categories',
+        text: 'Classez vos taches par categorie : **General**, **Tournee/Visite**, **Prospection**, **Administratif**, **Livraison**, **Evenement**, **Autre**.'
+      },
+      {
+        subtitle: 'Filtres',
+        text: 'Filtrez vos taches par **statut**, **priorite**, **commercial**, **client** ou via la **recherche** par titre/description.'
+      }
+    ]
+  },
+  {
+    id: 'carte',
+    title: 'Carte interactive',
+    icon: '🗺️',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Vue carte',
+        text: 'La carte affiche vos **prospects et clients** sur une carte interactive OpenStreetMap. Chaque marqueur est cliquable pour voir les details.'
+      },
+      {
+        subtitle: 'Filtres geographiques',
+        text: 'Filtrez les marqueurs par :',
+        list: [
+          '**Type d\'etablissement** : Bar, restaurant, cave, etc.',
+          '**Etape pipeline** : Voir uniquement les prospects a un stade donne.',
+          '**Tags** : Filtrer par etiquettes.',
+          '**Secteur, region, departement, code postal** : Zoom geographique.',
+          '**Commercial** : Voir les prospects/clients d\'un commercial.'
+        ]
+      },
+      {
+        subtitle: 'Prospects vs Clients',
+        text: 'Des **boutons bascule** permettent d\'afficher ou masquer les prospects et/ou les clients sur la carte.'
+      },
+      {
+        subtitle: 'Panneau RDV',
+        text: 'A droite de la carte, un panneau affiche les **RDV de la semaine**. Vous pouvez naviguer entre les semaines, filtrer par commercial et confirmer des RDV directement depuis la carte.'
+      },
+      {
+        subtitle: 'Clustering',
+        text: 'Quand il y a beaucoup de marqueurs, ils sont **regroupes en clusters** avec un compteur. Zoomez pour voir les marqueurs individuels.'
+      }
+    ]
+  },
+  {
+    id: 'documents',
+    title: 'Documents',
+    icon: '📄',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Consulter les documents',
+        text: 'La page Documents liste tous les fichiers partages par l\'administration : **catalogues**, **tarifs**, **fiches techniques**, etc. Cliquez sur un document pour le **telecharger**.'
+      },
+      {
+        subtitle: 'Categories de documents',
+        text: 'Les documents sont classes par categorie :',
+        list: [
+          '**Bar/Restaurant** : Tarifs et fiches pour les bars et restaurants.',
+          '**Prix CE** : Grilles tarifaires comites d\'entreprise.',
+          '**Cave/Epicerie** : Documents pour les cavistes et epiceries fines.',
+          '**Grand Public** : Supports pour la vente directe.',
+          '**Autre** : Documents divers.'
+        ]
+      },
+      {
+        subtitle: 'Gestion (Admin)',
+        text: 'Les administrateurs peuvent **uploader** de nouveaux documents, les **categoriser** et les **supprimer**. Les formats acceptes incluent PDF, images et tableurs.'
+      }
+    ]
+  },
+  {
+    id: 'annuaire',
+    title: 'Annuaire',
+    icon: '📒',
+    roles: ['commercial', 'admin'],
+    content: [
+      {
+        subtitle: 'Types d\'entites',
+        text: 'L\'annuaire affiche les **types d\'etablissements** configures dans l\'application (bar, restaurant, cave, epicerie, etc.). Chaque type est represente par une carte avec son icone et sa couleur.'
+      },
+      {
+        subtitle: 'Gestion des types (Admin)',
+        text: 'Les administrateurs peuvent **creer, modifier et supprimer** des types d\'entites. Chaque type a un **nom**, une **icone**, une **couleur** et une **description**.'
+      },
+      {
+        subtitle: 'Filtrer par type',
+        text: 'L\'annuaire permet de filtrer les prospects et clients par **activite** et par **commercial**, pour rapidement trouver tous les etablissements d\'un meme type.'
+      }
+    ]
+  },
+  {
+    id: 'sirene',
+    title: 'SIRENE / Datagouv (Import automatique)',
+    icon: '🏛️',
+    roles: ['admin'],
+    content: [
+      {
+        subtitle: 'Principe',
+        text: 'L\'integration SIRENE permet d\'**importer automatiquement** des etablissements depuis la base de donnees nationale des entreprises (data.gouv.fr). Les etablissements correspondant a vos criteres sont ajoutes comme prospects.'
+      },
+      {
+        subtitle: 'Configuration des zones',
+        text: 'Configurez des **zones d\'import** en selectionnant :',
+        list: [
+          '**Departement** : Zone geographique ciblee.',
+          '**Codes NAF** : Types d\'activite recherches (restaurants, bars, etc.).',
+          '**Commercial par defaut** : A qui seront assignes les nouveaux prospects.',
+          '**Regles d\'import** : Criteres d\'inclusion automatique.'
+        ]
+      },
+      {
+        subtitle: 'Synchronisation automatique',
+        text: 'Un **CRON hebdomadaire** (chaque lundi a 6h) synchronise automatiquement les nouvelles entreprises correspondant a vos criteres. Les doublons sont detectes et filtres.'
+      },
+      {
+        subtitle: 'Synchronisation manuelle',
+        text: 'Cliquez sur **"Lancer le CRON manuellement"** pour declencher une synchronisation immediate. Les logs affichent le nombre d\'etablissements recuperes, inseres et mis a jour.'
+      },
+      {
+        subtitle: 'Journal de synchronisation',
+        text: 'Consultez l\'historique des synchronisations avec les statistiques : date/heure, nombre de records traites, inserts, updates et erreurs eventuelles.'
+      },
+      {
+        subtitle: 'Detection de doublons',
+        text: 'L\'application detecte automatiquement les **doublons** lors de l\'import (par SIRET, nom ou adresse) et peut **enrichir** les prospects existants avec de nouvelles donnees.'
+      }
+    ]
+  },
+  {
+    id: 'import',
+    title: 'Import / Export',
+    icon: '📥',
+    roles: ['admin'],
+    content: [
+      {
+        subtitle: 'Importer des prospects',
+        text: 'Importez des prospects depuis un fichier **Excel ou CSV**. L\'application detecte automatiquement les colonnes et vous propose un **mapping** pour chaque champ.'
+      },
+      {
+        subtitle: 'Etapes d\'import',
+        text: 'Le processus d\'import se deroule en plusieurs etapes :',
+        list: [
+          '**Chargement du fichier** : Glissez-deposez ou selectionnez votre fichier.',
+          '**Detection des colonnes** : L\'application identifie automatiquement les colonnes.',
+          '**Mapping** : Associez chaque colonne a un champ prospect.',
+          '**Validation** : Verifiez les donnees avant import.',
+          '**Import** : Les prospects sont crees avec geocodage optionnel des adresses.'
+        ]
+      },
+      {
+        subtitle: 'Geocodage',
+        text: 'Lors de l\'import, les adresses peuvent etre **geocodees automatiquement** pour obtenir les coordonnees GPS. Un indicateur de progression vous montre l\'avancement.'
+      },
+      {
+        subtitle: 'Exporter les donnees',
+        text: 'Exportez tous vos prospects en fichier **CSV/Excel** avec toutes les colonnes disponibles.'
+      }
+    ]
+  },
+  {
+    id: 'admin',
+    title: 'Administration',
+    icon: '⚙️',
+    roles: ['admin'],
+    content: [
+      {
+        subtitle: 'Gestion des utilisateurs',
+        text: 'Depuis l\'onglet Administration, gerez les comptes utilisateurs :',
+        list: [
+          '**Ajouter un utilisateur** : Creez un compte avec nom, email et role (Admin, Commercial, Prospection).',
+          '**Modifier** : Changez le role, les zones actives ou les informations.',
+          '**Desactiver** : Suspendez un compte sans le supprimer.',
+          '**Supprimer** : Supprimez definitivement un compte.'
+        ]
+      },
+      {
+        subtitle: 'Statistiques globales',
+        text: 'Les statistiques admin donnent une vue d\'ensemble :',
+        list: [
+          '**Total prospects et clients** dans le systeme.',
+          '**Repartition par etape pipeline** avec graphiques.',
+          '**Metriques d\'appels** (journee, semaine, mois).',
+          '**Taux de conversion** et de reponse.',
+          '**Repartition geographique** des prospects/clients.'
+        ]
+      },
+      {
+        subtitle: 'Gestion des tags',
+        text: 'Creez, modifiez et supprimez les **tags** utilises pour categoriser les prospects. Personnalisez les **couleurs** et suivez le nombre d\'utilisations.'
+      },
+      {
+        subtitle: 'Suivi d\'activite',
+        text: 'L\'onglet **Activite** dans l\'administration permet de suivre les connexions et actions de chaque utilisateur :',
+        list: [
+          '**Derniere connexion** de chaque utilisateur.',
+          '**Nombre d\'actions** effectuees (appels, RDV, visites).',
+          '**Historique** des modifications importantes.'
+        ]
+      },
+      {
+        subtitle: 'Configuration des webhooks',
+        text: 'Configurez les **webhooks** pour recevoir les donnees d\'EasyBeer (commandes, facturation) et d\'autres systemes externes.'
+      }
+    ]
+  },
+  {
+    id: 'astuces',
+    title: 'Astuces et bonnes pratiques',
+    icon: '💡',
+    roles: ['all'],
+    content: [
+      {
+        subtitle: 'Raccourcis utiles',
+        text: 'Gagnez du temps avec ces raccourcis :',
+        list: [
+          '**Click-to-call** : Cliquez sur un numero pour appeler directement (mobile).',
+          '**Click-to-email** : Cliquez sur un email pour ouvrir votre messagerie.',
+          '**Navigation GPS** : Cliquez sur une adresse pour l\'ouvrir dans Google Maps.',
+          '**Recherche rapide** : Utilisez la barre de recherche en haut de chaque page.'
+        ]
+      },
+      {
+        subtitle: 'Bien remplir ses donnees',
+        text: 'Pour tirer le meilleur parti de l\'application :',
+        list: [
+          '**Toujours enregistrer le resultat d\'un appel** : Meme un "pas de reponse" est une information precieuse.',
+          '**Remplir les comptes-rendus de RDV** : Ils alimentent le pipeline et les statistiques.',
+          '**Mettre a jour les visites** : Enregistrez vos visites pour calculer automatiquement les prochaines.',
+          '**Utiliser les tags** : Categorisez vos prospects pour mieux les retrouver.',
+          '**Ajouter des notes** : Les notes sur les fiches prospect/client aident toute l\'equipe.'
+        ]
+      },
+      {
+        subtitle: 'Organiser sa semaine',
+        text: 'Pour une semaine efficace :',
+        list: [
+          '**Configurez vos tournees** : Definissez quelles zones visiter chaque jour.',
+          '**Consultez le planning semaine** : Visualisez vos visites jour par jour.',
+          '**Traitez les rappels en retard** : Commencez par les rappels urgents.',
+          '**Exportez vos RDV** : Synchronisez avec votre calendrier.',
+          '**Consultez le rapport journalier** : Faites le bilan chaque soir.'
+        ]
+      },
+      {
+        subtitle: 'Synchronisation multi-utilisateurs',
+        text: 'L\'application se **synchronise automatiquement** toutes les 30 secondes. Si vous travaillez en equipe, les modifications de vos collegues apparaitront rapidement. En cas de conflit, la derniere modification enregistree sur le serveur l\'emporte.'
+      }
+    ]
+  }
+]
 
-function Section({ icon: Icon, title, id, children }: { icon: React.ElementType; title: string; id: string; children: React.ReactNode }) {
-  return (
-    <section id={id} className="bg-white rounded-xl border border-gray-200 p-6">
-      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
-        <Icon className="w-5 h-5 text-brewery-600" />
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
+function renderText(text: string) {
+  // Render bold text
+  const parts = text.split(/(\*\*.*?\*\*)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="text-gray-800">{part.slice(2, -2)}</strong>
+    }
+    return part
+  })
 }
 
 export default function GuidePage() {
-  const sections = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'pipeline', icon: Kanban, label: 'Pipeline' },
-    { id: 'prospects', icon: Users, label: 'Prospects' },
-    { id: 'appels', icon: Phone, label: 'Appels' },
-    { id: 'rdv', icon: Calendar, label: 'Rendez-vous' },
-    { id: 'rappels', icon: Bell, label: 'Rappels' },
-    { id: 'emails', icon: Mail, label: 'Emails' },
-    { id: 'carte', icon: Map, label: 'Carte' },
-    { id: 'import', icon: Upload, label: 'Import / Export' },
-    { id: 'tags', icon: Tag, label: 'Tags' },
-    { id: 'documents', icon: FileText, label: 'Documents' },
-    { id: 'clients', icon: Building2, label: 'Clients' },
-    { id: 'tournees', icon: MapPin, label: 'Tournees' },
-    { id: 'visites', icon: ClipboardCheck, label: 'Visites Clients' },
-    { id: 'compte-rendu', icon: CheckCheck, label: 'Rapport Journalier' },
-    { id: 'taches', icon: ListTodo, label: 'Taches' },
-    { id: 'activite', icon: Activity, label: 'Activite (Admin)' },
-  ];
+  const [roleFilter, setRoleFilter] = useState('all')
+  const [expandedSection, setExpandedSection] = useState<string | null>(null)
+
+  const filteredSections = sections.filter(s =>
+    roleFilter === 'all' ? true : s.roles.includes('all') || s.roles.includes(roleFilter)
+  )
+
+  const toggleSection = (id: string) => {
+    setExpandedSection(expandedSection === id ? null : id)
+  }
+
+  const getRoleBadges = (roles: string[]) => {
+    if (roles.includes('all')) return null
+    return (
+      <div className="flex gap-1 ml-2">
+        {roles.map(role => {
+          const rf = ROLE_FILTERS.find(r => r.id === role)
+          if (!rf) return null
+          return (
+            <span key={role} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${rf.color}`}>
+              {rf.label}
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
       {/* Header */}
       <div className="bg-gradient-to-r from-brewery-600 to-brewery-700 rounded-xl p-6 text-white">
-        <div className="flex items-center gap-3 mb-2">
-          <BookOpen className="w-7 h-7" />
-          <h1 className="text-2xl font-bold">Guide SuiviPro</h1>
-        </div>
+        <h1 className="text-2xl font-bold mb-1">Guide SuiviPro</h1>
         <p className="text-brewery-100 text-sm">
-          Bienvenue dans le guide complet de SuiviPro, votre outil de suivi commercial.
-          Cette page explique en detail toutes les fonctionnalites de l'application pour vous aider
-          a gerer efficacement vos prospects, appels, rendez-vous et bien plus.
+          Guide complet de toutes les fonctionnalites de SuiviPro, votre outil de suivi commercial.
+          Filtrez par role pour voir les sections qui vous concernent.
         </p>
       </div>
 
-      {/* Quick nav */}
+      {/* Role filter */}
+      <div className="flex gap-2 flex-wrap">
+        {ROLE_FILTERS.map(rf => (
+          <button
+            key={rf.id}
+            onClick={() => setRoleFilter(rf.id)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              roleFilter === rf.id
+                ? 'bg-brewery-600 text-white shadow-sm'
+                : `${rf.color} hover:opacity-80`
+            }`}
+          >
+            {rf.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Table of contents */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Sommaire</h2>
-        <div className="flex flex-wrap gap-2">
-          {sections.map(s => (
-            <a
-              key={s.id}
-              href={`#${s.id}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"
+        <h3 className="font-bold text-gray-800 mb-3">Sommaire ({filteredSections.length} sections)</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {filteredSections.map(section => (
+            <button
+              key={section.id}
+              onClick={() => {
+                setExpandedSection(section.id)
+                document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth' })
+              }}
+              className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 text-left text-sm"
             >
-              <s.icon className="w-3.5 h-3.5" />
-              {s.label}
-            </a>
+              <span>{section.icon}</span>
+              <span className="text-gray-700 flex-1 text-xs">{section.title}</span>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* ==================== DASHBOARD ==================== */}
-      <Section icon={LayoutDashboard} title="Dashboard" id="dashboard">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            Le Dashboard est votre page d'accueil. Il affiche un resume de votre activite commerciale
-            avec des indicateurs cles en temps reel.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs mb-1">Indicateurs (KPIs)</h4>
-              <ul className="text-xs space-y-1 text-gray-500">
-                <li>- Appels aujourd'hui / cette semaine / ce mois</li>
-                <li>- RDV cette semaine / ce mois</li>
-                <li>- Taux de conversion (prospects gagnes / total)</li>
-                <li>- Taux de reponse aux appels</li>
-                <li>- Duree moyenne des appels</li>
-              </ul>
+      {/* Sections */}
+      {filteredSections.map(section => (
+        <div key={section.id} id={section.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => toggleSection(section.id)}
+            className="w-full p-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <span className="text-2xl flex-shrink-0">{section.icon}</span>
+              <h3 className="font-bold text-gray-800 text-sm">{section.title}</h3>
+              {getRoleBadges(section.roles)}
             </div>
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs mb-1">Classement equipe</h4>
-              <ul className="text-xs space-y-1 text-gray-500">
-                <li>- Classement par nombre d'appels</li>
-                <li>- Classement par nombre de RDV</li>
-                <li>- Classement par nouveaux prospects</li>
-                <li>- Periode configurable (semaine, mois)</li>
-                <li>- Comparaison avec les objectifs fixes</li>
-              </ul>
-            </div>
-          </div>
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-1">Analyse des resultats RDV</h4>
-            <p className="text-xs text-gray-500">
-              Le Dashboard affiche egalement une analyse detaillee des resultats de vos rendez-vous par semaine
-              (Client, Mail envoye, Commande plus tard, A relancer, Pas interesse). Vous pouvez filtrer par commercial
-              et naviguer entre les mois.
-            </p>
-          </div>
-        </div>
-      </Section>
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${expandedSection === section.id ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
-      {/* ==================== PIPELINE ==================== */}
-      <Section icon={Kanban} title="Pipeline commercial" id="pipeline">
-        <div className="space-y-4 text-sm text-gray-600">
-          <p>
-            Le Pipeline est une vue Kanban qui represente le parcours de chaque prospect,
-            de la decouverte jusqu'a la conversion (ou la perte). Chaque colonne represente une etape.
-            Vous pouvez deplacer les prospects d'une colonne a l'autre par glisser-deposer.
-          </p>
-
-          <h3 className="font-semibold text-gray-800">Les 9 etapes du pipeline</h3>
-          <div className="space-y-2">
-            {PIPELINE_STAGES.map((stage, i) => (
-              <div key={stage.id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
-                <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                  <span className="text-[10px] text-gray-400 w-4">{i + 1}.</span>
-                  <span
-                    className="inline-block w-3 h-3 rounded-full"
-                    style={{ backgroundColor: stage.color }}
-                  />
+          {expandedSection === section.id && (
+            <div className="p-4 space-y-4 border-t border-gray-100">
+              {section.content.map((item, idx) => (
+                <div key={idx}>
+                  {item.subtitle && (
+                    <h4 className="font-semibold text-gray-700 mb-1">{item.subtitle}</h4>
+                  )}
+                  {item.text && (
+                    <p className="text-gray-600 text-sm">{renderText(item.text)}</p>
+                  )}
+                  {item.list && (
+                    <ul className="mt-2 space-y-1">
+                      {item.list.map((li, liIdx) => (
+                        <li key={liIdx} className="text-gray-600 text-sm flex items-start gap-2">
+                          <span className="text-brewery-500 mt-1">•</span>
+                          <span>{renderText(li)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <div>
-                  <span className="font-semibold text-gray-800 text-xs">{stage.label}</span>
-                  <p className="text-xs text-gray-500 mt-0.5">{stage.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex items-start gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              <strong>Parcours type :</strong> Nouveau → A contacter → Contacte → Proposition → Negociation → RDV → Gagne.
-              Les etapes "Perdu" et "Ne pas contacter" sont des etapes terminales.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== PROSPECTS ==================== */}
-      <Section icon={Users} title="Gestion des prospects" id="prospects">
-        <div className="space-y-4 text-sm text-gray-600">
-          <p>
-            La page Prospects est le coeur de SuiviPro. Elle liste tous vos prospects avec
-            leurs informations, et permet d'acceder a leur fiche detaillee.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs flex items-center gap-1 mb-1">
-                <Search className="w-3 h-3" /> Recherche & Filtres
-              </h4>
-              <ul className="text-xs space-y-1 text-gray-500">
-                <li>- Recherche par nom, contact ou notes</li>
-                <li>- Filtre par type d'etablissement</li>
-                <li>- Filtre par etape pipeline</li>
-                <li>- Filtre par secteur, ville, departement</li>
-                <li>- Filtre par commercial assigne</li>
-                <li>- Filtre par presence de RDV</li>
-                <li>- Tri par score ou date</li>
-              </ul>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs flex items-center gap-1 mb-1">
-                <MousePointer className="w-3 h-3" /> Actions rapides
-              </h4>
-              <ul className="text-xs space-y-1 text-gray-500">
-                <li>- Cliquer sur le telephone → enregistrer un appel</li>
-                <li>- Bouton email → ouvrir les templates</li>
-                <li>- Bouton calendrier → planifier un RDV</li>
-                <li>- Bouton rappel → creer un rappel</li>
-                <li>- Bouton notes → ajouter des notes rapides</li>
-                <li>- Mode selection multiple → actions en lot</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs flex items-center gap-1 mb-1">
-              <Star className="w-3 h-3" /> Score prospect
-            </h4>
-            <p className="text-xs text-gray-500">
-              Chaque prospect a un score de 0 a 100 (par defaut : 50). Ce score vous permet de prioriser
-              vos prospects. Plus le score est eleve, plus le prospect est considere comme prometteur.
-              Vous pouvez trier la liste par score pour vous concentrer sur les meilleurs prospects.
-            </p>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-1">Fiche prospect</h4>
-            <p className="text-xs text-gray-500">
-              En cliquant sur un prospect, sa fiche detaillee s'ouvre avec :
-              le nom de l'etablissement, le nom du contact, le telephone (cliquable pour appeler),
-              l'email, l'adresse (lien Google Maps), le secteur, les notes, l'historique des appels,
-              les rendez-vous et les rappels. Vous pouvez aussi voir les tags et l'etape pipeline.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== APPELS ==================== */}
-      <Section icon={Phone} title="Appels telephoniques" id="appels">
-        <div className="space-y-4 text-sm text-gray-600">
-          <p>
-            La page Appels vous permet de consulter l'historique de tous vos appels et d'en enregistrer de nouveaux.
-            Chaque appel est associe a un prospect et a un resultat.
-          </p>
-
-          <h3 className="font-semibold text-gray-800">Comment enregistrer un appel</h3>
-          <ol className="text-xs space-y-1 text-gray-500 list-decimal list-inside">
-            <li>Allez sur la fiche du prospect (ou cliquez sur l'icone telephone dans la liste)</li>
-            <li>Cliquez sur le numero de telephone</li>
-            <li>Le modal d'appel s'ouvre avec un chronometre pour la duree</li>
-            <li>Apres l'appel, selectionnez le resultat et ajoutez des notes</li>
-            <li>Enregistrez l'appel</li>
-          </ol>
-
-          <h3 className="font-semibold text-gray-800">Resultats d'appel possibles</h3>
-          <div className="space-y-2">
-            {CALL_RESULTS.map(r => (
-              <div key={r.label} className="flex items-start gap-3 p-2 rounded-lg bg-gray-50">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${r.color}`}>{r.label}</span>
-                <p className="text-xs text-gray-500">{r.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs flex items-center gap-1 mb-1">
-              <TrendingUp className="w-3 h-3" /> Statistiques d'appels
-            </h4>
-            <p className="text-xs text-gray-500">
-              En haut de la page Appels, vous voyez vos statistiques : appels aujourd'hui, cette semaine,
-              ce mois, et votre taux de reponse. Ces chiffres vous aident a suivre votre activite.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== RENDEZ-VOUS ==================== */}
-      <Section icon={Calendar} title="Rendez-vous (RDV)" id="rdv">
-        <div className="space-y-4 text-sm text-gray-600">
-          <p>
-            La page RDV gere vos rendez-vous de degustation et de presentation.
-            Vous pouvez basculer entre les vues Liste, Agenda (semaine) et Planning.
-          </p>
-
-          <h3 className="font-semibold text-gray-800">Creer un rendez-vous</h3>
-          <ol className="text-xs space-y-1 text-gray-500 list-decimal list-inside">
-            <li>Cliquez sur "Nouveau RDV" ou sur l'icone calendrier d'un prospect</li>
-            <li>Selectionnez le prospect, la date, l'heure de debut et de fin</li>
-            <li>Indiquez le lieu du rendez-vous</li>
-            <li>Ajoutez des notes si necessaire</li>
-            <li>Enregistrez</li>
-          </ol>
-
-          <h3 className="font-semibold text-gray-800">Statuts de rendez-vous</h3>
-          <div className="space-y-2">
-            {RDV_STATUSES.map(s => (
-              <div key={s.label} className="flex items-start gap-3 p-2 rounded-lg bg-gray-50">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${s.color}`}>{s.label}</span>
-                <p className="text-xs text-gray-500">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <h3 className="font-semibold text-gray-800">Compte-rendu de RDV</h3>
-          <p className="text-xs text-gray-500 mb-2">
-            Quand un RDV est termine, vous devez remplir le compte-rendu. Le resultat choisi
-            <strong> deplace automatiquement le prospect dans le pipeline</strong> :
-          </p>
-          <div className="space-y-2">
-            {COMPTE_RENDU_OPTIONS.map(cr => (
-              <div key={cr.label} className="flex items-start gap-3 p-2 rounded-lg bg-gray-50">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${cr.color}`}>{cr.label}</span>
-                <div>
-                  <p className="text-xs text-gray-500">{cr.desc}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
-                    <ArrowRight className="w-3 h-3" /> Pipeline : <strong>{cr.pipeline}</strong>
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex items-start gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              <strong>Integration Google Calendar :</strong> Si votre compte Google est connecte,
-              vos RDV SuiviPro sont automatiquement synchronises avec votre agenda Google.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== RAPPELS ==================== */}
-      <Section icon={Bell} title="Rappels" id="rappels">
-        <div className="space-y-4 text-sm text-gray-600">
-          <p>
-            Les rappels vous permettent de programmer des taches a une date et heure precise
-            pour ne jamais oublier de relancer un prospect.
-          </p>
-
-          <h3 className="font-semibold text-gray-800">Comment creer un rappel</h3>
-          <ol className="text-xs space-y-1 text-gray-500 list-decimal list-inside">
-            <li>Depuis la liste des prospects, cliquez sur l'icone cloche</li>
-            <li>Choisissez la date et l'heure du rappel</li>
-            <li>Ecrivez un message (ex: "Relancer pour devis", "Rappeler apres degustation")</li>
-            <li>Enregistrez</li>
-          </ol>
-
-          <h3 className="font-semibold text-gray-800">Organisation des rappels</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-red-50 rounded-lg">
-              <h4 className="text-xs font-semibold text-red-700">En retard</h4>
-              <p className="text-[10px] text-red-600">Rappels dont la date est passee. A traiter en priorite !</p>
-            </div>
-            <div className="p-3 bg-amber-50 rounded-lg">
-              <h4 className="text-xs font-semibold text-amber-700">Aujourd'hui</h4>
-              <p className="text-[10px] text-amber-600">Rappels programmes pour aujourd'hui.</p>
-            </div>
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <h4 className="text-xs font-semibold text-blue-700">A venir</h4>
-              <p className="text-[10px] text-blue-600">Rappels pour les jours suivants.</p>
-            </div>
-            <div className="p-3 bg-green-50 rounded-lg">
-              <h4 className="text-xs font-semibold text-green-700">Termines</h4>
-              <p className="text-[10px] text-green-600">Rappels que vous avez marques comme traites.</p>
-            </div>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs flex items-center gap-1 mb-1">
-              <Clock className="w-3 h-3" /> Reporter un rappel
-            </h4>
-            <p className="text-xs text-gray-500">
-              Vous pouvez reporter un rappel avec les options rapides : Demain, Dans 2 jours, Dans 1 semaine,
-              Dans 2 semaines. Vous pouvez aussi choisir une date personnalisee.
-            </p>
-          </div>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex items-start gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              <strong>Badge dans le menu :</strong> Le nombre de rappels en retard et du jour
-              s'affiche en rouge a cote de "Rappels" dans la barre laterale.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== EMAILS ==================== */}
-      <Section icon={Mail} title="Emails & Templates" id="emails">
-        <div className="space-y-4 text-sm text-gray-600">
-          <p>
-            SuiviPro propose des templates d'emails pre-rediges que vous pouvez personnaliser
-            et envoyer directement a vos prospects.
-          </p>
-
-          <h3 className="font-semibold text-gray-800">Types de templates disponibles</h3>
-          <div className="flex flex-wrap gap-2">
-            {['Presentation', 'Relance', 'Confirmation', 'Remerciement', 'Catalogue', 'Nouveaute', 'Promotion'].map(t => (
-              <span key={t} className="px-2 py-1 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">{t}</span>
-            ))}
-          </div>
-
-          <h3 className="font-semibold text-gray-800">Variables dynamiques</h3>
-          <p className="text-xs text-gray-500 mb-2">
-            Les templates utilisent des variables qui sont automatiquement remplacees par les informations du prospect :
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-1.5 px-2 text-gray-700 font-semibold">Variable</th>
-                  <th className="text-left py-1.5 px-2 text-gray-700 font-semibold">Remplacee par</th>
-                </tr>
-              </thead>
-              <tbody className="text-gray-500">
-                <tr className="border-b border-gray-100"><td className="py-1.5 px-2 font-mono text-brewery-600">{'{{nom_contact}}'}</td><td className="py-1.5 px-2">Le nom du contact</td></tr>
-                <tr className="border-b border-gray-100"><td className="py-1.5 px-2 font-mono text-brewery-600">{'{{nom_etablissement}}'}</td><td className="py-1.5 px-2">Le nom de l'etablissement</td></tr>
-                <tr className="border-b border-gray-100"><td className="py-1.5 px-2 font-mono text-brewery-600">{'{{commercial}}'}</td><td className="py-1.5 px-2">Votre nom (commercial)</td></tr>
-                <tr className="border-b border-gray-100"><td className="py-1.5 px-2 font-mono text-brewery-600">{'{{telephone_commercial}}'}</td><td className="py-1.5 px-2">Votre telephone</td></tr>
-                <tr><td className="py-1.5 px-2 font-mono text-brewery-600">{'{{date_rdv}}'}</td><td className="py-1.5 px-2">La date du prochain RDV</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h3 className="font-semibold text-gray-800">Comment envoyer un email</h3>
-          <ol className="text-xs space-y-1 text-gray-500 list-decimal list-inside">
-            <li>Depuis la fiche prospect, cliquez sur l'icone email</li>
-            <li>Choisissez un template dans la liste</li>
-            <li>Previsualisez l'email avec les variables remplacees</li>
-            <li>Cliquez "Envoyer" pour ouvrir votre messagerie avec l'email pre-rempli</li>
-          </ol>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex items-start gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              <strong>Astuce :</strong> Quand vous envoyez un email a un prospect "Nouveau" ou "A contacter",
-              il passe automatiquement a l'etape "Contacte".
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== CARTE ==================== */}
-      <Section icon={Map} title="Carte des prospects" id="carte">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La Carte affiche tous vos prospects sur une carte interactive. Chaque marqueur
-            est colore selon l'etape du pipeline du prospect.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs flex items-center gap-1 mb-1">
-                <Filter className="w-3 h-3" /> Filtres disponibles
-              </h4>
-              <ul className="text-xs space-y-1 text-gray-500">
-                <li>- Par type d'etablissement</li>
-                <li>- Par etape pipeline</li>
-                <li>- Par tags</li>
-                <li>- Par secteur / region</li>
-                <li>- Par code postal / departement</li>
-              </ul>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs mb-1">Panneau RDV</h4>
-              <p className="text-xs text-gray-500">
-                Un panneau lateral affiche les rendez-vous de la semaine avec la possibilite
-                de naviguer entre les semaines et de filtrer par commercial.
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500">
-            Cliquez sur un marqueur pour voir les details du prospect et acceder aux actions rapides
-            (appeler, envoyer un email, voir la fiche).
-          </p>
-        </div>
-      </Section>
-
-      {/* ==================== IMPORT/EXPORT ==================== */}
-      <Section icon={Upload} title="Import / Export" id="import">
-        <div className="space-y-4 text-sm text-gray-600">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs mb-2">Importer des prospects</h4>
-              <ol className="text-xs space-y-1 text-gray-500 list-decimal list-inside">
-                <li>Preparez votre fichier Excel ou CSV</li>
-                <li>Cliquez "Importer" et selectionnez le fichier</li>
-                <li>Verifiez la correspondance des colonnes</li>
-                <li>Activez le geocodage automatique si besoin</li>
-                <li>Lancez l'import</li>
-              </ol>
-              <p className="text-[10px] text-gray-400 mt-2">
-                Le systeme detecte automatiquement les doublons et les types d'etablissement.
-              </p>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-xs mb-2">Exporter les donnees</h4>
-              <ul className="text-xs space-y-1 text-gray-500">
-                <li>- <strong>CSV</strong> : Export simple, compatible avec tous les tableurs</li>
-                <li>- <strong>Excel (XLSX)</strong> : Export formate avec colonnes organisees</li>
-              </ul>
-              <p className="text-[10px] text-gray-400 mt-2">
-                L'export inclut : nom, type, contact, coordonnees, adresse, notes, score, etape pipeline.
-              </p>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== TAGS ==================== */}
-      <Section icon={Tag} title="Tags" id="tags">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            Les tags sont des etiquettes colorees que vous pouvez attribuer a vos prospects
-            pour les organiser et les filtrer facilement.
-          </p>
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Exemples de tags</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { nom: 'Gros potentiel', couleur: '#22c55e' },
-                { nom: 'Budget limite', couleur: '#ef4444' },
-                { nom: 'Deja client concurrent', couleur: '#f59e0b' },
-                { nom: 'Interesse bio', couleur: '#3b82f6' },
-                { nom: 'Urgence', couleur: '#ef4444' },
-                { nom: 'Premium', couleur: '#f97316' },
-                { nom: 'A relancer', couleur: '#a855f7' },
-              ].map(tag => (
-                <span key={tag.nom} className="badge text-white text-[10px]" style={{ backgroundColor: tag.couleur }}>
-                  {tag.nom}
-                </span>
               ))}
             </div>
-          </div>
-          <ul className="text-xs space-y-1 text-gray-500">
-            <li>- Creez vos propres tags avec un nom et une couleur</li>
-            <li>- Assignez plusieurs tags a un meme prospect</li>
-            <li>- Utilisez le mode selection multiple pour ajouter/retirer des tags en lot</li>
-            <li>- Les tags s'affichent sur la fiche prospect, dans la liste et sur le pipeline</li>
-          </ul>
+          )}
         </div>
-      </Section>
+      ))}
 
-      {/* ==================== DOCUMENTS ==================== */}
-      <Section icon={FileText} title="Documents" id="documents">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La section Documents vous permet de stocker et partager des fichiers utiles :
-            catalogues, fiches produit, grilles tarifaires, etc.
-          </p>
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Categories de documents</h4>
-            <div className="flex flex-wrap gap-2">
-              {['Bar / Restaurant', 'Prix C.E.', 'Cave / Epicerie', 'Grand Public', 'Autre'].map(cat => (
-                <span key={cat} className="px-2 py-1 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">{cat}</span>
-              ))}
-            </div>
-          </div>
-          <ul className="text-xs space-y-1 text-gray-500">
-            <li>- Uploadez vos fichiers (PDF, images, etc.)</li>
-            <li>- Organisez par categorie</li>
-            <li>- Telechargez a tout moment</li>
-          </ul>
-        </div>
-      </Section>
-
-      {/* ==================== CLIENTS ==================== */}
-      <Section icon={Building2} title="Gestion des Clients" id="clients">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La page Clients centralise tous vos clients actifs. Contrairement aux prospects,
-            les clients sont des etablissements qui ont deja passe commande et avec lesquels vous entretenez une relation commerciale reguliere.
-          </p>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Types de clients</h4>
-            <div className="flex flex-wrap gap-2">
-              {['Bar / Restaurant', 'Cave / Epicerie', 'Hotel', 'Grande distribution', 'C.E.', 'Autre'].map(t => (
-                <span key={t} className="px-2 py-1 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">{t}</span>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Statuts</h4>
-            <div className="flex flex-wrap gap-2">
-              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Actif — Client regulier avec visites planifiees</span>
-              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-orange-100 text-orange-700">En pause — Client temporairement inactif</span>
-              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Perdu — Client qui ne commande plus</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Fonctionnalites cles</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- <strong>Fiche client</strong> : coordonnees, adresse, SIRET, type, secteur de tournee</li>
-              <li>- <strong>Frequence de visite</strong> : configuree par type de client, avec recurrence personnalisable</li>
-              <li>- <strong>Prochaine visite</strong> : calculee automatiquement apres chaque visite</li>
-              <li>- <strong>Historique</strong> : toutes les interactions (visites, appels) sont enregistrees</li>
-              <li>- <strong>Conversion prospect</strong> : un prospect "Gagne" peut etre converti en client</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              Chaque client est assigne a un secteur de tournee (ex: "Aurec sur loire", "Haute Loire")
-              qui permet de planifier les visites par zone geographique dans la page Tournees.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== TOURNEES ==================== */}
-      <Section icon={MapPin} title="Tournees" id="tournees">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La page Tournees permet de configurer les zones de visite de chaque commercial pour chaque jour de la semaine.
-            C'est l'outil central pour organiser le planning hebdomadaire des visites clients.
-          </p>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Configuration des tournees</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- Chaque commercial a une configuration par jour (lundi a samedi)</li>
-              <li>- Pour chaque jour, vous assignez un ou plusieurs <strong>secteurs</strong> (zones geographiques)</li>
-              <li>- Les secteurs correspondent au champ "tournee" des fiches clients</li>
-              <li>- Vous pouvez choisir la frequence : <strong>chaque semaine</strong>, <strong>semaines paires</strong> ou <strong>semaines impaires</strong></li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-green-50 rounded-lg">
-            <h4 className="font-semibold text-green-800 text-xs mb-2">Zones de prospection</h4>
-            <ul className="text-xs space-y-1 text-green-700">
-              <li>- Les prospecteurs peuvent configurer des <strong>zones prioritaires pour la prospection</strong></li>
-              <li>- Pour chaque zone, vous indiquez le nombre de <strong>RDV a prendre</strong> (slots)</li>
-              <li>- Ces slots apparaissent en vert sur la vue des tournees</li>
-              <li>- Les zones de prospection sont visibles par les prospecteurs pour planifier leurs appels</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Badges sur la vue tournees</h4>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">X RDV a prendre</span>
-                <span className="text-xs text-gray-500">= total des slots de prospection configures pour ce jour</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">X RDV pris</span>
-                <span className="text-xs text-gray-500">= nombre de RDV deja planifies ce jour</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">X/Y visites</span>
-                <span className="text-xs text-gray-500">= visites effectuees / total de clients dans les secteurs</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== VISITES CLIENTS ==================== */}
-      <Section icon={ClipboardCheck} title="Visites Clients" id="visites">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La page Visites Clients vous aide a planifier et suivre vos visites terrain.
-            Elle affiche les clients a visiter en fonction de leur prochaine date de visite et de la configuration des tournees.
-          </p>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Comment ca marche</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- Les clients sont tries par <strong>urgence de visite</strong> (les plus en retard en premier)</li>
-              <li>- La <strong>prochaine visite</strong> est calculee automatiquement selon la frequence du type de client</li>
-              <li>- Vous pouvez filtrer par <strong>secteur</strong> et par <strong>commercial</strong></li>
-              <li>- Cliquez sur un client pour voir sa fiche et enregistrer une visite</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Enregistrer une visite</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>1. Ouvrez la fiche client dans la page Visites</li>
-              <li>2. Cliquez sur <strong>"Enregistrer une visite"</strong></li>
-              <li>3. Ajoutez un commentaire optionnel (observations, commande, etc.)</li>
-              <li>4. La prochaine visite est automatiquement recalculee</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Creer un RDV depuis une visite</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- Depuis la fiche d'un client en visite, vous pouvez <strong>planifier un RDV</strong></li>
-              <li>- Le RDV sera lie au client et visible dans la page Prospects & RDV</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              Les frequences de visite par defaut sont configurables par l'administrateur dans
-              Administration &gt; Tournees. Chaque client peut aussi avoir une recurrence personnalisee.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== COMPTE RENDU ==================== */}
-      <Section icon={CheckCheck} title="Rapport Journalier" id="compte-rendu">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La page Compte Rendu est votre outil pour faire le bilan de chaque journee.
-            Elle regroupe tous vos RDV et visites clients du jour en un seul endroit,
-            pour que vous puissiez facilement remplir vos comptes rendus.
-          </p>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Selection du jour</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- Par defaut, la page affiche le <strong>jour actuel</strong></li>
-              <li>- Selectionnez n'importe quel jour de la semaine en cours (lundi a dimanche)</li>
-              <li>- Les secteurs de tournee du jour sont affiches en sous-titre</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-indigo-50 rounded-lg">
-            <h4 className="font-semibold text-indigo-800 text-xs mb-2">Section RDV</h4>
-            <ul className="text-xs space-y-1 text-indigo-700">
-              <li>- Liste de tous vos RDV du jour selectionne</li>
-              <li>- Deroulez un RDV pour saisir le <strong>resultat</strong> (Client, Mail envoye, A relancer, etc.)</li>
-              <li>- Ajoutez des <strong>notes de compte rendu</strong></li>
-              <li>- Le RDV passe automatiquement en statut "Termine" et le prospect change d'etape</li>
-              <li>- Les RDV deja traites sont affiches avec une coche verte</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-green-50 rounded-lg">
-            <h4 className="font-semibold text-green-800 text-xs mb-2">Section Visites Clients</h4>
-            <ul className="text-xs space-y-1 text-green-700">
-              <li>- Liste les clients a visiter selon les secteurs de votre tournee du jour</li>
-              <li>- Deroulez un client pour ajouter un <strong>commentaire de visite</strong></li>
-              <li>- Cliquez sur "Marquer comme visitee" pour enregistrer la visite</li>
-              <li>- Le compteur X/Y en haut indique votre progression</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              Utilisez cette page en fin de journee ou entre deux rendez-vous pour ne rien oublier.
-              Tous les comptes rendus alimentent l'historique et les statistiques.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* ==================== TACHES ==================== */}
-      <Section icon={ListTodo} title="Taches" id="taches">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            La page Taches vous permet de gerer des taches associees a vos clients.
-            C'est un outil de suivi pour ne rien oublier : relances, envois de documents,
-            suivi de commandes, etc.
-          </p>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Creer une tache</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- <strong>Titre</strong> : description courte de la tache</li>
-              <li>- <strong>Description</strong> : details complementaires (optionnel)</li>
-              <li>- <strong>Client</strong> : associez la tache a un client existant</li>
-              <li>- <strong>Priorite</strong> : basse, moyenne ou haute</li>
-              <li>- <strong>Date d'echeance</strong> : pour ne pas oublier</li>
-              <li>- <strong>Commercial assigne</strong> : qui doit realiser la tache</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Statuts des taches</h4>
-            <div className="flex flex-wrap gap-2">
-              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">A faire</span>
-              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">En cours</span>
-              <span className="px-2 py-1 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Terminee</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Categories</h4>
-            <div className="flex flex-wrap gap-2">
-              {['General', 'Commercial', 'Prospection', 'Administratif', 'Logistique'].map(cat => (
-                <span key={cat} className="px-2 py-1 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">{cat}</span>
-              ))}
-            </div>
-          </div>
-
-          <ul className="text-xs space-y-1 text-gray-500">
-            <li>- Filtrez les taches par statut, priorite ou commercial</li>
-            <li>- Les taches en retard sont mises en evidence</li>
-            <li>- Chaque tache est liee a un client pour un suivi contextuel</li>
-          </ul>
-        </div>
-      </Section>
-
-      {/* ==================== ACTIVITE (ADMIN) ==================== */}
-      <Section icon={Activity} title="Suivi d'Activite (Administrateurs)" id="activite">
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            L'onglet Activite dans la page Administration permet aux administrateurs de suivre
-            l'activite de toute l'equipe en temps reel.
-          </p>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Derniere connexion</h4>
-            <ul className="text-xs space-y-1 text-gray-500">
-              <li>- Voyez d'un coup d'oeil qui est <strong>en ligne</strong> (pastille verte) ou hors ligne</li>
-              <li>- Affichez la derniere connexion de chaque membre de l'equipe</li>
-              <li>- Le statut se met a jour automatiquement a chaque utilisation de l'application</li>
-            </ul>
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-800 text-xs mb-2">Historique d'activite</h4>
-            <p className="text-xs text-gray-500 mb-2">Toutes les actions des utilisateurs sont enregistrees :</p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { label: 'Connexion', color: 'bg-blue-100 text-blue-700' },
-                { label: 'Nouveau prospect', color: 'bg-purple-100 text-purple-700' },
-                { label: 'Modification prospect', color: 'bg-orange-100 text-orange-700' },
-                { label: 'Appel', color: 'bg-green-100 text-green-700' },
-                { label: 'Nouveau RDV', color: 'bg-indigo-100 text-indigo-700' },
-                { label: 'Compte rendu RDV', color: 'bg-teal-100 text-teal-700' },
-                { label: 'Nouveau client', color: 'bg-emerald-100 text-emerald-700' },
-                { label: 'Visite client', color: 'bg-cyan-100 text-cyan-700' },
-              ].map(a => (
-                <span key={a.label} className={`px-2 py-1 rounded-full text-[10px] font-medium ${a.color}`}>{a.label}</span>
-              ))}
-            </div>
-          </div>
-
-          <ul className="text-xs space-y-1 text-gray-500">
-            <li>- Filtrez l'historique par <strong>utilisateur</strong> via le menu deroulant</li>
-            <li>- Chaque entree montre le <strong>nom de l'utilisateur</strong>, l'<strong>action</strong>, les <strong>details</strong> et la <strong>date/heure</strong></li>
-            <li>- L'historique est accessible dans Administration &gt; onglet Activite</li>
-          </ul>
-
-          <div className="p-3 bg-brewery-50 rounded-lg flex gap-2">
-            <Info className="w-4 h-4 text-brewery-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-brewery-700">
-              Seuls les administrateurs ont acces a cette fonctionnalite.
-              Les donnees sont enregistrees automatiquement, aucune action n'est requise de la part des utilisateurs.
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      {/* Footer */}
-      <div className="text-center text-xs text-gray-400 py-4">
-        SuiviPro - Brasserie des Plantes
+      {/* Contact support */}
+      <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 mt-6">
+        <h3 className="font-bold text-blue-800 flex items-center gap-2">
+          <span>❓</span> Besoin d'aide ?
+        </h3>
+        <p className="text-blue-700 text-sm mt-1">
+          Si vous avez des questions ou rencontrez un probleme, contactez votre administrateur.
+          Ce guide est accessible a tout moment depuis le menu lateral de l'application.
+        </p>
       </div>
     </div>
-  );
+  )
 }
