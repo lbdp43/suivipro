@@ -571,6 +571,11 @@ export default function ClientsPlanningPage() {
                     </span>
                   )}
                   <span className="text-xs text-gray-400">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
+                  {(planningData.rdvByDate[day.dateStr] || []).length > 0 && (
+                    <span className="text-xs font-medium text-blue-600">
+                      {planningData.rdvByDate[day.dateStr].length} rendez-vous
+                    </span>
+                  )}
                   {isCollapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
                 </div>
               </button>

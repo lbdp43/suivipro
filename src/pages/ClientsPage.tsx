@@ -667,8 +667,8 @@ export default function ClientsPage() {
   const filtered = useMemo(() => {
     let list = state.clients;
 
-    // Non-admin: only own clients
-    if (!isAdmin && state.currentUser) {
+    // Non-admin: only own clients (unless commercial filter is active)
+    if (!isAdmin && state.currentUser && filterCommercials.size === 0) {
       list = list.filter(c => c.commercial_id === state.currentUser!.id);
     }
 
@@ -864,7 +864,7 @@ export default function ClientsPage() {
               </div>
 
               {/* Multi-select commerciaux (tags) */}
-              {isAdmin && (
+              {state.commerciaux.length > 1 && (
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-xs font-medium text-gray-600">Commerciaux</span>
