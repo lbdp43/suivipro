@@ -1,9 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X, Mail, FileText, Filter,
+  ClipboardCheck, X, Mail, FileText, Filter, Users,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -28,9 +27,11 @@ export default function ClientsPlanningPage() {
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
   const [lateCollapsed, setLateCollapsed] = useState(true);
 
-  // Filter state (persisted, shared with ClientsPage)
-  const [filterCommercialsArr] = usePersistedState<string[]>('clients_commercials', []);
-  const filterCommercials = useMemo(() => new Set(filterCommercialsArr), [filterCommercialsArr]);
+  // Planning-specific commercial filter (defaults to current user)
+  const [planningCommercialId, setPlanningCommercialId] = usePersistedState<string>(
+    'planning_commercial',
+    state.currentUser?.id || ''
+  );
 
   // Tournee configs
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; week_pattern: string }>>({});
@@ -138,13 +139,11 @@ export default function ClientsPlanningPage() {
 
     const weekStart = days[0].dateStr;
 
-    const targetCommercialId = filterCommercials.size === 1 ? Array.from(filterCommercials)[0] : (!isAdmin && state.currentUser ? state.currentUser.id : '');
+    const targetCommercialId = planningCommercialId || (state.currentUser ? state.currentUser.id : '');
 
     let clientsBase = state.clients.filter(c => c.statut === 'ACTIF');
     if (targetCommercialId) {
       clientsBase = clientsBase.filter(c => c.commercial_id === targetCommercialId);
-    } else if (!isAdmin && state.currentUser) {
-      clientsBase = clientsBase.filter(c => c.commercial_id === state.currentUser!.id);
     }
 
     // Late clients
@@ -207,7 +206,6 @@ export default function ClientsPlanningPage() {
       if (rdv.statut === 'annule') return false;
       if (rdv.date < weekStart || rdv.date > weekEnd) return false;
       if (targetCommercialId && rdv.commercial_id !== targetCommercialId) return false;
-      if (!targetCommercialId && !isAdmin && state.currentUser && rdv.commercial_id !== state.currentUser.id) return false;
       return true;
     });
 
@@ -223,7 +221,7 @@ export default function ClientsPlanningPage() {
     const weekTotal = byDay.reduce((sum, d) => sum + d.totalClients, 0);
 
     return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal, rdvByDate };
-  }, [state.clients, state.appointments, planningWeekOffset, isAdmin, state.currentUser, filterCommercials, tourneeConfigs]);
+  }, [state.clients, state.appointments, planningWeekOffset, state.currentUser, planningCommercialId, tourneeConfigs]);
 
   // Results card data - filtered by period
   const resultsData = useMemo(() => {
@@ -265,14 +263,13 @@ export default function ClientsPlanningPage() {
       periodLabel = 'Totalite';
     }
 
-    const targetCommercialId = filterCommercials.size === 1 ? Array.from(filterCommercials)[0] : (!isAdmin && state.currentUser ? state.currentUser.id : '');
+    const targetCommercialId = planningCommercialId || (state.currentUser ? state.currentUser.id : '');
 
     const filteredAppointments = state.appointments.filter(rdv => {
       if (rdv.statut === 'annule') return false;
       const rdvDate = rdv.date.split('T')[0];
       if (rdvDate < startDate || rdvDate > endDate) return false;
       if (targetCommercialId && rdv.commercial_id !== targetCommercialId) return false;
-      if (!targetCommercialId && !isAdmin && state.currentUser && rdv.commercial_id !== state.currentUser.id) return false;
       return true;
     });
 
@@ -297,7 +294,7 @@ export default function ClientsPlanningPage() {
     }
 
     return { resultCounts, filteredAppointments, totalRdv: filteredAppointments.length, rdvWithCR, periodLabel, startDate, endDate };
-  }, [state.appointments, resultsPeriod, planningWeekOffset, filterCommercials, isAdmin, state.currentUser]);
+  }, [state.appointments, resultsPeriod, planningWeekOffset, planningCommercialId, state.currentUser]);
 
   const getResultEntityName = (rdv: Appointment) => {
     if (rdv.client_id) {
@@ -456,6 +453,29 @@ export default function ClientsPlanningPage() {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* Commercial selector */}
+      {state.commerciaux.length > 1 && (
+        <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-4 py-2">
+          <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <div className="flex flex-wrap gap-1.5">
+            {state.commerciaux.map(c => {
+              const active = planningCommercialId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setPlanningCommercialId(active ? '' : c.id)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    active ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {c.prenom}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
