@@ -5,7 +5,7 @@ import {
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
   Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
   Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
-  Users, CalendarPlus, StickyNote, LayoutList, CalendarDays, Map,
+  Users, CalendarPlus, StickyNote, LayoutList, CalendarDays, Map, ClipboardCheck,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -13,6 +13,7 @@ import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType, ClientStatus, Client, InteractionType,
   INTERACTION_TYPE_LABELS, TaskClient, TASK_CLIENT_STATUS_LABELS,
+  Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS,
 } from '../types';
 import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress } from '../utils/helpers';
 import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
@@ -91,6 +92,11 @@ export default function ClientsPage() {
   const [bulkNextVisit, setBulkNextVisit] = useState('');
   const [bulkVisiteComment, setBulkVisiteComment] = useState('');
   const [bulkVisiteType, setBulkVisiteType] = useState<InteractionType>('VISITE');
+
+  // CR modal (planning view RDV)
+  const [crModalRdv, setCrModalRdv] = useState<Appointment | null>(null);
+  const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
+  const [crSaving, setCrSaving] = useState<string | null>(null);
 
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
@@ -503,6 +509,48 @@ export default function ClientsPage() {
     setCreatedRdvId('');
   };
 
+  // CR modal for planning view RDVs
+  const openCrModal = (rdv: Appointment) => {
+    setCrModalRdv(rdv);
+    if (!crForms[rdv.id]) {
+      setCrForms(prev => ({ ...prev, [rdv.id]: { compte_rendu: (rdv.compte_rendu || '') as AppointmentResult, notes: rdv.notes_compte_rendu || '' } }));
+    }
+  };
+
+  const saveCrModal = async () => {
+    if (!crModalRdv) return;
+    const form = crForms[crModalRdv.id];
+    if (!form?.compte_rendu) { toast.error('Selectionnez un resultat'); return; }
+    if (!form.notes?.trim()) { toast.error('Les notes sont obligatoires'); return; }
+    setCrSaving(crModalRdv.id);
+    try {
+      const updated = { ...crModalRdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
+      await apiPut(`/appointments/${crModalRdv.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+      toast.success('Compte rendu enregistre');
+      setCrModalRdv(null);
+    } catch { toast.error('Erreur lors de la sauvegarde'); }
+    finally { setCrSaving(null); }
+  };
+
+  const getRdvEntityName = (rdv: Appointment) => {
+    if (rdv.client_id) {
+      const c = state.clients.find(cl => cl.id === rdv.client_id);
+      return c?.nom || 'Client inconnu';
+    }
+    const p = state.prospects.find(pr => pr.id === rdv.prospect_id);
+    return p?.nom_etablissement || 'Prospect inconnu';
+  };
+
+  const getRdvEntityPhone = (rdv: Appointment) => {
+    if (rdv.client_id) {
+      const c = state.clients.find(cl => cl.id === rdv.client_id);
+      return c?.telephone_mobile || c?.telephone || '';
+    }
+    const p = state.prospects.find(pr => pr.id === rdv.prospect_id);
+    return p?.telephone || '';
+  };
+
   // Export clients
   const handleExportClients = async () => {
     try {
@@ -719,11 +767,31 @@ export default function ClientsPage() {
       return { ...day, sectors, totalClients, visitDueCount };
     });
 
+    // Appointments for the week (RDV prospection/client)
+    const weekEnd = days[days.length - 1].dateStr;
+    const weekAppointments = state.appointments.filter(rdv => {
+      if (rdv.statut === 'annule') return false;
+      if (rdv.date < weekStart || rdv.date > weekEnd) return false;
+      if (targetCommercialId && rdv.commercial_id !== targetCommercialId) return false;
+      if (!targetCommercialId && !isAdmin && state.currentUser && rdv.commercial_id !== state.currentUser.id) return false;
+      return true;
+    });
+
+    // Group appointments by date
+    const rdvByDate: Record<string, Appointment[]> = {};
+    weekAppointments.forEach(rdv => {
+      const d = rdv.date.split('T')[0];
+      if (!rdvByDate[d]) rdvByDate[d] = [];
+      rdvByDate[d].push(rdv);
+    });
+    // Sort by heure_debut
+    Object.values(rdvByDate).forEach(arr => arr.sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || '')));
+
     const weekLabel = `${days[0].date.getDate()}/${days[0].date.getMonth() + 1} - ${days[days.length - 1].date.getDate()}/${days[days.length - 1].date.getMonth() + 1}/${days[days.length - 1].date.getFullYear()}`;
     const weekTotal = byDay.reduce((sum, d) => sum + d.totalClients, 0);
 
-    return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal };
-  }, [state.clients, planningWeekOffset, isAdmin, state.currentUser, filterCommercials, tourneeConfigs]);
+    return { days: byDay, lateGroups, lateCount: lateClients.length, weekLabel, weekTotal, rdvByDate };
+  }, [state.clients, state.appointments, planningWeekOffset, isAdmin, state.currentUser, filterCommercials, tourneeConfigs]);
 
   // Duplicate detection
   const normalize = (s: string) =>
@@ -1189,9 +1257,66 @@ export default function ClientsPage() {
                         <span className="text-xs text-gray-400">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
                       </div>
                     </div>
-                    {day.sectors.length === 0 ? (
+                    {/* RDV section */}
+                    {(planningData.rdvByDate[day.dateStr] || []).length > 0 && (
+                      <div className="mb-3">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="text-xs font-semibold text-indigo-600">Rendez-vous ({planningData.rdvByDate[day.dateStr].length})</span>
+                        </div>
+                        <div className="space-y-2 ml-1">
+                          {planningData.rdvByDate[day.dateStr].map(rdv => {
+                            const hasCR = !!rdv.compte_rendu;
+                            const entityName = getRdvEntityName(rdv);
+                            const entityPhone = getRdvEntityPhone(rdv);
+                            const comm = getCommercial(rdv.commercial_id);
+                            return (
+                              <div key={rdv.id} className={`rounded-lg border p-2.5 ${hasCR ? 'border-green-200 bg-green-50/50' : 'border-indigo-200 bg-indigo-50/30'}`}>
+                                <div className="flex items-start gap-2">
+                                  {hasCR
+                                    ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                                    : <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+                                  }
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-semibold text-xs text-gray-800">{entityName}</span>
+                                      {isAdmin && comm && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{comm.prenom}</span>}
+                                      {hasCR && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                                      {rdv.heure_debut && <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>}
+                                      {rdv.lieu && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{rdv.lieu}</span>}
+                                    </div>
+                                    {rdv.notes && <p className="text-[10px] text-gray-400 mt-0.5 italic line-clamp-1">{rdv.notes}</p>}
+                                    {hasCR && rdv.notes_compte_rendu && <p className="text-[10px] text-green-600 mt-0.5 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-gray-100">
+                                  <button
+                                    onClick={() => openCrModal(rdv)}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                      hasCR ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                    }`}
+                                  >
+                                    <ClipboardCheck className="w-3.5 h-3.5" /> {hasCR ? 'Modifier le CR' : 'Compte-rendu'}
+                                  </button>
+                                  {entityPhone && (
+                                    <a href={`tel:${entityPhone.replace(/\s/g, '')}`} onClick={e => e.stopPropagation()}
+                                      className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
+                                      <Phone className="w-3.5 h-3.5" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {day.sectors.length === 0 && !(planningData.rdvByDate[day.dateStr] || []).length ? (
                       <p className="text-xs text-gray-400 italic">Aucun secteur prevu ce jour</p>
-                    ) : (
+                    ) : day.sectors.length > 0 ? (
                       <div className="space-y-3">
                         {day.sectors.map(sector => (
                           <div key={sector.zone}>
@@ -1240,7 +1365,7 @@ export default function ClientsPage() {
                           </div>
                         ))}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
@@ -2298,6 +2423,74 @@ export default function ClientsPage() {
                 disabled={noteSaving}
               >
                 <Save className="w-3.5 h-3.5" /> {noteSaving ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CR modal (planning RDV) */}
+      {crModalRdv && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setCrModalRdv(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+                  Compte-rendu du RDV
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">{getRdvEntityName(crModalRdv)} - {crModalRdv.date}</p>
+              </div>
+              <button onClick={() => setCrModalRdv(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Resultat */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Resultat du rendez-vous</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+                    const sel = crForms[crModalRdv.id]?.compte_rendu === key;
+                    const icons: Record<string, string> = {
+                      client: 'text-green-600', mail_envoye: 'text-blue-600',
+                      commande_plus_tard: 'text-yellow-600', a_relancer: 'text-orange-600',
+                      pas_interesse: 'text-red-600',
+                    };
+                    return (
+                      <button key={key}
+                        onClick={() => setCrForms(prev => ({ ...prev, [crModalRdv.id]: { ...prev[crModalRdv.id], compte_rendu: key as AppointmentResult } }))}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-all ${sel ? 'border-indigo-300 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-200' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                      >
+                        <span className={icons[key] || ''}>{key === 'client' ? '👥' : key === 'mail_envoye' ? '📧' : key === 'commande_plus_tard' ? '🛒' : key === 'a_relancer' ? '🔄' : '🚫'}</span>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Notes du compte-rendu *</label>
+                <textarea
+                  value={crForms[crModalRdv.id]?.notes || ''}
+                  onChange={e => setCrForms(prev => ({ ...prev, [crModalRdv.id]: { ...prev[crModalRdv.id], notes: e.target.value } }))}
+                  placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
+                  className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-24 focus:ring-2 focus:ring-indigo-300 ${!crForms[crModalRdv.id]?.notes?.trim() ? 'border-red-300' : 'border-gray-300'}`}
+                  autoFocus
+                />
+                {!crForms[crModalRdv.id]?.notes?.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Les notes sont obligatoires pour valider le compte-rendu</p>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setCrModalRdv(null)}>Annuler</button>
+              <button
+                className="px-5 py-2.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                onClick={saveCrModal}
+                disabled={crSaving === crModalRdv.id || !crForms[crModalRdv.id]?.compte_rendu || !crForms[crModalRdv.id]?.notes?.trim()}
+              >
+                <ClipboardCheck className="w-4 h-4" /> {crSaving === crModalRdv.id ? 'Enregistrement...' : 'Valider le compte-rendu'}
               </button>
             </div>
           </div>
