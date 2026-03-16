@@ -462,7 +462,7 @@ export default function ClientsPlanningPage() {
                               </span>
                             </div>
                             <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
-                              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date.split('T')[0]}</span>
+                              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{(() => { const d = new Date(rdv.date.split('T')[0] + 'T12:00:00'); const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']; return `${jours[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; })()}</span>
                               <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>
                               {info.ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{info.ville}</span>}
                             </div>
