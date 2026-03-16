@@ -22,13 +22,17 @@ import { usePersistedState } from '../hooks/usePersistedState';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
-function getVisitStatus(client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
-  if (client.statut === 'INACTIF') return 'INACTIF';
-  if (!client.next_visit) return 'NO_RECURRENCE';
+function getVisitStatusFromDate(nextVisit: string | null, statut: string): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
+  if (statut === 'INACTIF') return 'INACTIF';
+  if (!nextVisit) return 'NO_RECURRENCE';
   const today = toLocalDateStr(new Date());
-  if (client.next_visit < today) return 'LATE';
-  if (client.next_visit === today) return 'TODAY';
+  if (nextVisit < today) return 'LATE';
+  if (nextVisit === today) return 'TODAY';
   return 'UPCOMING';
+}
+
+function getVisitStatus(client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
+  return getVisitStatusFromDate(client.next_visit, client.statut);
 }
 
 const VISIT_STATUS_CONFIG = {
@@ -218,6 +222,29 @@ export default function ClientsPage() {
     if (customRecurrence !== null && customRecurrence !== undefined) return customRecurrence || null; // 0 means no recurrence
     return frequencyConfig[typeClient] ?? (CLIENT_VISIT_FREQUENCIES as Record<string, number | null>)[typeClient] ?? null;
   };
+
+  // Personal visit info: compute last visit & next visit based on the logged-in user's interactions only
+  const getPersonalVisitInfo = useCallback((client: Client): { lastVisit: string | null; nextVisit: string | null } => {
+    if (!state.currentUser) return { lastVisit: client.last_visit, nextVisit: client.next_visit };
+    const interactions = getInteractionsForClient(client.id);
+    const myInteractions = interactions
+      .filter(i => i.commercial_id === state.currentUser!.id && (i.type === 'VISITE' || i.type === 'APPEL'))
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const myLastVisit = myInteractions.length > 0 ? myInteractions[0].date : null;
+    const freq = getEffectiveFrequency(client.type_client, client.custom_recurrence);
+    if (!freq) return { lastVisit: myLastVisit, nextVisit: null };
+    if (!myLastVisit) return { lastVisit: null, nextVisit: null }; // never visited by me -> no delay
+    const nextDate = new Date(myLastVisit + 'T12:00:00');
+    nextDate.setDate(nextDate.getDate() + freq);
+    const nextVisit = nextDate.toISOString().slice(0, 10);
+    return { lastVisit: myLastVisit, nextVisit };
+  }, [state.currentUser, state.interactions, getInteractionsForClient]);
+
+  // Personal visit status for current user
+  const getPersonalVisitStatus = useCallback((client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' => {
+    const { nextVisit } = getPersonalVisitInfo(client);
+    return getVisitStatusFromDate(nextVisit, client.statut);
+  }, [getPersonalVisitInfo]);
 
   // Multi-select helpers
   const toggleSelection = (id: string, e: React.MouseEvent) => {
@@ -733,7 +760,7 @@ export default function ClientsPage() {
     }
     if (filterVisit !== 'all') {
       list = list.filter(c => {
-        const status = getVisitStatus(c);
+        const status = getPersonalVisitStatus(c);
         if (filterVisit === 'late') return status === 'LATE';
         if (filterVisit === 'today') return status === 'TODAY';
         if (filterVisit === 'upcoming') return status === 'UPCOMING';
@@ -761,11 +788,11 @@ export default function ClientsPage() {
     }
 
     return list;
-  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser, filterNoTournee, filterNoType]);
+  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser, filterNoTournee, filterNoType, getPersonalVisitStatus]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-  const lateCount = state.clients.filter(c => getVisitStatus(c) === 'LATE').length;
+  const lateCount = state.clients.filter(c => getPersonalVisitStatus(c) === 'LATE').length;
 
 
   // Duplicate detection
@@ -1202,7 +1229,8 @@ export default function ClientsPage() {
           ) : (
             <div className="divide-y divide-gray-100">
               {paginated.map(client => {
-                const visitStatus = getVisitStatus(client);
+                const personalInfo = getPersonalVisitInfo(client);
+                const visitStatus = getVisitStatusFromDate(personalInfo.nextVisit, client.statut);
                 const statusConfig = VISIT_STATUS_CONFIG[visitStatus];
                 const commercial = getCommercial(client.commercial_id);
                 const isSelected = selectedId === client.id;
@@ -1261,10 +1289,12 @@ export default function ClientsPage() {
                             </span>
                           )}
                         </div>
-                        {client.next_visit && (
-                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-400">
+                        {personalInfo.nextVisit && (
+                          <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                             <Calendar className="w-3 h-3" />
-                            Prochaine visite : {formatDate(client.next_visit)}
+                            {visitStatus === 'LATE'
+                              ? `En retard de ${Math.floor((new Date().getTime() - new Date(personalInfo.nextVisit + 'T12:00:00').getTime()) / 86400000)}j (ma derniere visite: ${personalInfo.lastVisit ? formatDate(personalInfo.lastVisit) : 'jamais'})`
+                              : `Ma prochaine visite : ${formatDate(personalInfo.nextVisit)}`}
                           </div>
                         )}
                         {client.notes && (
@@ -1445,35 +1475,45 @@ export default function ClientsPage() {
               )}
             </div>
 
-            {/* Visit info */}
-            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-500">Derniere visite</span>
-                  <p className="font-medium text-gray-900">{selectedClient.last_visit ? formatDate(selectedClient.last_visit) : 'Jamais'}</p>
+            {/* Visit info - personal for logged-in user */}
+            {(() => {
+              const pInfo = getPersonalVisitInfo(selectedClient);
+              const pStatus = getVisitStatusFromDate(pInfo.nextVisit, selectedClient.statut);
+              const daysLate = pStatus === 'LATE' && pInfo.nextVisit
+                ? Math.floor((new Date().getTime() - new Date(pInfo.nextVisit + 'T12:00:00').getTime()) / 86400000)
+                : 0;
+              return (
+                <div className={`mt-3 p-3 rounded-lg ${pStatus === 'LATE' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-gray-500">Ma derniere visite</span>
+                      <p className="font-medium text-gray-900">{pInfo.lastVisit ? formatDate(pInfo.lastVisit) : 'Jamais'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Ma prochaine visite</span>
+                      <p className={`font-medium ${pStatus === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
+                        {pInfo.nextVisit ? formatDate(pInfo.nextVisit) : 'Non planifiee'}
+                        {pStatus === 'LATE' && <span className="ml-1">({daysLate}j retard)</span>}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Frequence</span>
+                      <p className="font-medium text-gray-900">
+                        {selectedClient.custom_recurrence
+                          ? `${selectedClient.custom_recurrence}j (perso)`
+                          : getEffectiveFrequency(selectedClient.type_client, null) != null
+                            ? `${getEffectiveFrequency(selectedClient.type_client, null)}j`
+                            : 'Aucune'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Commercial</span>
+                      <p className="font-medium text-gray-900">{getCommercial(selectedClient.commercial_id)?.prenom || '-'}</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-500">Prochaine visite</span>
-                  <p className={`font-medium ${getVisitStatus(selectedClient) === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
-                    {selectedClient.next_visit ? formatDate(selectedClient.next_visit) : 'Non planifiee'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Frequence</span>
-                  <p className="font-medium text-gray-900">
-                    {selectedClient.custom_recurrence
-                      ? `${selectedClient.custom_recurrence}j (perso)`
-                      : getEffectiveFrequency(selectedClient.type_client, null) != null
-                        ? `${getEffectiveFrequency(selectedClient.type_client, null)}j`
-                        : 'Aucune'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Commercial</span>
-                  <p className="font-medium text-gray-900">{getCommercial(selectedClient.commercial_id)?.prenom || '-'}</p>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Quick action buttons */}
             <div className="flex gap-2 mt-3">
