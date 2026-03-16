@@ -81,7 +81,7 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 // ============================================
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^[\d\s+().-]{0,30}$/;
+const PHONE_RE = /^[\d\s+()./\\-]{0,50}$/;
 
 function validateProspect(body) {
   const errors = [];
@@ -1027,8 +1027,10 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
 
 router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
   const c = req.body;
-  const errors = validateClient(c);
-  if (errors.length > 0) return validationError(res, errors);
+  // Only validate required fields for updates (don't block updates due to legacy data)
+  if (!c.nom || typeof c.nom !== 'string' || c.nom.trim().length === 0) {
+    return validationError(res, ['nom est requis']);
+  }
 
   const now = new Date().toISOString();
   await db.query(
