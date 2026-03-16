@@ -2251,6 +2251,35 @@ router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true });
 }));
 
+// One-shot: fix client types using original EasyBeer type data
+router.post('/easybeer/fix-client-types', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    "SELECT easybeer_id, type, imported_client_id FROM easybeer_clients WHERE imported_client_id IS NOT NULL AND type != ''"
+  );
+
+  let updated = 0;
+  let skipped = 0;
+  const details = [];
+
+  for (const eb of result.rows) {
+    const newType = mapEasyBeerTypeToClientType(eb.type);
+
+    // Get current client type
+    const clientResult = await db.query('SELECT type_client, nom FROM clients WHERE id = $1', [eb.imported_client_id]);
+    if (clientResult.rows.length === 0) { skipped++; continue; }
+
+    const currentType = clientResult.rows[0].type_client;
+    if (currentType === newType) { skipped++; continue; }
+
+    await db.query('UPDATE clients SET type_client = $1 WHERE id = $2', [newType, eb.imported_client_id]);
+    details.push({ nom: clientResult.rows[0].nom, ancien: currentType, nouveau: newType, ebType: eb.type });
+    updated++;
+  }
+
+  console.log(`[EasyBeer Fix Types] ${updated} clients mis a jour, ${skipped} inchanges`);
+  res.json({ ok: true, updated, skipped, total: result.rows.length, details });
+}));
+
 router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req, res) => {
   let { username, password, api_url } = req.body;
   // If password is masked, retrieve the real one from DB
