@@ -2524,6 +2524,7 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
 
   let imported = 0;
   let skipped = 0;
+  let enrichedFromProspect = 0;
   const importErrors = [];
 
   for (const c of clients) {
@@ -2531,16 +2532,73 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
       const now = new Date().toISOString();
       const clientType = c.type_client || 'BAR_RESTAURANT_GENERAL';
       const nextVisit = await calculateNextVisit(clientType, c.custom_recurrence || null, null);
+
+      // --- Prospect matching & enrichment ---
+      // Search for a matching prospect by SIRET, email, phone, or name
+      const prospect = await findMatchingProspect(c.nom, c.email, c.telephone || c.telephone_mobile);
+      // Also try SIRET-based match if not found by other means
+      let prospectMatch = prospect;
+      if (!prospectMatch && c.siret && c.siret.length >= 9) {
+        const siretRes = await db.query("SELECT * FROM prospects WHERE siret = $1 AND siret != '' LIMIT 1", [c.siret]);
+        if (siretRes.rows.length > 0) prospectMatch = siretRes.rows[0];
+      }
+
+      // Import data takes precedence; prospect fills empty fields (enrichment)
+      let finalVille = c.ville || '';
+      let finalAdresse = c.adresse || '';
+      let finalCp = c.code_postal || '';
+      let finalTel = c.telephone || '';
+      let finalTelMobile = c.telephone_mobile || '';
+      let finalEmail = c.email || '';
+      let finalContact = c.contact || '';
+      let finalNotes = c.notes || '';
+      let finalTournee = c.tournee || '';
+      let finalSiret = c.siret || '';
+      let finalLat = c.latitude || 0;
+      let finalLng = c.longitude || 0;
+      let finalCommercialId = c.commercial_id;
+      let prospectId = null;
+
+      if (prospectMatch) {
+        // Prospect data serves as enrichment: fill empty fields from prospect
+        if (!finalVille && prospectMatch.ville) finalVille = prospectMatch.ville;
+        if (!finalAdresse && prospectMatch.adresse) finalAdresse = prospectMatch.adresse;
+        if (!finalCp && prospectMatch.code_postal) finalCp = prospectMatch.code_postal;
+        if (!finalTel && prospectMatch.telephone) finalTel = prospectMatch.telephone;
+        if (!finalEmail && prospectMatch.email) finalEmail = prospectMatch.email;
+        if (!finalContact && prospectMatch.nom_contact) finalContact = prospectMatch.nom_contact;
+        if (!finalTournee && prospectMatch.secteur) finalTournee = prospectMatch.secteur;
+        if (!finalSiret && prospectMatch.siret) finalSiret = prospectMatch.siret;
+        if ((!finalLat || finalLat === 0) && prospectMatch.latitude) finalLat = prospectMatch.latitude;
+        if ((!finalLng || finalLng === 0) && prospectMatch.longitude) finalLng = prospectMatch.longitude;
+        if (!finalCommercialId && prospectMatch.commercial_id) finalCommercialId = prospectMatch.commercial_id;
+        // Merge notes: import notes first, then prospect notes if different
+        if (prospectMatch.notes && prospectMatch.notes !== finalNotes) {
+          finalNotes = finalNotes ? `${finalNotes}\n---\nNotes prospect: ${prospectMatch.notes}` : prospectMatch.notes;
+        }
+        prospectId = prospectMatch.id;
+        enrichedFromProspect++;
+      }
+
       await db.query(
         `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
          type_client, statut, commercial_id, next_visit, last_visit, notes, custom_recurrence, tournee, siret,
-         latitude, longitude, date_creation, date_modification)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-        [c.id, c.nom, c.ville || '', c.adresse || '', c.code_postal || '',
-         c.telephone || '', c.telephone_mobile || '', c.email || '', c.contact || '',
-         clientType, 'ACTIF', c.commercial_id, nextVisit || null, c.last_visit || null, c.notes || '',
-         c.custom_recurrence || null, c.tournee || '', c.siret || '', c.latitude || 0, c.longitude || 0, now, now]
+         latitude, longitude, prospect_id, date_creation, date_modification)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+        [c.id, c.nom, finalVille, finalAdresse, finalCp,
+         finalTel, finalTelMobile, finalEmail, finalContact,
+         clientType, 'ACTIF', finalCommercialId, nextVisit || null, c.last_visit || null, finalNotes,
+         c.custom_recurrence || null, finalTournee, finalSiret, finalLat, finalLng, prospectId, now, now]
       );
+
+      // Link prospect to client: mark prospect as client_gagne
+      if (prospectMatch) {
+        await db.query(
+          'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
+          ['client_gagne', now, prospectMatch.id]
+        );
+      }
+
       imported++;
     } catch (err) {
       if (err.code === '23505') {
@@ -2550,7 +2608,7 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
       }
     }
   }
-  res.json({ ok: true, imported, skipped, commerciauxCreated, errors: importErrors });
+  res.json({ ok: true, imported, skipped, enrichedFromProspect, commerciauxCreated, errors: importErrors });
 }));
 
 // ============================================

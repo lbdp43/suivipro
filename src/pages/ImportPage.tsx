@@ -455,6 +455,7 @@ export default function ImportPage() {
     tags_raw: string;
     numero_client: string;
     raison_sociale: string;
+    matched_prospect?: Prospect; // Prospect match for enrichment
   }
   interface DuplicateMatch {
     parsed: ParsedClient;
@@ -472,7 +473,7 @@ export default function ImportPage() {
 
   const [clientImportStep, setClientImportStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [clientImporting, setClientImporting] = useState(false);
-  const [clientImportResults, setClientImportResults] = useState<{ success: number; skipped: number; errors: string[]; commerciauxCreated: number } | null>(null);
+  const [clientImportResults, setClientImportResults] = useState<{ success: number; skipped: number; errors: string[]; commerciauxCreated: number; enrichedFromProspect: number } | null>(null);
   const [clientImportType, setClientImportType] = useState<ClientType | ''>('');
   const [clientImportCommercial, setClientImportCommercial] = useState('');
   const clientFileRef = useRef<HTMLInputElement>(null);
@@ -577,6 +578,17 @@ export default function ImportPage() {
         if (c.siret && c.siret.length >= 9) existingBySiret.set(c.siret.replace(/\s/g, ''), c);
         const ph = normalizePhoneForMatch(c.telephone || c.telephone_mobile || '');
         if (ph.length >= 8) existingByPhone.set(ph.slice(-8), c);
+      }
+
+      // Build lookup structures for prospect matching (enrichment)
+      const prospectByName = new Map<string, Prospect>();
+      const prospectBySiret = new Map<string, Prospect>();
+      const prospectByPhone = new Map<string, Prospect>();
+      for (const p of state.prospects) {
+        prospectByName.set(normalizeForMatch(p.nom_etablissement), p);
+        if (p.siret && p.siret.length >= 9) prospectBySiret.set(p.siret.replace(/\s/g, ''), p);
+        const ph = normalizePhoneForMatch(p.telephone || '');
+        if (ph.length >= 8) prospectByPhone.set(ph.slice(-8), p);
       }
 
       // Track unknown commercials
@@ -744,6 +756,21 @@ export default function ImportPage() {
           return;
         }
 
+        // Find matching prospect for enrichment (import data takes precedence, prospect fills gaps)
+        let prospectMatch: Prospect | undefined;
+        if (cleanSiret.length >= 9 && prospectBySiret.has(cleanSiret)) {
+          prospectMatch = prospectBySiret.get(cleanSiret)!;
+        }
+        if (!prospectMatch && prospectByName.has(normName)) {
+          prospectMatch = prospectByName.get(normName)!;
+        }
+        if (!prospectMatch && normPhone.length >= 8 && prospectByPhone.has(normPhone.slice(-8))) {
+          prospectMatch = prospectByPhone.get(normPhone.slice(-8))!;
+        }
+        if (prospectMatch) {
+          parsedClient.matched_prospect = prospectMatch;
+        }
+
         if (existingMatch) {
           // Combine match types
           if (existingMatch && matchType === 'nom' && normPhone.length >= 8 && existingByPhone.has(normPhone.slice(-8))) {
@@ -895,14 +922,15 @@ export default function ImportPage() {
             skipped: duplicates.filter(d => d.action === 'skip').length,
             errors: [...errors, ...(result.errors || [])],
             commerciauxCreated: result.commerciauxCreated?.length || 0,
+            enrichedFromProspect: result.enrichedFromProspect || 0,
           });
         }
       } else {
-        setClientImportResults({ success: 0, skipped: duplicates.length, errors, commerciauxCreated: 0 });
+        setClientImportResults({ success: 0, skipped: duplicates.length, errors, commerciauxCreated: 0, enrichedFromProspect: 0 });
       }
     } catch (err) {
       errors.push('Erreur lors de l\'import. Verifiez votre connexion.');
-      setClientImportResults({ success: 0, skipped: 0, errors, commerciauxCreated: 0 });
+      setClientImportResults({ success: 0, skipped: 0, errors, commerciauxCreated: 0, enrichedFromProspect: 0 });
     }
     setClientImporting(false);
     setClientImportStep('done');
@@ -1637,6 +1665,12 @@ export default function ImportPage() {
                     <span className="text-amber-700 font-medium">{duplicates.length} doublon(s) detecte(s)</span>
                   </div>
                 )}
+                {[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-purple-600" />
+                    <span className="text-purple-700 font-medium">{[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length} prospect(s) correspondant(s) (enrichissement)</span>
+                  </div>
+                )}
                 {unknownCommerciaux.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <AlertCircle className="w-4 h-4 text-blue-600" />
@@ -1796,6 +1830,9 @@ export default function ImportPage() {
                         <div className="col-span-3 min-w-0">
                           <p className="font-medium text-gray-800 truncate">{c.nom}</p>
                           <p className="text-gray-400 truncate">{c.ville || c.code_postal}</p>
+                          {c.matched_prospect && (
+                            <p className="text-purple-600 truncate text-[10px]">Prospect: {c.matched_prospect.nom_etablissement}</p>
+                          )}
                         </div>
                         <div className="col-span-2 text-gray-600 truncate">{c.contact}</div>
                         <div className="col-span-2 text-gray-600 truncate">{c.telephone || c.telephone_mobile}</div>
@@ -1816,6 +1853,9 @@ export default function ImportPage() {
               <h4 className="font-semibold text-gray-800 text-sm mb-2">Resume de l'import a valider :</h4>
               <ul className="text-sm text-gray-600 space-y-1">
                 <li>• <strong>{parsedClients.length}</strong> nouveaux clients seront crees</li>
+                {[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length > 0 && (
+                  <li className="text-purple-700">• <strong>{[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length}</strong> seront enrichis depuis les prospects (l'import predomine, le prospect complete les champs vides)</li>
+                )}
                 {duplicates.filter(d => d.action === 'overwrite').length > 0 && (
                   <li>• <strong>{duplicates.filter(d => d.action === 'overwrite').length}</strong> client(s) existant(s) seront ecrases</li>
                 )}
@@ -1885,6 +1925,12 @@ export default function ImportPage() {
                   <div className="flex items-center gap-2 text-blue-700">
                     <CheckCircle className="w-4 h-4" />
                     <span>{clientImportResults.commerciauxCreated} commercial(aux) cree(s)</span>
+                  </div>
+                )}
+                {clientImportResults.enrichedFromProspect > 0 && (
+                  <div className="flex items-center gap-2 text-purple-700">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>{clientImportResults.enrichedFromProspect} client(s) enrichi(s) depuis les prospects</span>
                   </div>
                 )}
                 {clientImportResults.errors.length > 0 && (
