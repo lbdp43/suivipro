@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   ListTodo, Plus, Edit2, Trash2, Save, X, RefreshCw, Filter,
   AlertTriangle, CheckCircle2, Clock, ChevronDown, ChevronRight,
@@ -75,11 +76,11 @@ export default function TasksPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<ClientOption[]>([]);
-  const [search, setSearch] = useState('');
-  const [filterStatut, setFilterStatut] = useState<string>('all');
-  const [filterAssignee, setFilterAssignee] = useState<string>('all');
-  const [filterPriorite, setFilterPriorite] = useState<string>('all');
-  const [showCompleted, setShowCompleted] = useState(false);
+  const [search, setSearch] = usePersistedState('tasks_search', '');
+  const [filterStatut, setFilterStatut] = usePersistedState<string>('tasks_filterStatut', 'all');
+  const [filterAssignee, setFilterAssignee] = usePersistedState<string>('tasks_filterAssignee', 'all');
+  const [filterPriorite, setFilterPriorite] = usePersistedState<string>('tasks_filterPriorite', 'all');
+  const [showCompleted, setShowCompleted] = usePersistedState('tasks_showCompleted', false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
   const isAdmin = state.currentUser?.role === 'admin';

@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
@@ -68,7 +69,7 @@ export default function CompteRenduPage() {
   const toast = useToast();
   const todayStr = toDateStr(new Date());
 
-  const [viewMode, setViewMode] = useState<ViewMode>('semaine');
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>('cr_viewMode', 'semaine');
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -87,7 +88,7 @@ export default function CompteRenduPage() {
   const [visitRdvLieu, setVisitRdvLieu] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
-  const [selectedCommercialId, setSelectedCommercialId] = useState<string>('');
+  const [selectedCommercialId, setSelectedCommercialId] = usePersistedState<string>('cr_selectedCommercialId', '');
 
   const [showRdvSection, setShowRdvSection] = useState(true);
   const [showVisitesSection, setShowVisitesSection] = useState(true);

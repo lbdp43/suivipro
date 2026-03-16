@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
@@ -21,6 +21,7 @@ import {
 } from '../types';
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 export default function ProspectsPage() {
   const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
@@ -29,21 +30,61 @@ export default function ProspectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterTypes, setFilterTypes] = useState<Set<EstablishmentType>>(new Set());
-  const [filterStages, setFilterStages] = useState<Set<PipelineStage>>(new Set());
+  const [searchTerm, setSearchTerm] = usePersistedState('prospects_searchTerm', '');
+  const [filterTypesArr, setFilterTypesArr] = usePersistedState<EstablishmentType[]>('prospects_filterTypes', []);
+  const filterTypes = useMemo(() => new Set(filterTypesArr), [filterTypesArr]);
+  const setFilterTypes = useCallback((v: Set<EstablishmentType> | ((prev: Set<EstablishmentType>) => Set<EstablishmentType>)) => {
+    if (typeof v === 'function') {
+      setFilterTypesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterTypesArr(Array.from(v));
+    }
+  }, [setFilterTypesArr]);
+  const [filterStagesArr, setFilterStagesArr] = usePersistedState<PipelineStage[]>('prospects_filterStages', []);
+  const filterStages = useMemo(() => new Set(filterStagesArr), [filterStagesArr]);
+  const setFilterStages = useCallback((v: Set<PipelineStage> | ((prev: Set<PipelineStage>) => Set<PipelineStage>)) => {
+    if (typeof v === 'function') {
+      setFilterStagesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterStagesArr(Array.from(v));
+    }
+  }, [setFilterStagesArr]);
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
-  const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
-  const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
-  const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
-  const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
-  const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
-  const [filterAvecRdv, setFilterAvecRdv] = useState(false);
-  const [filterCommercial, setFilterCommercial] = useState<string>('');
+  const [filterSecteursArr, setFilterSecteursArr] = usePersistedState<string[]>('prospects_filterSecteurs', []);
+  const filterSecteurs = useMemo(() => new Set(filterSecteursArr), [filterSecteursArr]);
+  const setFilterSecteurs = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterSecteursArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterSecteursArr(Array.from(v));
+    }
+  }, [setFilterSecteursArr]);
+  const [filterPostalCodesArr, setFilterPostalCodesArr] = usePersistedState<string[]>('prospects_filterPostalCodes', []);
+  const filterPostalCodes = useMemo(() => new Set(filterPostalCodesArr), [filterPostalCodesArr]);
+  const setFilterPostalCodes = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterPostalCodesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterPostalCodesArr(Array.from(v));
+    }
+  }, [setFilterPostalCodesArr]);
+  const [filterDepartmentsArr, setFilterDepartmentsArr] = usePersistedState<string[]>('prospects_filterDepartments', []);
+  const filterDepartments = useMemo(() => new Set(filterDepartmentsArr), [filterDepartmentsArr]);
+  const setFilterDepartments = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterDepartmentsArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterDepartmentsArr(Array.from(v));
+    }
+  }, [setFilterDepartmentsArr]);
+  const [sortScore, setSortScore] = usePersistedState<'none' | 'asc' | 'desc'>('prospects_sortScore', 'none');
+  const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien'>('prospects_sortDate', 'none');
+  const [filterAvecRdv, setFilterAvecRdv] = usePersistedState('prospects_filterAvecRdv', false);
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('prospects_filterCommercial', '');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = usePersistedState('prospects_pageSize', 50);
   const [currentPage, setCurrentPage] = useState(0);
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
   // Quick reminder

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Search, RefreshCw, MapPin, Building2, Users, Shield, Truck,
@@ -96,6 +96,7 @@ export default function AnnuairePage() {
   const [filterDept, setFilterDept] = useState('');
   const [filterCommercial, setFilterCommercial] = useState('');
   const [filterActivity, setFilterActivity] = useState('');
+  const [sortOrder, setSortOrder] = useState<'none' | 'recent' | 'ancien'>('none');
 
   // Import rules
   const [rules, setRules] = useState<ImportRule[]>([]);
@@ -245,6 +246,14 @@ export default function AnnuairePage() {
     }
   });
 
+  const sortedEntries = useMemo(() => {
+    if (sortOrder === 'none') return entries;
+    return [...entries].sort((a, b) => {
+      if (sortOrder === 'recent') return b.date_creation.localeCompare(a.date_creation);
+      return a.date_creation.localeCompare(b.date_creation);
+    });
+  }, [entries, sortOrder]);
+
   const totalEntries = Object.values(stats).reduce((a, b) => a + b, 0);
 
   if (loading) {
@@ -347,6 +356,17 @@ export default function AnnuairePage() {
             <option value="rdv">Ont eu des RDV</option>
             <option value="appel">Ont eu des appels</option>
             <option value="aucune">Aucune activite</option>
+          </select>
+        </div>
+        <div>
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value as any)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+          >
+            <option value="none">Tri par defaut</option>
+            <option value="recent">Plus recent</option>
+            <option value="ancien">Plus ancien</option>
           </select>
         </div>
         {isAdmin && (
@@ -640,7 +660,7 @@ export default function AnnuairePage() {
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <h2 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
           <Building2 className="w-4 h-4 text-gray-500" />
-          Resultats ({entries.length})
+          Resultats ({sortedEntries.length})
         </h2>
 
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
@@ -659,13 +679,13 @@ export default function AnnuairePage() {
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 ? (
+              {sortedEntries.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                     Aucune entite trouvee.
                   </td>
                 </tr>
-              ) : entries.map(entry => {
+              ) : sortedEntries.map(entry => {
                 const config = getEntityConfig(entry.entity_type, allEntityTypes);
                 const Icon = config.icon;
                 const handleClick = () => {

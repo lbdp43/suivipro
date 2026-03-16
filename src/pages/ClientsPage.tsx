@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
@@ -18,6 +18,7 @@ import {
 import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -44,16 +45,47 @@ export default function ClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterTypes, setFilterTypes] = useState<Set<ClientType>>(new Set());
-  const [filterStatus, setFilterStatus] = useState<ClientStatus | ''>('');
-  const [filterVisit, setFilterVisit] = useState<VisitFilter>('all');
-  const [filterCommercials, setFilterCommercials] = useState<Set<string>>(new Set());
-  const [filterTournees, setFilterTournees] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = usePersistedState('clients_search', '');
+  const [filterTypesArr, setFilterTypesArr] = usePersistedState<string[]>('clients_types', []);
+  const filterTypes = useMemo(() => new Set(filterTypesArr as ClientType[]), [filterTypesArr]);
+  const setFilterTypes = useCallback((update: Set<ClientType> | ((prev: Set<ClientType>) => Set<ClientType>)) => {
+    if (typeof update === 'function') {
+      setFilterTypesArr(prev => Array.from(update(new Set(prev as ClientType[]))));
+    } else {
+      setFilterTypesArr(Array.from(update));
+    }
+  }, [setFilterTypesArr]);
+
+  const [filterStatus, setFilterStatus] = usePersistedState<ClientStatus | ''>('clients_status', '');
+  const [filterVisit, setFilterVisit] = usePersistedState<VisitFilter>('clients_visit', 'all');
+
+  const [filterCommercialsArr, setFilterCommercialsArr] = usePersistedState<string[]>('clients_commercials', []);
+  const filterCommercials = useMemo(() => new Set(filterCommercialsArr), [filterCommercialsArr]);
+  const setFilterCommercials = useCallback((update: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof update === 'function') {
+      setFilterCommercialsArr(prev => Array.from(update(new Set(prev))));
+    } else {
+      setFilterCommercialsArr(Array.from(update));
+    }
+  }, [setFilterCommercialsArr]);
+
+  const [filterTourneesArr, setFilterTourneesArr] = usePersistedState<string[]>('clients_tournees', []);
+  const filterTournees = useMemo(() => new Set(filterTourneesArr), [filterTourneesArr]);
+  const setFilterTournees = useCallback((update: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof update === 'function') {
+      setFilterTourneesArr(prev => Array.from(update(new Set(prev))));
+    } else {
+      setFilterTourneesArr(Array.from(update));
+    }
+  }, [setFilterTourneesArr]);
+
+  const [filterNoTournee, setFilterNoTournee] = usePersistedState('clients_no_tournee', false);
+  const [filterNoType, setFilterNoType] = usePersistedState('clients_no_type', false);
+
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
-  const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
+  const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien' | 'creation_recent' | 'creation_ancien'>('clients_sort', 'none');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
@@ -110,6 +142,10 @@ export default function ClientsPage() {
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; week_pattern: string }>>({});
 
   const isAdmin = state.currentUser?.role === 'admin';
+
+  // Tournée editing state
+  const [editingTournee, setEditingTournee] = useState<string | null>(null);
+  const [editTourneeName, setEditTourneeName] = useState('');
 
   // Load frequency config from DB
   useEffect(() => {
@@ -309,6 +345,59 @@ export default function ClientsPage() {
     });
     return Array.from(set).sort();
   }, [state.clients, tourneeConfigs, state.tourneeConfigs]);
+
+  // Tournée rename/delete
+  const renameTournee = async (oldName: string, newName: string) => {
+    if (!newName.trim() || newName === oldName) { setEditingTournee(null); return; }
+    try {
+      const clientsToUpdate = state.clients.filter(c => c.tournee === oldName);
+      for (const client of clientsToUpdate) {
+        const updated = { ...client, tournee: newName.trim(), date_modification: new Date().toISOString() };
+        await apiPut(`/clients/${client.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+      }
+      // Update tournee configs too
+      for (const tc of state.tourneeConfigs || []) {
+        const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+        let modified = false;
+        const newCfg = { ...cfg };
+        for (const day of Object.keys(newCfg)) {
+          if (Array.isArray(newCfg[day]) && newCfg[day].includes(oldName)) {
+            newCfg[day] = newCfg[day].map((z: string) => z === oldName ? newName.trim() : z);
+            modified = true;
+          }
+        }
+        if (modified) {
+          await apiPost(`/tournee-config/${tc.commercial_id}`, { config: newCfg, notes: tc.notes || '' });
+        }
+      }
+      toast.success(`Tournée "${oldName}" renommée en "${newName.trim()}"`);
+      setEditingTournee(null);
+      // Update filter if the renamed tournee was selected
+      if (filterTournees.has(oldName)) {
+        setFilterTournees(prev => {
+          const next = new Set(prev);
+          next.delete(oldName);
+          next.add(newName.trim());
+          return next;
+        });
+      }
+    } catch { toast.error('Erreur lors du renommage'); }
+  };
+
+  const deleteTournee = async (name: string) => {
+    if (!confirm(`Retirer la tournée "${name}" de tous les clients ?`)) return;
+    try {
+      const clientsToUpdate = state.clients.filter(c => c.tournee === name);
+      for (const client of clientsToUpdate) {
+        const updated = { ...client, tournee: '', date_modification: new Date().toISOString() };
+        await apiPut(`/clients/${client.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+      }
+      toast.success(`Tournée "${name}" supprimée de ${clientsToUpdate.length} client(s)`);
+      setFilterTournees(prev => { const next = new Set(prev); next.delete(name); return next; });
+    } catch { toast.error('Erreur lors de la suppression'); }
+  };
 
   // Form state
   const emptyForm = (): Partial<Client> => ({
@@ -640,7 +729,9 @@ export default function ClientsPage() {
         c.email.toLowerCase().includes(term)
       );
     }
-    if (filterTypes.size > 0) {
+    if (filterNoType) {
+      list = list.filter(c => !c.type_client || c.type_client.trim() === '');
+    } else if (filterTypes.size > 0) {
       list = list.filter(c => filterTypes.has(c.type_client));
     }
     if (filterStatus) {
@@ -659,7 +750,9 @@ export default function ClientsPage() {
     if (filterCommercials.size > 0) {
       list = list.filter(c => filterCommercials.has(c.commercial_id));
     }
-    if (filterTournees.size > 0) {
+    if (filterNoTournee) {
+      list = list.filter(c => !c.tournee || c.tournee.trim() === '');
+    } else if (filterTournees.size > 0) {
       list = list.filter(c => filterTournees.has(c.tournee));
     }
 
@@ -667,10 +760,14 @@ export default function ClientsPage() {
       list = [...list].sort((a, b) => b.date_modification.localeCompare(a.date_modification));
     } else if (sortDate === 'ancien') {
       list = [...list].sort((a, b) => a.date_modification.localeCompare(b.date_modification));
+    } else if (sortDate === 'creation_recent') {
+      list = [...list].sort((a, b) => b.date_creation.localeCompare(a.date_creation));
+    } else if (sortDate === 'creation_ancien') {
+      list = [...list].sort((a, b) => a.date_creation.localeCompare(b.date_creation));
     }
 
     return list;
-  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser]);
+  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser, filterNoTournee, filterNoType]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -908,7 +1005,7 @@ export default function ClientsPage() {
           {/* Filters */}
           {showFilters && (
             <div className="space-y-3 mb-3">
-              <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <select
                   value={filterStatus}
                   onChange={e => { setFilterStatus(e.target.value as ClientStatus | ''); setCurrentPage(0); }}
@@ -929,6 +1026,18 @@ export default function ClientsPage() {
                   <option value="today">Aujourd'hui</option>
                   <option value="upcoming">A venir</option>
                   <option value="no_recurrence">Sans recurrence</option>
+                </select>
+
+                <select
+                  value={sortDate}
+                  onChange={e => { setSortDate(e.target.value as typeof sortDate); setCurrentPage(0); }}
+                  className="border border-gray-200 rounded-lg text-sm px-2 py-1.5"
+                >
+                  <option value="none">Tri par defaut</option>
+                  <option value="recent">Modification recente</option>
+                  <option value="ancien">Modification ancienne</option>
+                  <option value="creation_recent">Creation recente</option>
+                  <option value="creation_ancien">Creation ancienne</option>
                 </select>
               </div>
 
@@ -973,32 +1082,51 @@ export default function ClientsPage() {
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="text-xs font-medium text-gray-600">Tournees</span>
-                  {filterTournees.size > 0 && (
-                    <button onClick={() => { setFilterTournees(new Set()); setCurrentPage(0); }} className="text-xs text-red-500 hover:text-red-700">Effacer</button>
+                  {(filterTournees.size > 0 || filterNoTournee) && (
+                    <button onClick={() => { setFilterTournees(new Set()); setFilterNoTournee(false); setCurrentPage(0); }} className="text-xs text-red-500 hover:text-red-700">Effacer</button>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => { setFilterNoTournee(!filterNoTournee); setFilterTournees(new Set()); setCurrentPage(0); }}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      filterNoTournee ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Sans tournée
+                  </button>
                   {allTournees.map(t => {
                     const active = filterTournees.has(t);
+                    if (editingTournee === t) {
+                      return (
+                        <div key={t} className="flex items-center gap-1">
+                          <input
+                            value={editTourneeName}
+                            onChange={e => setEditTourneeName(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') renameTournee(t, editTourneeName); if (e.key === 'Escape') setEditingTournee(null); }}
+                            className="text-xs border rounded px-1.5 py-0.5 w-28"
+                            autoFocus
+                          />
+                          <button onClick={() => renameTournee(t, editTourneeName)} className="text-green-600 hover:text-green-800"><Save className="w-3 h-3" /></button>
+                          <button onClick={() => setEditingTournee(null)} className="text-gray-400 hover:text-gray-600"><X className="w-3 h-3" /></button>
+                        </div>
+                      );
+                    }
                     return (
-                      <button
-                        key={t}
-                        onClick={() => {
-                          setFilterTournees(prev => {
-                            const next = new Set(prev);
-                            if (next.has(t)) next.delete(t); else next.add(t);
-                            return next;
-                          });
-                          setCurrentPage(0);
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                          active
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {t}
-                      </button>
+                      <div key={t} className="group relative inline-flex items-center">
+                        <button
+                          onClick={() => { setFilterTournees(prev => { const next = new Set(prev); if (next.has(t)) next.delete(t); else next.add(t); return next; }); setFilterNoTournee(false); setCurrentPage(0); }}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${active ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                          {t}
+                        </button>
+                        {isAdmin && (
+                          <span className="hidden group-hover:inline-flex items-center gap-0.5 ml-0.5">
+                            <button onClick={e => { e.stopPropagation(); setEditingTournee(t); setEditTourneeName(t); }} className="p-0.5 text-gray-400 hover:text-blue-600"><Edit2 className="w-3 h-3" /></button>
+                            <button onClick={e => { e.stopPropagation(); deleteTournee(t); }} className="p-0.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                          </span>
+                        )}
+                      </div>
                     );
                   })}
                   {allTournees.length === 0 && (
@@ -1011,6 +1139,14 @@ export default function ClientsPage() {
 
           {/* Visit filter quick buttons */}
           <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => { setFilterNoType(!filterNoType); setFilterTypes(new Set()); setCurrentPage(0); }}
+              className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                filterNoType ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200'
+              }`}
+            >
+              Sans type
+            </button>
             {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, fam]) => (
               <button
                 key={key}
@@ -1025,6 +1161,7 @@ export default function ClientsPage() {
                     }
                     return next;
                   });
+                  setFilterNoType(false);
                   setCurrentPage(0);
                 }}
                 className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
@@ -1036,8 +1173,8 @@ export default function ClientsPage() {
                 {fam.label}
               </button>
             ))}
-            {filterTypes.size > 0 && (
-              <button onClick={() => { setFilterTypes(new Set()); setCurrentPage(0); }} className="px-2 py-1 rounded-full text-xs text-red-600 hover:bg-red-50">
+            {(filterTypes.size > 0 || filterNoType) && (
+              <button onClick={() => { setFilterTypes(new Set()); setFilterNoType(false); setCurrentPage(0); }} className="px-2 py-1 rounded-full text-xs text-red-600 hover:bg-red-50">
                 Effacer
               </button>
             )}

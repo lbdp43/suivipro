@@ -6,6 +6,7 @@ import {
   Edit2, X, PhoneCall, CalendarPlus, StickyNote,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { CLIENT_TYPE_LABELS, INTERACTION_TYPE_LABELS } from '../types';
@@ -83,7 +84,7 @@ export default function VisitesPage() {
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
   const [weekOffset, setWeekOffset] = useState(0);
   // viewMode: 'me' = my visites, 'all' = all commercials, or a specific commercial_id
-  const [viewMode, setViewMode] = useState<string>('me');
+  const [viewMode, setViewMode] = usePersistedState<string>('visites_viewMode', 'me');
   const restoredRef = useRef(false);
   const pendingScrollRef = useRef<number | null>(null);
 

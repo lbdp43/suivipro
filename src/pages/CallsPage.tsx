@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Phone, PhoneCall, PhoneOff, Search,
   MessageSquare, PhoneMissed, CheckCircle,
@@ -15,8 +16,8 @@ import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResp
 export default function CallsPage() {
   const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterResult, setFilterResult] = useState<CallResult | ''>('');
+  const [searchTerm, setSearchTerm] = usePersistedState('calls_searchTerm', '');
+  const [filterResult, setFilterResult] = usePersistedState<CallResult | ''>('calls_filterResult', '');
   const [editingCall, setEditingCall] = useState<Call | null>(null);
   const [editForm, setEditForm] = useState({ resultat: '' as CallResult, notes: '', duree: 0 });
   const [currentPage, setCurrentPage] = useState(1);

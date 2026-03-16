@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
   AlertCircle, BellRing, CalendarClock, MessageSquare, User,
@@ -22,12 +23,7 @@ export default function RemindersPage() {
   });
 
   // Filtre par auteur (persiste dans localStorage)
-  const [filterCommercial, setFilterCommercial] = useState(() => {
-    return localStorage.getItem('reminders_filter_commercial') || '';
-  });
-  useEffect(() => {
-    localStorage.setItem('reminders_filter_commercial', filterCommercial);
-  }, [filterCommercial]);
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('reminders_filterCommercial', '');
 
   // Modale reporter
   const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
