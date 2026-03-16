@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from './Toast';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
-import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { getGoogleCalendarEvents, apiPost, apiPut, type GoogleCalendarEvent } from '../api/client';
 
 // ============================================
 // Context for triggering calls from anywhere
@@ -28,7 +29,8 @@ export function useCallModal() {
 // ============================================
 
 export function CallModalProvider({ children }: { children: ReactNode }) {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
+  const toast = useToast();
 
   const [showModal, setShowModal] = useState(false);
   const [prospectId, setProspectId] = useState('');
@@ -60,6 +62,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   // Post-RDV confirmation
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [createdRdvId, setCreatedRdvId] = useState('');
+  const [saving, setSaving] = useState(false);
   // Google Calendar conflict detection
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
@@ -155,8 +158,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowNewTag(false);
   };
 
-  const saveCall = () => {
-    if (!prospectId) return;
+  const saveCall = async () => {
+    if (!prospectId || saving) return;
 
     // Validation: notes et tags obligatoires
     const errors: string[] = [];
@@ -167,11 +170,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       return;
     }
     setSaveErrors([]);
+    setSaving(true);
 
-    // 1. Save the call
-    dispatch({
-      type: 'ADD_CALL',
-      payload: {
+    try {
+      // 1. Save the call to API first
+      const callPayload = {
         id: generateId('call'),
         prospect_id: prospectId,
         commercial_id: state.currentUser?.id || 'com-1',
@@ -179,50 +182,48 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         duree: callTimer,
         resultat: callResult,
         notes: callNotes,
-      },
-    });
+      };
+      await apiPost('/calls', callPayload);
+      dispatchLocal({ type: 'ADD_CALL', payload: callPayload });
 
-    // 2. Update prospect tags + auto-transition pipeline
-    const prospect = state.prospects.find(p => p.id === prospectId);
-    if (prospect) {
-      const hasMemo = showMemo && memoMessage.trim() && memoDate;
-      const hasRdv = showRdv && rdvDate;
+      // 2. Update prospect tags + auto-transition pipeline
+      const prospect = state.prospects.find(p => p.id === prospectId);
+      if (prospect) {
+        const hasMemo = showMemo && memoMessage.trim() && memoDate;
+        const hasRdv = showRdv && rdvDate;
 
-      let newStage = prospect.etape_pipeline;
+        let newStage = prospect.etape_pipeline;
 
-      // Regle : Negative outcome → perdu ou ne_pas_contacter (priorite max)
-      if (negativeOutcome === 'pas_interesse') {
-        newStage = 'perdu';
-      } else if (negativeOutcome === 'ne_pas_contacter') {
-        newStage = 'ne_pas_contacter';
-      }
-      // Regle : RDV pris → "Gagne" (prioritaire)
-      else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-        newStage = 'gagne';
-      }
-      // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
-      else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
-        newStage = 'contacte';
-      }
+        // Regle : Negative outcome → perdu ou ne_pas_contacter (priorite max)
+        if (negativeOutcome === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (negativeOutcome === 'ne_pas_contacter') {
+          newStage = 'ne_pas_contacter';
+        }
+        // Regle : RDV pris → "Gagne" (prioritaire)
+        else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+          newStage = 'gagne';
+        }
+        // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
+        else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
+          newStage = 'contacte';
+        }
 
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: {
+        const updatedProspect = {
           ...prospect,
           tags: selectedTags,
           nom_contact: editContact.trim() || prospect.nom_contact,
           email: editEmail.trim() || prospect.email,
           etape_pipeline: newStage,
           date_modification: new Date().toISOString(),
-        },
-      });
-    }
+        };
+        await apiPut(`/prospects/${prospect.id}`, updatedProspect);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
+      }
 
-    // 3. Create memo/reminder if filled
-    if (showMemo && memoMessage.trim() && memoDate) {
-      dispatch({
-        type: 'ADD_REMINDER',
-        payload: {
+      // 3. Create memo/reminder if filled
+      if (showMemo && memoMessage.trim() && memoDate) {
+        const reminderPayload = {
           id: generateId('rem'),
           prospect_id: prospectId,
           commercial_id: state.currentUser?.id || 'com-1',
@@ -230,16 +231,15 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           heure: memoHeure,
           message: memoMessage.trim(),
           statut: 'actif',
-        },
-      });
-    }
+        };
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+      }
 
-    // 4. Create RDV if filled
-    if (showRdv && rdvDate) {
-      const rdvId = generateId('rdv');
-      dispatch({
-        type: 'ADD_APPOINTMENT',
-        payload: {
+      // 4. Create RDV if filled
+      if (showRdv && rdvDate) {
+        const rdvId = generateId('rdv');
+        const rdvPayload = {
           id: rdvId,
           prospect_id: prospectId,
           commercial_id: rdvCommercialId || state.currentUser?.id || 'com-1',
@@ -251,19 +251,29 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           notes: rdvNotes,
           statut: 'planifie',
           created_at: new Date().toISOString(),
-        },
-      });
-      // Show confirmation screen with agenda + export
-      setCreatedRdvId(rdvId);
-      setShowConfirmation(true);
+        };
+        await apiPost('/appointments', rdvPayload);
+        dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
+        // Show confirmation screen with agenda + export
+        setCreatedRdvId(rdvId);
+        setShowConfirmation(true);
+        setCallActive(false);
+        setCallTimer(0);
+        setSaving(false);
+        toast.success('Appel et RDV enregistres avec succes');
+        return;
+      }
+
+      toast.success('Appel enregistre avec succes');
+      setShowModal(false);
       setCallActive(false);
       setCallTimer(0);
-      return;
+    } catch (err) {
+      console.error('Erreur sauvegarde appel:', err);
+      toast.error('Erreur lors de la sauvegarde. Veuillez reessayer.');
+    } finally {
+      setSaving(false);
     }
-
-    setShowModal(false);
-    setCallActive(false);
-    setCallTimer(0);
   };
 
   const cancelCall = () => {
@@ -758,10 +768,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   Annuler
                 </button>
                 <button
-                  className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 font-medium"
+                  className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveCall}
+                  disabled={saving}
                 >
-                  <Save className="w-4 h-4" /> Enregistrer
+                  <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : 'Enregistrer'}
                 </button>
               </div>
             )}

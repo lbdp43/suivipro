@@ -113,7 +113,7 @@ export default function ProspectsPage() {
         if (visible.size === 0) visible.add('prospect');
         setPipelineEntityTypes(visible);
       })
-      .catch(() => {});
+      .catch(err => console.error('Failed to load entity types:', err));
   }, []);
 
   // Compte-rendu modal

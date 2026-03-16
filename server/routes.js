@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { createWorker } from 'tesseract.js';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
@@ -261,7 +262,7 @@ router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
   );
-  logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
+  await logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
   res.json({ ok: true });
 }));
 
@@ -274,7 +275,7 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
     [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
   );
-  logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
+  await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
   res.json({ ok: true });
 }));
 
@@ -366,7 +367,7 @@ router.post('/calls', authMiddleware, asyncHandler(async (req, res) => {
     'INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
     [c.id, c.prospect_id, commercialId, c.date, c.duree || 0, c.resultat, c.notes || '']
   );
-  logActivity(req.user.id, 'appel', `Résultat: ${c.resultat}`, 'call', c.id);
+  await logActivity(req.user.id, 'appel', `Résultat: ${c.resultat}`, 'call', c.id);
   res.json({ ok: true });
 }));
 
@@ -415,7 +416,7 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
     }
   }
 
-  logActivity(req.user.id, 'creation_rdv', `RDV le ${a.date} à ${a.lieu || 'N/A'}`, 'appointment', a.id);
+  await logActivity(req.user.id, 'creation_rdv', `RDV le ${a.date} à ${a.lieu || 'N/A'}`, 'appointment', a.id);
   res.json({ ok: true });
 }));
 
@@ -429,9 +430,9 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
     [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', req.params.id, a.client_id || null]
   );
   if (a.compte_rendu) {
-    logActivity(req.user.id, 'compte_rendu_rdv', `Compte rendu: ${a.compte_rendu}`, 'appointment', req.params.id);
+    await logActivity(req.user.id, 'compte_rendu_rdv', `Compte rendu: ${a.compte_rendu}`, 'appointment', req.params.id);
   } else {
-    logActivity(req.user.id, 'modification_rdv', `RDV le ${a.date}`, 'appointment', req.params.id);
+    await logActivity(req.user.id, 'modification_rdv', `RDV le ${a.date}`, 'appointment', req.params.id);
   }
   res.json({ ok: true });
 }));
@@ -577,9 +578,22 @@ router.delete('/pipeline-columns/:id', authMiddleware, adminOnly, asyncHandler(a
 router.put('/pipeline-columns-reorder', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { order } = req.body; // array of { id, sort_order }
   if (!Array.isArray(order)) return res.status(400).json({ error: 'order array is required' });
-  for (const item of order) {
-    await db.query('UPDATE pipeline_columns SET sort_order=$1 WHERE id=$2', [item.sort_order, item.id]);
+
+  // Transaction: reorder all columns atomically
+  const dbClient = await db.connect();
+  try {
+    await dbClient.query('BEGIN');
+    for (const item of order) {
+      await dbClient.query('UPDATE pipeline_columns SET sort_order=$1 WHERE id=$2', [item.sort_order, item.id]);
+    }
+    await dbClient.query('COMMIT');
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    throw err;
+  } finally {
+    dbClient.release();
   }
+
   res.json({ ok: true });
 }));
 
@@ -1017,7 +1031,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
   const commercialId = isAdmin(req) ? (c.commercial_id || req.user.id) : req.user.id;
   const now = new Date().toISOString();
   const nextVisit = c.next_visit || await calculateNextVisit(c.type_client, c.custom_recurrence, null);
-  const clientId = c.id || `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const clientId = c.id || `cli-${crypto.randomUUID()}`;
 
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
@@ -1031,7 +1045,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
      c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
   );
   const created = await db.query('SELECT * FROM clients WHERE id = $1', [clientId]);
-  logActivity(req.user.id, 'creation_client', c.nom, 'client', clientId);
+  await logActivity(req.user.id, 'creation_client', c.nom, 'client', clientId);
   res.json(created.rows[0]);
 }));
 
@@ -1079,33 +1093,72 @@ router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
   const now = new Date().toISOString();
   const commercialId = i.commercial_id || req.user.id;
 
-  await db.query(
-    `INSERT INTO interactions (id, client_id, commercial_id, type, date, comment, date_creation)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [i.id, i.client_id, commercialId, i.type, i.date || now, i.comment || '', i.date_creation || now]
-  );
+  // Transaction: insert interaction + update client's visit dates atomically
+  const dbClient = await db.connect();
+  try {
+    await dbClient.query('BEGIN');
 
-  // Update client's last_visit and calculate next_visit
-  const clientResult = await db.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [i.client_id]);
-  if (clientResult.rows.length > 0) {
-    const client = clientResult.rows[0];
-    const visitDate = i.date || now;
-    let nextVisit = null;
-    if (client.statut === 'ACTIF') {
-      nextVisit = await calculateNextVisit(client.type_client, client.custom_recurrence, visitDate);
-    }
-    await db.query(
-      'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
-      [visitDate.split('T')[0], nextVisit, now, i.client_id]
+    await dbClient.query(
+      `INSERT INTO interactions (id, client_id, commercial_id, type, date, comment, date_creation)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [i.id, i.client_id, commercialId, i.type, i.date || now, i.comment || '', i.date_creation || now]
     );
+
+    // Update client's last_visit and calculate next_visit
+    const clientResult = await dbClient.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [i.client_id]);
+    if (clientResult.rows.length > 0) {
+      const client = clientResult.rows[0];
+      const visitDate = i.date || now;
+      let nextVisit = null;
+      if (client.statut === 'ACTIF') {
+        nextVisit = await calculateNextVisit(client.type_client, client.custom_recurrence, visitDate);
+      }
+      await dbClient.query(
+        'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
+        [visitDate.split('T')[0], nextVisit, now, i.client_id]
+      );
+    }
+
+    await dbClient.query('COMMIT');
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    throw err;
+  } finally {
+    dbClient.release();
   }
 
-  logActivity(req.user.id, 'visite_client', `${i.type}${i.comment ? ': ' + i.comment.substring(0, 100) : ''}`, 'client', i.client_id);
+  await logActivity(req.user.id, 'visite_client', `${i.type}${i.comment ? ': ' + i.comment.substring(0, 100) : ''}`, 'client', i.client_id);
   res.json({ ok: true });
 }));
 
 router.delete('/interactions/:id', authMiddleware, asyncHandler(async (req, res) => {
+  // Get the interaction before deleting to know which client to update
+  const interaction = await db.query('SELECT client_id FROM interactions WHERE id = $1', [req.params.id]);
+
   await db.query('DELETE FROM interactions WHERE id = $1', [req.params.id]);
+
+  // Recalculate last_visit and next_visit for the client
+  if (interaction.rows.length > 0) {
+    const clientId = interaction.rows[0].client_id;
+    const lastInteraction = await db.query(
+      "SELECT date FROM interactions WHERE client_id = $1 AND type IN ('VISITE','APPEL') ORDER BY date DESC LIMIT 1",
+      [clientId]
+    );
+    const clientResult = await db.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [clientId]);
+    if (clientResult.rows.length > 0) {
+      const client = clientResult.rows[0];
+      const lastVisit = lastInteraction.rows.length > 0 ? lastInteraction.rows[0].date : null;
+      let nextVisit = null;
+      if (lastVisit && client.statut === 'ACTIF') {
+        nextVisit = await calculateNextVisit(client.type_client, client.custom_recurrence, lastVisit);
+      }
+      await db.query(
+        'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
+        [lastVisit ? String(lastVisit).split('T')[0] : null, nextVisit, new Date().toISOString(), clientId]
+      );
+    }
+  }
+
   res.json({ ok: true });
 }));
 
@@ -1156,28 +1209,43 @@ router.post('/commandes/:id/assign', authMiddleware, asyncHandler(async (req, re
   const cmd = await db.query('SELECT * FROM commandes WHERE id = $1', [req.params.id]);
   if (cmd.rows.length === 0) return res.status(404).json({ error: 'Commande non trouvee' });
 
-  const client = await db.query('SELECT id, nom, commercial_id FROM clients WHERE id = $1', [client_id]);
-  if (client.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
+  const clientResult = await db.query('SELECT id, nom, commercial_id FROM clients WHERE id = $1', [client_id]);
+  if (clientResult.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
 
-  await db.query('UPDATE commandes SET client_id = $1 WHERE id = $2', [client_id, req.params.id]);
-
-  // If this commande has an easybeer client ID, link it too for future orders
   const commande = cmd.rows[0];
-  const rawData = JSON.parse(commande.raw_data || '{}');
-  const ebClientId = String(rawData.clientId || rawData.client_id || rawData.tiersId || rawData.tiers_id
-    || rawData.idClient || rawData.id_client || '');
-  if (ebClientId) {
-    await db.query(
-      `INSERT INTO easybeer_clients (easybeer_id, name, status, imported_client_id, synced_at, updated_at)
-      VALUES ($1,$2,'imported',$3,$4,$4)
-      ON CONFLICT (easybeer_id) DO UPDATE SET status = 'imported', imported_client_id = $3, updated_at = $4`,
-      [ebClientId, commande.client_name || client.rows[0].nom, client_id, new Date().toISOString()]
-    );
-    console.log(`[Commandes] Lien EasyBeer cree: easybeer_id=${ebClientId} -> client ${client_id}`);
+  const clientNom = clientResult.rows[0].nom;
+
+  // Transaction: assign commande + link easybeer atomically
+  const dbClient = await db.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    await dbClient.query('UPDATE commandes SET client_id = $1 WHERE id = $2', [client_id, req.params.id]);
+
+    // If this commande has an easybeer client ID, link it too for future orders
+    const rawData = JSON.parse(commande.raw_data || '{}');
+    const ebClientId = String(rawData.clientId || rawData.client_id || rawData.tiersId || rawData.tiers_id
+      || rawData.idClient || rawData.id_client || '');
+    if (ebClientId) {
+      await dbClient.query(
+        `INSERT INTO easybeer_clients (easybeer_id, name, status, imported_client_id, synced_at, updated_at)
+        VALUES ($1,$2,'imported',$3,$4,$4)
+        ON CONFLICT (easybeer_id) DO UPDATE SET status = 'imported', imported_client_id = $3, updated_at = $4`,
+        [ebClientId, commande.client_name || clientNom, client_id, new Date().toISOString()]
+      );
+      console.log(`[Commandes] Lien EasyBeer cree: easybeer_id=${ebClientId} -> client ${client_id}`);
+    }
+
+    await dbClient.query('COMMIT');
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    throw err;
+  } finally {
+    dbClient.release();
   }
 
-  console.log(`[Commandes] Orpheline #${commande.numero} assignee a ${client.rows[0].nom} (${client_id})`);
-  res.json({ ok: true, client_nom: client.rows[0].nom });
+  console.log(`[Commandes] Orpheline #${commande.numero} assignee a ${clientNom} (${client_id})`);
+  res.json({ ok: true, client_nom: clientNom });
 }));
 
 // Fetch orders from EasyBeer for a specific client and sync them
@@ -1303,7 +1371,7 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
       finalStatut = 'annulee';
     }
 
-    const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const cmdId = `cmd-${crypto.randomUUID()}`;
     await db.query(
       `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, date_creation)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
@@ -1350,7 +1418,7 @@ router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
   if (!t.titre) return validationError(res, ['titre est requis']);
 
   const now = new Date().toISOString();
-  const id = t.id || `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const id = t.id || `task-${crypto.randomUUID()}`;
   await db.query(
     `INSERT INTO tasks_client (id, titre, description, statut, priorite, date_echeance, commercial_id, client_id, date_creation, completed_at, categorie, created_by)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -1367,7 +1435,7 @@ router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
     createNotification(assignedId, 'TASK_ASSIGNED', 'Nouvelle tache assignee',
       `${creatorName}: ${t.titre}${t.date_echeance ? ` — Echeance: ${t.date_echeance}` : ''}`,
       { task_id: id, client_id: t.client_id }
-    ).catch(() => {});
+    ).catch(err => console.error('Notification error:', err.message));
   }
 
   // Return the full task with joins
@@ -1407,7 +1475,7 @@ router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) =>
     createNotification(oldTask.rows[0].created_by, 'TASK_COMPLETED', 'Tache terminee',
       `${completerName} a termine: ${t.titre}`,
       { task_id: req.params.id }
-    ).catch(() => {});
+    ).catch(err => console.error('Notification error:', err.message));
   }
 
   // Notify new assignee if reassigned
@@ -1417,7 +1485,7 @@ router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) =>
     createNotification(t.commercial_id, 'TASK_ASSIGNED', 'Tache reassignee',
       `${reassignerName}: ${t.titre}${t.date_echeance ? ` — Echeance: ${t.date_echeance}` : ''}`,
       { task_id: req.params.id }
-    ).catch(() => {});
+    ).catch(err => console.error('Notification error:', err.message));
   }
 
   const result = await db.query(
@@ -1519,24 +1587,37 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
   const now = new Date().toISOString();
   const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
   const nextVisit = await calculateNextVisit(clientType, custom_recurrence || null, null);
-  const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const clientId = `cli-${crypto.randomUUID()}`;
 
-  await db.query(
-    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
-     type_client, statut, commercial_id, next_visit, notes, custom_recurrence,
-     latitude, longitude, tournee, prospect_id, date_creation, date_modification)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [clientId, p.nom_etablissement, p.ville || '', p.adresse || '', p.code_postal || '',
-     p.telephone || '', p.email || '', p.nom_contact || '', clientType, 'ACTIF',
-     p.commercial_id, nextVisit || null, p.notes || '', custom_recurrence || null,
-     p.latitude || 0, p.longitude || 0, tournee || '', prospect_id, now, now]
-  );
+  // Transaction: create client + update prospect atomically
+  const dbClient = await db.connect();
+  try {
+    await dbClient.query('BEGIN');
 
-  // Move prospect to client_gagne stage
-  await db.query(
-    'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
-    ['client_gagne', now, prospect_id]
-  );
+    await dbClient.query(
+      `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
+       type_client, statut, commercial_id, next_visit, notes, custom_recurrence,
+       latitude, longitude, tournee, prospect_id, date_creation, date_modification)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [clientId, p.nom_etablissement, p.ville || '', p.adresse || '', p.code_postal || '',
+       p.telephone || '', p.email || '', p.nom_contact || '', clientType, 'ACTIF',
+       p.commercial_id, nextVisit || null, p.notes || '', custom_recurrence || null,
+       p.latitude || 0, p.longitude || 0, tournee || '', prospect_id, now, now]
+    );
+
+    // Move prospect to client_gagne stage
+    await dbClient.query(
+      'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
+      ['client_gagne', now, prospect_id]
+    );
+
+    await dbClient.query('COMMIT');
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    throw err;
+  } finally {
+    dbClient.release();
+  }
 
   res.json({ ok: true, client_id: clientId });
 }));
@@ -1948,7 +2029,7 @@ async function handleEasyBeerWebhook(req, res) {
 
         if (!clientId) {
           // Store as orphan commande (client_id = null) for admin to assign
-          const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          const cmdId = `cmd-${crypto.randomUUID()}`;
           await db.query(
             `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
@@ -1963,7 +2044,7 @@ async function handleEasyBeerWebhook(req, res) {
           try {
             const admins = await db.query("SELECT id FROM commerciaux WHERE role = 'admin'");
             for (const admin of admins.rows) {
-              const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+              const notifId = `notif-${crypto.randomUUID()}`;
               await db.query(
                 `INSERT INTO notifications (id, user_id, type, title, message, data, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
                 [notifId, admin.id, 'commande_orpheline',
@@ -1988,7 +2069,7 @@ async function handleEasyBeerWebhook(req, res) {
         }
 
         // Create the commande
-        const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const cmdId = `cmd-${crypto.randomUUID()}`;
         await db.query(
           `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
@@ -2005,7 +2086,7 @@ async function handleEasyBeerWebhook(req, res) {
         try {
           const clientData = await db.query('SELECT nom, commercial_id FROM clients WHERE id = $1', [clientId]);
           if (clientData.rows.length > 0) {
-            const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const notifId = `notif-${crypto.randomUUID()}`;
             await db.query(
               `INSERT INTO notifications (id, user_id, type, title, message, data, created_at)
               VALUES ($1,$2,$3,$4,$5,$6,$7)`,
@@ -2138,7 +2219,7 @@ async function handleEasyBeerWebhook(req, res) {
               const rule = ruleResult.rows[0];
               const clientType = 'BAR_RESTAURANT_GENERAL';
               const nextVisit = await calculateNextVisit(clientType, null, null);
-              const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+              const clientId = `cli-${crypto.randomUUID()}`;
 
               const prospect = await findMatchingProspect(f.name, f.email, f.phone);
 
@@ -2313,7 +2394,7 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   // No existing client found - create new one
   const clientType = type_client || 'BAR_RESTAURANT_GENERAL';
   const nextVisit = await calculateNextVisit(clientType, null, null);
-  const clientId = `cli-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const clientId = `cli-${crypto.randomUUID()}`;
 
   const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
 
@@ -2512,7 +2593,7 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
         if (existing.rows.length > 0) continue;
 
         const hashedPwd = bcrypt.hashSync(nc.password || 'Changeme1', 10);
-        const comId = nc.id || `com-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const comId = nc.id || `com-${crypto.randomUUID()}`;
         await db.query(
           'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
           [comId, nc.prenom || '', nc.nom || '', nc.email, nc.telephone || '', nc.role || 'commercial', hashedPwd, JSON.stringify(nc.objectifs || {})]
@@ -2645,7 +2726,7 @@ router.put('/notifications/:userId/read-all', authMiddleware, asyncHandler(async
 
 // Helper to create a notification
 async function createNotification(userId, type, title, message, data = {}) {
-  const id = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const id = `notif-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
   await db.query(
     'INSERT INTO notifications (id, user_id, type, title, message, data, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
@@ -4366,7 +4447,7 @@ router.post('/sirene/import-all', authMiddleware, adminOnly, asyncHandler(async 
   }
 
   if (imported > 0) {
-    logActivity(req.user.id, 'import_datagouv_bulk', `${imported} importes, ${duplicates} doublons a valider`, '', '');
+    await logActivity(req.user.id, 'import_datagouv_bulk', `${imported} importes, ${duplicates} doublons a valider`, '', '');
   }
 
   res.json({ ok: true, imported, duplicates, skipped });
@@ -4430,7 +4511,7 @@ router.post('/sirene/duplicates/:id/merge', authMiddleware, adminOnly, asyncHand
   }
 
   await db.query("UPDATE sirene_duplicate_queue SET status = 'merged', resolved_by = $2, resolved_at = $3 WHERE id = $1", [d.id, req.user.id, now]);
-  logActivity(req.user.id, 'merge_doublon', `Fusion ${d.sirene_nom} → ${prospect.nom_etablissement}`, 'prospect', prospect.id);
+  await logActivity(req.user.id, 'merge_doublon', `Fusion ${d.sirene_nom} → ${prospect.nom_etablissement}`, 'prospect', prospect.id);
   res.json({ ok: true, action: 'merged' });
 }));
 
@@ -4481,7 +4562,7 @@ router.post('/sirene/duplicates/:id/import', authMiddleware, adminOnly, asyncHan
   );
   await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etab.id]);
   await db.query("UPDATE sirene_duplicate_queue SET status = 'force_imported', resolved_by = $2, resolved_at = $3 WHERE id = $1", [d.id, req.user.id, now]);
-  logActivity(req.user.id, 'force_import_doublon', `Import force: ${nomEtab} (SIRET: ${etab.siret})`, 'prospect', prospectId);
+  await logActivity(req.user.id, 'force_import_doublon', `Import force: ${nomEtab} (SIRET: ${etab.siret})`, 'prospect', prospectId);
   res.json({ ok: true, action: 'force_imported' });
 }));
 

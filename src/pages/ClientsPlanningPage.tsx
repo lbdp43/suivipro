@@ -51,7 +51,7 @@ export default function ClientsPlanningPage() {
         });
         setTourneeConfigs(map);
       })
-      .catch(() => {});
+      .catch(err => console.error('Failed to load tournee configs:', err));
   }, []);
 
   // CR modal state

@@ -153,7 +153,7 @@ export default function ClientsPage() {
         rows.forEach(r => { config[r.type_client] = r.frequency_days; });
         setFrequencyConfig(config);
       })
-      .catch(() => {});
+      .catch(err => console.error('Failed to load frequency config:', err));
   }, []);
 
   // Load tournee configs
@@ -171,7 +171,7 @@ export default function ClientsPage() {
         });
         setTourneeConfigs(map);
       })
-      .catch(() => {});
+      .catch(err => console.error('Failed to load tournee configs:', err));
   }, []);
 
   // Initialize RDV fields when modal opens
