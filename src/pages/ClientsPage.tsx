@@ -15,7 +15,7 @@ import {
   INTERACTION_TYPE_LABELS, TaskClient, TASK_CLIENT_STATUS_LABELS,
   Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS,
 } from '../types';
-import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress } from '../utils/helpers';
+import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 
@@ -24,7 +24,7 @@ type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 function getVisitStatus(client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
   if (client.statut === 'INACTIF') return 'INACTIF';
   if (!client.next_visit) return 'NO_RECURRENCE';
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
   if (client.next_visit < today) return 'LATE';
   if (client.next_visit === today) return 'TODAY';
   return 'UPCOMING';
@@ -576,7 +576,7 @@ export default function ClientsPage() {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Clients');
-      XLSX.writeFile(wb, `clients-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `clients-${toLocalDateStr(new Date())}.xlsx`);
     } catch { /* ignore */ }
   };
 
@@ -689,7 +689,7 @@ export default function ClientsPage() {
       d.setDate(monday.getDate() + i);
       days.push({
         date: d,
-        dateStr: d.toISOString().split('T')[0],
+        dateStr: toLocalDateStr(d),
         label: `${dayNames[i]} ${d.getDate()}/${d.getMonth() + 1}`,
         dayKey: String(i + 1), // 1=Lun, 2=Mar, etc.
       });
@@ -1234,8 +1234,8 @@ export default function ClientsPage() {
             {/* Days of the week */}
             <div className="space-y-3">
               {planningData.days.map(day => {
-                const isToday = day.dateStr === new Date().toISOString().split('T')[0];
-                const isPast = day.dateStr < new Date().toISOString().split('T')[0];
+                const isToday = day.dateStr === toLocalDateStr(new Date());
+                const isPast = day.dateStr < toLocalDateStr(new Date());
                 return (
                   <div
                     key={day.dateStr}
@@ -1337,7 +1337,7 @@ export default function ClientsPage() {
                                 {sector.clients.map(c => {
                                   const comm = getCommercial(c.commercial_id);
                                   const isDue = c.next_visit && c.next_visit <= day.dateStr;
-                                  const isLate = c.next_visit && c.next_visit < new Date().toISOString().split('T')[0];
+                                  const isLate = c.next_visit && c.next_visit < toLocalDateStr(new Date());
                                   return (
                                     <button
                                       key={c.id}
@@ -1675,7 +1675,7 @@ export default function ClientsPage() {
                 Appel
               </button>
               <button
-                onClick={() => { setInteractionClient(selectedClient); setInteractionType('RDV_PLANIFIE'); setInteractionDate(new Date().toISOString().split('T')[0]); }}
+                onClick={() => { setInteractionClient(selectedClient); setInteractionType('RDV_PLANIFIE'); setInteractionDate(toLocalDateStr(new Date())); }}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors"
               >
                 <Calendar className="w-3.5 h-3.5" />
@@ -1724,7 +1724,7 @@ export default function ClientsPage() {
                         {task.titre}
                       </span>
                       {task.date_echeance && (
-                        <span className={`text-[10px] flex-shrink-0 ${task.date_echeance < new Date().toISOString().split('T')[0] && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>
+                        <span className={`text-[10px] flex-shrink-0 ${task.date_echeance < toLocalDateStr(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>
                           {formatDate(task.date_echeance)}
                         </span>
                       )}

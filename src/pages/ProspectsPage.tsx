@@ -18,7 +18,7 @@ import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType,
 } from '../types';
-import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
+import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 
 export default function ProspectsPage() {
@@ -124,7 +124,7 @@ export default function ProspectsPage() {
     setCompteRenduRappel(false);
     const in7days = new Date();
     in7days.setDate(in7days.getDate() + 7);
-    setCompteRenduRappelDate(in7days.toISOString().split('T')[0]);
+    setCompteRenduRappelDate(toLocalDateStr(in7days));
     setCompteRenduRappelMessage('');
     setShowCompteRendu(true);
   };
@@ -898,7 +898,7 @@ export default function ProspectsPage() {
                       e.stopPropagation();
                       const in3days = new Date();
                       in3days.setDate(in3days.getDate() + 3);
-                      setReminderDate(in3days.toISOString().split('T')[0]);
+                      setReminderDate(toLocalDateStr(in3days));
                       setReminderHeure('09:00');
                       setReminderMessage('');
                       setReminderProspect(p);
@@ -1490,7 +1490,7 @@ export default function ProspectsPage() {
                     onClick={() => {
                       const d = new Date();
                       d.setDate(d.getDate() + shortcut.days);
-                      setReminderDate(d.toISOString().split('T')[0]);
+                      setReminderDate(toLocalDateStr(d));
                     }}
                   >
                     {shortcut.label}

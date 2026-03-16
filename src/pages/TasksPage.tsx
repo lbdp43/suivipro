@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
+import { toLocalDateStr } from '../utils/helpers';
 
 interface Task {
   id: string;
@@ -225,7 +226,7 @@ export default function TasksPage() {
 
   // Stats
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr(new Date());
     const myTasks = tasks.filter(t => t.commercial_id === currentUserId);
     return {
       total: tasks.filter(t => t.statut !== 'TERMINEE').length,
@@ -246,7 +247,7 @@ export default function TasksPage() {
 
   const isOverdue = (task: Task) => {
     if (!task.date_echeance || task.statut === 'TERMINEE') return false;
-    return task.date_echeance < new Date().toISOString().split('T')[0];
+    return task.date_echeance < toLocalDateStr(new Date());
   };
 
   if (loading) {

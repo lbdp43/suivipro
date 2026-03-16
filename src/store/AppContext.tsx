@@ -5,6 +5,7 @@ import {
   Client, Interaction, TaskClient, TourneeConfig, Commande,
 } from '../types';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
+import { toLocalDateStr } from '../utils/helpers';
 
 // ============================================
 // Actions
@@ -160,7 +161,7 @@ function reducer(state: AppState, action: Action): AppState {
           if (c.statut === 'ACTIF' && freq) {
             const d = new Date(visitDate);
             d.setDate(d.getDate() + freq);
-            nextVisit = d.toISOString().split('T')[0];
+            nextVisit = toLocalDateStr(d);
           }
           return { ...c, last_visit: visitDate, next_visit: nextVisit, date_modification: new Date().toISOString() };
         }

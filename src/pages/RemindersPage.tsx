@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Reminder, ReminderStatus } from '../types';
-import { generateId, formatDate, isToday } from '../utils/helpers';
+import { generateId, formatDate, isToday, toLocalDateStr } from '../utils/helpers';
 
 export default function RemindersPage() {
   const { state, dispatch, getProspect } = useApp();
@@ -46,8 +46,8 @@ export default function RemindersPage() {
   }, [state.reminders, filterCommercial]);
 
   const todayReminders = reminders.filter(r => r.statut === 'actif' && isToday(r.date));
-  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= new Date().toISOString().split('T')[0]);
-  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < new Date().toISOString().split('T')[0]);
+  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= toLocalDateStr(new Date()));
+  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < toLocalDateStr(new Date()));
   const completedReminders = reminders.filter(r => r.statut === 'termine');
 
   const saveReminder = () => {
@@ -78,7 +78,7 @@ export default function RemindersPage() {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 2);
     setSnoozeTarget(rem);
-    setSnoozeDate(tomorrow.toISOString().split('T')[0]);
+    setSnoozeDate(toLocalDateStr(tomorrow));
     setSnoozeNote('');
   };
 
@@ -109,7 +109,7 @@ export default function RemindersPage() {
   const setSnoozeQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setSnoozeDate(date.toISOString().split('T')[0]);
+    setSnoozeDate(toLocalDateStr(date));
   };
 
   const deleteReminder = (id: string) => {
@@ -148,13 +148,13 @@ export default function RemindersPage() {
   const setQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setFormData(prev => ({ ...prev, date: date.toISOString().split('T')[0] }));
+    setFormData(prev => ({ ...prev, date: toLocalDateStr(date) }));
   };
 
   const renderReminder = (rem: Reminder, showActions = true) => {
     const prospect = getProspect(rem.prospect_id);
     const commercial = state.commerciaux.find(c => c.id === rem.commercial_id);
-    const isOverdue = rem.statut === 'actif' && rem.date < new Date().toISOString().split('T')[0];
+    const isOverdue = rem.statut === 'actif' && rem.date < toLocalDateStr(new Date());
     const isTodayRem = isToday(rem.date);
     return (
       <div
@@ -375,7 +375,7 @@ export default function RemindersPage() {
                   {snoozeQuickOptions.map(opt => {
                     const d = new Date();
                     d.setDate(d.getDate() + opt.days);
-                    const dateStr = d.toISOString().split('T')[0];
+                    const dateStr = toLocalDateStr(d);
                     return (
                       <button
                         key={opt.days}
@@ -401,7 +401,7 @@ export default function RemindersPage() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   value={snoozeDate}
                   onChange={e => setSnoozeDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={toLocalDateStr(new Date())}
                 />
               </div>
 

@@ -4,6 +4,7 @@
 // ============================================
 
 import type { AppState, Prospect, Appointment, Call, Reminder, PipelineStage, Client, Interaction, TaskClient, Commande } from '../types';
+import { toLocalDateStr } from '../utils/helpers';
 
 // ============================================
 // Protocol types
@@ -128,7 +129,7 @@ function handleGetAppointments(payload: Record<string, unknown>, state: AppState
 
 function handleGetUpcomingAppointments(payload: Record<string, unknown>, state: AppState): ActionResult {
   const limit = typeof payload.limit === 'number' ? payload.limit : 10;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr(new Date());
 
   const upcoming = state.appointments
     .filter(a => a.date >= today && a.statut !== 'annule')
@@ -263,7 +264,7 @@ function handleSearchClients(payload: Record<string, unknown>, state: AppState):
 }
 
 function handleGetClientsLateVisits(payload: Record<string, unknown>, state: AppState): ActionResult {
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
   let clients = state.clients.filter(c => c.statut === 'ACTIF' && c.next_visit && c.next_visit < today);
   if (payload.commercial_id) clients = clients.filter(c => c.commercial_id === payload.commercial_id);
   if (payload.tournee) clients = clients.filter(c => c.tournee === payload.tournee);

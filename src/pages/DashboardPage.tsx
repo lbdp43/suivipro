@@ -11,7 +11,7 @@ import {
   getCallsToday, getCallsThisWeek, getCallsThisMonth,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
   getResponseRate, getAverageCallDuration,
-  formatDuration, formatDate, isLastMonth,
+  formatDuration, formatDate, isLastMonth, toLocalDateStr,
 } from '../utils/helpers';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
@@ -298,7 +298,7 @@ export default function DashboardPage() {
       const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
 
       // Visit coverage: clients visited in time vs late
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateStr(new Date());
       const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
       const clientsOnTime = activeClients.filter(c => c.next_visit! >= today).length;
       const clientsLate = activeClients.filter(c => c.next_visit! < today).length;
@@ -357,7 +357,7 @@ export default function DashboardPage() {
       const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
 
       // Visit coverage
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateStr(new Date());
       const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
       const coverageRate = activeClients.length > 0
         ? Math.round((activeClients.filter(c => c.next_visit! >= today).length / activeClients.length) * 100)
@@ -457,9 +457,9 @@ export default function DashboardPage() {
 
   // === Sante des visites ===
   const visitHealth = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr(new Date());
     const activeClients = state.clients.filter(c => c.statut === 'ACTIF');
-    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).toISOString().split('T')[0];
+    const weekEnd = toLocalDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
 
     const lateClients = activeClients.filter(c => c.next_visit && c.next_visit < today);
     const todayClients = activeClients.filter(c => c.next_visit && c.next_visit === today);
@@ -538,7 +538,7 @@ export default function DashboardPage() {
     });
 
     // Clients actifs sans commande depuis 60 jours
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
+    const sixtyDaysAgo = toLocalDateStr(new Date(Date.now() - 60 * 86400000));
     const inactiveOrdering = clientCA.filter(c =>
       c.client.statut === 'ACTIF' && c.orderCount > 0 && c.lastOrderDate < sixtyDaysAgo
     );
@@ -566,7 +566,7 @@ export default function DashboardPage() {
   // === Alertes ===
   const alerts = useMemo(() => {
     const orphanCommandes = state.commandes.filter(c => !c.client_id).length;
-    const overdueTasks = (state as any).tasksClient?.filter((t: any) => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < new Date().toISOString().split('T')[0]).length || 0;
+    const overdueTasks = (state as any).tasksClient?.filter((t: any) => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < toLocalDateStr(new Date())).length || 0;
     return { lateVisits: visitHealth.lateCount, stagnantProspects: funnelData.stagnantCount, orphanCommandes, overdueTasks };
   }, [visitHealth, funnelData, state]);
 

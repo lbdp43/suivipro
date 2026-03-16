@@ -6,7 +6,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
-import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
+import { generateId, exportProspectsCSV, geocodeBatch, toLocalDateStr } from '../utils/helpers';
 
 export default function ImportPage() {
   const { state, dispatch, dispatchLocal } = useApp();
@@ -44,7 +44,7 @@ export default function ImportPage() {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Prospects');
-      XLSX.writeFile(wb, `prospects-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `prospects-${toLocalDateStr(new Date())}.xlsx`);
     } catch (err) {
       toast.error('Erreur lors de l\'export Excel');
     }

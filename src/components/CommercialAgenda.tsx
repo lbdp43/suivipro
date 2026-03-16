@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Calendar, MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial, Client, EVENT_TYPE_LABELS } from '../types';
-import { formatDate, downloadICS } from '../utils/helpers';
+import { formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
 
 interface Props {
   appointments: Appointment[];
@@ -47,7 +47,7 @@ function getWeekDays(offset: number): Date[] {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
+  return toLocalDateStr(d);
 }
 
 function timeToMinutes(time: string): number {

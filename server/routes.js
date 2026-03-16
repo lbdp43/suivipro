@@ -9,6 +9,14 @@ import hubBridgeRouter from './hub-bridge.js';
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Helper to format a Date as YYYY-MM-DD using local timezone
+function toLocalDateStr(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Helper to log user activity
 async function logActivity(userId, action, details = '', entityType = '', entityId = '') {
   try {
@@ -977,7 +985,7 @@ async function calculateNextVisit(typeClient, customRecurrence, lastVisitStr) {
   if (!frequency) return null;
   const base = lastVisitStr ? new Date(lastVisitStr) : new Date();
   base.setDate(base.getDate() + frequency);
-  return base.toISOString().split('T')[0];
+  return toLocalDateStr(base);
 }
 
 function validateClient(body) {
@@ -2558,13 +2566,13 @@ async function createNotification(userId, type, title, message, data = {}) {
 
 router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = toLocalDateStr(now);
 
   // Get Monday of current week
   const dayOfWeek = now.getDay() || 7;
   const monday = new Date(now);
   monday.setDate(now.getDate() - dayOfWeek + 1);
-  const weekStart = monday.toISOString().split('T')[0];
+  const weekStart = toLocalDateStr(monday);
 
   // Start of month
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -2705,7 +2713,7 @@ router.get('/admin/activity-feed', authMiddleware, asyncHandler(async (req, res)
     endDate = `${month}-${lastDay}`;
   } else {
     startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    endDate = now.toISOString().split('T')[0];
+    endDate = toLocalDateStr(now);
   }
 
   const activities = [];
@@ -2814,8 +2822,8 @@ router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
 
-    const startStr = weekStart.toISOString().split('T')[0];
-    const endStr = weekEnd.toISOString().split('T')[0];
+    const startStr = toLocalDateStr(weekStart);
+    const endStr = toLocalDateStr(weekEnd);
 
     let query = `SELECT c.id, c.nom, c.ville, c.type_client, c.next_visit, c.tournee,
       co.prenom as commercial_prenom, co.nom as commercial_nom, c.commercial_id
@@ -2852,14 +2860,14 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
   const targetId = req.query.commercial_id || req.user.id;
   const viewAll = req.query.view === 'all';
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = toLocalDateStr(now);
 
   // Get Monday of target week (current + offset)
   const dayOfWeek = now.getDay() || 7;
   const monday = new Date(now);
   monday.setDate(now.getDate() - dayOfWeek + 1 + (weekOffset * 7));
   monday.setHours(0, 0, 0, 0);
-  const mondayStr = monday.toISOString().split('T')[0];
+  const mondayStr = toLocalDateStr(monday);
 
   // Week number for target week
   const startOfYear = new Date(monday.getFullYear(), 0, 1);
@@ -2882,12 +2890,12 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
       const wp = tcRow?.week_pattern || 'every';
       const active = wp === 'every' || (wp === 'even' && isEvenWeek) || (wp === 'odd' && !isEvenWeek);
 
-      const sundayStr = new Date(new Date(monday).setDate(monday.getDate() + 6)).toISOString().split('T')[0];
+      const sundayStr = toLocalDateStr(new Date(new Date(monday).setDate(monday.getDate() + 6)));
       const weekDays = [];
       for (let d = 0; d < 7; d++) {
         const date = new Date(monday);
         date.setDate(monday.getDate() + d);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = toLocalDateStr(date);
         const dayKey = String(d === 6 ? 0 : d + 1);
         const tourneesForDay = active ? (config[dayKey] || []) : [];
 
@@ -2965,12 +2973,12 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     (weekPattern === 'even' && isEvenWeek) ||
     (weekPattern === 'odd' && !isEvenWeek);
 
-  const sundayStr = new Date(new Date(monday).setDate(monday.getDate() + 6)).toISOString().split('T')[0];
+  const sundayStr = toLocalDateStr(new Date(new Date(monday).setDate(monday.getDate() + 6)));
   const weekDays = [];
   for (let d = 0; d < 7; d++) {
     const date = new Date(monday);
     date.setDate(monday.getDate() + d);
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(date);
     const dayKey = String(d === 6 ? 0 : d + 1);
     const tourneesForDay = isTourneeActive ? (config[dayKey] || []) : [];
 
@@ -3033,16 +3041,16 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
 router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = toLocalDateStr(now);
 
   // Get Monday of current week
   const dayOfWeek = now.getDay() || 7;
   const monday = new Date(now);
   monday.setDate(now.getDate() - dayOfWeek + 1);
-  const weekStart = monday.toISOString().split('T')[0];
+  const weekStart = toLocalDateStr(monday);
   const weekEnd = new Date(monday);
   weekEnd.setDate(monday.getDate() + 6);
-  const weekEndStr = weekEnd.toISOString().split('T')[0];
+  const weekEndStr = toLocalDateStr(weekEnd);
 
   // My clients
   const clients = await db.query(
@@ -3068,7 +3076,7 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     const dayKey = String(d === 6 ? 0 : d + 1); // 0=dimanche, 1=lundi, ...
     const tourneesForDay = config[dayKey] || [];
 
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(date);
     const dayClients = clients.rows.filter(c => {
       // Client is in one of the tournées for this day
       if (tourneesForDay.length > 0 && c.tournee && tourneesForDay.includes(c.tournee)) return true;
@@ -3087,7 +3095,7 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     });
 
     weekDays[dayKey] = {
-      date: date.toISOString().split('T')[0],
+      date: toLocalDateStr(date),
       day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][d === 6 ? 0 : d + 1],
       tournees: tourneesForDay,
       clients: dayClients,
@@ -3816,7 +3824,7 @@ router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (
   const departements = config.departements.split(',').map(d => d.trim()).filter(Boolean);
   const nafCodes = config.naf_codes ? config.naf_codes.split(',').map(c => c.trim()).filter(Boolean) : NAF_CODES.map(n => n.code);
   const lookbackDays = config.lookback_days || 7;
-  const dateFrom = new Date(Date.now() - lookbackDays * 86400000).toISOString().split('T')[0];
+  const dateFrom = toLocalDateStr(new Date(Date.now() - lookbackDays * 86400000));
 
   const logRes = await db.query(
     `INSERT INTO sirene_sync_logs (started_at, naf_codes, departements, source, is_cron)
@@ -3961,7 +3969,7 @@ router.post('/sirene/sync', authMiddleware, adminOnly, asyncHandler(async (req, 
     ? naf_codes
     : NAF_CODES.map(n => n.code);
 
-  const dateFrom = new Date(Date.now() - lookback_days * 86400000).toISOString().split('T')[0];
+  const dateFrom = toLocalDateStr(new Date(Date.now() - lookback_days * 86400000));
 
   // Create sync log
   const logRes = await db.query(
@@ -4432,7 +4440,7 @@ async function runSyncForConfig(config, isCron = false) {
   const departements = config.departements.split(',').map(d => d.trim()).filter(Boolean);
   const nafCodes = config.naf_codes ? config.naf_codes.split(',').map(c => c.trim()).filter(Boolean) : NAF_CODES.map(n => n.code);
   const lookbackDays = config.lookback_days || 7;
-  const dateFrom = new Date(Date.now() - lookbackDays * 86400000).toISOString().split('T')[0];
+  const dateFrom = toLocalDateStr(new Date(Date.now() - lookbackDays * 86400000));
 
   console.log(`[SYNC] Config "${config.name}" (${config.entity_type}): ${nafCodes.length} NAF x ${departements.length} depts, depuis ${dateFrom}`);
 

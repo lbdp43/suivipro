@@ -7,7 +7,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
-import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
+import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts, toLocalDateStr } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
@@ -138,8 +138,8 @@ export default function AppointmentsPage() {
     return () => window.removeEventListener('message', handler);
   }, [fetchGoogleEvents]);
 
-  const upcoming = appointments.filter(a => a.date >= new Date().toISOString().split('T')[0] && a.statut !== 'annule' && a.statut !== 'termine');
-  const past = appointments.filter(a => a.date < new Date().toISOString().split('T')[0] || a.statut === 'termine' || a.statut === 'annule');
+  const upcoming = appointments.filter(a => a.date >= toLocalDateStr(new Date()) && a.statut !== 'annule' && a.statut !== 'termine');
+  const past = appointments.filter(a => a.date < toLocalDateStr(new Date()) || a.statut === 'termine' || a.statut === 'annule');
 
   // Detection conflits dans le formulaire
   const formConflicts = useMemo(() => {
@@ -254,7 +254,7 @@ export default function AppointmentsPage() {
         while (current <= endDate) {
           const dayOfWeek = current.getDay();
           if (formData.recurrence_days.includes(dayOfWeek)) {
-            const dateStr = current.toISOString().split('T')[0];
+            const dateStr = toLocalDateStr(current);
             dispatch({
               type: 'ADD_APPOINTMENT',
               payload: {
@@ -305,7 +305,7 @@ export default function AppointmentsPage() {
     setCompteRenduRappel(false);
     const in7days = new Date();
     in7days.setDate(in7days.getDate() + 7);
-    setCompteRenduRappelDate(in7days.toISOString().split('T')[0]);
+    setCompteRenduRappelDate(toLocalDateStr(in7days));
     setCompteRenduRappelMessage('');
     setShowCompteRendu(true);
   };
@@ -387,7 +387,7 @@ export default function AppointmentsPage() {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 7);
       setRescheduleRdv(compteRenduRdv);
-      setRescheduleDate(tomorrow.toISOString().split('T')[0]);
+      setRescheduleDate(toLocalDateStr(tomorrow));
       setRescheduleHeureDebut(compteRenduRdv.heure_debut || '09:00');
       setRescheduleHeureFin(compteRenduRdv.heure_fin || '10:00');
       setRescheduleNotes('');
@@ -433,7 +433,7 @@ export default function AppointmentsPage() {
 
   // Ouvrir la modale d'export avec les filtres pre-remplis
   const openExportModal = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr(new Date());
     setExportDateFrom(today);
     setExportDateTo('');
     setExportCommercial(filterCommercial || '');
@@ -822,8 +822,8 @@ export default function AppointmentsPage() {
         for (let i = 0; i < 7; i++) {
           const d = new Date(monday);
           d.setDate(monday.getDate() + i);
-          const dateStr = d.toISOString().split('T')[0];
-          const todayStr = new Date().toISOString().split('T')[0];
+          const dateStr = toLocalDateStr(d);
+          const todayStr = toLocalDateStr(new Date());
           days.push({
             label: `${joursSemaine[i]} ${d.getDate()}/${d.getMonth() + 1}`,
             shortLabel: `${joursShort[i]} ${d.getDate()}/${d.getMonth() + 1}`,

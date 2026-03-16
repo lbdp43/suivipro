@@ -6,7 +6,7 @@ import {
   MessageCircle, Building2, CheckCheck, ClipboardCheck, ListTodo, GitBranch, Contact, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { isToday } from '../utils/helpers';
+import { isToday, toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
 import HubPanel from './HubPanel';
 
@@ -53,7 +53,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { state, logout } = useApp();
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
   // Badge = rappels en retard filtrés par utilisateur
   // Les prospecteurs partagent leurs rappels entre eux
   const currentUserId = state.currentUser?.id;

@@ -38,6 +38,14 @@ export function formatTimeAgo(dateStr: string): string {
   }
 }
 
+/** Format a Date as 'YYYY-MM-DD' in local timezone (avoids UTC shift from toISOString) */
+export function toLocalDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function isThisWeek(dateStr: string): boolean {
   try {
     const date = parseISO(dateStr);

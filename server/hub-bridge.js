@@ -36,6 +36,14 @@ function hubApiKeyAuth(req, res, next) {
   next();
 }
 
+// Helper to format a Date as YYYY-MM-DD using local timezone
+function toLocalDateStr(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // ============================================
@@ -182,7 +190,7 @@ async function handleGetAppointments(payload) {
 
 async function handleGetUpcomingAppointments(payload) {
   const limit = typeof payload.limit === 'number' ? payload.limit : 10;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr(new Date());
 
   let query = `SELECT a.*, p.nom_etablissement AS prospect_nom, p.ville AS prospect_ville, c.nom AS commercial_nom
      FROM appointments a
@@ -947,7 +955,7 @@ async function handleSearchClients(payload) {
 }
 
 async function handleGetClientsLateVisits(payload) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
   let query = `SELECT cl.*, c.nom AS commercial_nom FROM clients cl LEFT JOIN commerciaux c ON cl.commercial_id = c.id
     WHERE cl.statut = 'ACTIF' AND cl.next_visit IS NOT NULL AND cl.next_visit < $1`;
   const params = [today];

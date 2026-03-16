@@ -8,6 +8,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Client } from '../types';
 import { apiPut } from '../api/client';
+import { toLocalDateStr } from '../utils/helpers';
 
 interface TourneeConfig {
   commercial_id: string;
@@ -402,7 +403,7 @@ export default function TourneesPage() {
       const offset = dayKey === '0' ? 6 : parseInt(dayKey) - 1;
       const d = new Date(targetMonday);
       d.setDate(targetMonday.getDate() + offset);
-      dates[dayKey] = d.toISOString().slice(0, 10);
+      dates[dayKey] = toLocalDateStr(d);
     });
     return dates;
   }, [targetMonday.getTime()]);

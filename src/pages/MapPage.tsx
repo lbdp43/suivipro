@@ -10,7 +10,7 @@ import { useCallModal } from '../components/CallModal';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatDate, downloadICS } from '../utils/helpers';
+import { formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 
 // Custom marker icon factory
@@ -40,8 +40,7 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
   else if (offset > 0) label = `+${offset} sem.`;
   else label = `${offset} sem.`;
   label += ` (${fmt(monday)} - ${fmt(sunday)})`;
-  const toDateStr = (d: Date) => d.toISOString().split('T')[0];
-  return { start: toDateStr(monday), end: toDateStr(sunday), label };
+  return { start: toLocalDateStr(monday), end: toLocalDateStr(sunday), label };
 }
 
 const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam', 0: 'Dim' };
@@ -82,7 +81,7 @@ export default function MapPage() {
 
   // Compter les RDV a venir toutes semaines confondues (pour le badge)
   const totalUpcomingRdv = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr(new Date());
     return state.appointments.filter(a => a.date >= today && a.statut !== 'annule' && a.statut !== 'termine').length;
   }, [state.appointments]);
 
@@ -252,7 +251,7 @@ export default function MapPage() {
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
 
   const statusColors: Record<string, string> = {
     planifie: 'bg-blue-100 text-blue-700',
@@ -903,7 +902,7 @@ export default function MapPage() {
                   </div>
                   {client.next_visit && (
                     <p className="mt-1 text-xs text-gray-500">
-                      Prochaine visite: <span className={`font-medium ${client.next_visit < new Date().toISOString().split('T')[0] ? 'text-red-600' : 'text-green-600'}`}>
+                      Prochaine visite: <span className={`font-medium ${client.next_visit < toLocalDateStr(new Date()) ? 'text-red-600' : 'text-green-600'}`}>
                         {new Date(client.next_visit).toLocaleDateString('fr-FR')}
                       </span>
                     </p>

@@ -4,6 +4,7 @@ import {
   AlertTriangle, Calendar, CheckCircle2, Clock, MapPin,
   ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, Eye, ClipboardCheck,
 } from 'lucide-react';
+import { toLocalDateStr } from '../utils/helpers';
 
 interface AppointmentInfo {
   id: string;
@@ -154,7 +155,7 @@ export default function CommercialClientsDashboard() {
 
   if (!data) return null;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateStr(new Date());
   const todayDayKey = String(new Date().getDay());
 
   return (

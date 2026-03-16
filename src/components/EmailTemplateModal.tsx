@@ -3,7 +3,7 @@ import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download, Edit2,
 import { useApp } from '../store/AppContext';
 import { Prospect, Client, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';
-import { generateId } from '../utils/helpers';
+import { generateId, toLocalDateStr } from '../utils/helpers';
 
 interface ProspectProps {
   prospect: Prospect;
@@ -130,7 +130,7 @@ export default function EmailTemplateModal(props: Props) {
         id: generateId('rem'),
         prospect_id: isProspect ? prospect!.id : '',
         commercial_id: state.currentUser?.id || 'com-1',
-        date: in7days.toISOString().split('T')[0],
+        date: toLocalDateStr(in7days),
         heure: '09:00',
         message: `Relance email - ${entityName} (${selectedTemplate.nom})`,
         statut: 'actif',

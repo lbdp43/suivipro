@@ -3,6 +3,7 @@ import { Home, MessageSquare, Bot, X, Loader2, RefreshCw, AlertTriangle, Hash, A
 import { getHubToken, clearHubTokenCache, saveHubCredentials, getHubChannels } from '../lib/hub';
 import { useApp } from '../store/AppContext';
 import { handleSuiviProAction, type SuiviProResponse } from '../lib/hubBridge';
+import { toLocalDateStr } from '../utils/helpers';
 
 const HUB_FRONTEND = (import.meta.env.VITE_HUB_FRONTEND_URL || '').replace(/\/$/, '');
 const HUB_ORIGIN = HUB_FRONTEND ? new URL(HUB_FRONTEND).origin : '';
@@ -278,7 +279,7 @@ export default function HubPanel({ open, onClose }: { open: boolean; onClose: ()
 
   // Compute upcoming appointments natively from SuiviPro state
   const upcomingAppointments = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr(new Date());
     return state.appointments
       .filter(a => a.date >= today && a.statut !== 'annule')
       .sort((a, b) => a.date.localeCompare(b.date) || a.heure_debut.localeCompare(b.heure_debut))

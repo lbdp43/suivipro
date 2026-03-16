@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
-import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
+import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
 import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
 
 // ============================================
@@ -101,7 +101,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setMemoMessage('');
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    setMemoDate(tomorrow.toISOString().split('T')[0]);
+    setMemoDate(toLocalDateStr(tomorrow));
     setMemoHeure('09:00');
     setShowNewTag(false);
     setNewTagName('');
@@ -113,7 +113,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowRdv(false);
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 3);
-    setRdvDate(nextWeek.toISOString().split('T')[0]);
+    setRdvDate(toLocalDateStr(nextWeek));
     setRdvHeureDebut('10:00');
     setRdvHeureFin('11:00');
     setRdvLieu(prospect.adresse ? `${prospect.adresse}, ${prospect.ville}` : '');
