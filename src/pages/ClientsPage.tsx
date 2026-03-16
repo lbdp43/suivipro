@@ -224,24 +224,26 @@ export default function ClientsPage() {
   };
 
   // Personal visit info: compute last visit & next visit based on the logged-in user's interactions only
-  const getPersonalVisitInfo = useCallback((client: Client): { lastVisit: string | null; nextVisit: string | null } => {
-    if (!state.currentUser) return { lastVisit: client.last_visit, nextVisit: client.next_visit };
+  // Falls back to global client data when the user has never visited
+  const getPersonalVisitInfo = useCallback((client: Client): { lastVisit: string | null; nextVisit: string | null; isPersonal: boolean } => {
+    if (!state.currentUser) return { lastVisit: client.last_visit, nextVisit: client.next_visit, isPersonal: false };
     const interactions = getInteractionsForClient(client.id);
     const myInteractions = interactions
       .filter(i => i.commercial_id === state.currentUser!.id && (i.type === 'VISITE' || i.type === 'APPEL') && i.date && /^\d{4}-\d{2}-\d{2}/.test(i.date))
       .sort((a, b) => b.date.localeCompare(a.date));
     const myLastVisit = myInteractions.length > 0 ? myInteractions[0].date.slice(0, 10) : null;
+    // If I've never visited this client, fall back to global data
+    if (!myLastVisit) return { lastVisit: client.last_visit, nextVisit: client.next_visit, isPersonal: false };
     const freq = getEffectiveFrequency(client.type_client, client.custom_recurrence);
-    if (!freq) return { lastVisit: myLastVisit, nextVisit: null };
-    if (!myLastVisit) return { lastVisit: null, nextVisit: null }; // never visited by me -> no delay
+    if (!freq) return { lastVisit: myLastVisit, nextVisit: null, isPersonal: true };
     try {
       const nextDate = new Date(myLastVisit + 'T12:00:00');
-      if (isNaN(nextDate.getTime())) return { lastVisit: myLastVisit, nextVisit: null };
+      if (isNaN(nextDate.getTime())) return { lastVisit: myLastVisit, nextVisit: client.next_visit, isPersonal: false };
       nextDate.setDate(nextDate.getDate() + freq);
       const nextVisit = nextDate.toISOString().slice(0, 10);
-      return { lastVisit: myLastVisit, nextVisit };
+      return { lastVisit: myLastVisit, nextVisit, isPersonal: true };
     } catch {
-      return { lastVisit: myLastVisit, nextVisit: null };
+      return { lastVisit: myLastVisit, nextVisit: client.next_visit, isPersonal: false };
     }
   }, [state.currentUser, state.interactions, getInteractionsForClient]);
 
@@ -1297,13 +1299,17 @@ export default function ClientsPage() {
                         {personalInfo.nextVisit && (
                           <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                             <Calendar className="w-3 h-3" />
-                            {visitStatus === 'LATE'
+                            {visitStatus === 'LATE' && personalInfo.isPersonal
                               ? (() => {
                                   const d = new Date(personalInfo.nextVisit + 'T12:00:00').getTime();
                                   const days = !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0;
                                   return `En retard de ${days}j (ma derniere visite: ${personalInfo.lastVisit ? formatDate(personalInfo.lastVisit) : 'jamais'})`;
                                 })()
-                              : `Ma prochaine visite : ${formatDate(personalInfo.nextVisit)}`}
+                              : visitStatus === 'LATE'
+                                ? `En retard - Prochaine visite : ${formatDate(personalInfo.nextVisit)}`
+                                : personalInfo.isPersonal
+                                  ? `Ma prochaine visite : ${formatDate(personalInfo.nextVisit)}`
+                                  : `Prochaine visite : ${formatDate(personalInfo.nextVisit)}`}
                           </div>
                         )}
                         {client.notes && (
@@ -1484,7 +1490,7 @@ export default function ClientsPage() {
               )}
             </div>
 
-            {/* Visit info - personal for logged-in user */}
+            {/* Visit info - personal when available, global otherwise */}
             {(() => {
               const pInfo = getPersonalVisitInfo(selectedClient);
               const pStatus = getVisitStatusFromDate(pInfo.nextVisit, selectedClient.statut);
@@ -1495,14 +1501,14 @@ export default function ClientsPage() {
                 <div className={`mt-3 p-3 rounded-lg ${pStatus === 'LATE' ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-gray-500">Ma derniere visite</span>
+                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma derniere visite' : 'Derniere visite'}</span>
                       <p className="font-medium text-gray-900">{pInfo.lastVisit ? formatDate(pInfo.lastVisit) : 'Jamais'}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Ma prochaine visite</span>
+                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma prochaine visite' : 'Prochaine visite'}</span>
                       <p className={`font-medium ${pStatus === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
                         {pInfo.nextVisit ? formatDate(pInfo.nextVisit) : 'Non planifiee'}
-                        {pStatus === 'LATE' && <span className="ml-1">({daysLate}j retard)</span>}
+                        {pStatus === 'LATE' && daysLate > 0 && <span className="ml-1">({daysLate}j retard)</span>}
                       </p>
                     </div>
                     <div>
