@@ -13,6 +13,7 @@ import {
   AppointmentResult, CLIENT_TYPE_LABELS,
 } from '../types';
 import { generateId, detectConflicts } from '../utils/helpers';
+import { apiPost, apiPut } from '../api/client';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -424,12 +425,7 @@ export default function CompteRenduPage() {
     setNoteSaving(true);
     try {
       const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
-      const token = localStorage.getItem('suivipro_token');
-      await fetch(`/api/clients/${noteClientId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated),
-      });
+      await apiPut(`/clients/${noteClientId}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       toast.success('Note enregistree');
       setNoteClientId(null);
@@ -481,29 +477,21 @@ export default function CompteRenduPage() {
     setSaving(visitModalClient.id);
     try {
       const now = new Date().toISOString();
-      const token = localStorage.getItem('suivipro_token');
       const interaction = {
         id: generateId(), client_id: visitModalClient.id, commercial_id: userId!,
         type: visitModalType, date: now, comment: visitModalComment.trim(), date_creation: now,
       };
-      const res = await fetch('/api/interactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) throw new Error();
+      await apiPost('/interactions', interaction);
       dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
 
       // Save client notes if changed
       const full = getClient(visitModalClient.id);
       if (full && visitModalNotes !== (full.notes || '')) {
         const updated: Client = { ...full, notes: visitModalNotes, date_modification: now };
-        await fetch(`/api/clients/${visitModalClient.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(updated),
-        });
-        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        try {
+          await apiPut(`/clients/${visitModalClient.id}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        } catch { /* notes save is secondary */ }
       }
 
       toast.success(visitModalType === 'VISITE' ? `Visite enregistree pour ${visitModalClient.nom}` : `Appel enregistre pour ${visitModalClient.nom}`);
@@ -519,7 +507,6 @@ export default function CompteRenduPage() {
     setSaving(rdvModalClient.id);
     try {
       const now = new Date().toISOString();
-      const token = localStorage.getItem('suivipro_token');
       const addr = [rdvModalClient.adresse, rdvModalClient.ville].filter(Boolean).join(', ');
 
       // Create interaction
@@ -529,12 +516,7 @@ export default function CompteRenduPage() {
         date: new Date(visitRdvDate[rdvModalClient.id]).toISOString(),
         comment: rdvModalComment.trim(), date_creation: now,
       };
-      const res = await fetch('/api/interactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) throw new Error();
+      await apiPost('/interactions', interaction);
       dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
 
       // Create appointment
@@ -550,12 +532,10 @@ export default function CompteRenduPage() {
         notes: rdvModalComment.trim(), statut: 'planifie' as const,
         created_at: now,
       };
-      const rdvRes = await fetch('/api/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(rdv),
-      });
-      if (rdvRes.ok) dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdv });
+      try {
+        await apiPost('/appointments', rdv);
+        dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdv });
+      } catch { /* secondary */ }
       toast.success(`RDV planifie pour ${rdvModalClient.nom}`);
       setRdvModalClient(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
@@ -571,17 +551,10 @@ export default function CompteRenduPage() {
     setSaving(crModalRdv.id);
     try {
       const updated = { ...crModalRdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
-      const token = localStorage.getItem('suivipro_token');
-      const res = await fetch(`/api/appointments/${crModalRdv.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated),
-      });
-      if (res.ok) {
-        dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
-        toast.success('Compte rendu enregistre');
-        setCrModalRdv(null);
-      }
+      await apiPut(`/appointments/${crModalRdv.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+      toast.success('Compte rendu enregistre');
+      setCrModalRdv(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setSaving(null); }
   };

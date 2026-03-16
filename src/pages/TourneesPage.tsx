@@ -7,6 +7,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Client } from '../types';
+import { apiPut } from '../api/client';
 
 interface TourneeConfig {
   commercial_id: string;
@@ -572,14 +573,8 @@ export default function TourneesPage() {
         const client = state.clients.find((c: Client) => c.id === clientId);
         if (!client) continue;
         const updated = { ...client, tournee: assignTournee.trim(), date_modification: now };
-        const res = await fetch(`/api/clients/${clientId}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(updated),
-        });
-        if (res.ok) {
-          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-        }
+        await apiPut(`/clients/${clientId}`, updated);
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       }
       toast.success(`${selectedClientIds.size} client(s) affecte(s) a "${assignTournee.trim()}"`);
       setSelectedClientIds(new Set());

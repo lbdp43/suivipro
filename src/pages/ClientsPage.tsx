@@ -15,7 +15,7 @@ import {
   INTERACTION_TYPE_LABELS, TaskClient, TASK_CLIENT_STATUS_LABELS,
 } from '../types';
 import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress } from '../utils/helpers';
-import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
@@ -201,8 +201,6 @@ export default function ClientsPage() {
   const applyBulkAction = async () => {
     if (!bulkValue.trim() && bulkAction !== 'recurrence') return;
     const now = new Date().toISOString();
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 
     // Pause polling to prevent server state from overwriting during bulk operations
     pausePolling(30000);
@@ -223,12 +221,13 @@ export default function ClientsPage() {
         if (bulkNextVisit) updated.next_visit = bulkNextVisit;
       }
       try {
-        const res = await fetch(`/api/clients/${id}`, { method: 'PUT', headers, body: JSON.stringify(updated) });
-        if (res.ok) {
-          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-          count++;
-        } else { errors++; }
-      } catch { errors++; }
+        await apiPut(`/clients/${id}`, updated);
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        count++;
+      } catch (err) {
+        console.error(`Erreur PUT client ${id}:`, err);
+        errors++;
+      }
     }
     if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
     if (count > 0) toast.success(`${count} client(s) mis a jour`);
@@ -237,15 +236,11 @@ export default function ClientsPage() {
 
   const bulkDelete = async () => {
     if (!confirm(`Supprimer ${selectedIds.size} client(s) ? Cette action est irreversible.`)) return;
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     let errors = 0;
     for (const id of selectedIds) {
       try {
-        const res = await fetch(`/api/clients/${id}`, { method: 'DELETE', headers });
-        if (res.ok) {
-          dispatchLocal({ type: 'DELETE_CLIENT', payload: id });
-        } else { errors++; }
+        await apiDelete(`/clients/${id}`);
+        dispatchLocal({ type: 'DELETE_CLIENT', payload: id });
       } catch { errors++; }
     }
     if (errors > 0) toast.error(`${errors} client(s) non supprimes`);
@@ -301,12 +296,7 @@ export default function ClientsPage() {
     setNoteSaving(true);
     try {
       const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
-      const token = localStorage.getItem('suivipro_token');
-      await fetch(`/api/clients/${noteClientId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated),
-      });
+      await apiPut(`/clients/${noteClientId}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       toast.success('Note enregistree');
       setNoteClientId(null);
@@ -346,60 +336,35 @@ export default function ClientsPage() {
         date_modification: now,
       } as Client;
       try {
-        const token = localStorage.getItem('suivipro_token');
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(`/api/clients/${editingClient.id}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(updated),
-        });
-        if (res.ok) {
-          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-          toast.success('Client mis a jour');
-        } else {
-          toast.error('Erreur lors de la mise a jour du client');
-          return;
-        }
+        await apiPut(`/clients/${editingClient.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        toast.success('Client mis a jour');
       } catch {
         toast.error('Erreur lors de la mise a jour du client');
         return;
       }
     } else {
-      const token = localStorage.getItem('suivipro_token');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
       try {
-        const res = await fetch('/api/clients', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            nom: formData.nom || '',
-            ville: formData.ville || '',
-            adresse: formData.adresse || '',
-            code_postal: formData.code_postal || '',
-            telephone: formData.telephone || '',
-            telephone_mobile: formData.telephone_mobile || '',
-            email: formData.email || '',
-            contact: formData.contact || '',
-            type_client: formData.type_client || 'BAR_RESTAURANT_GENERAL',
-            statut: formData.statut || 'ACTIF',
-            commercial_id: formData.commercial_id || state.currentUser?.id || '',
-            notes: formData.notes || '',
-            custom_recurrence: formData.custom_recurrence || null,
-            latitude: lat,
-            longitude: lng,
-            siret: formData.siret || '',
-            tournee: formData.tournee || '',
-          }),
-        });
-        if (res.ok) {
-          const newClient: Client = await res.json();
-          dispatchLocal({ type: 'ADD_CLIENT', payload: newClient });
-        } else {
-          toast.error('Erreur lors de la creation du client');
-          return;
-        }
+        const newClient: Client = await apiPost('/clients', {
+          nom: formData.nom || '',
+          ville: formData.ville || '',
+          adresse: formData.adresse || '',
+          code_postal: formData.code_postal || '',
+          telephone: formData.telephone || '',
+          telephone_mobile: formData.telephone_mobile || '',
+          email: formData.email || '',
+          contact: formData.contact || '',
+          type_client: formData.type_client || 'BAR_RESTAURANT_GENERAL',
+          statut: formData.statut || 'ACTIF',
+          commercial_id: formData.commercial_id || state.currentUser?.id || '',
+          notes: formData.notes || '',
+          custom_recurrence: formData.custom_recurrence || null,
+          latitude: lat,
+          longitude: lng,
+          siret: formData.siret || '',
+          tournee: formData.tournee || '',
+        }) as Client;
+        dispatchLocal({ type: 'ADD_CLIENT', payload: newClient });
       } catch {
         toast.error('Erreur lors de la creation du client');
         return;
@@ -411,17 +376,9 @@ export default function ClientsPage() {
   const deleteClient = async (id: string) => {
     if (!confirm('Supprimer ce client ? Cette action est irreversible.')) return;
     try {
-      const token = localStorage.getItem('suivipro_token');
-      const res = await fetch(`/api/clients/${id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      if (res.ok) {
-        dispatchLocal({ type: 'DELETE_CLIENT', payload: id });
-        if (selectedId === id) setSearchParams({});
-      } else {
-        toast.error('Erreur lors de la suppression du client');
-      }
+      await apiDelete(`/clients/${id}`);
+      dispatchLocal({ type: 'DELETE_CLIENT', payload: id });
+      if (selectedId === id) setSearchParams({});
     } catch {
       toast.error('Erreur lors de la suppression du client');
     }
@@ -437,17 +394,8 @@ export default function ClientsPage() {
       updated.next_visit = null;
     }
     try {
-      const token = localStorage.getItem('suivipro_token');
-      const res = await fetch(`/api/clients/${client.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(updated),
-      });
-      if (res.ok) {
-        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-      } else {
-        toast.error('Erreur lors du changement de statut');
-      }
+      await apiPut(`/clients/${client.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
     } catch {
       toast.error('Erreur lors du changement de statut');
     }
@@ -457,8 +405,6 @@ export default function ClientsPage() {
   const submitInteraction = async () => {
     if (!interactionClient || !interactionComment.trim()) return;
     const now = new Date().toISOString();
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const interaction = {
       id: generateId('int'),
       client_id: interactionClient.id,
@@ -469,12 +415,7 @@ export default function ClientsPage() {
       date_creation: now,
     };
     try {
-      const res = await fetch('/api/interactions', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) { toast.error('Erreur lors de l\'enregistrement'); return; }
+      await apiPost('/interactions', interaction);
       dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
     } catch {
       toast.error('Erreur lors de l\'enregistrement');
@@ -499,14 +440,8 @@ export default function ClientsPage() {
         created_at: now,
       };
       try {
-        const res = await fetch('/api/appointments', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(rdvPayload),
-        });
-        if (res.ok) {
-          dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
-        }
+        await apiPost('/appointments', rdvPayload);
+        dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
       } catch { /* appointment creation is secondary */ }
       // Show confirmation screen
       setCreatedRdvId(rdvId);

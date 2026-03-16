@@ -11,7 +11,7 @@ import { useToast } from '../components/Toast';
 import { CLIENT_TYPE_LABELS, INTERACTION_TYPE_LABELS } from '../types';
 import type { InteractionType, Client } from '../types';
 import { generateId, formatDate, detectConflicts, downloadICSClient } from '../utils/helpers';
-import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { getGoogleCalendarEvents, apiPost, apiPut, type GoogleCalendarEvent } from '../api/client';
 
 interface VisitClient {
   id: string;
@@ -211,8 +211,6 @@ export default function VisitesPage() {
     setModalSubmitting(true);
     try {
       const now = new Date().toISOString();
-      const token = localStorage.getItem('suivipro_token');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
       const interaction = {
         id: generateId('int'),
         client_id: modalClient.id,
@@ -222,24 +220,17 @@ export default function VisitesPage() {
         comment: modalComment.trim(),
         date_creation: now,
       };
-      const res = await fetch('/api/interactions', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) { toast.error('Erreur lors de l\'enregistrement'); return; }
+      await apiPost('/interactions', interaction);
       dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
 
       // Save client notes if changed
       const full = getClient(modalClient.id);
       if (full && modalClientNotes !== (full.notes || '')) {
         const updated: Client = { ...full, notes: modalClientNotes, date_modification: now };
-        await fetch(`/api/clients/${modalClient.id}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(updated),
-        });
-        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        try {
+          await apiPut(`/clients/${modalClient.id}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        } catch { /* notes save is secondary */ }
       }
 
       // For RDV_PLANIFIE, also create an appointment
@@ -260,8 +251,8 @@ export default function VisitesPage() {
           created_at: now,
         };
         try {
-          const rdvRes = await fetch('/api/appointments', { method: 'POST', headers, body: JSON.stringify(rdvPayload) });
-          if (rdvRes.ok) dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
+          await apiPost('/appointments', rdvPayload);
+          dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
         } catch { /* secondary */ }
         toast.success('RDV planifie');
         setModalCreatedRdvId(rdvId);
@@ -300,20 +291,11 @@ export default function VisitesPage() {
       date_modification: new Date().toISOString(),
     };
     try {
-      const token = localStorage.getItem('suivipro_token');
-      const res = await fetch(`/api/clients/${editClient.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(updated),
-      });
-      if (res.ok) {
-        dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-        toast.success('Client mis a jour');
-        setEditClient(null);
-        loadData(weekOffset, viewMode);
-      } else {
-        toast.error('Erreur lors de la mise a jour');
-      }
+      await apiPut(`/clients/${editClient.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+      toast.success('Client mis a jour');
+      setEditClient(null);
+      loadData(weekOffset, viewMode);
     } catch {
       toast.error('Erreur lors de la mise a jour');
     }
@@ -332,12 +314,7 @@ export default function VisitesPage() {
     setNoteSaving(true);
     try {
       const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
-      const token = localStorage.getItem('suivipro_token');
-      await fetch(`/api/clients/${noteClientId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated),
-      });
+      await apiPut(`/clients/${noteClientId}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       toast.success('Note enregistree');
       setNoteClientId(null);

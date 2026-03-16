@@ -177,6 +177,22 @@ export interface GoogleCalendarEvent {
 }
 
 // ============================================
+// Exported async CRUD helpers (API-first pattern: await result, throw on error)
+// ============================================
+
+export function apiPost(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'POST', body: JSON.stringify(body) }));
+}
+
+export function apiPut(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PUT', body: JSON.stringify(body) }));
+}
+
+export function apiDelete(path: string) {
+  return withRetry(() => request(path, { method: 'DELETE' }));
+}
+
+// ============================================
 // Sync actions to API (called after dispatch)
 // ============================================
 
