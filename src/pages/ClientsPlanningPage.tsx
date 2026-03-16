@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams, Link, useLocation } from 'react-router-dom';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
@@ -20,6 +20,25 @@ export default function ClientsPlanningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isAdmin = state.currentUser?.role === 'admin';
+  const location = useLocation();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Restore scroll position on mount (when coming back from client page)
+  useEffect(() => {
+    const saved = sessionStorage.getItem('planning_scroll');
+    if (saved && scrollRef.current) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo(0, parseInt(saved, 10));
+      });
+    }
+  }, []);
+
+  // Save scroll position before navigating away
+  const saveScrollPosition = useCallback(() => {
+    if (scrollRef.current) {
+      sessionStorage.setItem('planning_scroll', String(scrollRef.current.scrollTop));
+    }
+  }, []);
 
   const [planningWeekOffset, setPlanningWeekOffset] = useState(0);
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
@@ -309,28 +328,7 @@ export default function ClientsPlanningPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {/* Week navigation */}
-      <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-4 py-2.5">
-        <button onClick={() => setPlanningWeekOffset(o => o - 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        <div className="text-center">
-          <span className="font-semibold text-sm text-gray-900">Semaine du {planningData.weekLabel}</span>
-          <span className="text-xs text-gray-500 ml-2">({planningData.weekTotal} client{planningData.weekTotal > 1 ? 's' : ''})</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {planningWeekOffset !== 0 && (
-            <button onClick={() => setPlanningWeekOffset(0)} className="px-2 py-1 text-[10px] text-brewery-600 hover:bg-brewery-50 rounded">
-              Aujourd'hui
-            </button>
-          )}
-          <button onClick={() => setPlanningWeekOffset(o => o + 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
+    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
       {/* Resultats des RDV - interactive card with period selector */}
       {resultsData.totalRdv > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -468,6 +466,27 @@ export default function ClientsPlanningPage() {
         </div>
       )}
 
+      {/* Week navigation */}
+      <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-4 py-2.5">
+        <button onClick={() => setPlanningWeekOffset(o => o - 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="text-center">
+          <span className="font-semibold text-sm text-gray-900">Semaine du {planningData.weekLabel}</span>
+          <span className="text-xs text-gray-500 ml-2">({planningData.weekTotal} client{planningData.weekTotal > 1 ? 's' : ''})</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {planningWeekOffset !== 0 && (
+            <button onClick={() => setPlanningWeekOffset(0)} className="px-2 py-1 text-[10px] text-brewery-600 hover:bg-brewery-50 rounded">
+              Aujourd'hui
+            </button>
+          )}
+          <button onClick={() => setPlanningWeekOffset(o => o + 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
       {/* Late clients - collapsible */}
       {planningData.lateCount > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg">
@@ -492,15 +511,16 @@ export default function ClientsPlanningPage() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 ml-4">
                     {clients.map(c => (
-                      <button
+                      <Link
                         key={c.id}
-                        onClick={() => setSearchParams({ id: c.id })}
+                        to={`/clients?id=${c.id}`}
+                        onClick={saveScrollPosition}
                         className="px-2 py-1 bg-white border border-red-200 rounded text-xs text-red-700 hover:bg-red-100 transition-colors flex items-center gap-1"
                       >
                         <span className="font-medium">{c.nom}</span>
                         <span className="text-[10px] text-red-400">{c.ville}</span>
                         {c.next_visit && <span className="text-[9px] text-red-300">({c.next_visit.substring(5).replace('-', '/')})</span>}
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 </div>
@@ -628,9 +648,10 @@ export default function ClientsPlanningPage() {
                                 const isDue = c.next_visit && c.next_visit <= day.dateStr;
                                 const isLate = c.next_visit && c.next_visit < toLocalDateStr(new Date());
                                 return (
-                                  <button
+                                  <Link
                                     key={c.id}
-                                    onClick={() => setSearchParams({ id: c.id })}
+                                    to={`/clients?id=${c.id}`}
+                                    onClick={saveScrollPosition}
                                     className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm ${
                                       isLate ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
                                       : isDue ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100'
@@ -646,7 +667,7 @@ export default function ClientsPlanningPage() {
                                       </span>
                                     )}
                                     {isAdmin && comm && <span className="text-[10px] text-gray-300 ml-1">• {comm.prenom}</span>}
-                                  </button>
+                                  </Link>
                                 );
                               })}
                             </div>
