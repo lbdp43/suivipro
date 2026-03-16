@@ -99,9 +99,6 @@ export default function Layout() {
   useEffect(() => {
     const navItems_all = [
       { to: '/prospects', children: ['/pipeline', '/appels'] },
-      { to: '/rdv', children: ['/pipeline-cr'] },
-      { to: '/clients', children: ['/clients/planning'] },
-      { to: '/compte-rendu', children: ['/tournees'] },
       { to: '/guide', children: ['/documents', '/emails'] },
       { to: '/admin', children: ['/import', '/sirene'] },
     ];
@@ -164,15 +161,12 @@ export default function Layout() {
       { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
       { to: '/appels', icon: Phone, label: 'Appels' },
     ]},
-    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false, children: [
-      { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR' },
-    ]},
-    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false, children: [
-      { to: '/clients/planning', icon: Calendar, label: 'Planning semaine' },
-    ]},
-    { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false, children: [
-      { to: '/tournees', icon: Map, label: 'Tournees' },
-    ]},
+    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
+    { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR', adminOnly: false },
+    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
+    { to: '/clients/planning', icon: Calendar, label: 'Planning semaine', adminOnly: false },
+    { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false },
+    { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
     { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false, children: [
       { to: '/documents', icon: FileText, label: 'Documents' },
       { to: '/emails', icon: Mail, label: 'Emails' },
