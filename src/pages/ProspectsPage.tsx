@@ -1,41 +1,90 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck,
+  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
+  Camera, Loader2, Building2, ClipboardCheck, ShoppingCart, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import EmailTemplateModal from '../components/EmailTemplateModal';
+import { ocrProspect, convertProspectToClient, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import { useToast } from '../components/Toast';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
+  APPOINTMENT_RESULT_LABELS, AppointmentResult, Appointment,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
+  CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
+  ClientType,
 } from '../types';
-import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
+import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 export default function ProspectsPage() {
-  const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const toast = useToast();
   const { startCall } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterTypes, setFilterTypes] = useState<Set<EstablishmentType>>(new Set());
-  const [filterStages, setFilterStages] = useState<Set<PipelineStage>>(new Set());
+  const [searchTerm, setSearchTerm] = usePersistedState('prospects_searchTerm', '');
+  const [filterTypesArr, setFilterTypesArr] = usePersistedState<EstablishmentType[]>('prospects_filterTypes', []);
+  const filterTypes = useMemo(() => new Set(filterTypesArr), [filterTypesArr]);
+  const setFilterTypes = useCallback((v: Set<EstablishmentType> | ((prev: Set<EstablishmentType>) => Set<EstablishmentType>)) => {
+    if (typeof v === 'function') {
+      setFilterTypesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterTypesArr(Array.from(v));
+    }
+  }, [setFilterTypesArr]);
+  const [filterStagesArr, setFilterStagesArr] = usePersistedState<PipelineStage[]>('prospects_filterStages', []);
+  const filterStages = useMemo(() => new Set(filterStagesArr), [filterStagesArr]);
+  const setFilterStages = useCallback((v: Set<PipelineStage> | ((prev: Set<PipelineStage>) => Set<PipelineStage>)) => {
+    if (typeof v === 'function') {
+      setFilterStagesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterStagesArr(Array.from(v));
+    }
+  }, [setFilterStagesArr]);
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
-  const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
-  const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
-  const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
-  const [sortScore, setSortScore] = useState<'none' | 'asc' | 'desc'>('none');
-  const [sortDate, setSortDate] = useState<'none' | 'recent' | 'ancien'>('none');
-  const [filterAvecRdv, setFilterAvecRdv] = useState(false);
+  const [filterSecteursArr, setFilterSecteursArr] = usePersistedState<string[]>('prospects_filterSecteurs', []);
+  const filterSecteurs = useMemo(() => new Set(filterSecteursArr), [filterSecteursArr]);
+  const setFilterSecteurs = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterSecteursArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterSecteursArr(Array.from(v));
+    }
+  }, [setFilterSecteursArr]);
+  const [filterPostalCodesArr, setFilterPostalCodesArr] = usePersistedState<string[]>('prospects_filterPostalCodes', []);
+  const filterPostalCodes = useMemo(() => new Set(filterPostalCodesArr), [filterPostalCodesArr]);
+  const setFilterPostalCodes = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterPostalCodesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterPostalCodesArr(Array.from(v));
+    }
+  }, [setFilterPostalCodesArr]);
+  const [filterDepartmentsArr, setFilterDepartmentsArr] = usePersistedState<string[]>('prospects_filterDepartments', []);
+  const filterDepartments = useMemo(() => new Set(filterDepartmentsArr), [filterDepartmentsArr]);
+  const setFilterDepartments = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterDepartmentsArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterDepartmentsArr(Array.from(v));
+    }
+  }, [setFilterDepartmentsArr]);
+  const [sortScore, setSortScore] = usePersistedState<'none' | 'asc' | 'desc'>('prospects_sortScore', 'none');
+  const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien'>('prospects_sortDate', 'none');
+  const [filterAvecRdv, setFilterAvecRdv] = usePersistedState('prospects_filterAvecRdv', false);
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('prospects_filterCommercial', '');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = usePersistedState('prospects_pageSize', 50);
   const [currentPage, setCurrentPage] = useState(0);
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
   // Quick reminder
@@ -43,6 +92,38 @@ export default function ProspectsPage() {
   const [reminderMessage, setReminderMessage] = useState('');
   const [reminderDate, setReminderDate] = useState('');
   const [reminderHeure, setReminderHeure] = useState('09:00');
+
+  // Convert to client
+  const [convertProspect, setConvertProspect] = useState<Prospect | null>(null);
+  const [convertType, setConvertType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
+  const [convertTournee, setConvertTournee] = useState('');
+  const [convertCustomRecurrence, setConvertCustomRecurrence] = useState<number | null>(null);
+  const [converting, setConverting] = useState(false);
+  const alreadyConvertedIds = useMemo(() => new Set(state.clients.map(c => c.prospect_id).filter(Boolean)), [state.clients]);
+
+  // Entity types visible in pipeline (loaded from DB)
+  const [pipelineEntityTypes, setPipelineEntityTypes] = useState<Set<string>>(new Set(['prospect']));
+  useEffect(() => {
+    const token = localStorage.getItem('suivipro_token');
+    fetch('/api/entity-types', { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+      .then(r => { if (!r.ok) throw new Error('Not ok'); return r.json(); })
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        const visible = new Set<string>(data.filter((et: any) => et.show_in_pipeline).map((et: any) => et.id as string));
+        if (visible.size === 0) visible.add('prospect');
+        setPipelineEntityTypes(visible);
+      })
+      .catch(err => console.error('Failed to load entity types:', err));
+  }, []);
+
+  // Compte-rendu modal
+  const [showCompteRendu, setShowCompteRendu] = useState(false);
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+  const [compteRenduResult, setCompteRenduResult] = useState<AppointmentResult>('');
+  const [compteRenduNotes, setCompteRenduNotes] = useState('');
+  const [compteRenduRappel, setCompteRenduRappel] = useState(false);
+  const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
+  const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
 
   // Tag management in form
   const [showTagManager, setShowTagManager] = useState(false);
@@ -52,23 +133,42 @@ export default function ProspectsPage() {
 
   const TAG_COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
 
-  const saveNewTag = () => {
+  const saveNewTag = async () => {
     if (!newTagName.trim()) return;
     if (editingTag) {
-      dispatch({ type: 'UPDATE_TAG', payload: { ...editingTag, nom: newTagName.trim(), couleur: newTagColor } });
+      const payload = { ...editingTag, nom: newTagName.trim(), couleur: newTagColor };
+      try {
+        await apiPut(`/tags/${editingTag.id}`, payload);
+        dispatchLocal({ type: 'UPDATE_TAG', payload });
+      } catch (err) {
+        toast.error(`Erreur mise a jour tag: ${(err as Error).message}`);
+        return;
+      }
       setEditingTag(null);
     } else {
-      dispatch({ type: 'ADD_TAG', payload: { id: generateId('tag'), nom: newTagName.trim(), couleur: newTagColor } });
+      const payload = { id: generateId('tag'), nom: newTagName.trim(), couleur: newTagColor };
+      try {
+        await apiPost('/tags', payload);
+        dispatchLocal({ type: 'ADD_TAG', payload });
+      } catch (err) {
+        toast.error(`Erreur creation tag: ${(err as Error).message}`);
+        return;
+      }
     }
     setNewTagName('');
     setNewTagColor('#6366f1');
   };
 
-  const deleteTag = (tagId: string) => {
+  const deleteTag = async (tagId: string) => {
     if (!confirm('Supprimer ce tag ? Il sera retire de tous les prospects.')) return;
-    dispatch({ type: 'DELETE_TAG', payload: tagId });
-    // Remove tag from current form data if selected
-    setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagId) }));
+    try {
+      await apiDelete(`/tags/${tagId}`);
+      dispatchLocal({ type: 'DELETE_TAG', payload: tagId });
+      // Remove tag from current form data if selected
+      setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagId) }));
+    } catch (err) {
+      toast.error(`Erreur suppression tag: ${(err as Error).message}`);
+    }
   };
 
   const startEditTag = (tag: TagType) => {
@@ -76,6 +176,88 @@ export default function ProspectsPage() {
     setNewTagName(tag.nom);
     setNewTagColor(tag.couleur);
     setShowTagManager(true);
+  };
+
+  // Compte-rendu functions
+  const openCompteRendu = (rdv: Appointment) => {
+    setCompteRenduRdv(rdv);
+    setCompteRenduResult((rdv.compte_rendu as AppointmentResult) || '');
+    setCompteRenduNotes(rdv.notes_compte_rendu || '');
+    setCompteRenduRappel(false);
+    const in7days = new Date();
+    in7days.setDate(in7days.getDate() + 7);
+    setCompteRenduRappelDate(toLocalDateStr(in7days));
+    setCompteRenduRappelMessage('');
+    setShowCompteRendu(true);
+  };
+
+  const handleCompteRenduResultChange = (value: AppointmentResult) => {
+    const newValue = compteRenduResult === value ? '' : value;
+    setCompteRenduResult(newValue);
+    if (newValue === 'a_relancer' || newValue === 'commande_plus_tard' || newValue === 'mail_envoye') {
+      setCompteRenduRappel(true);
+    }
+  };
+
+  const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
+  const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
+
+  const saveCompteRendu = async () => {
+    if (!compteRenduRdv || !compteRenduValid) return;
+    const updatedRdv = {
+      ...compteRenduRdv,
+      statut: 'termine' as const,
+      compte_rendu: compteRenduResult,
+      notes_compte_rendu: compteRenduNotes,
+    };
+    try {
+      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updatedRdv });
+    } catch (err) {
+      toast.error(`Erreur mise a jour RDV: ${(err as Error).message}`);
+      return;
+    }
+    const prospect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
+    if (prospect) {
+      const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+      let newStage: PipelineStage | null = null;
+      if (compteRenduResult === 'client') {
+        newStage = 'client_gagne';
+      } else if (compteRenduResult === 'pas_interesse') {
+        newStage = 'perdu';
+      } else if (compteRenduResult === 'mail_envoye') {
+        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
+      } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
+        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
+      }
+      if (newStage) {
+        try {
+          await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
+        } catch (err) {
+          toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
+        }
+      }
+    }
+    if (compteRenduRappel && compteRenduRappelDate) {
+      const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
+      const reminderPayload = {
+        id: generateId('rem'),
+        prospect_id: compteRenduRdv.prospect_id,
+        commercial_id: compteRenduRdv.commercial_id,
+        date: compteRenduRappelDate,
+        heure: '09:00',
+        message: autoMessage,
+        statut: 'actif' as const,
+      };
+      try {
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+      } catch (err) {
+        toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+      }
+    }
+    setShowCompteRendu(false);
   };
 
   // Multi-selection mode
@@ -107,55 +289,78 @@ export default function ProspectsPage() {
     setShowBulkAction('none');
   };
 
-  const bulkChangeStage = (stage: PipelineStage) => {
+  const bulkChangeStage = async (stage: PipelineStage) => {
     const now = new Date().toISOString();
-    selectedIds.forEach(id => {
+    let errors = 0;
+    for (const id of selectedIds) {
       const prospect = state.prospects.find(p => p.id === id);
       if (prospect) {
-        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, etape_pipeline: stage, date_modification: now } });
+        const payload = { ...prospect, etape_pipeline: stage, date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
       }
-    });
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
     setShowBulkAction('none');
     exitSelectionMode();
   };
 
-  const bulkChangeSecteur = () => {
+  const bulkChangeSecteur = async () => {
     if (!bulkSecteur.trim()) return;
     const now = new Date().toISOString();
-    selectedIds.forEach(id => {
+    let errors = 0;
+    for (const id of selectedIds) {
       const prospect = state.prospects.find(p => p.id === id);
       if (prospect) {
-        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, secteur: bulkSecteur.trim(), date_modification: now } });
+        const payload = { ...prospect, secteur: bulkSecteur.trim(), date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
       }
-    });
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
     setBulkSecteur('');
     setShowBulkAction('none');
     exitSelectionMode();
   };
 
-  const bulkToggleTag = (tagId: string) => {
+  const bulkToggleTag = async (tagId: string) => {
     const now = new Date().toISOString();
     // If all selected prospects have this tag, remove it. Otherwise, add it.
     const allHaveTag = [...selectedIds].every(id => {
       const p = state.prospects.find(pr => pr.id === id);
       return p?.tags.includes(tagId);
     });
-    selectedIds.forEach(id => {
+    let errors = 0;
+    for (const id of selectedIds) {
       const prospect = state.prospects.find(p => p.id === id);
       if (prospect) {
         const newTags = allHaveTag
           ? prospect.tags.filter(t => t !== tagId)
           : prospect.tags.includes(tagId) ? prospect.tags : [...prospect.tags, tagId];
-        dispatch({ type: 'UPDATE_PROSPECT', payload: { ...prospect, tags: newTags, date_modification: now } });
+        const payload = { ...prospect, tags: newTags, date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
       }
-    });
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
   };
 
-  const bulkDelete = () => {
+  const bulkDelete = async () => {
     if (!confirm(`Supprimer ${selectedIds.size} prospect(s) ?`)) return;
-    selectedIds.forEach(id => {
-      dispatch({ type: 'DELETE_PROSPECT', payload: id });
-    });
+    let errors = 0;
+    for (const id of selectedIds) {
+      try {
+        await apiDelete(`/prospects/${id}`);
+        dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+      } catch { errors++; }
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non supprimes`);
     exitSelectionMode();
   };
 
@@ -165,14 +370,18 @@ export default function ProspectsPage() {
     setQuickNoteText(prospect.notes);
   };
 
-  const saveQuickNote = () => {
+  const saveQuickNote = async () => {
     if (!quickNoteId) return;
     const prospect = state.prospects.find(p => p.id === quickNoteId);
     if (prospect) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() },
-      });
+      const payload = { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() };
+      try {
+        await apiPut(`/prospects/${quickNoteId}`, payload);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      } catch (err) {
+        toast.error(`Erreur sauvegarde note: ${(err as Error).message}`);
+        return;
+      }
     }
     setQuickNoteId(null);
   };
@@ -214,7 +423,7 @@ export default function ProspectsPage() {
     return ids;
   }, [state.appointments]);
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv;
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
   const clearAllFilters = () => {
     setFilterTypes(new Set());
     setFilterStages(new Set());
@@ -222,16 +431,36 @@ export default function ProspectsPage() {
     setFilterPostalCodes(new Set());
     setFilterDepartments(new Set());
     setFilterAvecRdv(false);
+    setFilterCommercial('');
   };
+
+  // Build set of prospect IDs linked to the selected commercial via calls/appointments
+  const prospectIdsForCommercial = useMemo(() => {
+    if (!filterCommercial) return null;
+    const ids = new Set<string>();
+    state.calls.forEach(c => {
+      if (c.commercial_id === filterCommercial) ids.add(c.prospect_id);
+    });
+    state.appointments.forEach(a => {
+      if (a.commercial_id === filterCommercial || a.prospecteur_id === filterCommercial) ids.add(a.prospect_id);
+    });
+    return ids;
+  }, [filterCommercial, state.calls, state.appointments]);
 
   const filteredProspects = useMemo(() => {
     const list = state.prospects.filter(p => {
+      // Hide entity types not marked as visible in pipeline
+      const eType = p.entity_type || 'prospect';
+      if (!pipelineEntityTypes.has(eType)) return false;
+      // By default, hide prospects that became clients (client_gagne)
+      if (filterStages.size === 0 && p.etape_pipeline === 'client_gagne') return false;
       if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
       if (filterStages.size > 0 && !filterStages.has(p.etape_pipeline)) return false;
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -249,12 +478,12 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsWithRdv, searchTerm, sortScore, sortDate]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, sortScore, sortDate, pageSize]);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, sortScore, sortDate, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -263,6 +492,7 @@ export default function ProspectsPage() {
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
   const prospectRdv = selectedProspect ? getAppointmentsForProspect(selectedProspect.id) : [];
   const prospectReminders = selectedProspect ? getRemindersForProspect(selectedProspect.id) : [];
+
 
   const [formData, setFormData] = useState<Partial<Prospect>>({});
 
@@ -274,19 +504,97 @@ export default function ProspectsPage() {
       commercial_id: state.currentUser?.id || 'com-1', notes: '', score: 50,
     });
     setEditingProspect(null);
+    setForceCreate(false);
     setShowForm(true);
   };
 
   const openEditForm = (prospect: Prospect) => {
     setFormData({ ...prospect });
     setEditingProspect(prospect);
+    setForceCreate(false);
     setShowForm(true);
   };
 
   const [saving, setSaving] = useState(false);
+  const [forceCreate, setForceCreate] = useState(false);
+
+  // OCR scan
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanError('');
+    setScanning(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const { parsed } = await ocrProspect(base64);
+      // Pre-fill form with parsed data (only fill empty fields)
+      setFormData(prev => ({
+        ...prev,
+        nom_etablissement: parsed.nom_etablissement || prev.nom_etablissement || '',
+        nom_contact: parsed.nom_contact || prev.nom_contact || '',
+        telephone: parsed.telephone || prev.telephone || '',
+        email: parsed.email || prev.email || '',
+        adresse: parsed.adresse || prev.adresse || '',
+        code_postal: parsed.code_postal || prev.code_postal || '',
+        ville: parsed.ville || prev.ville || '',
+        departement: parsed.departement || prev.departement || '',
+        type_etablissement: (parsed.type_etablissement as EstablishmentType) || prev.type_etablissement || 'bar_restaurant',
+      }));
+      setForceCreate(false);
+    } catch (err: unknown) {
+      setScanError(err instanceof Error ? err.message : 'Erreur lors du scan');
+    } finally {
+      setScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Live duplicate detection as user types
+  const liveDuplicates = useMemo(() => {
+    if (!showForm || editingProspect) return [];
+    const nom = (formData.nom_etablissement || '').trim().toLowerCase();
+    const tel = (formData.telephone || '').trim();
+    const email = (formData.email || '').trim().toLowerCase();
+    if (!nom && !tel && !email) return [];
+    return state.prospects.filter(p => {
+      if (nom && nom.length >= 3 && p.nom_etablissement.trim().toLowerCase().includes(nom)) return true;
+      if (tel && tel.length >= 4 && p.telephone.trim().includes(tel)) return true;
+      if (email && email.length >= 5 && p.email && p.email.trim().toLowerCase().includes(email)) return true;
+      return false;
+    });
+  }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.prospects]);
+
+  // Also check existing clients
+  const liveClientDuplicates = useMemo(() => {
+    if (!showForm || editingProspect) return [];
+    const nom = (formData.nom_etablissement || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tel = (formData.telephone || '').trim();
+    const email = (formData.email || '').trim().toLowerCase();
+    if (nom.length < 3 && tel.length < 4 && email.length < 5) return [];
+    return state.clients.filter(c => {
+      const cn = c.nom.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (nom.length >= 3 && (cn.includes(nom) || nom.includes(cn))) return true;
+      if (tel.length >= 4 && c.telephone && c.telephone.trim().includes(tel)) return true;
+      if (email.length >= 5 && c.email && c.email.trim().toLowerCase().includes(email)) return true;
+      return false;
+    });
+  }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
 
   const saveProspect = async () => {
     if (!formData.nom_etablissement) return;
+    // Block save if duplicates found and user hasn't forced creation
+    if (!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0)) {
+      return;
+    }
     setSaving(true);
     const now = new Date().toISOString();
 
@@ -313,31 +621,40 @@ export default function ProspectsPage() {
       }
     }
 
-    if (editingProspect) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect,
-      });
-    } else {
-      dispatch({
-        type: 'ADD_PROSPECT',
-        payload: {
+    try {
+      if (editingProspect) {
+        const payload = { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect;
+        await apiPut(`/prospects/${editingProspect.id}`, payload);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      } else {
+        const payload = {
           ...formData,
           ...geoData,
           id: generateId('p'),
           date_creation: now,
           date_modification: now,
-        } as Prospect,
-      });
+        } as Prospect;
+        await apiPost('/prospects', payload);
+        dispatchLocal({ type: 'ADD_PROSPECT', payload });
+      }
+      setShowForm(false);
+      setForceCreate(false);
+    } catch (err) {
+      toast.error(`Erreur sauvegarde prospect: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowForm(false);
   };
 
-  const deleteProspect = (id: string) => {
+  const deleteProspect = async (id: string) => {
     if (confirm('Supprimer ce prospect ?')) {
-      dispatch({ type: 'DELETE_PROSPECT', payload: id });
-      setSearchParams({});
+      try {
+        await apiDelete(`/prospects/${id}`);
+        dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+        setSearchParams({});
+      } catch (err) {
+        toast.error(`Erreur suppression prospect: ${(err as Error).message}`);
+      }
     }
   };
 
@@ -423,6 +740,16 @@ export default function ProspectsPage() {
                 color="brewery"
               />
             )}
+            <select
+              className="px-2 py-1.5 text-[10px] font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
+              value={filterCommercial}
+              onChange={e => setFilterCommercial(e.target.value)}
+            >
+              <option value="">Tous les commerciaux</option>
+              {state.commerciaux.map(c => (
+                <option key={c.id} value={c.id}>{c.nom}</option>
+              ))}
+            </select>
             <button
               className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
                 filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -615,10 +942,10 @@ export default function ProspectsPage() {
                   </div>
                 </div>
                 {/* Quick action buttons */}
-                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                <div className="flex flex-col gap-2.5 sm:gap-1.5 flex-shrink-0">
                   {p.telephone && (
                     <button
-                      className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                      className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
                       onClick={e => { e.stopPropagation(); startCall(p.id); }}
                       title="Appeler"
                     >
@@ -627,41 +954,42 @@ export default function ProspectsPage() {
                   )}
                   {p.email && (
                     <button
-                      className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                      className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
                       onClick={e => { e.stopPropagation(); setEmailProspect(p); }}
                       title="Envoyer un e-mail"
                     >
                       <Mail className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {p.etape_pipeline !== 'client_gagne' && p.etape_pipeline !== 'perdu' && (
+                  {!alreadyConvertedIds.has(p.id) && p.etape_pipeline !== 'perdu' && (
                     <button
-                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                      className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
                       onClick={e => {
                         e.stopPropagation();
-                        if (confirm(`Valider "${p.nom_etablissement}" comme client et le passer en "Gagne" ?`)) {
-                          dispatch({ type: 'UPDATE_PROSPECT', payload: { ...p, etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() } });
-                        }
+                        setConvertType('BAR_RESTAURANT_GENERAL');
+                        setConvertTournee('');
+                        setConvertCustomRecurrence(null);
+                        setConvertProspect(p);
                       }}
-                      title="Valider comme client (Gagne)"
+                      title="Convertir en client"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
                     </button>
                   )}
                   <button
-                    className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                    className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
                     onClick={e => openQuickNote(p, e)}
                     title="Notes rapides"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    className="p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+                    className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
                     onClick={e => {
                       e.stopPropagation();
                       const in3days = new Date();
                       in3days.setDate(in3days.getDate() + 3);
-                      setReminderDate(in3days.toISOString().split('T')[0]);
+                      setReminderDate(toLocalDateStr(in3days));
                       setReminderHeure('09:00');
                       setReminderMessage('');
                       setReminderProspect(p);
@@ -857,11 +1185,36 @@ export default function ProspectsPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">{selectedProspect.nom_etablissement}</h2>
+                  {selectedProspect.nom_contact && (
+                    <p className="text-sm text-gray-700 font-medium mt-0.5 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      {selectedProspect.nom_contact}
+                    </p>
+                  )}
                   <p className="text-sm text-gray-500 mt-0.5">
                     {ESTABLISHMENT_LABELS[selectedProspect.type_etablissement]} - {selectedProspect.ville}
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  {!alreadyConvertedIds.has(selectedProspect.id) && (
+                    <button
+                      className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                      onClick={() => {
+                        setConvertType('BAR_RESTAURANT_GENERAL');
+                        setConvertTournee('');
+                        setConvertCustomRecurrence(null);
+                        setConvertProspect(selectedProspect);
+                      }}
+                      title="Convertir en client"
+                    >
+                      <Building2 className="w-4 h-4 text-emerald-600" />
+                    </button>
+                  )}
+                  {alreadyConvertedIds.has(selectedProspect.id) && (
+                    <span className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-medium flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" /> Client
+                    </span>
+                  )}
                   <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => openEditForm(selectedProspect)}>
                     <Edit2 className="w-4 h-4 text-gray-600" />
                   </button>
@@ -966,15 +1319,46 @@ export default function ProspectsPage() {
               {prospectRdv.length > 0 ? (
                 <div className="space-y-2">
                   {prospectRdv.map(rdv => (
-                    <div key={rdv.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 text-sm">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
-                        <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
+                    <div key={rdv.id} className="p-2 rounded-lg bg-gray-50 text-sm space-y-1">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
+                          <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
+                        </div>
+                        <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
+                          {rdv.statut}
+                        </span>
+                        <button
+                          onClick={() => openCompteRendu(rdv as Appointment)}
+                          className={`px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1 ${
+                            rdv.compte_rendu
+                              ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          }`}
+                          title={rdv.compte_rendu ? 'Modifier le compte-rendu' : 'Faire le compte-rendu'}
+                        >
+                          <ClipboardCheck className="w-3 h-3" />
+                          {rdv.compte_rendu ? 'Modifier CR' : 'Compte-rendu'}
+                        </button>
                       </div>
-                      <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
-                        {rdv.statut}
-                      </span>
+                      {rdv.compte_rendu && (
+                        <div className="ml-7 space-y-0.5">
+                          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                            rdv.compte_rendu === 'client' ? 'bg-green-100 text-green-700' :
+                            rdv.compte_rendu === 'mail_envoye' ? 'bg-blue-100 text-blue-700' :
+                            rdv.compte_rendu === 'commande_plus_tard' ? 'bg-amber-100 text-amber-700' :
+                            rdv.compte_rendu === 'a_relancer' ? 'bg-purple-100 text-purple-700' :
+                            rdv.compte_rendu === 'pas_interesse' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
+                          </span>
+                          {rdv.notes_compte_rendu && (
+                            <p className="text-[10px] text-gray-500 italic">{rdv.notes_compte_rendu}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1009,6 +1393,125 @@ export default function ProspectsPage() {
           <div className="text-center text-gray-400">
             <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">Selectionnez un prospect pour voir ses details</p>
+          </div>
+        </div>
+      )}
+
+      {/* Convert to client modal */}
+      {convertProspect && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                <Building2 className="w-4 h-4 text-emerald-600" /> Convertir en client
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setConvertProspect(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-gray-900">{convertProspect.nom_etablissement}</p>
+                <p className="text-xs text-gray-500">{convertProspect.ville} - {convertProspect.nom_contact}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Type de client *</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  value={convertType}
+                  onChange={e => setConvertType(e.target.value as ClientType)}
+                >
+                  {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                    <optgroup key={key} label={family.label}>
+                      {family.types.map(t => (
+                        <option key={t} value={t}>
+                          {CLIENT_TYPE_LABELS[t]}
+                          {CLIENT_VISIT_FREQUENCIES[t] ? ` (visite tous les ${CLIENT_VISIT_FREQUENCIES[t]}j)` : ' (pas de recurrence)'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tournee</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  placeholder="Ex: Lundi Nord, Mardi Sud..."
+                  value={convertTournee}
+                  onChange={e => setConvertTournee(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Recurrence personnalisee (jours)
+                  <span className="text-gray-400 font-normal ml-1">- laissez vide pour utiliser la valeur par defaut</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  placeholder={CLIENT_VISIT_FREQUENCIES[convertType] ? `${CLIENT_VISIT_FREQUENCIES[convertType]} jours (par defaut)` : 'Aucune recurrence'}
+                  value={convertCustomRecurrence ?? ''}
+                  onChange={e => setConvertCustomRecurrence(e.target.value ? parseInt(e.target.value) : null)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setConvertProspect(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+                disabled={converting}
+                onClick={async () => {
+                  setConverting(true);
+                  try {
+                    const result = await convertProspectToClient({
+                      prospect_id: convertProspect.id,
+                      type_client: convertType,
+                      tournee: convertTournee,
+                      custom_recurrence: convertCustomRecurrence,
+                    });
+                    if (result?.client_id) {
+                      // Update prospect stage to client_gagne
+                      const updatedProspect = {
+                        ...convertProspect,
+                        etape_pipeline: 'client_gagne' as PipelineStage,
+                        date_modification: new Date().toISOString(),
+                      };
+                      try {
+                        await apiPut(`/prospects/${convertProspect.id}`, updatedProspect);
+                        dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
+                      } catch {
+                        // Conversion succeeded but local update failed; reload anyway
+                      }
+                      // Reload state to get the new client
+                      window.location.reload();
+                    }
+                  } catch (err) {
+                    console.error('Conversion error:', err);
+                    alert(`Erreur lors de la conversion: ${(err as Error).message}`);
+                  } finally {
+                    setConverting(false);
+                    setConvertProspect(null);
+                  }
+                }}
+              >
+                {converting ? (
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Conversion...</>
+                ) : (
+                  <><Building2 className="w-4 h-4" /> Convertir</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1081,7 +1584,7 @@ export default function ProspectsPage() {
                     onClick={() => {
                       const d = new Date();
                       d.setDate(d.getDate() + shortcut.days);
-                      setReminderDate(d.toISOString().split('T')[0]);
+                      setReminderDate(toLocalDateStr(d));
                     }}
                   >
                     {shortcut.label}
@@ -1096,20 +1599,23 @@ export default function ProspectsPage() {
               <button
                 className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-1.5 disabled:opacity-50"
                 disabled={!reminderMessage.trim() || !reminderDate}
-                onClick={() => {
-                  dispatch({
-                    type: 'ADD_REMINDER',
-                    payload: {
-                      id: generateId('rem'),
-                      prospect_id: reminderProspect.id,
-                      commercial_id: state.currentUser?.id || 'com-1',
-                      date: reminderDate,
-                      heure: reminderHeure,
-                      message: reminderMessage.trim(),
-                      statut: 'actif',
-                    },
-                  });
-                  setReminderProspect(null);
+                onClick={async () => {
+                  const payload = {
+                    id: generateId('rem'),
+                    prospect_id: reminderProspect.id,
+                    commercial_id: state.currentUser?.id || 'com-1',
+                    date: reminderDate,
+                    heure: reminderHeure,
+                    message: reminderMessage.trim(),
+                    statut: 'actif' as const,
+                  };
+                  try {
+                    await apiPost('/reminders', payload);
+                    dispatchLocal({ type: 'ADD_REMINDER', payload });
+                    setReminderProspect(null);
+                  } catch (err) {
+                    toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+                  }
                 }}
               >
                 <Bell className="w-3.5 h-3.5" /> Creer le rappel
@@ -1167,10 +1673,93 @@ export default function ProspectsPage() {
               </button>
             </div>
             <div className="p-5 space-y-4">
+              {/* Bouton scan OCR - seulement en creation */}
+              {!editingProspect && (
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={handleScanFile}
+                  />
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-brewery-300 bg-brewery-50 text-brewery-700 hover:bg-brewery-100 hover:border-brewery-400 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={scanning}
+                  >
+                    {scanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Analyse en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4" />
+                        Scanner une image ou PDF pour pre-remplir
+                      </>
+                    )}
+                  </button>
+                  {scanError && (
+                    <p className="text-xs text-red-500">{scanError}</p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'etablissement *</label>
-                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => setFormData(prev => ({ ...prev, nom_etablissement: e.target.value }))} />
+                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => { setFormData(prev => ({ ...prev, nom_etablissement: e.target.value })); setForceCreate(false); }} />
               </div>
+
+              {/* Live duplicate warning */}
+              {!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0) && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                  <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1">
+                    ⚠️ Doublons potentiels detectes
+                  </p>
+                  <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
+                    {liveDuplicates.slice(0, 5).map(dup => (
+                      <div key={dup.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200">
+                        <div className="text-xs text-gray-700 min-w-0">
+                          <span className="font-medium">{dup.nom_etablissement}</span>
+                          {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
+                          {dup.ville && <span className="text-gray-400 ml-1">({dup.ville})</span>}
+                          <span className="ml-1.5 text-[10px] text-amber-600 font-medium">Prospect</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
+                          onClick={() => { setShowForm(false); setSearchParams({ id: dup.id }); }}
+                        >
+                          Voir →
+                        </button>
+                      </div>
+                    ))}
+                    {liveClientDuplicates.slice(0, 5).map(c => (
+                      <div key={c.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-orange-200">
+                        <div className="text-xs text-gray-700 min-w-0">
+                          <span className="font-medium">{c.nom}</span>
+                          {c.telephone && <span className="text-gray-500 ml-2">{c.telephone}</span>}
+                          {c.ville && <span className="text-gray-400 ml-1">({c.ville})</span>}
+                          <span className="ml-1.5 text-[10px] text-orange-600 font-medium">Client existant</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(liveDuplicates.length + liveClientDuplicates.length) > 5 && (
+                      <p className="text-[10px] text-amber-600">+ {liveDuplicates.length + liveClientDuplicates.length - 5} autre(s)...</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                    onClick={() => setForceCreate(true)}
+                  >
+                    Creer quand meme
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
@@ -1196,11 +1785,11 @@ export default function ProspectsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => setFormData(prev => ({ ...prev, telephone: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => { setFormData(prev => ({ ...prev, telephone: e.target.value })); setForceCreate(false); }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.email || ''} onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.email || ''} onChange={e => { setFormData(prev => ({ ...prev, email: e.target.value })); setForceCreate(false); }} />
                 </div>
               </div>
               <div>
@@ -1371,6 +1960,7 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
               </div>
+
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
@@ -1385,6 +1975,126 @@ export default function ProspectsPage() {
           </div>
         </div>
       )}
+
+      {/* Compte-rendu modal */}
+      {showCompteRendu && compteRenduRdv && (() => {
+        const crProspect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
+        const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
+          { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
+          { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
+          { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
+          { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
+          { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
+        ];
+        return (
+          <div className="modal-backdrop">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                    <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">{crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
+                </div>
+                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Resultat du rendez-vous</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {resultOptions.map(opt => {
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.value}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                            compteRenduResult === opt.value ? opt.color : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleCompteRenduResultChange(opt.value)}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Notes du compte-rendu <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${
+                      compteRenduNotes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
+                    }`}
+                    placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
+                    value={compteRenduNotes}
+                    onChange={e => setCompteRenduNotes(e.target.value)}
+                  />
+                </div>
+                {!compteRenduRappel && !rappelRequired ? (
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
+                    onClick={() => setCompteRenduRappel(true)}
+                  >
+                    <Bell className="w-4 h-4" /> Programmer un rappel
+                  </button>
+                ) : compteRenduRappel ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                        <Bell className="w-3 h-3" /> Rappel de relance {rappelRequired && <span className="text-red-500">*</span>}
+                      </label>
+                      {!rappelRequired && (
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelRequired && <span className="text-red-500">*</span>}</label>
+                      <input
+                        type="date"
+                        className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${
+                          rappelRequired && !compteRenduRappelDate ? 'border-red-300' : 'border-amber-200'
+                        }`}
+                        value={compteRenduRappelDate}
+                        onChange={e => setCompteRenduRappelDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Message (optionnel)</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
+                        placeholder="Ex: Relancer pour devis..."
+                        value={compteRenduRappelMessage}
+                        onChange={e => setCompteRenduRappelMessage(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCompteRendu(false)}>
+                  Annuler
+                </button>
+                <button
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={saveCompteRendu}
+                  disabled={!compteRenduValid}
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  Valider le compte-rendu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

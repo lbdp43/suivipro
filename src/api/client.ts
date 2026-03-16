@@ -113,6 +113,14 @@ function put(path: string, body: unknown) {
     });
 }
 
+function patch(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }))
+    .catch(err => {
+      console.error('API PATCH error:', err);
+      if (onApiError) onApiError(`Erreur de mise a jour: ${err.message}`);
+    });
+}
+
 function del(path: string) {
   return withRetry(() => request(path, { method: 'DELETE' }))
     .catch(err => {
@@ -169,6 +177,26 @@ export interface GoogleCalendarEvent {
 }
 
 // ============================================
+// Exported async CRUD helpers (API-first pattern: await result, throw on error)
+// ============================================
+
+export function apiPost(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'POST', body: JSON.stringify(body) }));
+}
+
+export function apiPut(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PUT', body: JSON.stringify(body) }));
+}
+
+export function apiDelete(path: string) {
+  return withRetry(() => request(path, { method: 'DELETE' }));
+}
+
+export function apiPatch(path: string, body: unknown) {
+  return withRetry(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }));
+}
+
+// ============================================
 // Sync actions to API (called after dispatch)
 // ============================================
 
@@ -183,8 +211,7 @@ export function syncAction(type: string, payload: unknown) {
     case 'DELETE_PROSPECT':
       return del(`/prospects/${payload}`);
     case 'MOVE_PROSPECT':
-      return put(`/prospects/${p.id}`, {
-        ...p,
+      return patch(`/prospects/${p.id}/stage`, {
         etape_pipeline: p.stage,
         date_modification: new Date().toISOString(),
       });
@@ -255,9 +282,51 @@ export function syncAction(type: string, payload: unknown) {
     case 'DELETE_DOCUMENT':
       return del(`/documents/${payload}`);
 
+    // Clients
+    case 'ADD_CLIENT':
+      return post('/clients', payload);
+    case 'UPDATE_CLIENT':
+      return put(`/clients/${p.id}`, payload);
+    case 'DELETE_CLIENT':
+      return del(`/clients/${payload}`);
+
+    // Interactions
+    case 'ADD_INTERACTION':
+      return post('/interactions', payload);
+    case 'DELETE_INTERACTION':
+      return del(`/interactions/${payload}`);
+
+    // Tasks Client
+    case 'ADD_TASK_CLIENT':
+      return post('/tasks-client', payload);
+    case 'UPDATE_TASK_CLIENT':
+      return put(`/tasks-client/${p.id}`, payload);
+    case 'DELETE_TASK_CLIENT':
+      return del(`/tasks-client/${payload}`);
+
+    // Tournee Config
+    case 'SAVE_TOURNEE_CONFIG':
+      return post(`/tournee-config/${p.commercial_id}`, { config: p.config, notes: p.notes });
+
     default:
       break;
   }
+}
+
+// ============================================
+// Convert Prospect to Client
+// ============================================
+
+export async function convertProspectToClient(data: {
+  prospect_id: string;
+  type_client?: string;
+  tournee?: string;
+  custom_recurrence?: number | null;
+}): Promise<{ ok: boolean; client_id: string }> {
+  return request('/convert-prospect-to-client', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // ============================================
@@ -282,4 +351,15 @@ export async function downloadDocument(documentId: string, filename: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ============================================
+// OCR - Scan image pour extraire infos prospect
+// ============================================
+
+export async function ocrProspect(base64Image: string): Promise<{ text: string; parsed: Record<string, string> }> {
+  return request('/ocr-prospect', {
+    method: 'POST',
+    body: JSON.stringify({ image: base64Image }),
+  });
 }

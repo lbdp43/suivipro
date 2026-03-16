@@ -1,30 +1,49 @@
 import { useState } from 'react';
 import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download, Edit2, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Prospect, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
+import { Prospect, Client, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';
-import { generateId } from '../utils/helpers';
+import { generateId, toLocalDateStr } from '../utils/helpers';
 
-interface Props {
+interface ProspectProps {
   prospect: Prospect;
+  client?: never;
   onClose: () => void;
 }
 
-export default function EmailTemplateModal({ prospect, onClose }: Props) {
+interface ClientProps {
+  client: Client;
+  prospect?: never;
+  onClose: () => void;
+}
+
+type Props = ProspectProps | ClientProps;
+
+export default function EmailTemplateModal(props: Props) {
+  const { onClose } = props;
+  const isProspect = !!props.prospect;
+  const prospect = props.prospect || null;
+  const client = props.client || null;
+
+  // Unified fields
+  const entityName = prospect ? prospect.nom_etablissement : client?.nom || '';
+  const contactName = prospect ? prospect.nom_contact : client?.contact || '';
+  const entityEmail = prospect?.email || client?.email || '';
+
   const { state, dispatch } = useApp();
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [showDocPicker, setShowDocPicker] = useState(false);
-  const [prospectEmail, setProspectEmail] = useState(prospect.email || '');
-  const [editingEmail, setEditingEmail] = useState(!prospect.email);
+  const [emailAddress, setEmailAddress] = useState(entityEmail);
+  const [editingEmail, setEditingEmail] = useState(!entityEmail);
 
   const commercial = state.currentUser;
 
   const replaceVariables = (text: string) => {
     return text
-      .replace(/\{\{nom_contact\}\}/g, prospect.nom_contact)
-      .replace(/\{\{nom_etablissement\}\}/g, prospect.nom_etablissement)
+      .replace(/\{\{nom_contact\}\}/g, contactName)
+      .replace(/\{\{nom_etablissement\}\}/g, entityName)
       .replace(/\{\{commercial\}\}/g, commercial ? `${commercial.prenom} ${commercial.nom}` : '')
       .replace(/\{\{telephone_commercial\}\}/g, commercial?.telephone || '')
       .replace(/\{\{date_rdv\}\}/g, '');
@@ -40,25 +59,39 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
   };
 
   const saveEmail = () => {
-    if (prospectEmail.trim()) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...prospect, email: prospectEmail.trim(), date_modification: new Date().toISOString() },
-      });
+    if (emailAddress.trim()) {
+      if (isProspect && prospect) {
+        dispatch({
+          type: 'UPDATE_PROSPECT',
+          payload: { ...prospect, email: emailAddress.trim(), date_modification: new Date().toISOString() },
+        });
+      } else if (client) {
+        dispatch({
+          type: 'UPDATE_CLIENT',
+          payload: { ...client, email: emailAddress.trim(), date_modification: new Date().toISOString() },
+        });
+      }
       setEditingEmail(false);
     }
   };
 
   const sendEmail = () => {
-    if (!selectedTemplate || !prospectEmail.trim()) return;
-    const emailToUse = prospectEmail.trim();
+    if (!selectedTemplate || !emailAddress.trim()) return;
+    const emailToUse = emailAddress.trim();
 
-    // Save email on prospect if changed
-    if (emailToUse !== prospect.email) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...prospect, email: emailToUse, date_modification: new Date().toISOString() },
-      });
+    // Save email if changed
+    if (emailToUse !== entityEmail) {
+      if (isProspect && prospect) {
+        dispatch({
+          type: 'UPDATE_PROSPECT',
+          payload: { ...prospect, email: emailToUse, date_modification: new Date().toISOString() },
+        });
+      } else if (client) {
+        dispatch({
+          type: 'UPDATE_CLIENT',
+          payload: { ...client, email: emailToUse, date_modification: new Date().toISOString() },
+        });
+      }
     }
 
     const subject = encodeURIComponent(replaceVariables(selectedTemplate.sujet));
@@ -81,9 +114,11 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
       downloadDocument(doc.id, doc.nom_fichier).catch(() => {});
     });
 
-    // Move prospect to negociation if not already in a terminal stage
-    if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
-      dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+    // Prospect-specific: move to negociation stage
+    if (isProspect && prospect) {
+      if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
+        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+      }
     }
 
     // Create a reminder for 7-day follow-up
@@ -93,11 +128,11 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
       type: 'ADD_REMINDER',
       payload: {
         id: generateId('rem'),
-        prospect_id: prospect.id,
+        prospect_id: isProspect ? prospect!.id : '',
         commercial_id: state.currentUser?.id || 'com-1',
-        date: in7days.toISOString().split('T')[0],
+        date: toLocalDateStr(in7days),
         heure: '09:00',
-        message: `Relance email - ${prospect.nom_etablissement} (${selectedTemplate.nom})`,
+        message: `Relance email - ${entityName} (${selectedTemplate.nom})`,
         statut: 'actif',
       },
     });
@@ -121,22 +156,24 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
           {/* Destinataire */}
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500 mb-1">Destinataire</p>
-            <p className="text-sm font-medium text-gray-900">{prospect.nom_contact} - {prospect.nom_etablissement}</p>
+            <p className="text-sm font-medium text-gray-900">
+              {contactName ? `${contactName} - ` : ''}{entityName}
+            </p>
             {editingEmail ? (
               <div className="flex items-center gap-2 mt-1.5">
                 <input
                   type="email"
                   className="flex-1 px-2.5 py-1.5 border border-purple-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
-                  placeholder="Saisir l'email du prospect..."
-                  value={prospectEmail}
-                  onChange={e => setProspectEmail(e.target.value)}
+                  placeholder="Saisir l'email..."
+                  value={emailAddress}
+                  onChange={e => setEmailAddress(e.target.value)}
                   autoFocus
-                  onKeyDown={e => { if (e.key === 'Enter' && prospectEmail.trim()) saveEmail(); }}
+                  onKeyDown={e => { if (e.key === 'Enter' && emailAddress.trim()) saveEmail(); }}
                 />
                 <button
                   className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
                   onClick={saveEmail}
-                  disabled={!prospectEmail.trim()}
+                  disabled={!emailAddress.trim()}
                 >
                   <Check className="w-3.5 h-3.5" />
                 </button>
@@ -144,7 +181,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
             ) : (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <Mail className="w-3 h-3 text-gray-400" />
-                <span className="text-xs text-gray-600">{prospectEmail}</span>
+                <span className="text-xs text-gray-600">{emailAddress}</span>
                 <button
                   className="p-0.5 text-gray-400 hover:text-purple-600 rounded"
                   onClick={() => setEditingEmail(true)}
@@ -154,7 +191,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
                 </button>
               </div>
             )}
-            {!prospectEmail.trim() && !editingEmail && (
+            {!emailAddress.trim() && !editingEmail && (
               <button
                 className="mt-1.5 text-xs text-purple-600 hover:text-purple-700 font-medium underline"
                 onClick={() => setEditingEmail(true)}
@@ -283,7 +320,7 @@ export default function EmailTemplateModal({ prospect, onClose }: Props) {
           <button
             className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={sendEmail}
-            disabled={!selectedTemplateId || !prospectEmail.trim()}
+            disabled={!selectedTemplateId || !emailAddress.trim()}
           >
             <Send className="w-4 h-4" /> Envoyer
             {selectedDocIds.length > 0 && (

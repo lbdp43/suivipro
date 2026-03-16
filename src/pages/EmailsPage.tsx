@@ -3,11 +3,14 @@ import {
   Mail, Plus, X, Save, Send, Eye, Edit2, Trash2, Copy,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
+import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { EmailTemplate, Prospect } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
 
 export default function EmailsPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [editing, setEditing] = useState<EmailTemplate | null>(null);
@@ -27,19 +30,35 @@ export default function EmailsPage() {
     setShowForm(true);
   };
 
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     if (!formData.nom || !formData.sujet) return;
-    if (editing) {
-      dispatch({ type: 'UPDATE_EMAIL_TEMPLATE', payload: { ...editing, ...formData } as EmailTemplate });
-    } else {
-      dispatch({ type: 'ADD_EMAIL_TEMPLATE', payload: { ...formData, id: generateId('et') } as EmailTemplate });
+    try {
+      if (editing) {
+        const updated = { ...editing, ...formData } as EmailTemplate;
+        await apiPut(`/email-templates/${editing.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_EMAIL_TEMPLATE', payload: updated });
+        toast.success('Template modifie');
+      } else {
+        const newTemplate = { ...formData, id: generateId('et') } as EmailTemplate;
+        await apiPost('/email-templates', newTemplate);
+        dispatchLocal({ type: 'ADD_EMAIL_TEMPLATE', payload: newTemplate });
+        toast.success('Template cree');
+      }
+      setShowForm(false);
+    } catch {
+      toast.error('Erreur sauvegarde');
     }
-    setShowForm(false);
   };
 
-  const deleteTemplate = (id: string) => {
+  const deleteTemplate = async (id: string) => {
     if (confirm('Supprimer ce template ?')) {
-      dispatch({ type: 'DELETE_EMAIL_TEMPLATE', payload: id });
+      try {
+        await apiDelete(`/email-templates/${id}`);
+        dispatchLocal({ type: 'DELETE_EMAIL_TEMPLATE', payload: id });
+        toast.success('Template supprime');
+      } catch {
+        toast.error('Erreur suppression');
+      }
     }
   };
 
@@ -60,17 +79,20 @@ export default function EmailsPage() {
     }, { date_rdv: 'Mardi 18 fevrier 2026 a 10h30' });
   };
 
-  const sendEmail = () => {
+  const sendEmail = async () => {
     const preview = getPreviewContent();
     const prospect = state.prospects.find(p => p.id === selectedProspectId);
     if (!prospect) return;
 
     // Auto-transition: "A contacter" / "Nouveau" → "Contacte" when email is sent
     if (['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
-      dispatch({
-        type: 'MOVE_PROSPECT',
-        payload: { id: prospect.id, stage: 'contacte' },
-      });
+      try {
+        await apiPatch(`/prospects/${prospect.id}/stage`, {
+          etape_pipeline: 'contacte',
+          date_modification: new Date().toISOString(),
+        });
+        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'contacte' } });
+      } catch { /* secondary */ }
     }
 
     // Open mailto link

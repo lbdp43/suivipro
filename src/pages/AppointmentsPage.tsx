@@ -2,19 +2,21 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation, Phone,
   AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
-  ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw,
+  ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS } from '../types';
-import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts } from '../utils/helpers';
+import { useToast } from '../components/Toast';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS, PipelineStage, ReminderStatus } from '../types';
+import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts, toLocalDateStr } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
-  const { state, dispatch, getProspect } = useApp();
+  const { state, dispatchLocal, getProspect } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
 
@@ -22,6 +24,7 @@ export default function AppointmentsPage() {
   const [filterStatus, setFilterStatus] = usePersistedState<AppointmentStatus | ''>('rdv_status', '');
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
   const [filterProspecteur, setFilterProspecteur] = usePersistedState<string>('rdv_prospecteur', '');
+  const [filterCompteRendu, setFilterCompteRendu] = usePersistedState<string>('rdv_compte_rendu', '');
   const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda' | 'planning'>('rdv_view', 'planning');
   const [weekOffset, setWeekOffset] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -41,6 +44,14 @@ export default function AppointmentsPage() {
   const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
   const [compteRenduEmailProspect, setCompteRenduEmailProspect] = useState<Prospect | null>(null);
 
+  // Reschedule modal state (for decale result)
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [rescheduleRdv, setRescheduleRdv] = useState<Appointment | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleHeureDebut, setRescheduleHeureDebut] = useState('');
+  const [rescheduleHeureFin, setRescheduleHeureFin] = useState('');
+  const [rescheduleNotes, setRescheduleNotes] = useState('');
+
   // Edit prospect inline modal
   const [editProspectData, setEditProspectData] = useState<Prospect | null>(null);
 
@@ -49,17 +60,22 @@ export default function AppointmentsPage() {
     if (p) setEditProspectData({ ...p });
   };
 
-  const saveEditProspect = () => {
+  const saveEditProspect = async () => {
     if (!editProspectData) return;
-    dispatch({
-      type: 'UPDATE_PROSPECT',
-      payload: { ...editProspectData, date_modification: new Date().toISOString() },
-    });
+    const payload = { ...editProspectData, date_modification: new Date().toISOString() };
+    try {
+      await apiPut(`/prospects/${editProspectData.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      toast.success('Prospect mis a jour');
+    } catch (err: unknown) {
+      toast.error(`Erreur mise a jour prospect: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
     setEditProspectData(null);
   };
 
   const [formData, setFormData] = useState({
     prospect_id: '',
+    client_id: '',
     commercial_id: '',
     prospecteur_id: '',
     date: '',
@@ -68,15 +84,28 @@ export default function AppointmentsPage() {
     lieu: '',
     notes: '',
     statut: 'planifie' as AppointmentStatus,
+    event_type: 'rdv' as EventType,
+    titre: '',
+    participants: [] as string[],
+    recurrence: 'none' as RecurrenceType,
+    recurrence_days: [] as number[],
+    recurrence_end_date: '',
   });
 
   const appointments = useMemo(() => {
     let list = [...state.appointments];
     if (filterStatus) list = list.filter(a => a.statut === filterStatus);
-    if (filterCommercial) list = list.filter(a => a.commercial_id === filterCommercial);
+    if (filterCommercial) list = list.filter(a => a.commercial_id === filterCommercial || (a.participants || []).includes(filterCommercial));
     if (filterProspecteur) list = list.filter(a => a.prospecteur_id === filterProspecteur);
+    if (filterCompteRendu) {
+      if (filterCompteRendu === 'sans') {
+        list = list.filter(a => !a.compte_rendu);
+      } else {
+        list = list.filter(a => a.compte_rendu === filterCompteRendu);
+      }
+    }
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.appointments, filterStatus, filterCommercial, filterProspecteur]);
+  }, [state.appointments, filterStatus, filterCommercial, filterProspecteur, filterCompteRendu]);
 
   // Fetch Google Calendar events for current week range
   const fetchGoogleEvents = useCallback(async () => {
@@ -113,8 +142,8 @@ export default function AppointmentsPage() {
     return () => window.removeEventListener('message', handler);
   }, [fetchGoogleEvents]);
 
-  const upcoming = appointments.filter(a => a.date >= new Date().toISOString().split('T')[0] && a.statut !== 'annule' && a.statut !== 'termine');
-  const past = appointments.filter(a => a.date < new Date().toISOString().split('T')[0] || a.statut === 'termine' || a.statut === 'annule');
+  const upcoming = appointments.filter(a => a.date >= toLocalDateStr(new Date()) && a.statut !== 'annule' && a.statut !== 'termine');
+  const past = appointments.filter(a => a.date < toLocalDateStr(new Date()) || a.statut === 'termine' || a.statut === 'annule');
 
   // Detection conflits dans le formulaire
   const formConflicts = useMemo(() => {
@@ -158,6 +187,7 @@ export default function AppointmentsPage() {
   const openNewForm = () => {
     setFormData({
       prospect_id: '',
+      client_id: '',
       commercial_id: state.currentUser?.id || 'com-1',
       prospecteur_id: state.currentUser?.id || 'com-1',
       date: '',
@@ -166,6 +196,12 @@ export default function AppointmentsPage() {
       lieu: '',
       notes: '',
       statut: 'planifie',
+      event_type: 'rdv',
+      titre: '',
+      participants: [],
+      recurrence: 'none',
+      recurrence_days: [],
+      recurrence_end_date: '',
     });
     setEditing(null);
     setShowForm(true);
@@ -174,6 +210,7 @@ export default function AppointmentsPage() {
   const openEditForm = (rdv: Appointment) => {
     setFormData({
       prospect_id: rdv.prospect_id,
+      client_id: rdv.client_id || '',
       commercial_id: rdv.commercial_id,
       prospecteur_id: rdv.prospecteur_id || rdv.commercial_id,
       date: rdv.date,
@@ -182,44 +219,107 @@ export default function AppointmentsPage() {
       lieu: rdv.lieu,
       notes: rdv.notes,
       statut: rdv.statut,
+      event_type: rdv.event_type || 'rdv',
+      titre: rdv.titre || '',
+      participants: rdv.participants || [],
+      recurrence: rdv.recurrence || 'none',
+      recurrence_days: rdv.recurrence_days || [],
+      recurrence_end_date: rdv.recurrence_end_date || '',
     });
     setEditing(rdv);
     setShowForm(true);
   };
 
-  const saveAppointment = () => {
-    if (!formData.prospect_id || !formData.date) return;
-    if (editing) {
-      dispatch({
-        type: 'UPDATE_APPOINTMENT',
-        payload: { ...editing, ...formData } as Appointment,
-      });
-    } else {
-      dispatch({
-        type: 'ADD_APPOINTMENT',
-        payload: {
-          ...formData,
-          id: generateId('rdv'),
-          commercial_id: formData.commercial_id || state.currentUser?.id || 'com-1',
-          prospecteur_id: formData.prospecteur_id || state.currentUser?.id || 'com-1',
-        } as Appointment,
-      });
+  const saveAppointment = async () => {
+    const isEvent = formData.event_type !== 'rdv';
+    // Pour un RDV classique, prospect/client requis. Pour un evenement, titre requis.
+    if (!isEvent && !formData.prospect_id && !formData.client_id) return;
+    if (isEvent && !formData.titre.trim()) return;
+    if (!formData.date) return;
 
-      // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
-      const prospect = state.prospects.find(p => p.id === formData.prospect_id);
-      if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-        dispatch({
-          type: 'MOVE_PROSPECT',
-          payload: { id: prospect.id, stage: 'gagne' },
+    const baseData = {
+      ...formData,
+      commercial_id: formData.commercial_id || state.currentUser?.id || 'com-1',
+      prospecteur_id: formData.prospecteur_id || state.currentUser?.id || 'com-1',
+    };
+
+    try {
+      if (editing) {
+        const payload = { ...editing, ...baseData } as Appointment;
+        await apiPut(`/appointments/${editing.id}`, payload);
+        dispatchLocal({
+          type: 'UPDATE_APPOINTMENT',
+          payload,
         });
+      } else {
+        // Gestion de la recurrence
+        if (formData.recurrence === 'weekly' && formData.recurrence_days.length > 0 && formData.recurrence_end_date) {
+          const startDate = new Date(formData.date);
+          const endDate = new Date(formData.recurrence_end_date);
+          const current = new Date(startDate);
+
+          while (current <= endDate) {
+            const dayOfWeek = current.getDay();
+            if (formData.recurrence_days.includes(dayOfWeek)) {
+              const dateStr = toLocalDateStr(current);
+              const payload = {
+                ...baseData,
+                id: generateId('rdv'),
+                date: dateStr,
+                created_at: new Date().toISOString(),
+              } as Appointment;
+              await apiPost('/appointments', payload);
+              dispatchLocal({
+                type: 'ADD_APPOINTMENT',
+                payload,
+              });
+            }
+            current.setDate(current.getDate() + 1);
+          }
+        } else {
+          const payload = {
+            ...baseData,
+            id: generateId('rdv'),
+            created_at: new Date().toISOString(),
+          } as Appointment;
+          await apiPost('/appointments', payload);
+          dispatchLocal({
+            type: 'ADD_APPOINTMENT',
+            payload,
+          });
+        }
+
+        // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
+        if (!isEvent) {
+          const prospect = state.prospects.find(p => p.id === formData.prospect_id);
+          if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+            await apiPatch(`/prospects/${prospect.id}/stage`, {
+              etape_pipeline: 'gagne',
+              date_modification: new Date().toISOString(),
+            });
+            dispatchLocal({
+              type: 'MOVE_PROSPECT',
+              payload: { id: prospect.id, stage: 'gagne' },
+            });
+          }
+        }
       }
+      setShowForm(false);
+      toast.success(editing ? 'RDV mis a jour' : 'RDV cree');
+    } catch (err: unknown) {
+      toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
-    setShowForm(false);
   };
 
-  const deleteAppointment = (id: string) => {
+  const deleteAppointment = async (id: string) => {
     if (confirm('Supprimer ce RDV ?')) {
-      dispatch({ type: 'DELETE_APPOINTMENT', payload: id });
+      try {
+        await apiDelete(`/appointments/${id}`);
+        dispatchLocal({ type: 'DELETE_APPOINTMENT', payload: id });
+        toast.success('RDV supprime');
+      } catch (err: unknown) {
+        toast.error(`Erreur suppression: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      }
     }
   };
 
@@ -230,7 +330,7 @@ export default function AppointmentsPage() {
     setCompteRenduRappel(false);
     const in7days = new Date();
     in7days.setDate(in7days.getDate() + 7);
-    setCompteRenduRappelDate(in7days.toISOString().split('T')[0]);
+    setCompteRenduRappelDate(toLocalDateStr(in7days));
     setCompteRenduRappelMessage('');
     setShowCompteRendu(true);
   };
@@ -251,63 +351,138 @@ export default function AppointmentsPage() {
   // Validation: notes required + rappel date required when rappel is forced
   const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
 
-  const saveCompteRendu = () => {
+  const saveCompteRendu = async () => {
     if (!compteRenduRdv || !compteRenduValid) return;
 
-    // Update the appointment with compte_rendu and mark as termine
-    // notes_compte_rendu is separate from the original appointment notes
-    dispatch({
-      type: 'UPDATE_APPOINTMENT',
-      payload: {
+    try {
+      // Update the appointment with compte_rendu and mark as termine
+      // notes_compte_rendu is separate from the original appointment notes
+      const updatedRdv = {
         ...compteRenduRdv,
-        statut: 'termine',
+        statut: 'termine' as AppointmentStatus,
         compte_rendu: compteRenduResult,
         notes_compte_rendu: compteRenduNotes,
-      },
-    });
+      };
+      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
+      dispatchLocal({
+        type: 'UPDATE_APPOINTMENT',
+        payload: updatedRdv,
+      });
 
-    // Update prospect pipeline based on result
-    const prospect = getProspect(compteRenduRdv.prospect_id);
-    if (prospect) {
-      if (compteRenduResult === 'client') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'client_gagne' } });
-      } else if (compteRenduResult === 'pas_interesse') {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'perdu' } });
-      } else if (compteRenduResult === 'mail_envoye' || compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard') {
-        if (!['client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-          dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
+      // Update prospect pipeline based on result
+      const prospect = getProspect(compteRenduRdv.prospect_id);
+      if (prospect) {
+        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+        let newStage: PipelineStage | null = null;
+        if (compteRenduResult === 'client') {
+          newStage = 'client_gagne';
+        } else if (compteRenduResult === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (compteRenduResult === 'mail_envoye') {
+          if (!terminal.includes(prospect.etape_pipeline)) {
+            newStage = 'negociation';
+          }
+        } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
+          if (!terminal.includes(prospect.etape_pipeline)) {
+            newStage = 'proposition';
+          }
+        }
+        if (newStage) {
+          await apiPatch(`/prospects/${prospect.id}/stage`, {
+            etape_pipeline: newStage,
+            date_modification: new Date().toISOString(),
+          });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
         }
       }
-    }
 
-    // Create reminder if rappel is active
-    if (compteRenduRappel && compteRenduRappelDate) {
-      const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
-      dispatch({
-        type: 'ADD_REMINDER',
-        payload: {
+      // Create reminder if rappel is active
+      if (compteRenduRappel && compteRenduRappelDate) {
+        const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
+        const reminderPayload = {
           id: generateId('rem'),
           prospect_id: compteRenduRdv.prospect_id,
           commercial_id: compteRenduRdv.commercial_id,
           date: compteRenduRappelDate,
           heure: '09:00',
           message: autoMessage,
-          statut: 'actif',
-        },
+          statut: 'actif' as ReminderStatus,
+        };
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({
+          type: 'ADD_REMINDER',
+          payload: reminderPayload,
+        });
+      }
+
+      // If mail_envoye: open email modal after saving
+      if (compteRenduResult === 'mail_envoye' && prospect) {
+        setCompteRenduEmailProspect(prospect);
+      }
+
+      // If decale: open reschedule modal
+      if (compteRenduResult === 'decale') {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 7);
+        setRescheduleRdv(compteRenduRdv);
+        setRescheduleDate(toLocalDateStr(tomorrow));
+        setRescheduleHeureDebut(compteRenduRdv.heure_debut || '09:00');
+        setRescheduleHeureFin(compteRenduRdv.heure_fin || '10:00');
+        setRescheduleNotes('');
+        setShowReschedule(true);
+      }
+
+      setShowCompteRendu(false);
+      toast.success('Compte-rendu enregistre');
+    } catch (err: unknown) {
+      toast.error(`Erreur compte-rendu: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
+  };
+
+  const confirmReschedule = async () => {
+    if (!rescheduleRdv || !rescheduleDate) return;
+
+    try {
+      // Update old appointment notes
+      const updatedOldApt = {
+        ...rescheduleRdv,
+        notes_compte_rendu: (rescheduleRdv.notes_compte_rendu || '') + (rescheduleNotes ? `\nDecale: ${rescheduleNotes}` : ''),
+      };
+      await apiPut(`/appointments/${rescheduleRdv.id}`, updatedOldApt);
+      dispatchLocal({
+        type: 'UPDATE_APPOINTMENT',
+        payload: updatedOldApt,
       });
-    }
 
-    // If mail_envoye: open email modal after saving
-    if (compteRenduResult === 'mail_envoye' && prospect) {
-      setCompteRenduEmailProspect(prospect);
-    }
+      // Create new appointment
+      const newApt: Appointment = {
+        id: generateId('apt'),
+        prospect_id: rescheduleRdv.prospect_id,
+        client_id: rescheduleRdv.client_id,
+        commercial_id: rescheduleRdv.commercial_id,
+        prospecteur_id: rescheduleRdv.prospecteur_id,
+        date: rescheduleDate,
+        heure_debut: rescheduleHeureDebut,
+        heure_fin: rescheduleHeureFin,
+        lieu: rescheduleRdv.lieu,
+        notes: rescheduleNotes || rescheduleRdv.notes,
+        statut: 'planifie',
+        event_type: 'rdv',
+      };
+      await apiPost('/appointments', newApt);
+      dispatchLocal({ type: 'ADD_APPOINTMENT', payload: newApt });
 
-    setShowCompteRendu(false);
+      toast.success(`Nouveau RDV cree pour le ${rescheduleDate}`);
+      setShowReschedule(false);
+      setRescheduleRdv(null);
+    } catch (err: unknown) {
+      toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   // Ouvrir la modale d'export avec les filtres pre-remplis
   const openExportModal = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr(new Date());
     setExportDateFrom(today);
     setExportDateTo('');
     setExportCommercial(filterCommercial || '');
@@ -355,33 +530,50 @@ export default function AppointmentsPage() {
   };
 
   const renderRdvCard = (rdv: Appointment) => {
-    const prospect = getProspect(rdv.prospect_id);
+    const isEvent = rdv.event_type && rdv.event_type !== 'rdv';
+    const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+    const rdvClient = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
+    const rdvName = isEvent ? (rdv.titre || EVENT_TYPE_LABELS[rdv.event_type!]) : (rdvClient?.nom || prospect?.nom_etablissement || 'Inconnu');
+    const rdvContact = rdvClient?.contact || prospect?.nom_contact || '';
+    const rdvTelephone = rdvClient?.telephone || rdvClient?.telephone_mobile || prospect?.telephone || '';
     const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
     const prospecteurCard = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
+    const rdvParticipants = (rdv.participants || []).map(id => state.commerciaux.find(c => c.id === id)).filter(Boolean);
     return (
-      <div key={rdv.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+      <div key={rdv.id} className={`bg-white rounded-lg border p-4 hover:shadow-sm transition-shadow ${isEvent ? 'border-l-4' : 'border-gray-200'}`} style={isEvent ? { borderLeftColor: rdv.event_type === 'reunion' ? '#9333ea' : rdv.event_type === 'boutique' ? '#d97706' : rdv.event_type === 'depot' ? '#ea580c' : rdv.event_type === 'marche' ? '#16a34a' : '#6b7280' } : undefined}>
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <button
-              className="font-medium text-sm text-indigo-700 hover:text-indigo-900 hover:underline text-left"
-              onClick={() => prospect && openEditProspect(prospect.id)}
-              title="Cliquer pour modifier les infos du prospect"
-            >
-              {prospect?.nom_etablissement || 'Inconnu'}
-            </button>
-            <p className="text-xs text-gray-500 mt-0.5">{prospect?.nom_contact}</p>
-            {prospect?.telephone && (
+            <div className="flex items-center gap-2">
+              {isEvent && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
+                  {EVENT_TYPE_LABELS[rdv.event_type!]}
+                </span>
+              )}
+              {isEvent ? (
+                <span className="font-medium text-sm text-gray-900">{rdvName}</span>
+              ) : (
+                <button
+                  className="font-medium text-sm text-indigo-700 hover:text-indigo-900 hover:underline text-left"
+                  onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
+                  title={rdvClient ? rdvClient.nom : "Cliquer pour modifier les infos du prospect"}
+                >
+                  {rdvName}{rdvClient ? ' (client)' : ''}
+                </button>
+              )}
+            </div>
+            {!isEvent && <p className="text-xs text-gray-500 mt-0.5">{rdvContact}</p>}
+            {!isEvent && rdvTelephone && (
               <div className="flex items-center gap-2 mt-0.5">
                 <a
-                  href={`tel:${prospect.telephone}`}
+                  href={`tel:${rdvTelephone}`}
                   className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
                   onClick={e => e.stopPropagation()}
                 >
                   <Phone className="w-3 h-3" />
-                  {prospect.telephone}
+                  {rdvTelephone}
                 </a>
-                {prospect.nom_contact && (
-                  <span className="text-[10px] text-gray-400">({prospect.nom_contact})</span>
+                {rdvContact && (
+                  <span className="text-[10px] text-gray-400">({rdvContact})</span>
                 )}
               </div>
             )}
@@ -429,6 +621,16 @@ export default function AppointmentsPage() {
               <Phone className="w-3 h-3" /> Pris par {prospecteurCard.prenom} {prospecteurCard.nom}
             </p>
           )}
+          {rdvParticipants.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-[10px] text-gray-400">Participants :</span>
+              {rdvParticipants.map(p => (
+                <span key={p!.id} className="text-[10px] bg-brewery-50 text-brewery-700 px-1.5 py-0.5 rounded font-medium">
+                  {p!.prenom}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-3">
           <button
@@ -465,7 +667,7 @@ export default function AppointmentsPage() {
     );
   };
 
-  const activeFilterCount = (filterStatus ? 1 : 0) + (filterCommercial ? 1 : 0) + (filterProspecteur ? 1 : 0);
+  const activeFilterCount = (filterStatus ? 1 : 0) + (filterCommercial ? 1 : 0) + (filterProspecteur ? 1 : 0) + (filterCompteRendu ? 1 : 0);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
@@ -580,7 +782,7 @@ export default function AppointmentsPage() {
           {activeFilterCount > 0 && (
             <button
               className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
-              onClick={() => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); }}
+              onClick={() => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); setFilterCompteRendu(''); }}
             >
               Reinitialiser
             </button>
@@ -619,6 +821,41 @@ export default function AppointmentsPage() {
             );
           })}
         </div>
+
+        {/* Filtre par compte-rendu */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+            <ClipboardCheck className="w-3.5 h-3.5" /> Compte-rendu :
+          </span>
+          <button
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!filterCompteRendu ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            onClick={() => setFilterCompteRendu('')}
+          >
+            Tous
+          </button>
+          {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
+            const count = state.appointments.filter(a => a.compte_rendu === key).length;
+            return (
+              <button
+                key={key}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterCompteRendu === key ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => setFilterCompteRendu(filterCompteRendu === key ? '' : key)}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+          <button
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              filterCompteRendu === 'sans' ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterCompteRendu(filterCompteRendu === 'sans' ? '' : 'sans')}
+          >
+            Sans CR ({state.appointments.filter(a => !a.compte_rendu).length})
+          </button>
+        </div>
       </div>
 
       {/* ===================== PLANNING VIEW ===================== */}
@@ -634,8 +871,8 @@ export default function AppointmentsPage() {
         for (let i = 0; i < 7; i++) {
           const d = new Date(monday);
           d.setDate(monday.getDate() + i);
-          const dateStr = d.toISOString().split('T')[0];
-          const todayStr = new Date().toISOString().split('T')[0];
+          const dateStr = toLocalDateStr(d);
+          const todayStr = toLocalDateStr(new Date());
           days.push({
             label: `${joursSemaine[i]} ${d.getDate()}/${d.getMonth() + 1}`,
             shortLabel: `${joursShort[i]} ${d.getDate()}/${d.getMonth() + 1}`,
@@ -650,7 +887,7 @@ export default function AppointmentsPage() {
         let planningRdvs = state.appointments.filter(
           a => a.date >= weekStart && a.date <= weekEnd && a.statut !== 'annule'
         );
-        if (filterCommercial) planningRdvs = planningRdvs.filter(a => a.commercial_id === filterCommercial);
+        if (filterCommercial) planningRdvs = planningRdvs.filter(a => a.commercial_id === filterCommercial || (a.participants || []).includes(filterCommercial));
         if (filterProspecteur) planningRdvs = planningRdvs.filter(a => a.prospecteur_id === filterProspecteur);
         if (filterStatus) planningRdvs = planningRdvs.filter(a => a.statut === filterStatus);
 
@@ -703,7 +940,7 @@ export default function AppointmentsPage() {
                           <span className="text-[9px] bg-brewery-600 text-white px-1.5 py-0.5 rounded-full font-medium">Aujourd'hui</span>
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-400">{dayRdvs.length} RDV</span>
+                      <span className="text-[10px] text-gray-400">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
                     </div>
 
                     {/* Evenements du jour */}
@@ -768,31 +1005,46 @@ export default function AppointmentsPage() {
                       {dayRdvs.length > 0 ? (
                         <div className="space-y-2">
                           {dayRdvs.map(rdv => {
-                            const prospect = getProspect(rdv.prospect_id);
+                            const rdvIsEvent = rdv.event_type && rdv.event_type !== 'rdv';
+                            const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+                            const rdvCl = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
                             const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                             const prospecteur = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
-                            const statusColor = rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
+                            const planParticipants = (rdv.participants || []).map(id => state.commerciaux.find(c => c.id === id)).filter(Boolean);
+                            const statusColor = rdvIsEvent
+                              ? `border-l-${rdv.event_type === 'reunion' ? 'purple' : rdv.event_type === 'boutique' ? 'amber' : rdv.event_type === 'depot' ? 'orange' : rdv.event_type === 'marche' ? 'green' : 'gray'}-500 bg-${rdv.event_type === 'reunion' ? 'purple' : rdv.event_type === 'boutique' ? 'amber' : rdv.event_type === 'depot' ? 'orange' : rdv.event_type === 'marche' ? 'green' : 'gray'}-50/30`
+                              : rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
+                            const planName = rdvIsEvent ? (rdv.titre || EVENT_TYPE_LABELS[rdv.event_type!]) : (rdvCl?.nom || prospect?.nom_etablissement || 'Inconnu');
 
                             return (
-                              <div key={rdv.id} className={`rounded-lg border border-gray-200 border-l-4 ${statusColor} p-3`}>
+                              <div key={rdv.id} className={`rounded-lg border border-gray-200 border-l-4 p-3`} style={{ borderLeftColor: rdvIsEvent ? (rdv.event_type === 'reunion' ? '#9333ea' : rdv.event_type === 'boutique' ? '#d97706' : rdv.event_type === 'depot' ? '#ea580c' : rdv.event_type === 'marche' ? '#16a34a' : '#6b7280') : (rdv.statut === 'confirme' ? '#22c55e' : rdv.statut === 'termine' ? '#9ca3af' : '#3b82f6'), backgroundColor: rdvIsEvent ? (rdv.event_type === 'reunion' ? '#faf5ff' : rdv.event_type === 'boutique' ? '#fffbeb' : rdv.event_type === 'depot' ? '#fff7ed' : rdv.event_type === 'marche' ? '#f0fdf4' : '#f9fafb') : (rdv.statut === 'confirme' ? '#f0fdf450' : rdv.statut === 'termine' ? '#f9fafb' : '#eff6ff50') }}>
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <button
-                                        className="font-semibold text-sm text-indigo-700 hover:text-indigo-900 hover:underline truncate text-left"
-                                        onClick={() => prospect && openEditProspect(prospect.id)}
-                                        title="Modifier les infos du prospect"
-                                      >
-                                        {prospect?.nom_etablissement || 'Inconnu'}
-                                      </button>
+                                      {rdvIsEvent && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
+                                          {EVENT_TYPE_LABELS[rdv.event_type!]}
+                                        </span>
+                                      )}
+                                      {rdvIsEvent ? (
+                                        <span className="font-semibold text-sm text-gray-900 truncate">{planName}</span>
+                                      ) : (
+                                        <button
+                                          className="font-semibold text-sm text-indigo-700 hover:text-indigo-900 hover:underline truncate text-left"
+                                          onClick={() => prospect ? openEditProspect(prospect.id) : undefined}
+                                          title={rdvCl ? rdvCl.nom : "Modifier les infos du prospect"}
+                                        >
+                                          {planName}{rdvCl ? ' (client)' : ''}
+                                        </button>
+                                      )}
                                       <span className={`badge text-[9px] ${statusColors[rdv.statut]}`}>
                                         {APPOINTMENT_STATUS_LABELS[rdv.statut]}
                                       </span>
                                     </div>
-                                    {prospect?.nom_contact && (
+                                    {!rdvIsEvent && prospect?.nom_contact && (
                                       <p className="text-[11px] text-gray-500 mt-0.5">{prospect.nom_contact}</p>
                                     )}
-                                    {prospect?.telephone && (
+                                    {!rdvIsEvent && prospect?.telephone && (
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <a
                                           href={`tel:${prospect.telephone}`}
@@ -832,6 +1084,12 @@ export default function AppointmentsPage() {
                                         <span className="flex items-center gap-1 text-purple-400">
                                           <Phone className="w-3 h-3" />
                                           Pris par {prospecteur.prenom}
+                                        </span>
+                                      )}
+                                      {planParticipants.length > 0 && (
+                                        <span className="flex items-center gap-1 text-brewery-600">
+                                          <Users className="w-3 h-3" />
+                                          {planParticipants.map(p => p!.prenom).join(', ')}
                                         </span>
                                       )}
                                     </div>
@@ -939,6 +1197,7 @@ export default function AppointmentsPage() {
           <CommercialAgenda
             appointments={state.appointments}
             commerciaux={state.commerciaux}
+            clients={state.clients}
             getProspect={getProspect}
             filterCommercial={filterCommercial}
             weekOffset={weekOffset}
@@ -1044,12 +1303,13 @@ export default function AppointmentsPage() {
                 {exportPreview.length > 0 ? (
                   <div className="max-h-40 overflow-y-auto space-y-1.5">
                     {exportPreview.map(rdv => {
-                      const prospect = getProspect(rdv.prospect_id);
+                      const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+                      const expClient = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
                       const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                       return (
                         <div key={rdv.id} className="flex items-center justify-between text-[11px] text-gray-600 bg-white rounded px-2 py-1.5">
                           <div className="flex-1 min-w-0">
-                            <span className="font-medium">{prospect?.nom_etablissement || 'Inconnu'}</span>
+                            <span className="font-medium">{expClient?.nom || prospect?.nom_etablissement || 'Inconnu'}</span>
                             <span className="text-gray-400 ml-1.5">{commercial?.prenom}</span>
                           </div>
                           <span className="text-gray-400 whitespace-nowrap ml-2">
@@ -1088,20 +1348,119 @@ export default function AppointmentsPage() {
         <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">{editing ? 'Modifier le RDV' : 'Nouveau RDV'}</h3>
+              <h3 className="font-bold text-gray-900">{editing ? 'Modifier' : 'Nouveau'} {formData.event_type === 'rdv' ? 'RDV' : 'Evenement'}</h3>
               <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Type d'evenement */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Prospect *</label>
-                <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.prospect_id} onChange={e => setFormData(prev => ({ ...prev, prospect_id: e.target.value }))}>
-                  <option value="">Selectionnez</option>
-                  {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
-                </select>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Type</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(EVENT_TYPE_LABELS) as EventType[]).map(type => {
+                    const activeColors: Record<EventType, string> = {
+                      rdv: 'bg-blue-600 text-white',
+                      reunion: 'bg-purple-600 text-white',
+                      boutique: 'bg-amber-600 text-white',
+                      depot: 'bg-orange-600 text-white',
+                      marche: 'bg-green-600 text-white',
+                      autre: 'bg-gray-600 text-white',
+                    };
+                    return (
+                      <button
+                        key={type}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          formData.event_type === type
+                            ? activeColors[type]
+                            : EVENT_TYPE_COLORS[type] + ' hover:opacity-80'
+                        }`}
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          event_type: type,
+                          prospect_id: type !== 'rdv' ? '' : prev.prospect_id,
+                          client_id: type !== 'rdv' ? '' : prev.client_id,
+                        }))}
+                      >
+                        {EVENT_TYPE_LABELS[type]}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              {/* Selecteur prospecteur + commercial */}
+
+              {/* Titre (pour les evenements) */}
+              {formData.event_type !== 'rdv' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Titre *</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    placeholder={`Ex: ${formData.event_type === 'reunion' ? 'Reunion equipe' : formData.event_type === 'boutique' ? 'Boutique Montpellier' : formData.event_type === 'marche' ? 'Marche de Noel' : 'Evenement'}`}
+                    value={formData.titre}
+                    onChange={e => setFormData(prev => ({ ...prev, titre: e.target.value }))}
+                  />
+                </div>
+              )}
+
+              {/* Prospect/Client (seulement pour RDV) */}
+              {formData.event_type === 'rdv' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Prospect / Client *</label>
+                  <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.client_id ? `client:${formData.client_id}` : formData.prospect_id} onChange={e => {
+                    const val = e.target.value;
+                    if (val.startsWith('client:')) {
+                      setFormData(prev => ({ ...prev, prospect_id: '', client_id: val.replace('client:', '') }));
+                    } else {
+                      setFormData(prev => ({ ...prev, prospect_id: val, client_id: '' }));
+                    }
+                  }}>
+                    <option value="">Selectionnez</option>
+                    <optgroup label="Prospects">
+                      {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
+                    </optgroup>
+                    <optgroup label="Clients">
+                      {state.clients.filter(c => c.statut === 'ACTIF').map(c => (<option key={c.id} value={`client:${c.id}`}>{c.nom}</option>))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
+
+              {/* Participants multi-select */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" /> Participants
+                </label>
+                <div className="flex flex-wrap gap-1.5 p-2 border border-gray-200 rounded-lg min-h-[38px]">
+                  {state.commerciaux.map(c => {
+                    const isSelected = formData.participants.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                          isSelected
+                            ? 'bg-brewery-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          participants: isSelected
+                            ? prev.participants.filter(id => id !== c.id)
+                            : [...prev.participants, c.id],
+                        }))}
+                      >
+                        {c.prenom}
+                      </button>
+                    );
+                  })}
+                </div>
+                {formData.participants.length === 0 && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">Cliquez pour assigner des personnes</p>
+                )}
+              </div>
+
+              {/* Selecteur prospecteur + commercial (pour RDV) */}
+              {formData.event_type === 'rdv' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
@@ -1132,6 +1491,7 @@ export default function AppointmentsPage() {
                   </select>
                 </div>
               </div>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
@@ -1146,6 +1506,61 @@ export default function AppointmentsPage() {
                   <input type="time" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.heure_fin} onChange={e => setFormData(prev => ({ ...prev, heure_fin: e.target.value }))} />
                 </div>
               </div>
+              {/* Recurrence (uniquement en creation) */}
+              {!editing && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                    <RefreshCw className="w-3.5 h-3.5" /> Recurrence
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={formData.recurrence}
+                    onChange={e => setFormData(prev => ({ ...prev, recurrence: e.target.value as RecurrenceType }))}
+                  >
+                    <option value="none">Pas de recurrence</option>
+                    <option value="weekly">Chaque semaine</option>
+                  </select>
+                  {formData.recurrence === 'weekly' && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-[11px] text-gray-500">Jours de la semaine :</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[1, 2, 3, 4, 5, 6, 0].map(day => {
+                          const isSelected = formData.recurrence_days.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                              onClick={() => setFormData(prev => ({
+                                ...prev,
+                                recurrence_days: isSelected
+                                  ? prev.recurrence_days.filter(d => d !== day)
+                                  : [...prev.recurrence_days, day],
+                              }))}
+                            >
+                              {DAYS_OF_WEEK_LABELS[day].substring(0, 3)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-0.5">Jusqu'au :</label>
+                        <input
+                          type="date"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          value={formData.recurrence_end_date}
+                          onChange={e => setFormData(prev => ({ ...prev, recurrence_end_date: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Alerte conflit */}
               {formConflicts.length > 0 && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -1153,10 +1568,11 @@ export default function AppointmentsPage() {
                     <AlertTriangle className="w-4 h-4" /> Conflit horaire pour ce commercial !
                   </p>
                   {formConflicts.map(c => {
-                    const cp = getProspect(c.prospect_id);
+                    const cp = c.prospect_id ? getProspect(c.prospect_id) : undefined;
+                    const cc = c.client_id ? state.clients.find(cl => cl.id === c.client_id) : undefined;
                     return (
                       <p key={c.id} className="text-[11px] text-red-600 mt-1">
-                        {formatDate(c.date)} {c.heure_debut}-{c.heure_fin} : {cp?.nom_etablissement || 'RDV'}
+                        {formatDate(c.date)} {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
                       </p>
                     );
                   })}
@@ -1213,13 +1629,15 @@ export default function AppointmentsPage() {
 
       {/* Compte-rendu modal */}
       {showCompteRendu && compteRenduRdv && (() => {
-        const crProspect = getProspect(compteRenduRdv.prospect_id);
+        const crProspect = compteRenduRdv.prospect_id ? getProspect(compteRenduRdv.prospect_id) : undefined;
+        const crClient = compteRenduRdv.client_id ? state.clients.find(c => c.id === compteRenduRdv.client_id) : undefined;
         const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
           { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
           { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
           { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
           { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
           { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
         ];
         return (
           <div className="modal-backdrop">
@@ -1229,7 +1647,7 @@ export default function AppointmentsPage() {
                   <h3 className="font-bold text-gray-900 flex items-center gap-2">
                     <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
                   </h3>
-                  <p className="text-sm text-gray-500 mt-0.5">{crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">{crClient?.nom || crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
                 </div>
                 <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
                   <X className="w-5 h-5 text-gray-500" />
@@ -1263,13 +1681,16 @@ export default function AppointmentsPage() {
                     <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
                   )}
                   {compteRenduResult === 'mail_envoye' && (
-                    <p className="text-[10px] text-blue-500 mt-1 italic">Un email sera propose apres validation + rappel programme</p>
+                    <p className="text-[10px] text-blue-500 mt-1 italic">Prospect deplace vers "Negociation" + email propose + rappel programme</p>
                   )}
                   {compteRenduResult === 'a_relancer' && (
-                    <p className="text-[10px] text-purple-500 mt-1 italic">Un rappel sera programme pour la relance</p>
+                    <p className="text-[10px] text-purple-500 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
                   )}
                   {compteRenduResult === 'commande_plus_tard' && (
-                    <p className="text-[10px] text-amber-600 mt-1 italic">Un rappel sera programme pour le suivi de commande</p>
+                    <p className="text-[10px] text-amber-600 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
+                  )}
+                  {compteRenduResult === 'decale' && (
+                    <p className="text-[10px] text-violet-600 mt-1 italic">Le RDV sera marque comme decale - pensez a replanifier un nouveau RDV</p>
                   )}
                 </div>
 
@@ -1483,6 +1904,54 @@ export default function AppointmentsPage() {
           prospect={compteRenduEmailProspect}
           onClose={() => setCompteRenduEmailProspect(null)}
         />
+      )}
+
+      {/* Reschedule modal after compte-rendu with decale */}
+      {showReschedule && rescheduleRdv && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-violet-500" />
+                Decaler le RDV
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500">RDV actuel</p>
+                <p className="font-semibold text-sm text-gray-900">{getProspect(rescheduleRdv.prospect_id)?.nom_etablissement || 'RDV'}</p>
+                <p className="text-xs text-gray-500 mt-1">{formatDate(rescheduleRdv.date)}{rescheduleRdv.heure_debut && ` - ${rescheduleRdv.heure_debut}`}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nouvelle date *</label>
+                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Heure debut</label>
+                  <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleHeureDebut} onChange={e => setRescheduleHeureDebut(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Heure fin</label>
+                  <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleHeureFin} onChange={e => setRescheduleHeureFin(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Raison / Notes</label>
+                <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Pourquoi ce report ?" value={rescheduleNotes} onChange={e => setRescheduleNotes(e.target.value)} />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>Annuler</button>
+              <button className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50" onClick={confirmReschedule} disabled={!rescheduleDate}>
+                <CalendarClock className="w-4 h-4" /> Confirmer le report
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

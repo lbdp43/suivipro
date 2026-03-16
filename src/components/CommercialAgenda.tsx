@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Calendar, MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial } from '../types';
-import { formatDate, downloadICS } from '../utils/helpers';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial, Client, EVENT_TYPE_LABELS } from '../types';
+import { formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
 
 interface Props {
   appointments: Appointment[];
   commerciaux: Commercial[];
+  clients?: Client[];
   getProspect: (id: string) => Prospect | undefined;
   filterCommercial: string;
   weekOffset: number;
@@ -46,7 +47,7 @@ function getWeekDays(offset: number): Date[] {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
+  return toLocalDateStr(d);
 }
 
 function timeToMinutes(time: string): number {
@@ -59,6 +60,7 @@ const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 export default function CommercialAgenda({
   appointments,
   commerciaux,
+  clients = [],
   getProspect,
   filterCommercial,
   weekOffset,
@@ -216,28 +218,36 @@ export default function CommercialAgenda({
                 const endMin = timeToMinutes(rdv.heure_fin);
                 const top = ((startMin / 60) - HOUR_START) * SLOT_HEIGHT;
                 const height = Math.max(((endMin - startMin) / 60) * SLOT_HEIGHT, 20);
-                const prospect = getProspect(rdv.prospect_id);
+                const agendaIsEvent = rdv.event_type && rdv.event_type !== 'rdv';
+                const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
+                const agendaClient = rdv.client_id ? clients.find(c => c.id === rdv.client_id) : undefined;
+                const agendaName = agendaIsEvent ? (rdv.titre || EVENT_TYPE_LABELS[rdv.event_type!]) : (agendaClient?.nom || prospect?.nom_etablissement || 'RDV');
                 const commercial = commerciaux.find(c => c.id === rdv.commercial_id);
                 const isConflict = conflictIds.has(rdv.id);
                 const sc = STATUS_COLORS[rdv.statut];
                 const comColor = commercialColorMap[rdv.commercial_id] || 'border-l-gray-400';
+                const eventStyle = agendaIsEvent ? {
+                  backgroundColor: rdv.event_type === 'reunion' ? '#f3e8ff' : rdv.event_type === 'boutique' ? '#fef3c7' : rdv.event_type === 'depot' ? '#ffedd5' : rdv.event_type === 'marche' ? '#dcfce7' : '#f3f4f6',
+                  borderColor: rdv.event_type === 'reunion' ? '#c084fc' : rdv.event_type === 'boutique' ? '#fbbf24' : rdv.event_type === 'depot' ? '#fb923c' : rdv.event_type === 'marche' ? '#4ade80' : '#9ca3af',
+                } : {};
 
                 return (
                   <div
                     key={rdv.id}
                     className={`absolute left-0.5 right-0.5 rounded border-l-[3px] ${comColor} ${
-                      isConflict ? 'bg-red-50 border border-red-300 ring-1 ring-red-300' : `${sc.bg} border ${sc.border}`
+                      isConflict ? 'bg-red-50 border border-red-300 ring-1 ring-red-300' : agendaIsEvent ? 'border' : `${sc.bg} border ${sc.border}`
                     } cursor-pointer hover:shadow-md transition-shadow overflow-hidden z-10 group`}
-                    style={{ top: Math.max(top, 0), height }}
+                    style={{ top: Math.max(top, 0), height, ...eventStyle }}
                     onClick={() => onEditRdv?.(rdv)}
-                    title={`${prospect?.nom_etablissement || 'RDV'} (${commercial?.prenom || '?'}) - ${rdv.heure_debut}-${rdv.heure_fin}`}
+                    title={`${agendaName} (${commercial?.prenom || '?'}) - ${rdv.heure_debut}-${rdv.heure_fin}`}
                   >
                     <div className="px-1.5 py-0.5">
                       {isConflict && (
                         <AlertTriangle className="w-3 h-3 text-red-500 float-right mt-0.5" />
                       )}
-                      <p className={`text-[10px] font-semibold truncate ${isConflict ? 'text-red-700' : sc.text}`}>
-                        {prospect?.nom_etablissement || 'Inconnu'}
+                      <p className={`text-[10px] font-semibold truncate ${isConflict ? 'text-red-700' : agendaIsEvent ? 'text-gray-800' : sc.text}`}>
+                        {agendaIsEvent && <span className="text-[8px] opacity-70">{EVENT_TYPE_LABELS[rdv.event_type!]} - </span>}
+                        {agendaName}
                       </p>
                       {height >= 36 && (
                         <p className="text-[9px] text-gray-500 truncate">
@@ -247,6 +257,7 @@ export default function CommercialAgenda({
                       {height >= 52 && !filterCommercial && (
                         <p className="text-[9px] text-gray-400 truncate">
                           {commercial?.prenom}
+                          {(rdv.participants || []).length > 0 && ` +${rdv.participants!.length}`}
                         </p>
                       )}
                       {height >= 68 && rdv.lieu && (

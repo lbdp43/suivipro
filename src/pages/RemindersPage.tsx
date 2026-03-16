@@ -1,15 +1,19 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
-  AlertCircle, BellRing, CalendarClock, MessageSquare,
+  AlertCircle, BellRing, CalendarClock, MessageSquare, User,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
+import { apiPost, apiPut, apiDelete } from '../api/client';
 import { Reminder, ReminderStatus } from '../types';
-import { generateId, formatDate, isToday } from '../utils/helpers';
+import { generateId, formatDate, isToday, toLocalDateStr } from '../utils/helpers';
 
 export default function RemindersPage() {
-  const { state, dispatch, getProspect } = useApp();
+  const { state, dispatchLocal, getProspect } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -17,6 +21,9 @@ export default function RemindersPage() {
     heure: '09:00',
     message: '',
   });
+
+  // Filtre par auteur (persiste dans localStorage)
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('reminders_filterCommercial', '');
 
   // Modale reporter
   const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
@@ -27,62 +34,84 @@ export default function RemindersPage() {
   const [editTarget, setEditTarget] = useState<Reminder | null>(null);
   const [editForm, setEditForm] = useState({ date: '', heure: '', message: '' });
 
+  // Pagination rappels termines
+  const [completedPage, setCompletedPage] = useState(1);
+  const COMPLETED_PER_PAGE = 20;
+
   const reminders = useMemo(() => {
-    return [...state.reminders].sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.reminders]);
+    let filtered = [...state.reminders];
+    if (filterCommercial) filtered = filtered.filter(r => r.commercial_id === filterCommercial);
+    return filtered.sort((a, b) => a.date.localeCompare(b.date));
+  }, [state.reminders, filterCommercial]);
 
   const todayReminders = reminders.filter(r => r.statut === 'actif' && isToday(r.date));
-  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= new Date().toISOString().split('T')[0]);
-  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < new Date().toISOString().split('T')[0]);
+  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= toLocalDateStr(new Date()));
+  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < toLocalDateStr(new Date()));
   const completedReminders = reminders.filter(r => r.statut === 'termine');
 
-  const saveReminder = () => {
+  const saveReminder = async () => {
     if (!formData.prospect_id || !formData.date) return;
     const prospect = getProspect(formData.prospect_id);
-    dispatch({
-      type: 'ADD_REMINDER',
-      payload: {
-        id: generateId('rem'),
-        prospect_id: formData.prospect_id,
-        commercial_id: state.currentUser?.id || 'com-1',
-        date: formData.date,
-        heure: formData.heure,
-        message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
-        statut: 'actif',
-      },
-    });
-    setShowForm(false);
-    setFormData({ prospect_id: '', date: '', heure: '09:00', message: '' });
+    const payload = {
+      id: generateId('rem'),
+      prospect_id: formData.prospect_id,
+      commercial_id: state.currentUser?.id || 'com-1',
+      date: formData.date,
+      heure: formData.heure,
+      message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
+      statut: 'actif' as const,
+    };
+    try {
+      await apiPost('/reminders', payload);
+      dispatchLocal({ type: 'ADD_REMINDER', payload });
+      toast.success('Rappel programme');
+      setShowForm(false);
+      setFormData({ prospect_id: '', date: '', heure: '09:00', message: '' });
+    } catch (err) {
+      toast.error(`Erreur creation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
-  const markComplete = (id: string) => {
+  const markComplete = async (id: string) => {
     const rem = state.reminders.find(r => r.id === id);
-    if (rem) dispatch({ type: 'UPDATE_REMINDER', payload: { ...rem, statut: 'termine' } });
+    if (!rem) return;
+    const payload = { ...rem, statut: 'termine' as const };
+    try {
+      await apiPut(`/reminders/${id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel termine');
+    } catch (err) {
+      toast.error(`Erreur mise a jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   const openSnoozeModal = (rem: Reminder) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 2);
     setSnoozeTarget(rem);
-    setSnoozeDate(tomorrow.toISOString().split('T')[0]);
+    setSnoozeDate(toLocalDateStr(tomorrow));
     setSnoozeNote('');
   };
 
-  const executeSnooze = () => {
+  const executeSnooze = async () => {
     if (!snoozeTarget || !snoozeDate) return;
     const newMessage = snoozeNote
       ? `${snoozeTarget.message}\n[Reporte] ${snoozeNote}`
       : snoozeTarget.message;
-    dispatch({
-      type: 'UPDATE_REMINDER',
-      payload: {
-        ...snoozeTarget,
-        date: snoozeDate,
-        message: newMessage,
-        statut: 'actif' as ReminderStatus,
-      },
-    });
-    setSnoozeTarget(null);
+    const payload = {
+      ...snoozeTarget,
+      date: snoozeDate,
+      message: newMessage,
+      statut: 'actif' as ReminderStatus,
+    };
+    try {
+      await apiPut(`/reminders/${snoozeTarget.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel reporte');
+      setSnoozeTarget(null);
+    } catch (err) {
+      toast.error(`Erreur report rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   const snoozeQuickOptions = [
@@ -95,11 +124,17 @@ export default function RemindersPage() {
   const setSnoozeQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setSnoozeDate(date.toISOString().split('T')[0]);
+    setSnoozeDate(toLocalDateStr(date));
   };
 
-  const deleteReminder = (id: string) => {
-    dispatch({ type: 'DELETE_REMINDER', payload: id });
+  const deleteReminder = async (id: string) => {
+    try {
+      await apiDelete(`/reminders/${id}`);
+      dispatchLocal({ type: 'DELETE_REMINDER', payload: id });
+      toast.success('Rappel supprime');
+    } catch (err) {
+      toast.error(`Erreur suppression rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   const openEditModal = (rem: Reminder) => {
@@ -107,20 +142,28 @@ export default function RemindersPage() {
     setEditForm({ date: rem.date, heure: rem.heure, message: rem.message });
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editTarget || !editForm.date) return;
-    dispatch({
-      type: 'UPDATE_REMINDER',
-      payload: { ...editTarget, date: editForm.date, heure: editForm.heure, message: editForm.message },
-    });
-    setEditTarget(null);
+    const payload = { ...editTarget, date: editForm.date, heure: editForm.heure, message: editForm.message };
+    try {
+      await apiPut(`/reminders/${editTarget.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel modifie');
+      setEditTarget(null);
+    } catch (err) {
+      toast.error(`Erreur modification rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
-  const reactivateReminder = (rem: Reminder) => {
-    dispatch({
-      type: 'UPDATE_REMINDER',
-      payload: { ...rem, statut: 'actif' as ReminderStatus },
-    });
+  const reactivateReminder = async (rem: Reminder) => {
+    const payload = { ...rem, statut: 'actif' as ReminderStatus };
+    try {
+      await apiPut(`/reminders/${rem.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel reactive');
+    } catch (err) {
+      toast.error(`Erreur reactivation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   // Quick reminder options
@@ -134,12 +177,13 @@ export default function RemindersPage() {
   const setQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setFormData(prev => ({ ...prev, date: date.toISOString().split('T')[0] }));
+    setFormData(prev => ({ ...prev, date: toLocalDateStr(date) }));
   };
 
   const renderReminder = (rem: Reminder, showActions = true) => {
     const prospect = getProspect(rem.prospect_id);
-    const isOverdue = rem.statut === 'actif' && rem.date < new Date().toISOString().split('T')[0];
+    const commercial = state.commerciaux.find(c => c.id === rem.commercial_id);
+    const isOverdue = rem.statut === 'actif' && rem.date < toLocalDateStr(new Date());
     const isTodayRem = isToday(rem.date);
     return (
       <div
@@ -179,6 +223,11 @@ export default function RemindersPage() {
                 >
                   {prospect.nom_etablissement}
                 </Link>
+              )}
+              {commercial && (
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <User className="w-3 h-3" /> {commercial.prenom} {commercial.nom}
+                </span>
               )}
             </div>
 
@@ -247,12 +296,24 @@ export default function RemindersPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rappels</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
         </div>
-        <button
-          className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium self-start sm:self-auto"
-          onClick={() => setShowForm(true)}
-        >
-          <Plus className="w-4 h-4" /> Nouveau rappel
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <select
+            className="px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg text-xs sm:text-sm bg-white"
+            value={filterCommercial}
+            onChange={e => setFilterCommercial(e.target.value)}
+          >
+            <option value="">Tous les commerciaux</option>
+            {state.commerciaux.map(c => (
+              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+            ))}
+          </select>
+          <button
+            className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium"
+            onClick={() => setShowForm(true)}
+          >
+            <Plus className="w-4 h-4" /> Nouveau rappel
+          </button>
+        </div>
       </div>
 
       {/* Today's reminders - highlighted */}
@@ -295,8 +356,16 @@ export default function RemindersPage() {
         <div>
           <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
           <div className="space-y-3">
-            {completedReminders.map(r => renderReminder(r))}
+            {completedReminders.slice(0, completedPage * COMPLETED_PER_PAGE).map(r => renderReminder(r))}
           </div>
+          {completedReminders.length > completedPage * COMPLETED_PER_PAGE && (
+            <button
+              className="mt-3 w-full py-2 rounded-lg text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+              onClick={() => setCompletedPage(p => p + 1)}
+            >
+              Voir plus ({completedReminders.length - completedPage * COMPLETED_PER_PAGE} restants)
+            </button>
+          )}
         </div>
       )}
 
@@ -335,7 +404,7 @@ export default function RemindersPage() {
                   {snoozeQuickOptions.map(opt => {
                     const d = new Date();
                     d.setDate(d.getDate() + opt.days);
-                    const dateStr = d.toISOString().split('T')[0];
+                    const dateStr = toLocalDateStr(d);
                     return (
                       <button
                         key={opt.days}
@@ -361,7 +430,7 @@ export default function RemindersPage() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   value={snoozeDate}
                   onChange={e => setSnoozeDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={toLocalDateStr(new Date())}
                 />
               </div>
 

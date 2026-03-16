@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from './Toast';
 import { CallResult, CALL_RESULT_LABELS } from '../types';
-import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS } from '../utils/helpers';
-import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/client';
+import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
+import { getGoogleCalendarEvents, apiPost, apiPut, type GoogleCalendarEvent } from '../api/client';
 
 // ============================================
 // Context for triggering calls from anywhere
@@ -28,7 +29,8 @@ export function useCallModal() {
 // ============================================
 
 export function CallModalProvider({ children }: { children: ReactNode }) {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
+  const toast = useToast();
 
   const [showModal, setShowModal] = useState(false);
   const [prospectId, setProspectId] = useState('');
@@ -48,6 +50,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [editEmail, setEditEmail] = useState('');
   // Negative outcome: pas_interesse → perdu, ne_pas_contacter → ne_pas_contacter
   const [negativeOutcome, setNegativeOutcome] = useState<'none' | 'pas_interesse' | 'ne_pas_contacter'>('none');
+  const [saveErrors, setSaveErrors] = useState<string[]>([]);
   // RDV state
   const [showRdv, setShowRdv] = useState(false);
   const [rdvDate, setRdvDate] = useState('');
@@ -59,17 +62,30 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   // Post-RDV confirmation
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [createdRdvId, setCreatedRdvId] = useState('');
+  const [saving, setSaving] = useState(false);
   // Google Calendar conflict detection
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callStartTimeRef = useRef<number>(0);
 
-  // Timer logic
+  // Timer logic - uses Date.now() diff to avoid drift/freeze issues
   useEffect(() => {
     if (callActive) {
-      timerRef.current = setInterval(() => setCallTimer(prev => prev + 1), 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
+      if (callStartTimeRef.current === 0) {
+        callStartTimeRef.current = Date.now();
+      }
+      timerRef.current = setInterval(() => {
+        setCallTimer(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+      }, 500);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      if (callStartTimeRef.current > 0) {
+        setCallTimer(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+        callStartTimeRef.current = 0;
+      }
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [callActive]);
@@ -88,7 +104,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setMemoMessage('');
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    setMemoDate(tomorrow.toISOString().split('T')[0]);
+    setMemoDate(toLocalDateStr(tomorrow));
     setMemoHeure('09:00');
     setShowNewTag(false);
     setNewTagName('');
@@ -100,7 +116,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowRdv(false);
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 3);
-    setRdvDate(nextWeek.toISOString().split('T')[0]);
+    setRdvDate(toLocalDateStr(nextWeek));
     setRdvHeureDebut('10:00');
     setRdvHeureFin('11:00');
     setRdvLieu(prospect.adresse ? `${prospect.adresse}, ${prospect.ville}` : '');
@@ -124,6 +140,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setSelectedTags(prev =>
       prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
     );
+    setSaveErrors([]);
   };
 
   const removeTag = (tagId: string) => {
@@ -141,13 +158,23 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowNewTag(false);
   };
 
-  const saveCall = () => {
-    if (!prospectId) return;
+  const saveCall = async () => {
+    if (!prospectId || saving) return;
 
-    // 1. Save the call
-    dispatch({
-      type: 'ADD_CALL',
-      payload: {
+    // Validation: notes et tags obligatoires
+    const errors: string[] = [];
+    if (!callNotes.trim()) errors.push('notes');
+    if (selectedTags.length === 0) errors.push('tags');
+    if (errors.length > 0) {
+      setSaveErrors(errors);
+      return;
+    }
+    setSaveErrors([]);
+    setSaving(true);
+
+    try {
+      // 1. Save the call to API first
+      const callPayload = {
         id: generateId('call'),
         prospect_id: prospectId,
         commercial_id: state.currentUser?.id || 'com-1',
@@ -155,67 +182,64 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         duree: callTimer,
         resultat: callResult,
         notes: callNotes,
-      },
-    });
+      };
+      await apiPost('/calls', callPayload);
+      dispatchLocal({ type: 'ADD_CALL', payload: callPayload });
 
-    // 2. Update prospect tags + auto-transition pipeline
-    const prospect = state.prospects.find(p => p.id === prospectId);
-    if (prospect) {
-      const hasMemo = showMemo && memoMessage.trim() && memoDate;
-      const hasRdv = showRdv && rdvDate;
+      // 2. Update prospect tags + auto-transition pipeline
+      const prospect = state.prospects.find(p => p.id === prospectId);
+      if (prospect) {
+        const hasMemo = showMemo && memoMessage.trim() && memoDate;
+        const hasRdv = showRdv && rdvDate;
 
-      let newStage = prospect.etape_pipeline;
+        let newStage = prospect.etape_pipeline;
 
-      // Regle : Negative outcome → perdu ou ne_pas_contacter (priorite max)
-      if (negativeOutcome === 'pas_interesse') {
-        newStage = 'perdu';
-      } else if (negativeOutcome === 'ne_pas_contacter') {
-        newStage = 'ne_pas_contacter';
-      }
-      // Regle : RDV pris → "Gagne" (prioritaire)
-      else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-        newStage = 'gagne';
-      }
-      // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
-      else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
-        newStage = 'contacte';
-      }
+        // Regle : Negative outcome → perdu ou ne_pas_contacter (priorite max)
+        if (negativeOutcome === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (negativeOutcome === 'ne_pas_contacter') {
+          newStage = 'ne_pas_contacter';
+        }
+        // Regle : RDV pris → "Gagne" (prioritaire)
+        else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
+          newStage = 'gagne';
+        }
+        // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
+        else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
+          newStage = 'contacte';
+        }
 
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: {
+        const updatedProspect = {
           ...prospect,
           tags: selectedTags,
           nom_contact: editContact.trim() || prospect.nom_contact,
           email: editEmail.trim() || prospect.email,
           etape_pipeline: newStage,
           date_modification: new Date().toISOString(),
-        },
-      });
-    }
+        };
+        await apiPut(`/prospects/${prospect.id}`, updatedProspect);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
+      }
 
-    // 3. Create memo/reminder if filled
-    if (showMemo && memoMessage.trim() && memoDate) {
-      dispatch({
-        type: 'ADD_REMINDER',
-        payload: {
+      // 3. Create memo/reminder if filled
+      if (showMemo && memoMessage.trim() && memoDate) {
+        const reminderPayload = {
           id: generateId('rem'),
           prospect_id: prospectId,
           commercial_id: state.currentUser?.id || 'com-1',
           date: memoDate,
           heure: memoHeure,
           message: memoMessage.trim(),
-          statut: 'actif',
-        },
-      });
-    }
+          statut: 'actif' as const,
+        };
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+      }
 
-    // 4. Create RDV if filled
-    if (showRdv && rdvDate) {
-      const rdvId = generateId('rdv');
-      dispatch({
-        type: 'ADD_APPOINTMENT',
-        payload: {
+      // 4. Create RDV if filled
+      if (showRdv && rdvDate) {
+        const rdvId = generateId('rdv');
+        const rdvPayload = {
           id: rdvId,
           prospect_id: prospectId,
           commercial_id: rdvCommercialId || state.currentUser?.id || 'com-1',
@@ -225,20 +249,31 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           heure_fin: rdvHeureFin,
           lieu: rdvLieu,
           notes: rdvNotes,
-          statut: 'planifie',
-        },
-      });
-      // Show confirmation screen with agenda + export
-      setCreatedRdvId(rdvId);
-      setShowConfirmation(true);
+          statut: 'planifie' as const,
+          created_at: new Date().toISOString(),
+        };
+        await apiPost('/appointments', rdvPayload);
+        dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdvPayload });
+        // Show confirmation screen with agenda + export
+        setCreatedRdvId(rdvId);
+        setShowConfirmation(true);
+        setCallActive(false);
+        setCallTimer(0);
+        setSaving(false);
+        toast.success('Appel et RDV enregistres avec succes');
+        return;
+      }
+
+      toast.success('Appel enregistre avec succes');
+      setShowModal(false);
       setCallActive(false);
       setCallTimer(0);
-      return;
+    } catch (err) {
+      console.error('Erreur sauvegarde appel:', err);
+      toast.error('Erreur lors de la sauvegarde. Veuillez reessayer.');
+    } finally {
+      setSaving(false);
     }
-
-    setShowModal(false);
-    setCallActive(false);
-    setCallTimer(0);
   };
 
   const cancelCall = () => {
@@ -451,10 +486,15 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   </div>
 
                   {/* Tags - tags actifs avec X + tags disponibles a ajouter */}
-                  <div>
+                  <div className={saveErrors.includes('tags') ? 'p-2 border border-red-300 rounded-lg bg-red-50/30' : ''}>
                     <label className="block text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
-                      <Tag className="w-3 h-3" /> Tags du prospect
+                      <Tag className="w-3 h-3" /> Tags du prospect <span className="text-red-500">*</span>
                     </label>
+                    {saveErrors.includes('tags') && (
+                      <p className="text-[10px] text-red-500 mb-1.5 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Au moins un tag est obligatoire
+                      </p>
+                    )}
                     {/* Tags actuellement selectionnes (avec bouton X) */}
                     {selectedTags.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2">
@@ -528,13 +568,20 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
                   {/* Notes */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>
                     <textarea
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-brewery-500"
+                      className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-brewery-500 ${
+                        saveErrors.includes('notes') ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-200'
+                      }`}
                       placeholder="Qu'est-ce qui s'est passe pendant l'appel ?"
                       value={callNotes}
-                      onChange={e => setCallNotes(e.target.value)}
+                      onChange={e => { setCallNotes(e.target.value); setSaveErrors([]); }}
                     />
+                    {saveErrors.includes('notes') && (
+                      <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Les notes sont obligatoires
+                      </p>
+                    )}
                   </div>
 
                   {/* RDV */}
@@ -721,10 +768,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   Annuler
                 </button>
                 <button
-                  className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 font-medium"
+                  className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveCall}
+                  disabled={saving}
                 >
-                  <Save className="w-4 h-4" /> Enregistrer
+                  <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : 'Enregistrer'}
                 </button>
               </div>
             )}

@@ -1,6 +1,6 @@
-import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Prospect, Call, Appointment, EmailTemplate } from '../types';
+import { Prospect, Call, Appointment, EmailTemplate, Client } from '../types';
 
 // ============================================
 // ID Generation
@@ -38,6 +38,14 @@ export function formatTimeAgo(dateStr: string): string {
   }
 }
 
+/** Format a Date as 'YYYY-MM-DD' in local timezone (avoids UTC shift from toISOString) */
+export function toLocalDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function isThisWeek(dateStr: string): boolean {
   try {
     const date = parseISO(dateStr);
@@ -53,6 +61,16 @@ export function isThisMonth(dateStr: string): boolean {
     const date = parseISO(dateStr);
     const now = new Date();
     return isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
+  } catch {
+    return false;
+  }
+}
+
+export function isLastMonth(dateStr: string): boolean {
+  try {
+    const date = parseISO(dateStr);
+    const lastMonth = subMonths(new Date(), 1);
+    return isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
   } catch {
     return false;
   }
@@ -94,30 +112,105 @@ export function formatDurationTimer(seconds: number): string {
 // ICS Export
 // ============================================
 
-export function generateICS(appointment: Appointment, prospect: Prospect): string {
-  const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
-  const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+function icsEscape(text: string): string {
+  return (text || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
 
-  return `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SuiviPro//La Brasserie des Plantes//FR
-BEGIN:VEVENT
-DTSTART:${dtStart}
-DTEND:${dtEnd}
-SUMMARY:RDV ${prospect.nom_etablissement}
-DESCRIPTION:${appointment.notes}\\nContact: ${prospect.nom_contact}\\nTel: ${prospect.telephone}
-LOCATION:${appointment.lieu}
-END:VEVENT
-END:VCALENDAR`;
+function icsUid(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}@suivipro`;
+}
+
+function icsDtstamp(): string {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+function icsFormatTime(date: string, time: string): string {
+  const d = date.replace(/-/g, '');
+  if (!time) return `${d}T090000`;
+  return `${d}T${time.replace(':', '')}00`;
+}
+
+function buildICSFile(events: string[]): string {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SuiviPro//NONSGML v1.0//FR',
+    'METHOD:PUBLISH',
+    'CALSCALE:GREGORIAN',
+    ...events,
+    'END:VCALENDAR',
+  ];
+  return lines.join('\r\n');
+}
+
+function triggerICSDownload(icsContent: string, filename: string) {
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.ics') ? filename : `${filename}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+export function generateICS(appointment: Appointment, prospect: Prospect): string {
+  const dtStart = icsFormatTime(appointment.date, appointment.heure_debut);
+  const dtEnd = icsFormatTime(appointment.date, appointment.heure_fin);
+  const descParts = [];
+  if (appointment.notes) descParts.push(appointment.notes);
+  if (prospect.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
+  if (prospect.telephone) descParts.push(`Tel: ${prospect.telephone}`);
+
+  const event = [
+    'BEGIN:VEVENT',
+    `UID:${icsUid()}`,
+    `DTSTAMP:${icsDtstamp()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${icsEscape(`RDV ${prospect.nom_etablissement}`)}`,
+    `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+    `LOCATION:${icsEscape(appointment.lieu || '')}`,
+    'END:VEVENT',
+  ].join('\r\n');
+
+  return buildICSFile([event]);
 }
 
 export function downloadICS(appointment: Appointment, prospect: Prospect) {
   const ics = generateICS(appointment, prospect);
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  // Open directly so the OS calendar app handles it
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  triggerICSDownload(ics, `rdv-${prospect.nom_etablissement.replace(/[^a-zA-Z0-9]/g, '_')}.ics`);
+}
+
+export function generateICSClient(appointment: Appointment, client: Client): string {
+  const dtStart = icsFormatTime(appointment.date, appointment.heure_debut);
+  const dtEnd = icsFormatTime(appointment.date, appointment.heure_fin);
+  const location = appointment.lieu || [client.adresse, client.ville].filter(Boolean).join(', ') || '';
+  const descParts = [];
+  if (appointment.notes) descParts.push(appointment.notes);
+  if (client.contact) descParts.push(`Contact: ${client.contact}`);
+  if (client.telephone) descParts.push(`Tel: ${client.telephone}`);
+  if (client.telephone_mobile) descParts.push(`Mobile: ${client.telephone_mobile}`);
+
+  const event = [
+    'BEGIN:VEVENT',
+    `UID:${icsUid()}`,
+    `DTSTAMP:${icsDtstamp()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${icsEscape(`RDV ${client.nom}`)}`,
+    `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+    `LOCATION:${icsEscape(location)}`,
+    'END:VEVENT',
+  ].join('\r\n');
+
+  return buildICSFile([event]);
+}
+
+export function downloadICSClient(appointment: Appointment, client: Client) {
+  const ics = generateICSClient(appointment, client);
+  triggerICSDownload(ics, `rdv-${client.nom.replace(/[^a-zA-Z0-9]/g, '_')}.ics`);
 }
 
 /**
@@ -132,27 +225,28 @@ export function downloadICSBatch(
 
   const events = appointments.map(rdv => {
     const prospect = getProspect(rdv.prospect_id);
-    const dtStart = `${rdv.date.replace(/-/g, '')}T${rdv.heure_debut.replace(':', '')}00`;
-    const dtEnd = `${rdv.date.replace(/-/g, '')}T${rdv.heure_fin.replace(':', '')}00`;
-    return `BEGIN:VEVENT
-DTSTART:${dtStart}
-DTEND:${dtEnd}
-SUMMARY:RDV ${prospect?.nom_etablissement || 'Inconnu'}
-DESCRIPTION:${rdv.notes}\\nContact: ${prospect?.nom_contact || ''}\\nTel: ${prospect?.telephone || ''}
-LOCATION:${rdv.lieu}
-END:VEVENT`;
-  }).join('\n');
+    const dtStart = icsFormatTime(rdv.date, rdv.heure_debut);
+    const dtEnd = icsFormatTime(rdv.date, rdv.heure_fin);
+    const descParts = [];
+    if (rdv.notes) descParts.push(rdv.notes);
+    if (prospect?.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
+    if (prospect?.telephone) descParts.push(`Tel: ${prospect.telephone}`);
+    return [
+      'BEGIN:VEVENT',
+      `UID:${icsUid()}`,
+      `DTSTAMP:${icsDtstamp()}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${icsEscape(`RDV ${prospect?.nom_etablissement || 'Inconnu'}`)}`,
+      `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+      `LOCATION:${icsEscape(rdv.lieu || '')}`,
+      'END:VEVENT',
+    ].join('\r\n');
+  });
 
-  const ics = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SuiviPro//La Brasserie des Plantes//FR
-${events}
-END:VCALENDAR`;
-
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const ics = buildICSFile(events);
+  const filename = commercialName ? `rdv-${commercialName.replace(/[^a-zA-Z0-9]/g, '_')}.ics` : 'rdv-export.ics';
+  triggerICSDownload(ics, filename);
 }
 
 // ============================================

@@ -51,6 +51,7 @@ export const ESTABLISHMENT_ICONS: Record<EstablishmentType, string> = {
 };
 
 export type PipelineStage =
+  | 'nouveau_datagouv'
   | 'nouveau'
   | 'a_contacter'
   | 'contacte'
@@ -62,6 +63,7 @@ export type PipelineStage =
   | 'ne_pas_contacter';
 
 export const PIPELINE_LABELS: Record<PipelineStage, string> = {
+  nouveau_datagouv: 'Importe Datagouv',
   nouveau: 'Nouveau',
   a_contacter: 'A contacter',
   contacte: 'Contacte',
@@ -74,6 +76,7 @@ export const PIPELINE_LABELS: Record<PipelineStage, string> = {
 };
 
 export const PIPELINE_COLORS: Record<PipelineStage, string> = {
+  nouveau_datagouv: '#0ea5e9',
   nouveau: '#6b7280',
   a_contacter: '#3b82f6',
   contacte: '#8b5cf6',
@@ -103,7 +106,39 @@ export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   annule: 'Annule',
 };
 
-export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | '';
+export type EventType = 'rdv' | 'reunion' | 'boutique' | 'depot' | 'marche' | 'autre';
+
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  rdv: 'RDV Client/Prospect',
+  reunion: 'Reunion',
+  boutique: 'Boutique',
+  depot: 'Depot',
+  marche: 'Marche',
+  autre: 'Autre',
+};
+
+export const EVENT_TYPE_COLORS: Record<EventType, string> = {
+  rdv: 'bg-blue-100 text-blue-800',
+  reunion: 'bg-purple-100 text-purple-800',
+  boutique: 'bg-amber-100 text-amber-800',
+  depot: 'bg-orange-100 text-orange-800',
+  marche: 'bg-green-100 text-green-800',
+  autre: 'bg-gray-100 text-gray-800',
+};
+
+export type RecurrenceType = 'none' | 'weekly';
+
+export const DAYS_OF_WEEK_LABELS: Record<number, string> = {
+  1: 'Lundi',
+  2: 'Mardi',
+  3: 'Mercredi',
+  4: 'Jeudi',
+  5: 'Vendredi',
+  6: 'Samedi',
+  0: 'Dimanche',
+};
+
+export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | 'decale' | '';
 
 export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
   client: 'Client',
@@ -111,11 +146,12 @@ export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
   commande_plus_tard: 'Commande plus tard',
   a_relancer: 'A relancer',
   pas_interesse: 'Pas interesse',
+  decale: 'RDV decale',
 };
 
 export type ReminderStatus = 'actif' | 'termine' | 'reporte';
 
-export type UserRole = 'admin' | 'commercial';
+export type UserRole = 'admin' | 'commercial' | 'prospection';
 
 // ============================================
 // Regions de France (mapping departement → region)
@@ -277,6 +313,8 @@ export interface Prospect {
   etape_pipeline: PipelineStage;
   tags: string[];
   commercial_id: string;
+  siret?: string;
+  entity_type?: string;
   notes: string;
   date_creation: string;
   date_modification: string;
@@ -296,6 +334,7 @@ export interface Call {
 export interface Appointment {
   id: string;
   prospect_id: string;
+  client_id?: string;
   commercial_id: string;
   prospecteur_id?: string; // celui qui a pris le RDV (l'appelant)
   date: string;
@@ -306,6 +345,14 @@ export interface Appointment {
   statut: AppointmentStatus;
   compte_rendu?: AppointmentResult;
   notes_compte_rendu?: string;
+  created_at?: string;
+  // Champs evenement
+  event_type?: EventType;
+  titre?: string; // titre pour les evenements (reunion, boutique, etc.)
+  participants?: string[]; // IDs des commerciaux assignes (multi-select)
+  recurrence?: RecurrenceType;
+  recurrence_days?: number[]; // jours de la semaine (0=dim, 1=lun, ..., 6=sam)
+  recurrence_end_date?: string; // date de fin de recurrence
 }
 
 export interface Reminder {
@@ -354,6 +401,183 @@ export interface PipelineColumn {
   color: string;
 }
 
+// ============================================
+// Client Types (CRM Client Management)
+// ============================================
+
+export type ClientType =
+  | 'BAR_RESTAURANT_GENERAL'
+  | 'BAR_RESTAURANT_2024'
+  | 'CAVE_EPICERIE'
+  | 'CAVE_EPICERIE_2024'
+  | 'SOUCHON'
+  | 'SOUCHON_HORS_DROIT'
+  | 'CLIENT_SOUCHON'
+  | 'GRAND_PUBLIC'
+  | 'GRAND_PUBLIC_2024'
+  | 'COMITE_ENTREPRISE'
+  | 'DISTRIBUTEUR'
+  | 'EXPORT'
+  | 'MARIAGE'
+  | 'PICOLOGIE';
+
+export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
+  BAR_RESTAURANT_GENERAL: 'Bar Restaurant',
+  BAR_RESTAURANT_2024: 'Bar Restaurant 2024',
+  CAVE_EPICERIE: 'Cave Epicerie',
+  CAVE_EPICERIE_2024: 'Cave Epicerie 2024',
+  SOUCHON: 'Souchon',
+  SOUCHON_HORS_DROIT: 'Hors Droit Souchon',
+  CLIENT_SOUCHON: 'Client Souchon',
+  GRAND_PUBLIC: 'Grand Public',
+  GRAND_PUBLIC_2024: 'Grand Public 2024',
+  COMITE_ENTREPRISE: 'Comite Entreprise',
+  DISTRIBUTEUR: 'Distributeur',
+  EXPORT: 'Export',
+  MARIAGE: 'Mariage',
+  PICOLOGIE: 'Picologie',
+};
+
+export const CLIENT_TYPE_FAMILIES: Record<string, { label: string; icon: string; types: ClientType[] }> = {
+  bar_restaurant: { label: 'Bar / Restaurant', icon: 'UtensilsCrossed', types: ['BAR_RESTAURANT_GENERAL', 'BAR_RESTAURANT_2024'] },
+  cave_epicerie: { label: 'Cave / Epicerie', icon: 'Wine', types: ['CAVE_EPICERIE', 'CAVE_EPICERIE_2024'] },
+  souchon: { label: 'Souchon', icon: 'Handshake', types: ['SOUCHON', 'SOUCHON_HORS_DROIT', 'CLIENT_SOUCHON'] },
+  grand_public: { label: 'Grand Public', icon: 'Users', types: ['GRAND_PUBLIC', 'GRAND_PUBLIC_2024'] },
+  autres: { label: 'Autres', icon: 'Package', types: ['COMITE_ENTREPRISE', 'DISTRIBUTEUR', 'EXPORT', 'MARIAGE', 'PICOLOGIE'] },
+};
+
+export const CLIENT_VISIT_FREQUENCIES: Record<ClientType, number | null> = {
+  BAR_RESTAURANT_GENERAL: 15,
+  BAR_RESTAURANT_2024: 15,
+  CAVE_EPICERIE: 30,
+  CAVE_EPICERIE_2024: 30,
+  SOUCHON: 30,
+  SOUCHON_HORS_DROIT: 30,
+  CLIENT_SOUCHON: 30,
+  GRAND_PUBLIC: null,
+  GRAND_PUBLIC_2024: null,
+  COMITE_ENTREPRISE: 60,
+  DISTRIBUTEUR: 45,
+  EXPORT: 90,
+  MARIAGE: null,
+  PICOLOGIE: 30,
+};
+
+export type ClientStatus = 'ACTIF' | 'INACTIF';
+
+export type InteractionType = 'VISITE' | 'APPEL' | 'RDV_PLANIFIE';
+
+export const INTERACTION_TYPE_LABELS: Record<InteractionType, string> = {
+  VISITE: 'Visite',
+  APPEL: 'Appel',
+  RDV_PLANIFIE: 'RDV planifie',
+};
+
+export type TaskClientStatus = 'A_FAIRE' | 'EN_COURS' | 'TERMINEE';
+
+export const TASK_CLIENT_STATUS_LABELS: Record<TaskClientStatus, string> = {
+  A_FAIRE: 'A faire',
+  EN_COURS: 'En cours',
+  TERMINEE: 'Terminee',
+};
+
+export type TaskClientPriority = 'BASSE' | 'MOYENNE' | 'HAUTE';
+
+export const TASK_CLIENT_PRIORITY_LABELS: Record<TaskClientPriority, string> = {
+  BASSE: 'Basse',
+  MOYENNE: 'Moyenne',
+  HAUTE: 'Haute',
+};
+
+export interface Client {
+  id: string;
+  nom: string;
+  ville: string;
+  adresse: string;
+  code_postal: string;
+  telephone: string;
+  telephone_mobile: string;
+  email: string;
+  contact: string;
+  type_client: ClientType;
+  statut: ClientStatus;
+  commercial_id: string;
+  next_visit: string | null;
+  last_visit: string | null;
+  notes: string;
+  custom_recurrence: number | null;
+  latitude: number;
+  longitude: number;
+  siret: string;
+  tournee: string;
+  prospect_id: string | null;
+  date_creation: string;
+  date_modification: string;
+}
+
+export interface Interaction {
+  id: string;
+  client_id: string;
+  commercial_id: string;
+  type: InteractionType;
+  date: string;
+  comment: string;
+  date_creation: string;
+}
+
+export interface TaskClient {
+  id: string;
+  titre: string;
+  description: string;
+  statut: TaskClientStatus;
+  priorite: TaskClientPriority;
+  date_echeance: string | null;
+  commercial_id: string | null;
+  client_id: string | null;
+  date_creation: string;
+  completed_at: string | null;
+}
+
+export interface TourneeConfig {
+  commercial_id: string;
+  config: string; // JSON string of { "1": ["Zone A"], "2": ["Zone B"], ... }
+  notes: string;
+  updated_at: string;
+}
+
+export type CommandeStatut = 'en_cours' | 'livree' | 'annulee';
+
+export const COMMANDE_STATUT_LABELS: Record<CommandeStatut, string> = {
+  en_cours: 'En cours',
+  livree: 'Livree',
+  annulee: 'Annulee',
+};
+
+export interface CommandeLigne {
+  produit: string;
+  quantite: number;
+  prix_unitaire: number;
+  montant: number;
+}
+
+export interface Commande {
+  id: string;
+  client_id: string;
+  easybeer_id: string;
+  numero: string;
+  date_commande: string;
+  date_livraison: string;
+  statut: CommandeStatut;
+  montant_ht: number;
+  montant_ttc: number;
+  lignes: CommandeLigne[];
+  notes: string;
+  source: string;
+  date_creation: string;
+}
+
+export type VisitStatus = 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF';
+
 export type DocumentCategory = 'bar_restaurant' | 'prix_ce' | 'cave_epicerie' | 'grand_public' | 'autre';
 
 export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
@@ -391,4 +615,9 @@ export interface AppState {
   currentUser: Commercial | null;
   pipelineColumns: PipelineColumn[];
   documents: Document[];
+  clients: Client[];
+  interactions: Interaction[];
+  tasksClient: TaskClient[];
+  tourneeConfigs: TourneeConfig[];
+  commandes: Commande[];
 }

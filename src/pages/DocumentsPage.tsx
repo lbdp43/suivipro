@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { FileText, Upload, Download, Trash2, Search, Filter, Plus, X, File, Image, FileSpreadsheet } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { Document, DocumentCategory, DOCUMENT_CATEGORY_LABELS } from '../types';
-import { downloadDocument } from '../api/client';
+import { downloadDocument, apiPost, apiDelete } from '../api/client';
 
 const CATEGORIES: DocumentCategory[] = ['bar_restaurant', 'prix_ce', 'cave_epicerie', 'grand_public', 'autre'];
 
@@ -19,7 +20,8 @@ function getFileIcon(typeMime: string) {
 }
 
 export default function DocumentsPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
+  const toast = useToast();
   const isAdmin = state.currentUser?.role === 'admin';
 
   const [showUpload, setShowUpload] = useState(false);
@@ -46,38 +48,46 @@ export default function DocumentsPage() {
     if (!uploadFile || !uploadNom) return;
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
-        const newDoc: Document & { contenu: string } = {
-          id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          nom: uploadNom,
-          categorie: uploadCategorie,
-          description: uploadDescription,
-          nom_fichier: uploadFile.name,
-          type_mime: uploadFile.type || 'application/octet-stream',
-          taille: uploadFile.size,
-          uploaded_by: state.currentUser?.id || '',
-          date_creation: new Date().toISOString(),
-          contenu: base64,
-        };
-        dispatch({ type: 'ADD_DOCUMENT', payload: newDoc });
-        setShowUpload(false);
-        setUploadNom('');
-        setUploadCategorie('autre');
-        setUploadDescription('');
-        setUploadFile(null);
-        setUploading(false);
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(uploadFile);
+      });
+      const newDoc: Document & { contenu: string } = {
+        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        nom: uploadNom,
+        categorie: uploadCategorie,
+        description: uploadDescription,
+        nom_fichier: uploadFile.name,
+        type_mime: uploadFile.type || 'application/octet-stream',
+        taille: uploadFile.size,
+        uploaded_by: state.currentUser?.id || '',
+        date_creation: new Date().toISOString(),
+        contenu: base64,
       };
-      reader.readAsDataURL(uploadFile);
+      const saved = await apiPost('/documents', newDoc) as Document;
+      dispatchLocal({ type: 'ADD_DOCUMENT', payload: saved });
+      setShowUpload(false);
+      setUploadNom('');
+      setUploadCategorie('autre');
+      setUploadDescription('');
+      setUploadFile(null);
     } catch {
+      toast.error('Erreur lors de l\'envoi du document');
+    } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = (doc: Document) => {
+  const handleDelete = async (doc: Document) => {
     if (confirm(`Supprimer le document "${doc.nom}" ?`)) {
-      dispatch({ type: 'DELETE_DOCUMENT', payload: doc.id });
+      try {
+        await apiDelete(`/documents/${doc.id}`);
+        dispatchLocal({ type: 'DELETE_DOCUMENT', payload: doc.id });
+      } catch {
+        toast.error('Erreur lors de la suppression du document');
+      }
     }
   };
 

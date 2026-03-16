@@ -5,8 +5,9 @@ import rateLimit from 'express-rate-limit';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import cron from 'node-cron';
 import { dbReady } from './server/db.js';
-import apiRoutes from './server/routes.js';
+import apiRoutes, { runZoneSync } from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,9 @@ const DIST = join(__dirname, 'dist');
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
+
+// Trust Railway's reverse proxy (fixes X-Forwarded-For / rate-limit)
+app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet({
@@ -23,9 +27,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
       imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
-      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr"],
+      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr"],
       fontSrc: ["'self'"],
-      frameSrc: ["'none'"],
+      frameSrc: ["'self'"],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -53,6 +57,22 @@ app.use('/api/auth/login', rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Trop de tentatives de connexion, reessayez dans 15 minutes' },
+}));
+
+// Rate limiting sur les webhooks et imports
+app.use('/api/webhook', rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de webhooks, reessayez dans une minute' },
+}));
+app.use('/api/prospects/import', rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop d\'imports, reessayez dans une minute' },
 }));
 
 // Body parser — 10mb pour les uploads de documents
@@ -88,4 +108,16 @@ dbReady.then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`SuiviPro API + Frontend running on port ${PORT}`);
   });
+
+  // CRON: Sync zone INSEE every Monday at 6:00 UTC
+  cron.schedule('0 6 * * 1', async () => {
+    console.log('[CRON] Lancement sync zone hebdomadaire (lundi 6h UTC)...');
+    try {
+      await runZoneSync();
+    } catch (err) {
+      console.error('[CRON] Erreur sync zone:', err.message);
+    }
+  }, { timezone: 'Europe/Paris' });
+
+  console.log('CRON schedule: sync zone INSEE every Monday at 6:00 (Europe/Paris)');
 });

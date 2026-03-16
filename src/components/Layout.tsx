@@ -1,32 +1,181 @@
-import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
+  Building2, CheckCheck, ClipboardCheck, ListTodo, GitBranch, Contact, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { isToday } from '../utils/helpers';
+import { isToday, toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
+
+
+interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  read: boolean;
+  created_at: string;
+  data?: string;
+}
+
+function timeAgo(dateStr: string) {
+  const now = new Date();
+  const d = new Date(dateStr);
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "a l'instant";
+  if (diffMin < 60) return `il y a ${diffMin}min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  return `il y a ${diffD}j`;
+}
+
+const NOTIF_ICONS: Record<string, string> = {
+  TASK_ASSIGNED: '📋',
+  TASK_COMPLETED: '✅',
+  VISIT_REMINDER: '📍',
+  NEW_CLIENT_ASSIGNED: '🏢',
+  CLIENT_PENDING: '⏳',
+  info: 'ℹ️',
+};
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const notifRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
   const { state, logout } = useApp();
-  const today = new Date().toISOString().split('T')[0];
-  // Badge = seulement les rappels du jour + en retard (pas les "a venir")
-  const urgentReminders = state.reminders.filter(r => r.statut === 'actif' && r.date <= today).length;
+  const today = toLocalDateStr(new Date());
+  // Badge = rappels en retard filtrés par utilisateur
+  // Les prospecteurs partagent leurs rappels entre eux
+  const currentUserId = state.currentUser?.id;
+  const isProspecteur = state.currentUser?.role === 'prospection';
+  const prospecteurIds = isProspecteur
+    ? new Set(state.commerciaux.filter(c => c.role === 'prospection').map(c => c.id))
+    : null;
+  const urgentReminders = state.reminders.filter(r =>
+    r.statut === 'actif' && r.date <= today &&
+    (isProspecteur ? prospecteurIds!.has(r.commercial_id) : r.commercial_id === currentUserId)
+  ).length;
   const isAdmin = state.currentUser?.role === 'admin';
 
-  const navItems = [
+  const token = localStorage.getItem('suivipro_token');
+  const userId = state.currentUser?.id;
+
+  const fetchNotifications = useCallback(async () => {
+    if (!userId || !token) return;
+    try {
+      const [notifRes, countRes] = await Promise.all([
+        fetch(`/api/notifications/${userId}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/notifications/${userId}/unread-count`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (notifRes.ok) setNotifications(await notifRes.json());
+      if (countRes.ok) {
+        const data = await countRes.json();
+        setUnreadCount(data.count || 0);
+      }
+    } catch (err) {
+      console.error('Erreur chargement notifications:', err);
+    }
+  }, [userId, token]);
+
+  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  // Poll every 60s
+  useEffect(() => {
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // Auto-open sidebar section when navigating to a child route
+  useEffect(() => {
+    const navItems_all = [
+      { to: '/prospects', children: ['/pipeline', '/appels'] },
+      { to: '/guide', children: ['/documents', '/emails'] },
+      { to: '/admin', children: ['/import', '/sirene'] },
+    ];
+    for (const item of navItems_all) {
+      if (item.children.some(c => location.pathname === c || location.pathname.startsWith(c + '/'))) {
+        setOpenSections(prev => {
+          const next = new Set(prev);
+          next.add(item.to);
+          return next;
+        });
+      }
+    }
+  }, [location.pathname]);
+
+  const toggleSection = (to: string) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(to)) next.delete(to);
+      else next.add(to);
+      return next;
+    });
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    if (notifOpen) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [notifOpen]);
+
+  const markAsRead = async (notifId: string) => {
+    if (!token) return;
+    await fetch(`/api/notifications/${notifId}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } });
+    setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
+  const markAllRead = async () => {
+    if (!userId || !token) return;
+    await fetch(`/api/notifications/${userId}/read-all`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } });
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
+  };
+
+  const navItems: {
+    to: string;
+    icon: any;
+    label: string;
+    adminOnly: boolean;
+    children?: { to: string; icon: any; label: string; adminOnly?: boolean }[];
+  }[] = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: false },
-    { to: '/pipeline', icon: Kanban, label: 'Pipeline', adminOnly: false },
-    { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false },
-    { to: '/appels', icon: Phone, label: 'Appels', adminOnly: false },
-    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
+    { to: '/taches', icon: ListTodo, label: 'Taches', adminOnly: false },
     { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
-    { to: '/emails', icon: Mail, label: 'Emails', adminOnly: false },
-    { to: '/documents', icon: FileText, label: 'Documents', adminOnly: false },
-    { to: '/import', icon: Upload, label: 'Import/Export', adminOnly: false },
-    { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true },
+    { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false, children: [
+      { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
+      { to: '/appels', icon: Phone, label: 'Appels' },
+    ]},
+    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
+    { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR', adminOnly: false },
+    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
+    { to: '/clients/planning', icon: Calendar, label: 'Planning semaine', adminOnly: false },
+    { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false },
+    { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
+    { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false, children: [
+      { to: '/documents', icon: FileText, label: 'Documents' },
+      { to: '/emails', icon: Mail, label: 'Emails' },
+    ]},
+    { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true, children: [
+      { to: '/import', icon: Upload, label: 'Import/Export' },
+      { to: '/sirene', icon: ScanLine, label: 'SIRENE / Datagouv' },
+    ]},
+    { to: '/annuaire', icon: Contact, label: 'Annuaire', adminOnly: false },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
@@ -66,42 +215,108 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {visibleNavItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-brewery-50 text-brewery-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`
-              }
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              <span>{item.label}</span>
-              {item.to === '/rappels' && urgentReminders > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {urgentReminders}
-                </span>
-              )}
-            </NavLink>
-          ))}
+          {visibleNavItems.map(item => {
+            const hasChildren = item.children && item.children.length > 0;
+            const isOpen = openSections.has(item.to);
+            const isParentActive = location.pathname === item.to ||
+              (hasChildren && item.children!.some(c => location.pathname === c.to || location.pathname.startsWith(c.to + '/')));
+
+            if (hasChildren) {
+              return (
+                <div key={item.to}>
+                  {/* Parent item */}
+                  <div className="flex items-center">
+                    <NavLink
+                      to={item.to}
+                      end
+                      onClick={() => {
+                        if (!isOpen) toggleSection(item.to);
+                        setSidebarOpen(false);
+                      }}
+                      className={() =>
+                        `flex-1 flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium transition-colors ${
+                          isParentActive
+                            ? 'bg-brewery-50 text-brewery-700'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        }`
+                      }
+                    >
+                      <item.icon className="w-5 h-5 flex-shrink-0" />
+                      <span>{item.label}</span>
+                    </NavLink>
+                    <button
+                      onClick={() => toggleSection(item.to)}
+                      className={`p-2.5 rounded-r-lg transition-colors ${
+                        isParentActive
+                          ? 'bg-brewery-50 text-brewery-700'
+                          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                      }`}
+                      aria-label={isOpen ? 'Replier' : 'Deplier'}
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                    </button>
+                  </div>
+                  {/* Children */}
+                  {isOpen && (
+                    <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-gray-100 pl-2">
+                      {item.children!
+                        .filter(child => !child.adminOnly || isAdmin)
+                        .map(child => (
+                        <NavLink
+                          key={child.to}
+                          to={child.to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                              isActive
+                                ? 'bg-brewery-50 text-brewery-700'
+                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                            }`
+                          }
+                        >
+                          <child.icon className="w-4 h-4 flex-shrink-0" />
+                          <span>{child.label}</span>
+                          {child.to === '/rappels' && urgentReminders > 0 && (
+                            <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                              {urgentReminders}
+                            </span>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Standalone item
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-brewery-50 text-brewery-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`
+                }
+              >
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <span>{item.label}</span>
+                {item.to === '/rappels' && urgentReminders > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {urgentReminders}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* External links */}
         <div className="px-3 pb-2 space-y-1">
-          <a
-            href="https://crm-lbdp-production.up.railway.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4 flex-shrink-0" />
-            <span>CRM LBDP</span>
-            <span className="ml-auto text-[10px] text-blue-400">Ouvrir</span>
-          </a>
           <a
             href="https://suivi-horaires-alternants-production.up.railway.app/admin"
             target="_blank"
@@ -144,12 +359,12 @@ export default function Layout() {
               title="Mon profil"
             >
               <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isAdmin ? 'bg-amber-100' : 'bg-brewery-100'
+                isAdmin ? 'bg-amber-100' : state.currentUser?.role === 'prospection' ? 'bg-emerald-100' : 'bg-brewery-100'
               }`}>
                 {isAdmin ? (
                   <Shield className="w-4 h-4 text-amber-700" />
                 ) : (
-                  <User className="w-4 h-4 text-brewery-700" />
+                  <User className={`w-4 h-4 ${state.currentUser?.role === 'prospection' ? 'text-emerald-700' : 'text-brewery-700'}`} />
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -157,7 +372,7 @@ export default function Layout() {
                   {state.currentUser?.prenom} {state.currentUser?.nom}
                 </p>
                 <p className="text-[10px] text-gray-500">
-                  {isAdmin ? 'Administrateur' : 'Commercial'}
+                  {isAdmin ? 'Administrateur' : state.currentUser?.role === 'prospection' ? 'Prospection' : 'Commercial'}
                 </p>
               </div>
             </Link>
@@ -193,10 +408,78 @@ export default function Layout() {
               <Map className="w-4 h-4" />
               <span className="hidden sm:inline">Carte</span>
             </Link>
+            {/* Notifications */}
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => { setNotifOpen(prev => !prev); }}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  notifOpen
+                    ? 'bg-brewery-100 text-brewery-700'
+                    : 'text-gray-500 hover:bg-brewery-50 hover:text-brewery-700'
+                }`}
+                title="Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notifOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl border border-gray-200 shadow-lg z-50 max-h-96 flex flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <h3 className="font-semibold text-sm text-gray-900">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllRead}
+                        className="flex items-center gap-1 text-xs text-brewery-600 hover:text-brewery-700"
+                      >
+                        <CheckCheck className="w-3 h-3" />
+                        Tout marquer lu
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {notifications.length === 0 ? (
+                      <div className="py-8 text-center text-sm text-gray-400">
+                        Aucune notification
+                      </div>
+                    ) : notifications.map(n => (
+                      <div
+                        key={n.id}
+                        className={`px-4 py-3 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 transition-colors ${
+                          !n.read ? 'bg-brewery-50/50' : ''
+                        }`}
+                        onClick={() => { if (!n.read) markAsRead(n.id); }}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm mt-0.5">{NOTIF_ICONS[n.type] || NOTIF_ICONS.info}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${!n.read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                              {n.title}
+                            </p>
+                            {n.message && (
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+                            )}
+                            <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+                          </div>
+                          {!n.read && (
+                            <div className="w-2 h-2 bg-brewery-500 rounded-full mt-1.5 flex-shrink-0" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-              isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+              isAdmin ? 'bg-amber-100 text-amber-700' : state.currentUser?.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
             }`}>
-              {isAdmin ? 'Admin' : 'Commercial'}
+              {isAdmin ? 'Admin' : state.currentUser?.role === 'prospection' ? 'Prospection' : 'Commercial'}
             </div>
             <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors">{state.currentUser?.prenom}</Link>
           </div>
@@ -207,6 +490,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
     </div>
   );
 }
