@@ -306,6 +306,12 @@ export default function ClientsPlanningPage() {
       resultCounts.sans_cr = sansCr;
     }
 
+    // Add "cr_a_venir" for upcoming appointments without CR
+    const crAVenir = filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] > todayStr).length;
+    if (crAVenir > 0) {
+      resultCounts.cr_a_venir = crAVenir;
+    }
+
     return { resultCounts, filteredAppointments, totalRdv: filteredAppointments.length, rdvWithCR, periodLabel, startDate, endDate };
   }, [state.appointments, resultsPeriod, planningWeekOffset, filterCommercials, isAdmin, state.currentUser]);
 
@@ -385,12 +391,13 @@ export default function ClientsPlanningPage() {
                   pas_interesse: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200',
                   decale: 'bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200',
                   sans_cr: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300',
+                  cr_a_venir: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-indigo-200',
                 };
                 const isActive = expandedResult === key;
                 return (
                   <button key={key} onClick={() => setExpandedResult(isActive ? null : key)}
                     className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-pointer transition-all ${colors[key] || 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105 shadow-sm' : 'hover:scale-105 hover:shadow-sm'}`}>
-                    {key === 'sans_cr' ? 'Sans CR' : (APPOINTMENT_RESULT_LABELS[key] || key)}: {count}
+                    {key === 'sans_cr' ? 'Sans CR' : key === 'cr_a_venir' ? 'CR a venir' : (APPOINTMENT_RESULT_LABELS[key] || key)}: {count}
                     <ChevronDown className={`w-3 h-3 transition-transform ${isActive ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />
                   </button>
                 );
@@ -403,18 +410,20 @@ export default function ClientsPlanningPage() {
             const todayDate = toLocalDateStr(new Date());
             const rdvsForResult = expandedResult === 'sans_cr'
               ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayDate)
+              : expandedResult === 'cr_a_venir'
+              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] > todayDate)
               : resultsData.filteredAppointments.filter(a => a.compte_rendu === expandedResult);
             const resultColors: Record<string, string> = {
               client: 'border-green-200', mail_envoye: 'border-blue-200',
               commande_plus_tard: 'border-yellow-200', a_relancer: 'border-orange-200',
               pas_interesse: 'border-red-200', decale: 'border-violet-200',
-              sans_cr: 'border-gray-300',
+              sans_cr: 'border-gray-300', cr_a_venir: 'border-indigo-200',
             };
 
             return (
               <div className="mt-3 border-t pt-3 space-y-2">
                 <p className="text-xs text-gray-500 font-medium">
-                  {expandedResult === 'sans_cr' ? 'Sans compte-rendu' : (APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult)} ({rdvsForResult.length})
+                  {expandedResult === 'sans_cr' ? 'Sans compte-rendu' : expandedResult === 'cr_a_venir' ? 'CR a venir' : (APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult)} ({rdvsForResult.length})
                 </p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {rdvsForResult.map(rdv => {
