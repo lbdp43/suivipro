@@ -232,6 +232,7 @@ interface AppContextType {
   getTasksForClient: (clientId: string) => TaskClient[];
   getClientsForCommercial: (commercialId: string) => Client[];
   getCommandesForClient: (clientId: string) => Commande[];
+  pausePolling: (durationMs?: number) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -259,6 +260,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const currentUserRef = useRef<Commercial | null>(null);
+  const pollPausedUntilRef = useRef<number>(0);
+
+  // Pause polling temporarily (e.g. during bulk operations)
+  const pausePolling = useCallback((durationMs: number = 15000) => {
+    pollPausedUntilRef.current = Date.now() + durationMs;
+  }, []);
 
   // Wrapped dispatch that also syncs to API
   const dispatch: React.Dispatch<Action> = useCallback((action: Action) => {
@@ -337,6 +344,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const poll = async () => {
       if (document.visibilityState !== 'visible') return;
+      if (Date.now() < pollPausedUntilRef.current) return;
       try {
         const data = await loadFullState();
         rawDispatch({
@@ -394,7 +402,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getTasksForClient,
     getClientsForCommercial,
     getCommandesForClient,
-  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient]);
+    pausePolling,
+  }), [state, dispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient, pausePolling]);
 
   return (
     <AppContext.Provider value={contextValue}>

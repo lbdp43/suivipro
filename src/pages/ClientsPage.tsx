@@ -38,7 +38,7 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatch, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient } = useApp();
+  const { state, dispatch, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient, pausePolling } = useApp();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -201,6 +201,10 @@ export default function ClientsPage() {
   const applyBulkAction = async () => {
     if (!bulkValue.trim() && bulkAction !== 'recurrence') return;
     const now = new Date().toISOString();
+
+    // Pause polling to prevent server state from overwriting optimistic updates
+    // before all individual PUT requests have completed
+    pausePolling(30000);
 
     let count = 0;
     for (const id of selectedIds) {
