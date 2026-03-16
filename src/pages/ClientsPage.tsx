@@ -117,7 +117,7 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'supprimer_visites' | 'retirer_recurrence'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'retirer_recurrence'>('none');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkNextVisit, setBulkNextVisit] = useState('');
   const [bulkVisiteComment, setBulkVisiteComment] = useState('');
@@ -278,35 +278,6 @@ export default function ClientsPage() {
       if (count > 0) toast.success(`${count} visite(s) enregistree(s)`);
       setBulkVisiteComment('');
       setBulkVisiteType('VISITE');
-      exitSelectionMode();
-      return;
-    }
-
-    if (bulkAction === 'supprimer_visites') {
-      // Filter selected clients to only those without recurrence
-      const clientsSansRecurrence = Array.from(selectedIds)
-        .map(id => state.clients.find(c => c.id === id))
-        .filter((c): c is Client => !!c && getEffectiveFrequency(c.type_client, c.custom_recurrence) === null);
-
-      if (clientsSansRecurrence.length === 0) {
-        toast.error('Aucun client sans récurrence dans la sélection');
-        return;
-      }
-
-      if (!confirm(`Supprimer les prochaines visites de ${clientsSansRecurrence.length} client(s) sans récurrence ?`)) return;
-
-      for (const client of clientsSansRecurrence) {
-        const updated: Client = { ...client, next_visit: null, custom_recurrence: null, date_modification: now };
-        try {
-          await apiPut(`/clients/${client.id}`, updated);
-          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-          count++;
-        } catch {
-          errors++;
-        }
-      }
-      if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
-      if (count > 0) toast.success(`${count} client(s) : prochaines visites supprimées`);
       exitSelectionMode();
       return;
     }
@@ -1082,16 +1053,6 @@ export default function ClientsPage() {
             >
               {selectedIds.size === filtered.length ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
-            <button
-              className="text-xs font-medium text-orange-700 hover:text-orange-900 underline"
-              onClick={() => {
-                const sansRecurrence = filtered.filter(c => getEffectiveFrequency(c.type_client, c.custom_recurrence) === null);
-                setSelectedIds(new Set(sansRecurrence.map(c => c.id)));
-                if (sansRecurrence.length === 0) toast.info('Aucun client sans récurrence dans la liste filtrée');
-              }}
-            >
-              Sélectionner sans récurrence
-            </button>
             <span className="text-xs text-brewery-600 ml-auto font-medium">{selectedIds.size} sélectionné(s)</span>
             <button onClick={() => setSelectionMode(false)} className="p-1 text-gray-400 hover:text-gray-600"><XCircle className="w-4 h-4" /></button>
           </div>
@@ -1115,7 +1076,7 @@ export default function ClientsPage() {
               <option value="next_visit">Definir date de visite</option>
               <option value="recurrence">Recurrence + prochaine visite</option>
               <option value="retirer_recurrence">Retirer récurrence + supprimer visites</option>
-              <option value="supprimer_visites">Supprimer visites (sans récurrence)</option>
+
             </select>
 
             {bulkAction === 'visite' && (
@@ -1205,17 +1166,6 @@ export default function ClientsPage() {
                     return c && (getEffectiveFrequency(c.type_client, c.custom_recurrence) !== null || c.next_visit);
                   }).length
                 } client(s) à modifier sur {selectedIds.size})
-              </span>
-            )}
-
-            {bulkAction === 'supprimer_visites' && (
-              <span className="text-xs text-gray-500 italic">
-                Supprime next_visit des clients sélectionnés qui n'ont pas de récurrence ({
-                  Array.from(selectedIds).filter(id => {
-                    const c = state.clients.find(cl => cl.id === id);
-                    return c && getEffectiveFrequency(c.type_client, c.custom_recurrence) === null;
-                  }).length
-                } sans récurrence sur {selectedIds.size})
               </span>
             )}
 
