@@ -426,8 +426,8 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11, client_id=$13 WHERE id=$12',
-    [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', req.params.id, a.client_id || null]
+    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11, client_id=$12 WHERE id=$13',
+    [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', a.client_id || null, req.params.id]
   );
   if (a.compte_rendu) {
     await logActivity(req.user.id, 'compte_rendu_rdv', `Compte rendu: ${a.compte_rendu}`, 'appointment', req.params.id);
