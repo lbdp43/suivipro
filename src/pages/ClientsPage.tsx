@@ -228,16 +228,21 @@ export default function ClientsPage() {
     if (!state.currentUser) return { lastVisit: client.last_visit, nextVisit: client.next_visit };
     const interactions = getInteractionsForClient(client.id);
     const myInteractions = interactions
-      .filter(i => i.commercial_id === state.currentUser!.id && (i.type === 'VISITE' || i.type === 'APPEL'))
+      .filter(i => i.commercial_id === state.currentUser!.id && (i.type === 'VISITE' || i.type === 'APPEL') && i.date && /^\d{4}-\d{2}-\d{2}/.test(i.date))
       .sort((a, b) => b.date.localeCompare(a.date));
-    const myLastVisit = myInteractions.length > 0 ? myInteractions[0].date : null;
+    const myLastVisit = myInteractions.length > 0 ? myInteractions[0].date.slice(0, 10) : null;
     const freq = getEffectiveFrequency(client.type_client, client.custom_recurrence);
     if (!freq) return { lastVisit: myLastVisit, nextVisit: null };
     if (!myLastVisit) return { lastVisit: null, nextVisit: null }; // never visited by me -> no delay
-    const nextDate = new Date(myLastVisit + 'T12:00:00');
-    nextDate.setDate(nextDate.getDate() + freq);
-    const nextVisit = nextDate.toISOString().slice(0, 10);
-    return { lastVisit: myLastVisit, nextVisit };
+    try {
+      const nextDate = new Date(myLastVisit + 'T12:00:00');
+      if (isNaN(nextDate.getTime())) return { lastVisit: myLastVisit, nextVisit: null };
+      nextDate.setDate(nextDate.getDate() + freq);
+      const nextVisit = nextDate.toISOString().slice(0, 10);
+      return { lastVisit: myLastVisit, nextVisit };
+    } catch {
+      return { lastVisit: myLastVisit, nextVisit: null };
+    }
   }, [state.currentUser, state.interactions, getInteractionsForClient]);
 
   // Personal visit status for current user
@@ -1293,7 +1298,11 @@ export default function ClientsPage() {
                           <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                             <Calendar className="w-3 h-3" />
                             {visitStatus === 'LATE'
-                              ? `En retard de ${Math.floor((new Date().getTime() - new Date(personalInfo.nextVisit + 'T12:00:00').getTime()) / 86400000)}j (ma derniere visite: ${personalInfo.lastVisit ? formatDate(personalInfo.lastVisit) : 'jamais'})`
+                              ? (() => {
+                                  const d = new Date(personalInfo.nextVisit + 'T12:00:00').getTime();
+                                  const days = !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0;
+                                  return `En retard de ${days}j (ma derniere visite: ${personalInfo.lastVisit ? formatDate(personalInfo.lastVisit) : 'jamais'})`;
+                                })()
                               : `Ma prochaine visite : ${formatDate(personalInfo.nextVisit)}`}
                           </div>
                         )}
@@ -1480,7 +1489,7 @@ export default function ClientsPage() {
               const pInfo = getPersonalVisitInfo(selectedClient);
               const pStatus = getVisitStatusFromDate(pInfo.nextVisit, selectedClient.statut);
               const daysLate = pStatus === 'LATE' && pInfo.nextVisit
-                ? Math.floor((new Date().getTime() - new Date(pInfo.nextVisit + 'T12:00:00').getTime()) / 86400000)
+                ? (() => { const d = new Date(pInfo.nextVisit + 'T12:00:00').getTime(); return !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0; })()
                 : 0;
               return (
                 <div className={`mt-3 p-3 rounded-lg ${pStatus === 'LATE' ? 'bg-red-50' : 'bg-gray-50'}`}>
