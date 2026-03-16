@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams, Link, useLocation } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
@@ -13,54 +13,16 @@ import {
 import { toLocalDateStr } from '../utils/helpers';
 import { apiPut } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
+import ClientDetailModal from '../components/ClientDetailModal';
 
 export default function ClientsPlanningPage() {
   const { state, dispatchLocal, getCommercial } = useApp();
   const toast = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
-
   const isAdmin = state.currentUser?.role === 'admin';
-  const location = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Get the scrollable parent (main element from Layout)
-  const getScrollParent = useCallback(() => {
-    if (scrollRef.current) {
-      // Walk up to find the actual scrollable container (main.overflow-auto from Layout)
-      let el: HTMLElement | null = scrollRef.current;
-      while (el) {
-        if (el.tagName === 'MAIN' || (el.scrollHeight > el.clientHeight && el.clientHeight > 0)) {
-          return el;
-        }
-        el = el.parentElement;
-      }
-    }
-    return scrollRef.current;
-  }, []);
-
-  // Restore scroll position on mount (when coming back from client page)
-  useEffect(() => {
-    const saved = sessionStorage.getItem('planning_scroll');
-    if (saved) {
-      // Wait for DOM to be fully rendered with data
-      const timer = setTimeout(() => {
-        const scrollEl = getScrollParent();
-        if (scrollEl) {
-          scrollEl.scrollTo(0, parseInt(saved, 10));
-        }
-        sessionStorage.removeItem('planning_scroll');
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [getScrollParent]);
-
-  // Save scroll position before navigating away
-  const saveScrollPosition = useCallback(() => {
-    const scrollEl = getScrollParent();
-    if (scrollEl) {
-      sessionStorage.setItem('planning_scroll', String(scrollEl.scrollTop));
-    }
-  }, [getScrollParent]);
+  // Client detail modal state
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
 
   const [planningWeekOffset, setPlanningWeekOffset] = useState(0);
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
@@ -456,7 +418,7 @@ export default function ClientsPlanningPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Link to={info.link} className="text-sm font-medium text-brewery-700 hover:text-brewery-900 hover:underline">{name}</Link>
+                              <button onClick={() => { if (rdv.client_id) setSelectedClientId(rdv.client_id); }} className="text-sm font-medium text-brewery-700 hover:text-brewery-900 hover:underline text-left">{name}</button>
                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${info.isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                                 {info.isClient ? 'Client' : 'Prospect'}
                               </span>
@@ -542,16 +504,15 @@ export default function ClientsPlanningPage() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 ml-4">
                     {clients.map(c => (
-                      <Link
+                      <button
                         key={c.id}
-                        to={`/clients?id=${c.id}`}
-                        onClick={saveScrollPosition}
+                        onClick={() => setSelectedClientId(c.id)}
                         className="px-2 py-1 bg-white border border-red-200 rounded text-xs text-red-700 hover:bg-red-100 transition-colors flex items-center gap-1"
                       >
                         <span className="font-medium">{c.nom}</span>
                         <span className="text-[10px] text-red-400">{c.ville}</span>
                         {c.next_visit && <span className="text-[9px] text-red-300">({c.next_visit.substring(5).replace('-', '/')})</span>}
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -679,11 +640,10 @@ export default function ClientsPlanningPage() {
                                 const isDue = c.next_visit && c.next_visit <= day.dateStr;
                                 const isLate = c.next_visit && c.next_visit < toLocalDateStr(new Date());
                                 return (
-                                  <Link
+                                  <button
                                     key={c.id}
-                                    to={`/clients?id=${c.id}`}
-                                    onClick={saveScrollPosition}
-                                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm ${
+                                    onClick={() => setSelectedClientId(c.id)}
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm text-left ${
                                       isLate ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
                                       : isDue ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100'
                                       : isToday ? 'bg-white border-brewery-200 text-brewery-700 hover:bg-brewery-100'
@@ -698,7 +658,7 @@ export default function ClientsPlanningPage() {
                                       </span>
                                     )}
                                     {isAdmin && comm && <span className="text-[10px] text-gray-300 ml-1">• {comm.prenom}</span>}
-                                  </Link>
+                                  </button>
                                 );
                               })}
                             </div>
@@ -713,6 +673,14 @@ export default function ClientsPlanningPage() {
           );
         })}
       </div>
+
+      {/* Client Detail Modal */}
+      {selectedClientId && (
+        <ClientDetailModal
+          clientId={selectedClientId}
+          onClose={() => setSelectedClientId(null)}
+        />
+      )}
 
       {/* CR Modal */}
       {crModalRdv && (

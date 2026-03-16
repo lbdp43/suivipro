@@ -942,12 +942,10 @@ export default function ClientsPage() {
                         >
                           {t}
                         </button>
-                        {isAdmin && (
-                          <span className="hidden group-hover:inline-flex items-center gap-0.5 ml-0.5">
-                            <button onClick={e => { e.stopPropagation(); setEditingTournee(t); setEditTourneeName(t); }} className="p-0.5 text-gray-400 hover:text-blue-600"><Edit2 className="w-3 h-3" /></button>
-                            <button onClick={e => { e.stopPropagation(); deleteTournee(t); }} className="p-0.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
-                          </span>
-                        )}
+                        <span className="hidden group-hover:inline-flex items-center gap-0.5 ml-0.5">
+                          <button onClick={e => { e.stopPropagation(); setEditingTournee(t); setEditTourneeName(t); }} className="p-0.5 text-gray-400 hover:text-blue-600"><Edit2 className="w-3 h-3" /></button>
+                          <button onClick={e => { e.stopPropagation(); deleteTournee(t); }} className="p-0.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                        </span>
                       </div>
                     );
                   })}
