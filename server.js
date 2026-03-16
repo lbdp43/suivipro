@@ -1,47 +1,123 @@
-import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import cron from 'node-cron';
+import { dbReady } from './server/db.js';
+import apiRoutes, { runZoneSync } from './server/routes.js';
+import googleCalendarRoutes from './server/google-calendar.js';
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-const MIME = {
-  '.html': 'text/html',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-};
+const app = express();
 
-const indexHtml = readFileSync(join(DIST, 'index.html'));
+// Trust Railway's reverse proxy (fixes X-Forwarded-For / rate-limit)
+app.set('trust proxy', 1);
 
-createServer((req, res) => {
-  const url = req.url.split('?')[0];
-  const filePath = join(DIST, url);
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
+      connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr"],
+      fontSrc: ["'self'"],
+      frameSrc: ["'self'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 
-  if (url !== '/' && existsSync(filePath) && !filePath.endsWith('/')) {
-    const ext = extname(filePath);
-    const mime = MIME[ext] || 'application/octet-stream';
-    const file = readFileSync(filePath);
-    // Cache static assets (hashed filenames)
-    if (url.startsWith('/assets/')) {
-      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000, immutable' });
-    } else {
-      res.writeHead(200, { 'Content-Type': mime });
+// CORS restrictif
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+}));
+
+// Rate limiting global
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requetes, reessayez dans une minute' },
+}));
+
+// Rate limiting strict sur le login
+app.use('/api/auth/login', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives de connexion, reessayez dans 15 minutes' },
+}));
+
+// Rate limiting sur les webhooks et imports
+app.use('/api/webhook', rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de webhooks, reessayez dans une minute' },
+}));
+app.use('/api/prospects/import', rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop d\'imports, reessayez dans une minute' },
+}));
+
+// Body parser — 10mb pour les uploads de documents
+app.use(express.json({ limit: '10mb' }));
+
+// API routes
+app.use('/api', apiRoutes);
+app.use('/api', googleCalendarRoutes);
+
+// Serve static files from dist (production)
+if (existsSync(DIST)) {
+  app.use(express.static(DIST, {
+    maxAge: '1y',
+    immutable: true,
+    index: false, // Don't auto-serve index.html for /
+  }));
+
+  // SPA fallback: all non-API routes serve index.html
+  app.get('{*path}', (req, res) => {
+    res.sendFile(join(DIST, 'index.html'));
+  });
+}
+
+// Global error handler — catches unhandled errors from all routes
+app.use((err, req, res, _next) => {
+  console.error('Unhandled route error:', err.stack || err.message);
+  if (res.headersSent) return;
+  res.status(err.status || 500).json({ error: 'Erreur interne du serveur' });
+});
+
+// Wait for database to be ready before starting server
+dbReady.then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`SuiviPro API + Frontend running on port ${PORT}`);
+  });
+
+  // CRON: Sync zone INSEE every Monday at 6:00 UTC
+  cron.schedule('0 6 * * 1', async () => {
+    console.log('[CRON] Lancement sync zone hebdomadaire (lundi 6h UTC)...');
+    try {
+      await runZoneSync();
+    } catch (err) {
+      console.error('[CRON] Erreur sync zone:', err.message);
     }
-    res.end(file);
-  } else {
-    // SPA fallback: serve index.html for all routes
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(indexHtml);
-  }
-}).listen(PORT, '0.0.0.0', () => {
-  console.log(`SuiviPro running on port ${PORT}`);
+  }, { timezone: 'Europe/Paris' });
+
+  console.log('CRON schedule: sync zone INSEE every Monday at 6:00 (Europe/Paris)');
 });

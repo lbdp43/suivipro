@@ -1,38 +1,466 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, X,
-  Edit2, Trash2, Save, Clock, Calendar,
+  Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
+  Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
+  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
+  Camera, Loader2, Building2, ClipboardCheck, ShoppingCart, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
+import EmailTemplateModal from '../components/EmailTemplateModal';
+import { ocrProspect, convertProspectToClient, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import { useToast } from '../components/Toast';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
-  EstablishmentType, PipelineStage, Prospect,
+  APPOINTMENT_RESULT_LABELS, AppointmentResult, Appointment,
+  EstablishmentType, PipelineStage, Prospect, Tag as TagType,
+  CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
+  ClientType,
 } from '../types';
-import { generateId, formatDate, formatTimeAgo, formatDuration } from '../utils/helpers';
+import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
+import FilterPresets from '../components/FilterPresets';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 export default function ProspectsPage() {
-  const { state, dispatch, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const toast = useToast();
   const { startCall } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<EstablishmentType | ''>('');
-  const [filterStage, setFilterStage] = useState<PipelineStage | ''>('');
+  const [searchTerm, setSearchTerm] = usePersistedState('prospects_searchTerm', '');
+  const [filterTypesArr, setFilterTypesArr] = usePersistedState<EstablishmentType[]>('prospects_filterTypes', []);
+  const filterTypes = useMemo(() => new Set(filterTypesArr), [filterTypesArr]);
+  const setFilterTypes = useCallback((v: Set<EstablishmentType> | ((prev: Set<EstablishmentType>) => Set<EstablishmentType>)) => {
+    if (typeof v === 'function') {
+      setFilterTypesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterTypesArr(Array.from(v));
+    }
+  }, [setFilterTypesArr]);
+  const [filterStagesArr, setFilterStagesArr] = usePersistedState<PipelineStage[]>('prospects_filterStages', []);
+  const filterStages = useMemo(() => new Set(filterStagesArr), [filterStagesArr]);
+  const setFilterStages = useCallback((v: Set<PipelineStage> | ((prev: Set<PipelineStage>) => Set<PipelineStage>)) => {
+    if (typeof v === 'function') {
+      setFilterStagesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterStagesArr(Array.from(v));
+    }
+  }, [setFilterStagesArr]);
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
-  const [filterSecteur, setFilterSecteur] = useState('');
+  const [filterSecteursArr, setFilterSecteursArr] = usePersistedState<string[]>('prospects_filterSecteurs', []);
+  const filterSecteurs = useMemo(() => new Set(filterSecteursArr), [filterSecteursArr]);
+  const setFilterSecteurs = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterSecteursArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterSecteursArr(Array.from(v));
+    }
+  }, [setFilterSecteursArr]);
+  const [filterPostalCodesArr, setFilterPostalCodesArr] = usePersistedState<string[]>('prospects_filterPostalCodes', []);
+  const filterPostalCodes = useMemo(() => new Set(filterPostalCodesArr), [filterPostalCodesArr]);
+  const setFilterPostalCodes = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterPostalCodesArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterPostalCodesArr(Array.from(v));
+    }
+  }, [setFilterPostalCodesArr]);
+  const [filterDepartmentsArr, setFilterDepartmentsArr] = usePersistedState<string[]>('prospects_filterDepartments', []);
+  const filterDepartments = useMemo(() => new Set(filterDepartmentsArr), [filterDepartmentsArr]);
+  const setFilterDepartments = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterDepartmentsArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterDepartmentsArr(Array.from(v));
+    }
+  }, [setFilterDepartmentsArr]);
+  const [sortScore, setSortScore] = usePersistedState<'none' | 'asc' | 'desc'>('prospects_sortScore', 'none');
+  const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien'>('prospects_sortDate', 'none');
+  const [filterAvecRdv, setFilterAvecRdv] = usePersistedState('prospects_filterAvecRdv', false);
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('prospects_filterCommercial', '');
+  const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
+  const [quickNoteText, setQuickNoteText] = useState('');
+  const [pageSize, setPageSize] = usePersistedState('prospects_pageSize', 50);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
+  // Quick reminder
+  const [reminderProspect, setReminderProspect] = useState<Prospect | null>(null);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderHeure, setReminderHeure] = useState('09:00');
 
-  // Get unique sectors for filter
+  // Convert to client
+  const [convertProspect, setConvertProspect] = useState<Prospect | null>(null);
+  const [convertType, setConvertType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
+  const [convertTournee, setConvertTournee] = useState('');
+  const [convertCustomRecurrence, setConvertCustomRecurrence] = useState<number | null>(null);
+  const [converting, setConverting] = useState(false);
+  const alreadyConvertedIds = useMemo(() => new Set(state.clients.map(c => c.prospect_id).filter(Boolean)), [state.clients]);
+
+  // Entity types visible in pipeline (loaded from DB)
+  const [pipelineEntityTypes, setPipelineEntityTypes] = useState<Set<string>>(new Set(['prospect']));
+  useEffect(() => {
+    const token = localStorage.getItem('suivipro_token');
+    fetch('/api/entity-types', { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+      .then(r => { if (!r.ok) throw new Error('Not ok'); return r.json(); })
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        const visible = new Set<string>(data.filter((et: any) => et.show_in_pipeline).map((et: any) => et.id as string));
+        if (visible.size === 0) visible.add('prospect');
+        setPipelineEntityTypes(visible);
+      })
+      .catch(err => console.error('Failed to load entity types:', err));
+  }, []);
+
+  // Compte-rendu modal
+  const [showCompteRendu, setShowCompteRendu] = useState(false);
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+  const [compteRenduResult, setCompteRenduResult] = useState<AppointmentResult>('');
+  const [compteRenduNotes, setCompteRenduNotes] = useState('');
+  const [compteRenduRappel, setCompteRenduRappel] = useState(false);
+  const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
+  const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
+
+  // Tag management in form
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#6366f1');
+  const [editingTag, setEditingTag] = useState<TagType | null>(null);
+
+  const TAG_COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
+
+  const saveNewTag = async () => {
+    if (!newTagName.trim()) return;
+    if (editingTag) {
+      const payload = { ...editingTag, nom: newTagName.trim(), couleur: newTagColor };
+      try {
+        await apiPut(`/tags/${editingTag.id}`, payload);
+        dispatchLocal({ type: 'UPDATE_TAG', payload });
+      } catch (err) {
+        toast.error(`Erreur mise a jour tag: ${(err as Error).message}`);
+        return;
+      }
+      setEditingTag(null);
+    } else {
+      const payload = { id: generateId('tag'), nom: newTagName.trim(), couleur: newTagColor };
+      try {
+        await apiPost('/tags', payload);
+        dispatchLocal({ type: 'ADD_TAG', payload });
+      } catch (err) {
+        toast.error(`Erreur creation tag: ${(err as Error).message}`);
+        return;
+      }
+    }
+    setNewTagName('');
+    setNewTagColor('#6366f1');
+  };
+
+  const deleteTag = async (tagId: string) => {
+    if (!confirm('Supprimer ce tag ? Il sera retire de tous les prospects.')) return;
+    try {
+      await apiDelete(`/tags/${tagId}`);
+      dispatchLocal({ type: 'DELETE_TAG', payload: tagId });
+      // Remove tag from current form data if selected
+      setFormData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagId) }));
+    } catch (err) {
+      toast.error(`Erreur suppression tag: ${(err as Error).message}`);
+    }
+  };
+
+  const startEditTag = (tag: TagType) => {
+    setEditingTag(tag);
+    setNewTagName(tag.nom);
+    setNewTagColor(tag.couleur);
+    setShowTagManager(true);
+  };
+
+  // Compte-rendu functions
+  const openCompteRendu = (rdv: Appointment) => {
+    setCompteRenduRdv(rdv);
+    setCompteRenduResult((rdv.compte_rendu as AppointmentResult) || '');
+    setCompteRenduNotes(rdv.notes_compte_rendu || '');
+    setCompteRenduRappel(false);
+    const in7days = new Date();
+    in7days.setDate(in7days.getDate() + 7);
+    setCompteRenduRappelDate(toLocalDateStr(in7days));
+    setCompteRenduRappelMessage('');
+    setShowCompteRendu(true);
+  };
+
+  const handleCompteRenduResultChange = (value: AppointmentResult) => {
+    const newValue = compteRenduResult === value ? '' : value;
+    setCompteRenduResult(newValue);
+    if (newValue === 'a_relancer' || newValue === 'commande_plus_tard' || newValue === 'mail_envoye') {
+      setCompteRenduRappel(true);
+    }
+  };
+
+  const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
+  const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
+
+  const saveCompteRendu = async () => {
+    if (!compteRenduRdv || !compteRenduValid) return;
+    const updatedRdv = {
+      ...compteRenduRdv,
+      statut: 'termine' as const,
+      compte_rendu: compteRenduResult,
+      notes_compte_rendu: compteRenduNotes,
+    };
+    try {
+      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
+      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updatedRdv });
+    } catch (err) {
+      toast.error(`Erreur mise a jour RDV: ${(err as Error).message}`);
+      return;
+    }
+    const prospect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
+    if (prospect) {
+      const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+      let newStage: PipelineStage | null = null;
+      if (compteRenduResult === 'client') {
+        newStage = 'client_gagne';
+      } else if (compteRenduResult === 'pas_interesse') {
+        newStage = 'perdu';
+      } else if (compteRenduResult === 'mail_envoye') {
+        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
+      } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
+        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
+      }
+      if (newStage) {
+        try {
+          await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
+        } catch (err) {
+          toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
+        }
+      }
+    }
+    if (compteRenduRappel && compteRenduRappelDate) {
+      const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
+      const reminderPayload = {
+        id: generateId('rem'),
+        prospect_id: compteRenduRdv.prospect_id,
+        commercial_id: compteRenduRdv.commercial_id,
+        date: compteRenduRappelDate,
+        heure: '09:00',
+        message: autoMessage,
+        statut: 'actif' as const,
+      };
+      try {
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+      } catch (err) {
+        toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+      }
+    }
+    setShowCompteRendu(false);
+  };
+
+  // Multi-selection mode
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkAction, setShowBulkAction] = useState<'none' | 'etape' | 'secteur' | 'tags'>('none');
+  const [bulkSecteur, setBulkSecteur] = useState('');
+
+  const toggleSelection = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(filteredProspects.map(p => p.id)));
+  };
+
+  const deselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setShowBulkAction('none');
+  };
+
+  const bulkChangeStage = async (stage: PipelineStage) => {
+    const now = new Date().toISOString();
+    let errors = 0;
+    for (const id of selectedIds) {
+      const prospect = state.prospects.find(p => p.id === id);
+      if (prospect) {
+        const payload = { ...prospect, etape_pipeline: stage, date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
+      }
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
+    setShowBulkAction('none');
+    exitSelectionMode();
+  };
+
+  const bulkChangeSecteur = async () => {
+    if (!bulkSecteur.trim()) return;
+    const now = new Date().toISOString();
+    let errors = 0;
+    for (const id of selectedIds) {
+      const prospect = state.prospects.find(p => p.id === id);
+      if (prospect) {
+        const payload = { ...prospect, secteur: bulkSecteur.trim(), date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
+      }
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
+    setBulkSecteur('');
+    setShowBulkAction('none');
+    exitSelectionMode();
+  };
+
+  const bulkToggleTag = async (tagId: string) => {
+    const now = new Date().toISOString();
+    // If all selected prospects have this tag, remove it. Otherwise, add it.
+    const allHaveTag = [...selectedIds].every(id => {
+      const p = state.prospects.find(pr => pr.id === id);
+      return p?.tags.includes(tagId);
+    });
+    let errors = 0;
+    for (const id of selectedIds) {
+      const prospect = state.prospects.find(p => p.id === id);
+      if (prospect) {
+        const newTags = allHaveTag
+          ? prospect.tags.filter(t => t !== tagId)
+          : prospect.tags.includes(tagId) ? prospect.tags : [...prospect.tags, tagId];
+        const payload = { ...prospect, tags: newTags, date_modification: now };
+        try {
+          await apiPut(`/prospects/${id}`, payload);
+          dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        } catch { errors++; }
+      }
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
+  };
+
+  const bulkDelete = async () => {
+    if (!confirm(`Supprimer ${selectedIds.size} prospect(s) ?`)) return;
+    let errors = 0;
+    for (const id of selectedIds) {
+      try {
+        await apiDelete(`/prospects/${id}`);
+        dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+      } catch { errors++; }
+    }
+    if (errors > 0) toast.error(`${errors} prospect(s) non supprimes`);
+    exitSelectionMode();
+  };
+
+  const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setQuickNoteId(prospect.id);
+    setQuickNoteText(prospect.notes);
+  };
+
+  const saveQuickNote = async () => {
+    if (!quickNoteId) return;
+    const prospect = state.prospects.find(p => p.id === quickNoteId);
+    if (prospect) {
+      const payload = { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() };
+      try {
+        await apiPut(`/prospects/${quickNoteId}`, payload);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      } catch (err) {
+        toast.error(`Erreur sauvegarde note: ${(err as Error).message}`);
+        return;
+      }
+    }
+    setQuickNoteId(null);
+  };
+
+  // Get unique sectors, postal codes, and departments for filters
   const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
+  const allPostalCodes = [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort();
+
+  const secteurCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.secteur) map.set(p.secteur, (map.get(p.secteur) || 0) + 1);
+    });
+    return map;
+  }, [state.prospects]);
+
+  const allDepartments = useMemo(() => {
+    const deptCounts = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.code_postal && p.code_postal.length >= 2) {
+        const dept = p.code_postal.substring(0, 2);
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1);
+      }
+    });
+    return [...deptCounts.entries()]
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [state.prospects]);
+
+  const toggleFilter = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    setter(next);
+  };
+
+  const prospectIdsWithRdv = useMemo(() => {
+    const ids = new Set<string>();
+    state.appointments.forEach(a => ids.add(a.prospect_id));
+    return ids;
+  }, [state.appointments]);
+
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
+  const clearAllFilters = () => {
+    setFilterTypes(new Set());
+    setFilterStages(new Set());
+    setFilterSecteurs(new Set());
+    setFilterPostalCodes(new Set());
+    setFilterDepartments(new Set());
+    setFilterAvecRdv(false);
+    setFilterCommercial('');
+  };
+
+  // Build set of prospect IDs linked to the selected commercial via calls/appointments
+  const prospectIdsForCommercial = useMemo(() => {
+    if (!filterCommercial) return null;
+    const ids = new Set<string>();
+    state.calls.forEach(c => {
+      if (c.commercial_id === filterCommercial) ids.add(c.prospect_id);
+    });
+    state.appointments.forEach(a => {
+      if (a.commercial_id === filterCommercial || a.prospecteur_id === filterCommercial) ids.add(a.prospect_id);
+    });
+    return ids;
+  }, [filterCommercial, state.calls, state.appointments]);
 
   const filteredProspects = useMemo(() => {
-    return state.prospects.filter(p => {
-      if (filterType && p.type_etablissement !== filterType) return false;
-      if (filterStage && p.etape_pipeline !== filterStage) return false;
-      if (filterSecteur && p.secteur !== filterSecteur) return false;
+    const list = state.prospects.filter(p => {
+      // Hide entity types not marked as visible in pipeline
+      const eType = p.entity_type || 'prospect';
+      if (!pipelineEntityTypes.has(eType)) return false;
+      // By default, hide prospects that became clients (client_gagne)
+      if (filterStages.size === 0 && p.etape_pipeline === 'client_gagne') return false;
+      if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
+      if (filterStages.size > 0 && !filterStages.has(p.etape_pipeline)) return false;
+      if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
+      if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
+      if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
+      if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -44,13 +472,27 @@ export default function ProspectsPage() {
         );
       }
       return true;
-    }).sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterType, filterStage, filterSecteur, searchTerm]);
+    });
+    if (sortScore === 'desc') return list.sort((a, b) => b.score - a.score);
+    if (sortScore === 'asc') return list.sort((a, b) => a.score - b.score);
+    if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
+    if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+    return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
+
+  // Reset to page 0 when filters/search change
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, sortScore, sortDate, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
+  const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
   const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
   const prospectRdv = selectedProspect ? getAppointmentsForProspect(selectedProspect.id) : [];
   const prospectReminders = selectedProspect ? getRemindersForProspect(selectedProspect.id) : [];
+
 
   const [formData, setFormData] = useState<Partial<Prospect>>({});
 
@@ -62,41 +504,157 @@ export default function ProspectsPage() {
       commercial_id: state.currentUser?.id || 'com-1', notes: '', score: 50,
     });
     setEditingProspect(null);
+    setForceCreate(false);
     setShowForm(true);
   };
 
   const openEditForm = (prospect: Prospect) => {
     setFormData({ ...prospect });
     setEditingProspect(prospect);
+    setForceCreate(false);
     setShowForm(true);
   };
 
-  const saveProspect = () => {
-    if (!formData.nom_etablissement) return;
-    const now = new Date().toISOString();
-    if (editingProspect) {
-      dispatch({
-        type: 'UPDATE_PROSPECT',
-        payload: { ...editingProspect, ...formData, date_modification: now } as Prospect,
+  const [saving, setSaving] = useState(false);
+  const [forceCreate, setForceCreate] = useState(false);
+
+  // OCR scan
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanError('');
+    setScanning(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
-    } else {
-      dispatch({
-        type: 'ADD_PROSPECT',
-        payload: {
+      const { parsed } = await ocrProspect(base64);
+      // Pre-fill form with parsed data (only fill empty fields)
+      setFormData(prev => ({
+        ...prev,
+        nom_etablissement: parsed.nom_etablissement || prev.nom_etablissement || '',
+        nom_contact: parsed.nom_contact || prev.nom_contact || '',
+        telephone: parsed.telephone || prev.telephone || '',
+        email: parsed.email || prev.email || '',
+        adresse: parsed.adresse || prev.adresse || '',
+        code_postal: parsed.code_postal || prev.code_postal || '',
+        ville: parsed.ville || prev.ville || '',
+        departement: parsed.departement || prev.departement || '',
+        type_etablissement: (parsed.type_etablissement as EstablishmentType) || prev.type_etablissement || 'bar_restaurant',
+      }));
+      setForceCreate(false);
+    } catch (err: unknown) {
+      setScanError(err instanceof Error ? err.message : 'Erreur lors du scan');
+    } finally {
+      setScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Live duplicate detection as user types
+  const liveDuplicates = useMemo(() => {
+    if (!showForm || editingProspect) return [];
+    const nom = (formData.nom_etablissement || '').trim().toLowerCase();
+    const tel = (formData.telephone || '').trim();
+    const email = (formData.email || '').trim().toLowerCase();
+    if (!nom && !tel && !email) return [];
+    return state.prospects.filter(p => {
+      if (nom && nom.length >= 3 && p.nom_etablissement.trim().toLowerCase().includes(nom)) return true;
+      if (tel && tel.length >= 4 && p.telephone.trim().includes(tel)) return true;
+      if (email && email.length >= 5 && p.email && p.email.trim().toLowerCase().includes(email)) return true;
+      return false;
+    });
+  }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.prospects]);
+
+  // Also check existing clients
+  const liveClientDuplicates = useMemo(() => {
+    if (!showForm || editingProspect) return [];
+    const nom = (formData.nom_etablissement || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tel = (formData.telephone || '').trim();
+    const email = (formData.email || '').trim().toLowerCase();
+    if (nom.length < 3 && tel.length < 4 && email.length < 5) return [];
+    return state.clients.filter(c => {
+      const cn = c.nom.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (nom.length >= 3 && (cn.includes(nom) || nom.includes(cn))) return true;
+      if (tel.length >= 4 && c.telephone && c.telephone.trim().includes(tel)) return true;
+      if (email.length >= 5 && c.email && c.email.trim().toLowerCase().includes(email)) return true;
+      return false;
+    });
+  }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
+
+  const saveProspect = async () => {
+    if (!formData.nom_etablissement) return;
+    // Block save if duplicates found and user hasn't forced creation
+    if (!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0)) {
+      return;
+    }
+    setSaving(true);
+    const now = new Date().toISOString();
+
+    // Geocode address if provided
+    let geoData = {
+      latitude: formData.latitude || 0,
+      longitude: formData.longitude || 0,
+      ville: formData.ville || '',
+      code_postal: formData.code_postal || '',
+      departement: formData.departement || '',
+    };
+
+    const fullAddress = [formData.adresse, formData.code_postal, formData.ville].filter(Boolean).join(' ');
+    if (fullAddress.trim()) {
+      const geo = await geocodeAddress(fullAddress);
+      if (geo) {
+        geoData = {
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+          ville: geo.ville || formData.ville || '',
+          code_postal: geo.code_postal || formData.code_postal || '',
+          departement: geo.departement || formData.departement || '',
+        };
+      }
+    }
+
+    try {
+      if (editingProspect) {
+        const payload = { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect;
+        await apiPut(`/prospects/${editingProspect.id}`, payload);
+        dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+      } else {
+        const payload = {
           ...formData,
+          ...geoData,
           id: generateId('p'),
           date_creation: now,
           date_modification: now,
-        } as Prospect,
-      });
+        } as Prospect;
+        await apiPost('/prospects', payload);
+        dispatchLocal({ type: 'ADD_PROSPECT', payload });
+      }
+      setShowForm(false);
+      setForceCreate(false);
+    } catch (err) {
+      toast.error(`Erreur sauvegarde prospect: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
     }
-    setShowForm(false);
   };
 
-  const deleteProspect = (id: string) => {
+  const deleteProspect = async (id: string) => {
     if (confirm('Supprimer ce prospect ?')) {
-      dispatch({ type: 'DELETE_PROSPECT', payload: id });
-      setSearchParams({});
+      try {
+        await apiDelete(`/prospects/${id}`);
+        dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
+        setSearchParams({});
+      } catch (err) {
+        toast.error(`Erreur suppression prospect: ${(err as Error).message}`);
+      }
     }
   };
 
@@ -118,72 +676,260 @@ export default function ProspectsPage() {
               />
             </div>
             <button
+              className={`p-2 rounded-lg transition-colors ${
+                selectionMode
+                  ? 'bg-brewery-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+              title={selectionMode ? 'Quitter la selection' : 'Selection multiple'}
+            >
+              <CheckSquare className="w-5 h-5" />
+            </button>
+            <button
               className="bg-brewery-600 text-white p-2 rounded-lg hover:bg-brewery-700"
               onClick={openNewForm}
             >
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          <div className="flex gap-2">
-            <select
-              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-              value={filterType}
-              onChange={e => setFilterType(e.target.value as EstablishmentType | '')}
-            >
-              <option value="">Tous types</option>
-              {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => (
-                <option key={t} value={t}>{ESTABLISHMENT_LABELS[t]}</option>
-              ))}
-            </select>
-            <select
-              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-              value={filterStage}
-              onChange={e => setFilterStage(e.target.value as PipelineStage | '')}
-            >
-              <option value="">Toutes etapes</option>
-              {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(s => (
-                <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>
-              ))}
-            </select>
+          {/* Multi-select dropdown filters */}
+          <div className="flex gap-2 flex-wrap">
+            <MultiSelectDropdown
+              label="Type"
+              options={(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({
+                value: t, label: ESTABLISHMENT_LABELS[t],
+              }))}
+              selected={filterTypes}
+              onToggle={v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes)}
+              color="brewery"
+            />
+            <MultiSelectDropdown
+              label="Etape"
+              options={state.pipelineColumns.map(col => ({
+                value: col.id, label: col.label, color: col.color,
+              }))}
+              selected={filterStages}
+              onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
+              color="blue"
+            />
             {allSecteurs.length > 0 && (
-              <select
-                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-                value={filterSecteur}
-                onChange={e => setFilterSecteur(e.target.value)}
-              >
-                <option value="">Tous secteurs</option>
-                {allSecteurs.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                label="Secteur"
+                options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
+                selected={filterSecteurs}
+                onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+                color="amber"
+              />
             )}
+            {allDepartments.length > 0 && (
+              <MultiSelectDropdown
+                label="Dept (CP)"
+                options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
+                selected={filterDepartments}
+                onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
+                color="brewery"
+              />
+            )}
+            {allPostalCodes.length > 0 && (
+              <MultiSelectDropdown
+                label="Code postal"
+                options={allPostalCodes.map(c => ({ value: c, label: c }))}
+                selected={filterPostalCodes}
+                onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
+                color="brewery"
+              />
+            )}
+            <select
+              className="px-2 py-1.5 text-[10px] font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
+              value={filterCommercial}
+              onChange={e => setFilterCommercial(e.target.value)}
+            >
+              <option value="">Tous les commerciaux</option>
+              {state.commerciaux.map(c => (
+                <option key={c.id} value={c.id}>{c.nom}</option>
+              ))}
+            </select>
+            <button
+              className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+                filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => setFilterAvecRdv(!filterAvecRdv)}
+              title="Filtrer les prospects ayant au moins un RDV"
+            >
+              <Calendar className="w-3 h-3" /> Avec RDV
+            </button>
+            {hasActiveFilters && (
+              <button
+                className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+                onClick={clearAllFilters}
+              >
+                <X className="w-3 h-3" /> Effacer filtres
+              </button>
+            )}
+            <FilterPresets
+              page="prospects"
+              getCurrentFilters={() => ({
+                types: [...filterTypes],
+                stages: [...filterStages],
+                secteurs: [...filterSecteurs],
+                postalCodes: [...filterPostalCodes],
+                departments: [...filterDepartments],
+              })}
+              applyFilters={(f) => {
+                setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
+                setFilterStages(new Set((f.stages as PipelineStage[]) || []));
+                setFilterSecteurs(new Set((f.secteurs as string[]) || []));
+                setFilterPostalCodes(new Set((f.postalCodes as string[]) || []));
+                setFilterDepartments(new Set((f.departments as string[]) || []));
+              }}
+            />
           </div>
-          <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+
+          {/* Active filter chips */}
+          {hasActiveFilters && (
+            <div className="flex gap-1 flex-wrap">
+              {[...filterTypes].map(t => (
+                <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-brewery-100 text-brewery-700">
+                  {ESTABLISHMENT_LABELS[t]}
+                  <button className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterStages].map(s => (
+                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] || '#6b7280' }}>
+                  {state.pipelineColumns.find(c => c.id === s)?.label || PIPELINE_LABELS[s] || s}
+                  <button className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterSecteurs].map(s => (
+                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                  {s}
+                  <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterDepartments].map(d => (
+                <span key={d} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                  Dept. {d}
+                  <button className="hover:text-indigo-900" onClick={() => toggleFilter(filterDepartments, d, setFilterDepartments)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+              {[...filterPostalCodes].map(c => (
+                <span key={c} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-teal-100 text-teal-700">
+                  {c}
+                  <button className="hover:text-teal-900" onClick={() => toggleFilter(filterPostalCodes, c, setFilterPostalCodes)}><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+              <select
+                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+              >
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={200}>200 / page</option>
+                <option value={1000}>1000 / page</option>
+                <option value={2000}>2000 / page</option>
+                <option value={3000}>3000 / page</option>
+                <option value={4000}>4000 / page</option>
+                <option value={5000}>5000 / page</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                  sortDate !== 'none' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => {
+                  setSortDate(prev => prev === 'none' ? 'recent' : prev === 'recent' ? 'ancien' : 'none');
+                  if (sortDate === 'none') setSortScore('none');
+                }}
+                title={sortDate === 'none' ? 'Trier par date' : sortDate === 'recent' ? 'Plus recent d\'abord' : 'Plus ancien d\'abord'}
+              >
+                <Calendar className="w-3 h-3" />
+                Date {sortDate === 'recent' ? '↓' : sortDate === 'ancien' ? '↑' : ''}
+              </button>
+              <button
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                  sortScore !== 'none' ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => {
+                  setSortScore(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none');
+                  if (sortScore === 'none') setSortDate('none');
+                }}
+                title={sortScore === 'none' ? 'Trier par score' : sortScore === 'desc' ? 'Score decroissant' : 'Score croissant'}
+              >
+                <ArrowUpDown className="w-3 h-3" />
+                Score {sortScore === 'desc' ? '↓' : sortScore === 'asc' ? '↑' : ''}
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Selection mode toolbar */}
+        {selectionMode && (
+          <div className="px-4 py-2 bg-brewery-50 border-b border-brewery-200 flex items-center gap-2">
+            <button
+              className="text-[10px] font-medium text-brewery-700 hover:text-brewery-900 underline"
+              onClick={selectedIds.size === filteredProspects.length ? deselectAll : selectAll}
+            >
+              {selectedIds.size === filteredProspects.length ? 'Tout deselectionner' : 'Tout selectionner'}
+            </button>
+            <span className="text-[10px] text-brewery-600 ml-auto">
+              {selectedIds.size} selectionne(s)
+            </span>
+            <button
+              className="p-1 text-gray-400 hover:text-gray-600"
+              onClick={exitSelectionMode}
+              title="Quitter la selection"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {filteredProspects.map(p => (
-            <button
+          {paginatedProspects.map(p => (
+            <div
               key={p.id}
-              className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                selectedId === p.id ? 'bg-brewery-50 border-l-4 border-l-brewery-500' : ''
-              }`}
-              onClick={() => setSearchParams({ id: p.id })}
+              className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
+                selectedId === p.id && !selectionMode ? 'bg-brewery-50 border-l-4 border-l-brewery-500' : ''
+              } ${selectionMode && selectedIds.has(p.id) ? 'bg-brewery-50' : ''}`}
+              onClick={selectionMode ? (e) => toggleSelection(p.id, e) : () => setSearchParams({ id: p.id })}
             >
               <div className="flex items-start gap-3">
+                {selectionMode && (
+                  <div className="flex-shrink-0 mt-0.5">
+                    {selectedIds.has(p.id) ? (
+                      <CheckSquare className="w-5 h-5 text-brewery-600" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-300" />
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-sm text-gray-900 truncate">{p.nom_etablissement}</h3>
                   <p className="text-[10px] text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
                   <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
                     <MapPin className="w-3 h-3" /> {p.ville || p.adresse}{p.secteur ? ` - ${p.secteur}` : ''}
                   </div>
+                  {p.notes && (
+                    <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 italic">{p.notes}</p>
+                  )}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
                       className="text-[9px] text-white px-1.5 py-0.5 rounded-full font-medium"
                       style={{ backgroundColor: PIPELINE_COLORS[p.etape_pipeline] }}
                     >
                       {PIPELINE_LABELS[p.etape_pipeline]}
+                    </span>
+                    <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                      {p.score}pts
                     </span>
                     {p.tags.slice(0, 2).map(tagId => {
                       const tag = state.tags.find(t => t.id === tagId);
@@ -195,11 +941,231 @@ export default function ProspectsPage() {
                     })}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-300 mt-1" />
+                {/* Quick action buttons */}
+                <div className="flex flex-col gap-2.5 sm:gap-1.5 flex-shrink-0">
+                  {p.telephone && (
+                    <button
+                      className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                      onClick={e => { e.stopPropagation(); startCall(p.id); }}
+                      title="Appeler"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {p.email && (
+                    <button
+                      className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                      onClick={e => { e.stopPropagation(); setEmailProspect(p); }}
+                      title="Envoyer un e-mail"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {!alreadyConvertedIds.has(p.id) && p.etape_pipeline !== 'perdu' && (
+                    <button
+                      className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setConvertType('BAR_RESTAURANT_GENERAL');
+                        setConvertTournee('');
+                        setConvertCustomRecurrence(null);
+                        setConvertProspect(p);
+                      }}
+                      title="Convertir en client"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                    onClick={e => openQuickNote(p, e)}
+                    title="Notes rapides"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+                    onClick={e => {
+                      e.stopPropagation();
+                      const in3days = new Date();
+                      in3days.setDate(in3days.getDate() + 3);
+                      setReminderDate(toLocalDateStr(in3days));
+                      setReminderHeure('09:00');
+                      setReminderMessage('');
+                      setReminderProspect(p);
+                    }}
+                    title="Memo / Rappel"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-4 py-2 border-t border-gray-200 bg-white flex items-center justify-between">
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage(p => p - 1)}
+              disabled={currentPage === 0}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Prec.
+            </button>
+            <p className="text-[10px] text-gray-500">
+              {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, filteredProspects.length)} sur {filteredProspects.length}
+            </p>
+            <button
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={currentPage >= totalPages - 1}
+            >
+              Suiv. <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Bulk action bar */}
+        {selectionMode && selectedIds.size > 0 && (
+          <div className="border-t border-gray-200 bg-white p-3 space-y-2">
+            {showBulkAction === 'none' && (
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
+                  onClick={() => setShowBulkAction('etape')}
+                >
+                  Changer etape
+                </button>
+                <button
+                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+                  onClick={() => setShowBulkAction('secteur')}
+                >
+                  Changer secteur
+                </button>
+                <button
+                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+                  onClick={() => setShowBulkAction('tags')}
+                >
+                  Gerer tags
+                </button>
+                <button
+                  className="px-3 py-2 text-[11px] font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                  onClick={bulkDelete}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Change stage */}
+            {showBulkAction === 'etape' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-gray-700">Changer etape ({selectedIds.size} prospects)</p>
+                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
+                    <button
+                      key={stage}
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white transition-opacity hover:opacity-80"
+                      style={{ backgroundColor: PIPELINE_COLORS[stage] }}
+                      onClick={() => bulkChangeStage(stage)}
+                    >
+                      {PIPELINE_LABELS[stage]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Change sector */}
+            {showBulkAction === 'secteur' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-gray-700">Changer secteur ({selectedIds.size} prospects)</p>
+                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-brewery-500"
+                    placeholder="Nouveau secteur..."
+                    value={bulkSecteur}
+                    onChange={e => setBulkSecteur(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') bulkChangeSecteur(); }}
+                    list="bulk-secteurs-list"
+                    autoFocus
+                  />
+                  {allSecteurs.length > 0 && (
+                    <datalist id="bulk-secteurs-list">
+                      {allSecteurs.map(s => <option key={s} value={s} />)}
+                    </datalist>
+                  )}
+                  <button
+                    className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium hover:bg-brewery-700"
+                    onClick={bulkChangeSecteur}
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Manage tags */}
+            {showBulkAction === 'tags' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-gray-700">Gerer tags ({selectedIds.size} prospects)</p>
+                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {state.tags.map(tag => {
+                    const allHave = [...selectedIds].every(id => {
+                      const p = state.prospects.find(pr => pr.id === id);
+                      return p?.tags.includes(tag.id);
+                    });
+                    const someHave = [...selectedIds].some(id => {
+                      const p = state.prospects.find(pr => pr.id === id);
+                      return p?.tags.includes(tag.id);
+                    });
+                    return (
+                      <button
+                        key={tag.id}
+                        className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium transition-colors border-2 ${
+                          allHave
+                            ? 'text-white border-transparent'
+                            : someHave
+                            ? 'border-current opacity-70'
+                            : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200'
+                        }`}
+                        style={allHave ? { backgroundColor: tag.couleur } : someHave ? { color: tag.couleur } : {}}
+                        onClick={() => bulkToggleTag(tag.id)}
+                        title={allHave ? `Retirer "${tag.nom}" de tous` : `Ajouter "${tag.nom}" a tous`}
+                      >
+                        {allHave ? '✓ ' : someHave ? '~ ' : '+ '}{tag.nom}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  className="w-full px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  onClick={() => setShowBulkAction('none')}
+                >
+                  Termine
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Detail panel */}
@@ -219,11 +1185,36 @@ export default function ProspectsPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">{selectedProspect.nom_etablissement}</h2>
+                  {selectedProspect.nom_contact && (
+                    <p className="text-sm text-gray-700 font-medium mt-0.5 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      {selectedProspect.nom_contact}
+                    </p>
+                  )}
                   <p className="text-sm text-gray-500 mt-0.5">
                     {ESTABLISHMENT_LABELS[selectedProspect.type_etablissement]} - {selectedProspect.ville}
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  {!alreadyConvertedIds.has(selectedProspect.id) && (
+                    <button
+                      className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                      onClick={() => {
+                        setConvertType('BAR_RESTAURANT_GENERAL');
+                        setConvertTournee('');
+                        setConvertCustomRecurrence(null);
+                        setConvertProspect(selectedProspect);
+                      }}
+                      title="Convertir en client"
+                    >
+                      <Building2 className="w-4 h-4 text-emerald-600" />
+                    </button>
+                  )}
+                  {alreadyConvertedIds.has(selectedProspect.id) && (
+                    <span className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-medium flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" /> Client
+                    </span>
+                  )}
                   <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => openEditForm(selectedProspect)}>
                     <Edit2 className="w-4 h-4 text-gray-600" />
                   </button>
@@ -264,7 +1255,15 @@ export default function ProspectsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-600">{selectedProspect.adresse}, {selectedProspect.code_postal} {selectedProspect.ville}</span>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedProspect.adresse} ${selectedProspect.code_postal} ${selectedProspect.ville}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brewery-600 hover:underline flex items-center gap-1"
+                  >
+                    {selectedProspect.adresse}, {selectedProspect.code_postal} {selectedProspect.ville}
+                    <Navigation className="w-3 h-3" />
+                  </a>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Tag className="w-4 h-4 text-gray-400" />
@@ -320,15 +1319,46 @@ export default function ProspectsPage() {
               {prospectRdv.length > 0 ? (
                 <div className="space-y-2">
                   {prospectRdv.map(rdv => (
-                    <div key={rdv.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 text-sm">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
-                        <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
+                    <div key={rdv.id} className="p-2 rounded-lg bg-gray-50 text-sm space-y-1">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
+                          <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
+                        </div>
+                        <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
+                          {rdv.statut}
+                        </span>
+                        <button
+                          onClick={() => openCompteRendu(rdv as Appointment)}
+                          className={`px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1 ${
+                            rdv.compte_rendu
+                              ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          }`}
+                          title={rdv.compte_rendu ? 'Modifier le compte-rendu' : 'Faire le compte-rendu'}
+                        >
+                          <ClipboardCheck className="w-3 h-3" />
+                          {rdv.compte_rendu ? 'Modifier CR' : 'Compte-rendu'}
+                        </button>
                       </div>
-                      <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
-                        {rdv.statut}
-                      </span>
+                      {rdv.compte_rendu && (
+                        <div className="ml-7 space-y-0.5">
+                          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                            rdv.compte_rendu === 'client' ? 'bg-green-100 text-green-700' :
+                            rdv.compte_rendu === 'mail_envoye' ? 'bg-blue-100 text-blue-700' :
+                            rdv.compte_rendu === 'commande_plus_tard' ? 'bg-amber-100 text-amber-700' :
+                            rdv.compte_rendu === 'a_relancer' ? 'bg-purple-100 text-purple-700' :
+                            rdv.compte_rendu === 'pas_interesse' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
+                          </span>
+                          {rdv.notes_compte_rendu && (
+                            <p className="text-[10px] text-gray-500 italic">{rdv.notes_compte_rendu}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -367,9 +1397,274 @@ export default function ProspectsPage() {
         </div>
       )}
 
+      {/* Convert to client modal */}
+      {convertProspect && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                <Building2 className="w-4 h-4 text-emerald-600" /> Convertir en client
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setConvertProspect(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-gray-900">{convertProspect.nom_etablissement}</p>
+                <p className="text-xs text-gray-500">{convertProspect.ville} - {convertProspect.nom_contact}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Type de client *</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  value={convertType}
+                  onChange={e => setConvertType(e.target.value as ClientType)}
+                >
+                  {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, family]) => (
+                    <optgroup key={key} label={family.label}>
+                      {family.types.map(t => (
+                        <option key={t} value={t}>
+                          {CLIENT_TYPE_LABELS[t]}
+                          {CLIENT_VISIT_FREQUENCIES[t] ? ` (visite tous les ${CLIENT_VISIT_FREQUENCIES[t]}j)` : ' (pas de recurrence)'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tournee</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  placeholder="Ex: Lundi Nord, Mardi Sud..."
+                  value={convertTournee}
+                  onChange={e => setConvertTournee(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Recurrence personnalisee (jours)
+                  <span className="text-gray-400 font-normal ml-1">- laissez vide pour utiliser la valeur par defaut</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
+                  placeholder={CLIENT_VISIT_FREQUENCIES[convertType] ? `${CLIENT_VISIT_FREQUENCIES[convertType]} jours (par defaut)` : 'Aucune recurrence'}
+                  value={convertCustomRecurrence ?? ''}
+                  onChange={e => setConvertCustomRecurrence(e.target.value ? parseInt(e.target.value) : null)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setConvertProspect(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+                disabled={converting}
+                onClick={async () => {
+                  setConverting(true);
+                  try {
+                    const result = await convertProspectToClient({
+                      prospect_id: convertProspect.id,
+                      type_client: convertType,
+                      tournee: convertTournee,
+                      custom_recurrence: convertCustomRecurrence,
+                    });
+                    if (result?.client_id) {
+                      // Update prospect stage to client_gagne
+                      const updatedProspect = {
+                        ...convertProspect,
+                        etape_pipeline: 'client_gagne' as PipelineStage,
+                        date_modification: new Date().toISOString(),
+                      };
+                      try {
+                        await apiPut(`/prospects/${convertProspect.id}`, updatedProspect);
+                        dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
+                      } catch {
+                        // Conversion succeeded but local update failed; reload anyway
+                      }
+                      // Reload state to get the new client
+                      window.location.reload();
+                    }
+                  } catch (err) {
+                    console.error('Conversion error:', err);
+                    alert(`Erreur lors de la conversion: ${(err as Error).message}`);
+                  } finally {
+                    setConverting(false);
+                    setConvertProspect(null);
+                  }
+                }}
+              >
+                {converting ? (
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Conversion...</>
+                ) : (
+                  <><Building2 className="w-4 h-4" /> Convertir</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email template modal */}
+      {emailProspect && (
+        <EmailTemplateModal prospect={emailProspect} onClose={() => setEmailProspect(null)} />
+      )}
+
+      {/* Quick reminder modal */}
+      {reminderProspect && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                <Bell className="w-4 h-4 text-orange-500" /> Memo / Rappel
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setReminderProspect(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="bg-gray-50 rounded-lg p-2">
+                <p className="text-xs font-medium text-gray-700">{reminderProspect.nom_etablissement}</p>
+                <p className="text-[10px] text-gray-500">{reminderProspect.nom_contact}</p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-1">Message du rappel *</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
+                  placeholder="Ex: Relancer pour devis, rappeler pour RDV..."
+                  value={reminderMessage}
+                  onChange={e => setReminderMessage(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-medium text-gray-600 mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                    value={reminderDate}
+                    onChange={e => setReminderDate(e.target.value)}
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="block text-[10px] font-medium text-gray-600 mb-1">Heure</label>
+                  <input
+                    type="time"
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                    value={reminderHeure}
+                    onChange={e => setReminderHeure(e.target.value)}
+                  />
+                </div>
+              </div>
+              {/* Quick date shortcuts */}
+              <div className="flex gap-1.5 flex-wrap">
+                {[
+                  { label: 'Demain', days: 1 },
+                  { label: '3 jours', days: 3 },
+                  { label: '1 semaine', days: 7 },
+                  { label: '2 semaines', days: 14 },
+                  { label: '1 mois', days: 30 },
+                ].map(shortcut => (
+                  <button
+                    key={shortcut.days}
+                    className="px-2 py-1 rounded text-[10px] bg-gray-100 text-gray-600 hover:bg-orange-100 hover:text-orange-700 transition-colors"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + shortcut.days);
+                      setReminderDate(toLocalDateStr(d));
+                    }}
+                  >
+                    {shortcut.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setReminderProspect(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-1.5 disabled:opacity-50"
+                disabled={!reminderMessage.trim() || !reminderDate}
+                onClick={async () => {
+                  const payload = {
+                    id: generateId('rem'),
+                    prospect_id: reminderProspect.id,
+                    commercial_id: state.currentUser?.id || 'com-1',
+                    date: reminderDate,
+                    heure: reminderHeure,
+                    message: reminderMessage.trim(),
+                    statut: 'actif' as const,
+                  };
+                  try {
+                    await apiPost('/reminders', payload);
+                    dispatchLocal({ type: 'ADD_REMINDER', payload });
+                    setReminderProspect(null);
+                  } catch (err) {
+                    toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+                  }
+                }}
+              >
+                <Bell className="w-3.5 h-3.5" /> Creer le rappel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick notes modal */}
+      {quickNoteId && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-amber-500" />
+                Notes rapides - {state.prospects.find(p => p.id === quickNoteId)?.nom_etablissement}
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-32 resize-none focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+                placeholder="Ajoutez vos notes ici..."
+                value={quickNoteText}
+                onChange={e => setQuickNoteText(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setQuickNoteId(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
+                onClick={saveQuickNote}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Prospect form modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editingProspect ? 'Modifier le prospect' : 'Nouveau prospect'}</h3>
@@ -378,10 +1673,93 @@ export default function ProspectsPage() {
               </button>
             </div>
             <div className="p-5 space-y-4">
+              {/* Bouton scan OCR - seulement en creation */}
+              {!editingProspect && (
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={handleScanFile}
+                  />
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-brewery-300 bg-brewery-50 text-brewery-700 hover:bg-brewery-100 hover:border-brewery-400 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={scanning}
+                  >
+                    {scanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Analyse en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4" />
+                        Scanner une image ou PDF pour pre-remplir
+                      </>
+                    )}
+                  </button>
+                  {scanError && (
+                    <p className="text-xs text-red-500">{scanError}</p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'etablissement *</label>
-                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => setFormData(prev => ({ ...prev, nom_etablissement: e.target.value }))} />
+                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => { setFormData(prev => ({ ...prev, nom_etablissement: e.target.value })); setForceCreate(false); }} />
               </div>
+
+              {/* Live duplicate warning */}
+              {!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0) && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                  <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1">
+                    ⚠️ Doublons potentiels detectes
+                  </p>
+                  <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
+                    {liveDuplicates.slice(0, 5).map(dup => (
+                      <div key={dup.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-amber-200">
+                        <div className="text-xs text-gray-700 min-w-0">
+                          <span className="font-medium">{dup.nom_etablissement}</span>
+                          {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
+                          {dup.ville && <span className="text-gray-400 ml-1">({dup.ville})</span>}
+                          <span className="ml-1.5 text-[10px] text-amber-600 font-medium">Prospect</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
+                          onClick={() => { setShowForm(false); setSearchParams({ id: dup.id }); }}
+                        >
+                          Voir →
+                        </button>
+                      </div>
+                    ))}
+                    {liveClientDuplicates.slice(0, 5).map(c => (
+                      <div key={c.id} className="flex items-center justify-between bg-white rounded px-2 py-1.5 border border-orange-200">
+                        <div className="text-xs text-gray-700 min-w-0">
+                          <span className="font-medium">{c.nom}</span>
+                          {c.telephone && <span className="text-gray-500 ml-2">{c.telephone}</span>}
+                          {c.ville && <span className="text-gray-400 ml-1">({c.ville})</span>}
+                          <span className="ml-1.5 text-[10px] text-orange-600 font-medium">Client existant</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(liveDuplicates.length + liveClientDuplicates.length) > 5 && (
+                      <p className="text-[10px] text-amber-600">+ {liveDuplicates.length + liveClientDuplicates.length - 5} autre(s)...</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                    onClick={() => setForceCreate(true)}
+                  >
+                    Creer quand meme
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
@@ -407,11 +1785,11 @@ export default function ProspectsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => setFormData(prev => ({ ...prev, telephone: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => { setFormData(prev => ({ ...prev, telephone: e.target.value })); setForceCreate(false); }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.email || ''} onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.email || ''} onChange={e => { setFormData(prev => ({ ...prev, email: e.target.value })); setForceCreate(false); }} />
                 </div>
               </div>
               <div>
@@ -450,11 +1828,23 @@ export default function ProspectsPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Tags</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-600">Tags</label>
+                  <button
+                    type="button"
+                    className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium flex items-center gap-0.5"
+                    onClick={() => { setShowTagManager(!showTagManager); setEditingTag(null); setNewTagName(''); }}
+                  >
+                    <Settings className="w-3 h-3" /> Gerer les tags
+                  </button>
+                </div>
+
+                {/* Tag selection */}
                 <div className="flex flex-wrap gap-1.5">
                   {state.tags.map(tag => (
                     <button
                       key={tag.id}
+                      type="button"
                       className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${
                         (formData.tags || []).includes(tag.id) ? 'text-white' : 'bg-gray-100 text-gray-600'
                       }`}
@@ -470,7 +1860,97 @@ export default function ProspectsPage() {
                       {tag.nom}
                     </button>
                   ))}
+                  {state.tags.length === 0 && (
+                    <p className="text-[10px] text-gray-400">Aucun tag. Cliquez "Gerer les tags" pour en creer.</p>
+                  )}
                 </div>
+
+                {/* Tag manager panel */}
+                {showTagManager && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                    <p className="text-[11px] font-semibold text-gray-700">{editingTag ? 'Modifier le tag' : 'Creer un nouveau tag'}</p>
+
+                    {/* New/Edit tag form */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nom du tag..."
+                        className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs"
+                        value={newTagName}
+                        onChange={e => setNewTagName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && saveNewTag()}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 py-1.5 bg-brewery-600 text-white text-xs rounded-lg hover:bg-brewery-700 disabled:opacity-50"
+                        onClick={saveNewTag}
+                        disabled={!newTagName.trim()}
+                      >
+                        {editingTag ? 'Modifier' : 'Creer'}
+                      </button>
+                      {editingTag && (
+                        <button
+                          type="button"
+                          className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+                          onClick={() => { setEditingTag(null); setNewTagName(''); setNewTagColor('#6366f1'); }}
+                        >
+                          Annuler
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Color picker */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-500">Couleur:</span>
+                      {TAG_COLORS.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`w-5 h-5 rounded-full border-2 transition-transform ${
+                            newTagColor === color ? 'border-gray-800 scale-125' : 'border-transparent hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setNewTagColor(color)}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Existing tags list with edit/delete */}
+                    {state.tags.length > 0 && (
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1.5">Tags existants :</p>
+                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                          {state.tags.map(tag => (
+                            <div key={tag.id} className="flex items-center justify-between py-1 px-2 rounded bg-white">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.couleur }} />
+                                <span className="text-xs text-gray-700">{tag.nom}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                  onClick={() => startEditTag(tag)}
+                                  title="Modifier"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                  onClick={() => deleteTag(tag.id)}
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
@@ -480,21 +1960,146 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
               </div>
+
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
-              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveProspect}>
-                <Save className="w-4 h-4" /> {editingProspect ? 'Modifier' : 'Creer'}
+              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving}>
+                {saving ? (
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Geocodage...</>
+                ) : (
+                  <><Save className="w-4 h-4" /> {editingProspect ? 'Modifier' : 'Creer'}</>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Compte-rendu modal */}
+      {showCompteRendu && compteRenduRdv && (() => {
+        const crProspect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
+        const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
+          { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
+          { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
+          { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
+          { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
+          { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
+        ];
+        return (
+          <div className="modal-backdrop">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                    <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">{crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
+                </div>
+                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Resultat du rendez-vous</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {resultOptions.map(opt => {
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.value}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                            compteRenduResult === opt.value ? opt.color : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleCompteRenduResultChange(opt.value)}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Notes du compte-rendu <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${
+                      compteRenduNotes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
+                    }`}
+                    placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
+                    value={compteRenduNotes}
+                    onChange={e => setCompteRenduNotes(e.target.value)}
+                  />
+                </div>
+                {!compteRenduRappel && !rappelRequired ? (
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
+                    onClick={() => setCompteRenduRappel(true)}
+                  >
+                    <Bell className="w-4 h-4" /> Programmer un rappel
+                  </button>
+                ) : compteRenduRappel ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                        <Bell className="w-3 h-3" /> Rappel de relance {rappelRequired && <span className="text-red-500">*</span>}
+                      </label>
+                      {!rappelRequired && (
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelRequired && <span className="text-red-500">*</span>}</label>
+                      <input
+                        type="date"
+                        className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${
+                          rappelRequired && !compteRenduRappelDate ? 'border-red-300' : 'border-amber-200'
+                        }`}
+                        value={compteRenduRappelDate}
+                        onChange={e => setCompteRenduRappelDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-amber-600 mb-0.5">Message (optionnel)</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
+                        placeholder="Ex: Relancer pour devis..."
+                        value={compteRenduRappelMessage}
+                        onChange={e => setCompteRenduRappelMessage(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCompteRendu(false)}>
+                  Annuler
+                </button>
+                <button
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={saveCompteRendu}
+                  disabled={!compteRenduValid}
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  Valider le compte-rendu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
-function Users(props: any) {
+function Users(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>

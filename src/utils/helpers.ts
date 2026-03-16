@@ -1,6 +1,6 @@
-import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Prospect, Call, Appointment, EmailTemplate } from '../types';
+import { Prospect, Call, Appointment, EmailTemplate, Client } from '../types';
 
 // ============================================
 // ID Generation
@@ -38,6 +38,14 @@ export function formatTimeAgo(dateStr: string): string {
   }
 }
 
+/** Format a Date as 'YYYY-MM-DD' in local timezone (avoids UTC shift from toISOString) */
+export function toLocalDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function isThisWeek(dateStr: string): boolean {
   try {
     const date = parseISO(dateStr);
@@ -53,6 +61,16 @@ export function isThisMonth(dateStr: string): boolean {
     const date = parseISO(dateStr);
     const now = new Date();
     return isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
+  } catch {
+    return false;
+  }
+}
+
+export function isLastMonth(dateStr: string): boolean {
+  try {
+    const date = parseISO(dateStr);
+    const lastMonth = subMonths(new Date(), 1);
+    return isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
   } catch {
     return false;
   }
@@ -94,36 +112,172 @@ export function formatDurationTimer(seconds: number): string {
 // ICS Export
 // ============================================
 
-export function generateICS(appointment: Appointment, prospect: Prospect): string {
-  const dtStart = `${appointment.date.replace(/-/g, '')}T${appointment.heure_debut.replace(':', '')}00`;
-  const dtEnd = `${appointment.date.replace(/-/g, '')}T${appointment.heure_fin.replace(':', '')}00`;
+function icsEscape(text: string): string {
+  return (text || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
 
-  return `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SuiviPro//La Brasserie des Plantes//FR
-BEGIN:VEVENT
-DTSTART:${dtStart}
-DTEND:${dtEnd}
-SUMMARY:RDV ${prospect.nom_etablissement}
-DESCRIPTION:${appointment.notes}\\nContact: ${prospect.nom_contact}\\nTel: ${prospect.telephone}
-LOCATION:${appointment.lieu}
-END:VEVENT
-END:VCALENDAR`;
+function icsUid(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}@suivipro`;
+}
+
+function icsDtstamp(): string {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+function icsFormatTime(date: string, time: string): string {
+  const d = date.replace(/-/g, '');
+  if (!time) return `${d}T090000`;
+  return `${d}T${time.replace(':', '')}00`;
+}
+
+function buildICSFile(events: string[]): string {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SuiviPro//NONSGML v1.0//FR',
+    'METHOD:PUBLISH',
+    'CALSCALE:GREGORIAN',
+    ...events,
+    'END:VCALENDAR',
+  ];
+  return lines.join('\r\n');
+}
+
+function triggerICSDownload(icsContent: string, filename: string) {
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.ics') ? filename : `${filename}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+export function generateICS(appointment: Appointment, prospect: Prospect): string {
+  const dtStart = icsFormatTime(appointment.date, appointment.heure_debut);
+  const dtEnd = icsFormatTime(appointment.date, appointment.heure_fin);
+  const descParts = [];
+  if (appointment.notes) descParts.push(appointment.notes);
+  if (prospect.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
+  if (prospect.telephone) descParts.push(`Tel: ${prospect.telephone}`);
+
+  const event = [
+    'BEGIN:VEVENT',
+    `UID:${icsUid()}`,
+    `DTSTAMP:${icsDtstamp()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${icsEscape(`RDV ${prospect.nom_etablissement}`)}`,
+    `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+    `LOCATION:${icsEscape(appointment.lieu || '')}`,
+    'END:VEVENT',
+  ].join('\r\n');
+
+  return buildICSFile([event]);
 }
 
 export function downloadICS(appointment: Appointment, prospect: Prospect) {
   const ics = generateICS(appointment, prospect);
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `rdv-${prospect.nom_etablissement.replace(/\s+/g, '-').toLowerCase()}.ics`;
-  link.click();
-  URL.revokeObjectURL(url);
+  triggerICSDownload(ics, `rdv-${prospect.nom_etablissement.replace(/[^a-zA-Z0-9]/g, '_')}.ics`);
+}
+
+export function generateICSClient(appointment: Appointment, client: Client): string {
+  const dtStart = icsFormatTime(appointment.date, appointment.heure_debut);
+  const dtEnd = icsFormatTime(appointment.date, appointment.heure_fin);
+  const location = appointment.lieu || [client.adresse, client.ville].filter(Boolean).join(', ') || '';
+  const descParts = [];
+  if (appointment.notes) descParts.push(appointment.notes);
+  if (client.contact) descParts.push(`Contact: ${client.contact}`);
+  if (client.telephone) descParts.push(`Tel: ${client.telephone}`);
+  if (client.telephone_mobile) descParts.push(`Mobile: ${client.telephone_mobile}`);
+
+  const event = [
+    'BEGIN:VEVENT',
+    `UID:${icsUid()}`,
+    `DTSTAMP:${icsDtstamp()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${icsEscape(`RDV ${client.nom}`)}`,
+    `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+    `LOCATION:${icsEscape(location)}`,
+    'END:VEVENT',
+  ].join('\r\n');
+
+  return buildICSFile([event]);
+}
+
+export function downloadICSClient(appointment: Appointment, client: Client) {
+  const ics = generateICSClient(appointment, client);
+  triggerICSDownload(ics, `rdv-${client.nom.replace(/[^a-zA-Z0-9]/g, '_')}.ics`);
+}
+
+/**
+ * Export ICS avec plusieurs RDV (un seul fichier .ics contenant tous les evenements).
+ */
+export function downloadICSBatch(
+  appointments: Appointment[],
+  getProspect: (id: string) => Prospect | undefined,
+  commercialName?: string,
+) {
+  if (appointments.length === 0) return;
+
+  const events = appointments.map(rdv => {
+    const prospect = getProspect(rdv.prospect_id);
+    const dtStart = icsFormatTime(rdv.date, rdv.heure_debut);
+    const dtEnd = icsFormatTime(rdv.date, rdv.heure_fin);
+    const descParts = [];
+    if (rdv.notes) descParts.push(rdv.notes);
+    if (prospect?.nom_contact) descParts.push(`Contact: ${prospect.nom_contact}`);
+    if (prospect?.telephone) descParts.push(`Tel: ${prospect.telephone}`);
+    return [
+      'BEGIN:VEVENT',
+      `UID:${icsUid()}`,
+      `DTSTAMP:${icsDtstamp()}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${icsEscape(`RDV ${prospect?.nom_etablissement || 'Inconnu'}`)}`,
+      `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+      `LOCATION:${icsEscape(rdv.lieu || '')}`,
+      'END:VEVENT',
+    ].join('\r\n');
+  });
+
+  const ics = buildICSFile(events);
+  const filename = commercialName ? `rdv-${commercialName.replace(/[^a-zA-Z0-9]/g, '_')}.ics` : 'rdv-export.ics';
+  triggerICSDownload(ics, filename);
 }
 
 // ============================================
-// Geocoding (Nominatim / OpenStreetMap)
+// Conflict Detection
+// ============================================
+
+/**
+ * Verifie s'il y a un conflit horaire pour un commercial a une date/heure donnee.
+ * Retourne la liste des RDV en conflit.
+ */
+export function detectConflicts(
+  allAppointments: Appointment[],
+  commercialId: string,
+  date: string,
+  heureDebut: string,
+  heureFin: string,
+  excludeId?: string,
+): Appointment[] {
+  if (!date || !heureDebut || !heureFin) return [];
+  return allAppointments.filter(rdv => {
+    if (rdv.commercial_id !== commercialId) return false;
+    if (rdv.date !== date) return false;
+    if (rdv.statut === 'annule') return false;
+    if (excludeId && rdv.id === excludeId) return false;
+    // Chevauchement : debut1 < fin2 && debut2 < fin1
+    return heureDebut < rdv.heure_fin && rdv.heure_debut < heureFin;
+  });
+}
+
+// ============================================
+// Geocoding (api-adresse.data.gouv.fr)
 // ============================================
 
 export interface GeocodingResult {
@@ -134,54 +288,183 @@ export interface GeocodingResult {
   departement: string;
 }
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const ADRESSE_API_URL = 'https://api-adresse.data.gouv.fr';
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 export async function geocodeAddress(adresse: string): Promise<GeocodingResult | null> {
+  if (!adresse || adresse.trim().length < 3) return null;
   try {
-    const params = new URLSearchParams({
-      q: adresse,
-      format: 'json',
-      addressdetails: '1',
-      limit: '1',
-      countrycodes: 'fr',
-    });
-    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-      headers: { 'User-Agent': 'SuiviPro-BrasseriePlantes/1.0' },
-    });
+    const params = new URLSearchParams({ q: adresse, limit: '1' });
+    const res = await fetchWithTimeout(`${ADRESSE_API_URL}/search/?${params}`);
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data || data.length === 0) return null;
-    const result = data[0];
-    const addr = result.address || {};
+    if (!data?.features?.length) return null;
+    const feature = data.features[0];
+    const props = feature.properties || {};
+    const [lon, lat] = feature.geometry?.coordinates || [0, 0];
     return {
-      latitude: parseFloat(result.lat),
-      longitude: parseFloat(result.lon),
-      ville: addr.city || addr.town || addr.village || addr.municipality || '',
-      code_postal: addr.postcode || '',
-      departement: addr.county || addr.state || '',
+      latitude: lat,
+      longitude: lon,
+      ville: props.city || '',
+      code_postal: props.postcode || '',
+      departement: props.context?.split(',')[0]?.trim() || '',
     };
   } catch {
     return null;
   }
 }
 
+/**
+ * Geocode par lot via l'API CSV de api-adresse.data.gouv.fr.
+ * Envoie les adresses en lots de 2000 via un fichier CSV.
+ * Si l'API est injoignable, retourne des resultats vides sans bloquer.
+ */
 export async function geocodeBatch(
   addresses: string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<(GeocodingResult | null)[]> {
-  const results: (GeocodingResult | null)[] = [];
-  for (let i = 0; i < addresses.length; i++) {
-    const result = await geocodeAddress(addresses[i]);
-    results.push(result);
-    onProgress?.(i + 1, addresses.length);
-    // Nominatim rate limit: 1 request/second
-    if (i < addresses.length - 1) await delay(1100);
+  const results: (GeocodingResult | null)[] = new Array(addresses.length).fill(null);
+  const BATCH_SIZE = 2000;
+  let totalDone = 0;
+
+  // Quick connectivity check before processing thousands of addresses
+  try {
+    const probe = await fetchWithTimeout(`${ADRESSE_API_URL}/search/?q=test&limit=1`, {}, 8000);
+    if (!probe.ok) {
+      onProgress?.(addresses.length, addresses.length);
+      return results;
+    }
+  } catch {
+    // API unreachable — return empty results immediately
+    onProgress?.(addresses.length, addresses.length);
+    return results;
   }
+
+  for (let batchStart = 0; batchStart < addresses.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, addresses.length);
+    const batchAddresses = addresses.slice(batchStart, batchEnd);
+
+    // Build CSV content: index,adresse
+    const csvLines = ['index,adresse'];
+    const indexMap: number[] = [];
+    batchAddresses.forEach((addr, i) => {
+      const globalIndex = batchStart + i;
+      if (addr && addr.trim().length >= 3) {
+        // Escape CSV: wrap in quotes if contains comma/quote/newline
+        const escaped = addr.includes(',') || addr.includes('"') || addr.includes('\n')
+          ? `"${addr.replace(/"/g, '""')}"`
+          : addr;
+        csvLines.push(`${globalIndex},${escaped}`);
+        indexMap.push(globalIndex);
+      }
+    });
+
+    // If no valid addresses in this batch, skip
+    if (indexMap.length === 0) {
+      totalDone += batchAddresses.length;
+      onProgress?.(totalDone, addresses.length);
+      continue;
+    }
+
+    try {
+      const csvContent = csvLines.join('\n');
+      const formData = new FormData();
+      formData.append('data', new Blob([csvContent], { type: 'text/csv' }), 'addresses.csv');
+      formData.append('columns', 'adresse');
+
+      const res = await fetchWithTimeout(
+        `${ADRESSE_API_URL}/search/csv/`,
+        { method: 'POST', body: formData },
+        120000, // 2 min timeout for large batches
+      );
+
+      if (res.ok) {
+        const responseText = await res.text();
+        const lines = responseText.split('\n');
+        if (lines.length > 1) {
+          // Parse CSV header to find column indices
+          const header = lines[0].split(',');
+          const colIdx = (name: string) => header.indexOf(name);
+          const iIdx = colIdx('index');
+          const latIdx = colIdx('latitude');
+          const lonIdx = colIdx('longitude');
+          const cityIdx = colIdx('result_city');
+          const pcIdx = colIdx('result_postcode');
+          const ctxIdx = colIdx('result_context');
+          const scoreIdx = colIdx('result_score');
+
+          for (let l = 1; l < lines.length; l++) {
+            if (!lines[l].trim()) continue;
+            const cols = parseCSVLine(lines[l]);
+            const score = scoreIdx >= 0 ? parseFloat(cols[scoreIdx]) : 0;
+            // Only accept results with a decent confidence score
+            if (score < 0.3) continue;
+            const globalIndex = iIdx >= 0 ? parseInt(cols[iIdx], 10) : -1;
+            if (globalIndex < 0 || globalIndex >= addresses.length) continue;
+            const lat = latIdx >= 0 ? parseFloat(cols[latIdx]) : 0;
+            const lon = lonIdx >= 0 ? parseFloat(cols[lonIdx]) : 0;
+            if (lat === 0 && lon === 0) continue;
+            results[globalIndex] = {
+              latitude: lat,
+              longitude: lon,
+              ville: cityIdx >= 0 ? cols[cityIdx] || '' : '',
+              code_postal: pcIdx >= 0 ? cols[pcIdx] || '' : '',
+              departement: ctxIdx >= 0 ? (cols[ctxIdx]?.split(',')[0]?.trim() || '') : '',
+            };
+          }
+        }
+      }
+    } catch {
+      // Batch API failed (network/CORS/timeout) — skip geocoding for this batch
+      // Don't fall back to individual requests for large sets (would take forever)
+      totalDone += batchAddresses.length;
+      onProgress?.(totalDone, addresses.length);
+      continue;
+    }
+
+    totalDone += batchAddresses.length;
+    onProgress?.(totalDone, addresses.length);
+  }
+
   return results;
+}
+
+/** Parse a single CSV line handling quoted fields */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        result.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  result.push(current);
+  return result;
 }
 
 // ============================================
@@ -253,7 +536,7 @@ export function exportProspectsCSV(prospects: Prospect[]): void {
 
 export function getConversionRate(prospects: Prospect[]): number {
   if (prospects.length === 0) return 0;
-  const converted = prospects.filter(p => p.etape_pipeline === 'gagne').length;
+  const converted = prospects.filter(p => p.etape_pipeline === 'client_gagne').length;
   return Math.round((converted / prospects.length) * 100);
 }
 

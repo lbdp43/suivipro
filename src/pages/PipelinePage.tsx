@@ -1,13 +1,18 @@
-import { useState, useMemo, DragEvent } from 'react';
-import { Phone, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect, DragEvent } from 'react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Filter, Check, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
+import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import EmailTemplateModal from '../components/EmailTemplateModal';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const { startCall } = useCallModal();
+  const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -17,22 +22,114 @@ export default function PipelinePage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newColor, setNewColor] = useState('#6b7280');
+  const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
+  const [quickNoteText, setQuickNoteText] = useState('');
+  const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
+  const [maxPerColumn, setMaxPerColumn] = useState(50);
+  const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
+  const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
+  const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
+  const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
+  const [filterAvecRdv, setFilterAvecRdv] = useState(false);
+  const [filterCommercial, setFilterCommercial] = useState<string>('');
+
+  const prospectIdsWithRdv = useMemo(() => {
+    const ids = new Set<string>();
+    state.appointments.forEach(a => ids.add(a.prospect_id));
+    return ids;
+  }, [state.appointments]);
+
+  const allSecteurs = useMemo(() =>
+    [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort()
+  , [state.prospects]);
+
+  const secteurCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.secteur) map.set(p.secteur, (map.get(p.secteur) || 0) + 1);
+    });
+    return map;
+  }, [state.prospects]);
+
+  const allPostalCodes = useMemo(() =>
+    [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort()
+  , [state.prospects]);
+
+  const allDepartments = useMemo(() => {
+    const deptCounts = new Map<string, number>();
+    state.prospects.forEach(p => {
+      if (p.code_postal && p.code_postal.length >= 2) {
+        const dept = p.code_postal.substring(0, 2);
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1);
+      }
+    });
+    return [...deptCounts.entries()]
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [state.prospects]);
+
+  const toggleFilter = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    setter(next);
+  };
+
+  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
+
+  const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setQuickNoteId(prospect.id);
+    setQuickNoteText(prospect.notes);
+  };
+
+  const saveQuickNote = () => {
+    if (!quickNoteId) return;
+    const prospect = state.prospects.find(p => p.id === quickNoteId);
+    if (prospect) {
+      dispatch({
+        type: 'UPDATE_PROSPECT',
+        payload: { ...prospect, notes: quickNoteText, date_modification: new Date().toISOString() },
+      });
+    }
+    setQuickNoteId(null);
+  };
 
   const columns = state.pipelineColumns;
 
+  // Build set of prospect IDs linked to the selected commercial via calls/appointments
+  const prospectIdsForCommercial = useMemo(() => {
+    if (!filterCommercial) return null;
+    const ids = new Set<string>();
+    state.calls.forEach(c => {
+      if (c.commercial_id === filterCommercial) ids.add(c.prospect_id);
+    });
+    state.appointments.forEach(a => {
+      if (a.commercial_id === filterCommercial || a.prospecteur_id === filterCommercial) ids.add(a.prospect_id);
+    });
+    return ids;
+  }, [filterCommercial, state.calls, state.appointments]);
+
   const prospectsByStage = useMemo(() => {
+    const filtered = state.prospects.filter(p => {
+      if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
+      if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
+      if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
+      if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
+      return true;
+    });
     const map: Record<string, Prospect[]> = {};
     for (const col of columns) {
-      map[col.id] = state.prospects.filter(p => p.etape_pipeline === col.id);
+      map[col.id] = filtered.filter(p => p.etape_pipeline === col.id);
     }
     // Also count prospects in stages not in columns (orphaned)
     const columnIds = new Set(columns.map(c => c.id));
-    const orphaned = state.prospects.filter(p => !columnIds.has(p.etape_pipeline));
+    const orphaned = filtered.filter(p => !columnIds.has(p.etape_pipeline));
     if (orphaned.length > 0) {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -50,11 +147,17 @@ export default function PipelinePage() {
     setDragOverColumn(null);
   };
 
-  const handleDrop = (e: DragEvent, stageId: string) => {
+  const handleDrop = async (e: DragEvent, stageId: string) => {
     e.preventDefault();
     const prospectId = e.dataTransfer.getData('text/plain');
     if (prospectId) {
-      dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
+      try {
+        const date_modification = new Date().toISOString();
+        await apiPatch(`/prospects/${prospectId}/stage`, { etape_pipeline: stageId, date_modification });
+        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
+      } catch {
+        toast.error('Erreur lors du deplacement du prospect');
+      }
     }
     setDraggedId(null);
     setDragOverColumn(null);
@@ -71,18 +174,21 @@ export default function PipelinePage() {
     setEditColor(col.color);
   };
 
-  const saveEditColumn = () => {
+  const saveEditColumn = async () => {
     if (!editingColumn || !editLabel.trim()) return;
-    dispatch({
-      type: 'UPDATE_PIPELINE_COLUMN',
-      payload: { ...editingColumn, label: editLabel.trim(), color: editColor },
-    });
-    setEditingColumn(null);
+    const updated = { ...editingColumn, label: editLabel.trim(), color: editColor };
+    try {
+      await apiPut(`/pipeline-columns/${editingColumn.id}`, updated);
+      dispatchLocal({ type: 'UPDATE_PIPELINE_COLUMN', payload: updated });
+      setEditingColumn(null);
+    } catch {
+      toast.error('Erreur lors de la mise a jour de l\'etape');
+    }
   };
 
-  const deleteColumn = (col: PipelineColumn) => {
+  const deleteColumn = async (col: PipelineColumn) => {
     if (columns.length <= 1) {
-      alert('Impossible de supprimer la derniere etape.');
+      toast.warning('Impossible de supprimer la derniere etape.');
       return;
     }
     const count = (prospectsByStage[col.id] || []).length;
@@ -91,24 +197,56 @@ export default function PipelinePage() {
       ? `Supprimer l'etape "${col.label}" ?\n\n${count} prospect(s) seront deplaces vers "${firstOther?.label}".`
       : `Supprimer l'etape "${col.label}" ?`;
     if (confirm(msg)) {
-      dispatch({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });
+      try {
+        await apiDelete(`/pipeline-columns/${col.id}`);
+        dispatchLocal({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });
+      } catch {
+        toast.error('Erreur lors de la suppression de l\'etape');
+      }
     }
   };
 
-  const addColumn = () => {
+  const addColumn = async () => {
     if (!newLabel.trim()) return;
     const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (columns.some(c => c.id === id)) {
-      alert('Une etape avec cet identifiant existe deja');
+      toast.warning('Une etape avec cet identifiant existe deja');
       return;
     }
-    dispatch({
-      type: 'ADD_PIPELINE_COLUMN',
-      payload: { id: id as PipelineStage, label: newLabel.trim(), color: newColor },
-    });
-    setNewLabel('');
-    setNewColor('#6b7280');
-    setShowAddForm(false);
+    const newCol = { id: id as PipelineStage, label: newLabel.trim(), color: newColor };
+    try {
+      await apiPost('/pipeline-columns', newCol);
+      dispatchLocal({ type: 'ADD_PIPELINE_COLUMN', payload: newCol });
+      setNewLabel('');
+      setNewColor('#6b7280');
+      setShowAddForm(false);
+    } catch {
+      toast.error('Erreur lors de l\'ajout de l\'etape');
+    }
+  };
+
+  const moveColumnUp = async (index: number) => {
+    if (index <= 0) return;
+    const newColumns = [...columns];
+    [newColumns[index - 1], newColumns[index]] = [newColumns[index], newColumns[index - 1]];
+    try {
+      await apiPut('/pipeline-columns-reorder', { order: newColumns.map((c, i) => ({ id: c.id, sort_order: i })) });
+      dispatchLocal({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+    } catch {
+      toast.error('Erreur lors du reordonnancement des etapes');
+    }
+  };
+
+  const moveColumnDown = async (index: number) => {
+    if (index >= columns.length - 1) return;
+    const newColumns = [...columns];
+    [newColumns[index], newColumns[index + 1]] = [newColumns[index + 1], newColumns[index]];
+    try {
+      await apiPut('/pipeline-columns-reorder', { order: newColumns.map((c, i) => ({ id: c.id, sort_order: i })) });
+      dispatchLocal({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
+    } catch {
+      toast.error('Erreur lors du reordonnancement des etapes');
+    }
   };
 
   const presetColors = [
@@ -118,19 +256,93 @@ export default function PipelinePage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 bg-white border-b border-gray-200 flex items-center gap-3">
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">Pipeline commercial</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Glissez-deposez les prospects entre les etapes</p>
+      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex items-center gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline commercial</h1>
+          <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les etapes</p>
         </div>
+        {/* Filters */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {allSecteurs.length > 0 && (
+            <MultiSelectDropdown
+              label="Secteur"
+              options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
+              selected={filterSecteurs}
+              onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+              color="amber"
+            />
+          )}
+          {allDepartments.length > 0 && (
+            <MultiSelectDropdown
+              label="Dept (CP)"
+              options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
+              selected={filterDepartments}
+              onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
+              color="teal"
+            />
+          )}
+          {allPostalCodes.length > 0 && (
+            <MultiSelectDropdown
+              label="Code postal"
+              options={allPostalCodes.map(c => ({ value: c, label: c }))}
+              selected={filterPostalCodes}
+              onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
+              color="teal"
+            />
+          )}
+          <button
+            className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+              filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterAvecRdv(!filterAvecRdv)}
+            title="Filtrer les prospects ayant au moins un RDV"
+          >
+            <Calendar className="w-3 h-3" /> Avec RDV
+          </button>
+          <select
+            className={`text-[10px] sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
+              filterCommercial ? 'border-brewery-500 text-brewery-700' : 'border-gray-200 text-gray-500'
+            }`}
+            value={filterCommercial}
+            onChange={e => setFilterCommercial(e.target.value)}
+          >
+            <option value="">Tous les commerciaux</option>
+            {state.commerciaux.map(c => (
+              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+            ))}
+          </select>
+          {hasActiveFilters && (
+            <button
+              className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterCommercial(''); }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        <select
+          className="text-[10px] sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
+          value={maxPerColumn}
+          onChange={e => { setMaxPerColumn(Number(e.target.value)); setExpandedColumns(new Set()); }}
+        >
+          <option value={50}>50 / col.</option>
+          <option value={100}>100 / col.</option>
+          <option value={200}>200 / col.</option>
+          <option value={1000}>1000 / col.</option>
+          <option value={2000}>2000 / col.</option>
+          <option value={3000}>3000 / col.</option>
+          <option value={4000}>4000 / col.</option>
+          <option value={5000}>5000 / col.</option>
+        </select>
         <button
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
             showSettings ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
           onClick={() => setShowSettings(!showSettings)}
         >
           <Settings className="w-4 h-4" />
-          Gerer les etapes
+          <span className="hidden sm:inline">Gerer les etapes</span>
+          <span className="sm:hidden">Etapes</span>
         </button>
       </div>
 
@@ -180,12 +392,31 @@ export default function PipelinePage() {
 
             {/* Existing columns */}
             <div className="space-y-2">
-              {columns.map(col => {
+              {columns.map((col, colIndex) => {
                 const count = (prospectsByStage[col.id] || []).length;
                 const isEditing = editingColumn?.id === col.id;
 
                 return (
-                  <div key={col.id} className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 bg-white">
+                  <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-white">
+                    {/* Reorder arrows */}
+                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                      <button
+                        className="p-0.5 text-gray-300 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                        onClick={() => moveColumnUp(colIndex)}
+                        disabled={colIndex === 0}
+                        title="Monter"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        className="p-0.5 text-gray-300 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed"
+                        onClick={() => moveColumnDown(colIndex)}
+                        disabled={colIndex === columns.length - 1}
+                        title="Descendre"
+                      >
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                    </div>
                     <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: col.color }} />
 
                     {isEditing ? (
@@ -244,12 +475,12 @@ export default function PipelinePage() {
       )}
 
       {/* Kanban board */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <div className="flex gap-4 h-full min-w-max">
+      <div className="flex-1 overflow-x-auto p-2 sm:p-4">
+        <div className="flex gap-2 sm:gap-4 h-full min-w-max">
           {columns.map(col => (
             <div
               key={col.id}
-              className={`kanban-column w-72 flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
+              className={`kanban-column w-60 sm:w-72 flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
                 dragOverColumn === col.id ? 'border-brewery-500 bg-brewery-50' : 'border-gray-200 bg-gray-50'
               }`}
               onDragOver={e => handleDragOver(e, col.id)}
@@ -267,7 +498,10 @@ export default function PipelinePage() {
 
               {/* Cards */}
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {(prospectsByStage[col.id] || []).map(prospect => (
+                {(expandedColumns.has(col.id)
+                  ? (prospectsByStage[col.id] || [])
+                  : (prospectsByStage[col.id] || []).slice(0, maxPerColumn)
+                ).map(prospect => (
                   <div
                     key={prospect.id}
                     draggable
@@ -316,10 +550,27 @@ export default function PipelinePage() {
                             <button
                               className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"
                               onClick={e => { e.stopPropagation(); startCall(prospect.id); }}
+                              title="Appeler"
                             >
                               <Phone className="w-3 h-3" />
                             </button>
                           )}
+                          {prospect.email && (
+                            <button
+                              className="p-1 rounded bg-purple-50 text-purple-600 hover:bg-purple-100"
+                              onClick={e => { e.stopPropagation(); setEmailProspect(prospect); }}
+                              title="Envoyer un e-mail"
+                            >
+                              <Mail className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            className="p-1 rounded bg-amber-50 text-amber-600 hover:bg-amber-100"
+                            onClick={e => openQuickNote(prospect, e)}
+                            title="Notes rapides"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </button>
                           <Link
                             to={`/prospects?id=${prospect.id}`}
                             className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
@@ -337,6 +588,15 @@ export default function PipelinePage() {
                   </div>
                 ))}
 
+                {!expandedColumns.has(col.id) && (prospectsByStage[col.id] || []).length > maxPerColumn && (
+                  <button
+                    className="w-full py-2 text-[11px] font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center justify-center gap-1"
+                    onClick={() => setExpandedColumns(prev => { const s = new Set(prev); s.add(col.id); return s; })}
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Voir les {(prospectsByStage[col.id] || []).length - maxPerColumn} restants
+                  </button>
+                )}
                 {(prospectsByStage[col.id] || []).length === 0 && (
                   <div className="text-center py-8 text-xs text-gray-400">
                     Aucun prospect
@@ -347,6 +607,48 @@ export default function PipelinePage() {
           ))}
         </div>
       </div>
+
+      {/* Email template modal */}
+      {emailProspect && (
+        <EmailTemplateModal prospect={emailProspect} onClose={() => setEmailProspect(null)} />
+      )}
+
+      {/* Quick notes modal */}
+      {quickNoteId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-amber-500" />
+                Notes - {state.prospects.find(p => p.id === quickNoteId)?.nom_etablissement}
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-32 resize-none focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+                placeholder="Ajoutez vos notes ici..."
+                value={quickNoteText}
+                onChange={e => setQuickNoteText(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setQuickNoteId(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
+                onClick={saveQuickNote}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,11 +3,14 @@ import {
   Mail, Plus, X, Save, Send, Eye, Edit2, Trash2, Copy,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
+import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { EmailTemplate, Prospect } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
 
 export default function EmailsPage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [editing, setEditing] = useState<EmailTemplate | null>(null);
@@ -27,19 +30,35 @@ export default function EmailsPage() {
     setShowForm(true);
   };
 
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     if (!formData.nom || !formData.sujet) return;
-    if (editing) {
-      dispatch({ type: 'UPDATE_EMAIL_TEMPLATE', payload: { ...editing, ...formData } as EmailTemplate });
-    } else {
-      dispatch({ type: 'ADD_EMAIL_TEMPLATE', payload: { ...formData, id: generateId('et') } as EmailTemplate });
+    try {
+      if (editing) {
+        const updated = { ...editing, ...formData } as EmailTemplate;
+        await apiPut(`/email-templates/${editing.id}`, updated);
+        dispatchLocal({ type: 'UPDATE_EMAIL_TEMPLATE', payload: updated });
+        toast.success('Template modifie');
+      } else {
+        const newTemplate = { ...formData, id: generateId('et') } as EmailTemplate;
+        await apiPost('/email-templates', newTemplate);
+        dispatchLocal({ type: 'ADD_EMAIL_TEMPLATE', payload: newTemplate });
+        toast.success('Template cree');
+      }
+      setShowForm(false);
+    } catch {
+      toast.error('Erreur sauvegarde');
     }
-    setShowForm(false);
   };
 
-  const deleteTemplate = (id: string) => {
+  const deleteTemplate = async (id: string) => {
     if (confirm('Supprimer ce template ?')) {
-      dispatch({ type: 'DELETE_EMAIL_TEMPLATE', payload: id });
+      try {
+        await apiDelete(`/email-templates/${id}`);
+        dispatchLocal({ type: 'DELETE_EMAIL_TEMPLATE', payload: id });
+        toast.success('Template supprime');
+      } catch {
+        toast.error('Erreur suppression');
+      }
     }
   };
 
@@ -57,13 +76,25 @@ export default function EmailsPage() {
     return processEmailTemplate(selectedTemplate, prospect, {
       prenom: commercial.prenom,
       telephone: commercial.telephone,
-    }, { date_rdv: '18/02/2026', produit_interesse: 'Gamme Bio aux plantes' });
+    }, { date_rdv: 'Mardi 18 fevrier 2026 a 10h30' });
   };
 
-  const sendEmail = () => {
+  const sendEmail = async () => {
     const preview = getPreviewContent();
     const prospect = state.prospects.find(p => p.id === selectedProspectId);
     if (!prospect) return;
+
+    // Auto-transition: "A contacter" / "Nouveau" → "Contacte" when email is sent
+    if (['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
+      try {
+        await apiPatch(`/prospects/${prospect.id}/stage`, {
+          etape_pipeline: 'contacte',
+          date_modification: new Date().toISOString(),
+        });
+        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'contacte' } });
+      } catch { /* secondary */ }
+    }
+
     // Open mailto link
     const mailto = `mailto:${prospect.email}?subject=${encodeURIComponent(preview.sujet)}&body=${encodeURIComponent(preview.corps)}`;
     window.location.href = mailto;
@@ -76,26 +107,26 @@ export default function EmailsPage() {
     remerciement: 'bg-purple-100 text-purple-700',
     catalogue: 'bg-indigo-100 text-indigo-700',
     nouveaute: 'bg-pink-100 text-pink-700',
+    promotion: 'bg-emerald-100 text-emerald-700',
   };
 
   const variables = [
-    { var: '{{nom_etablissement}}', desc: 'Nom du prospect' },
-    { var: '{{nom_contact}}', desc: 'Nom du contact' },
-    { var: '{{commercial}}', desc: 'Prenom du commercial' },
-    { var: '{{telephone_commercial}}', desc: 'Telephone du commercial' },
-    { var: '{{date_rdv}}', desc: 'Date du RDV' },
-    { var: '{{produit_interesse}}', desc: 'Produits mentionnes' },
+    { var: '{{nom_etablissement}}', desc: 'Nom du prospect (ex : Cave Martin, Le Suffren)' },
+    { var: '{{nom_contact}}', desc: 'Nom du contact (ex : Nathalie, M. Bauchart)' },
+    { var: '{{commercial}}', desc: 'Prenom du commercial (ex : Guillaume, Alban, Loic)' },
+    { var: '{{telephone_commercial}}', desc: 'Telephone du commercial (ex : 06 84 44 40 44)' },
+    { var: '{{date_rdv}}', desc: 'Date du RDV (ex : Mardi 18 fevrier 2026 a 10h30)' },
   ];
 
   return (
-    <div className="p-6 space-y-6 fade-in">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Templates d'emails</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Modeles d'emails personnalisables</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates d'emails</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Modeles d'emails personnalisables</p>
         </div>
         <button
-          className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
+          className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium self-start sm:self-auto"
           onClick={openNewForm}
         >
           <Plus className="w-4 h-4" /> Nouveau template
@@ -103,7 +134,7 @@ export default function EmailsPage() {
       </div>
 
       {/* Variables reference */}
-      <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+      <div className="bg-blue-50 rounded-xl border border-blue-200 p-3 sm:p-4">
         <h3 className="font-semibold text-blue-900 text-sm mb-2">Variables dynamiques disponibles</h3>
         <div className="flex flex-wrap gap-2">
           {variables.map(v => (
@@ -114,6 +145,60 @@ export default function EmailsPage() {
           ))}
         </div>
       </div>
+
+      {/* Conseils d'utilisation */}
+      <details className="bg-amber-50 rounded-xl border border-amber-200">
+        <summary className="p-3 sm:p-4 cursor-pointer font-semibold text-amber-900 text-sm hover:bg-amber-100/50 rounded-xl transition-colors">
+          Conseils d'utilisation
+        </summary>
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Regles generales</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- Toujours personnaliser avec un element de la conversation telephonique</li>
+                <li>- Proposer 2 creneaux precis, jamais "quand vous voulez"</li>
+                <li>- Toujours proposer une degustation (c'est notre meilleur argument)</li>
+                <li>- Mentionner systematiquement les medailles et le titre mondial</li>
+                <li>- Terminer par "Artisanalement votre"</li>
+              </ul>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Adapter le catalogue joint</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- Cave / Epicerie fine → Catalogue Cave-Epicerie</li>
+                <li>- Bar / Restaurant → Catalogue Bar-Restaurant (tarifs CHR)</li>
+                <li>- Distributeur → Catalogue Distributeur</li>
+              </ul>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Strategie de relance</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- 1ere relance (template 3) : 5 a 7 jours apres le premier envoi</li>
+                <li>- 2eme relance (template 4) : 10 a 15 jours apres la 1ere relance</li>
+                <li>- Apres 2 relances sans reponse : passer en "a recontacter dans 3 mois"</li>
+              </ul>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-100">
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Timing d'envoi</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>- Meilleurs jours : mardi et mercredi matin</li>
+                <li>- Eviter le lundi (surcharge) et le vendredi apres-midi</li>
+                <li>- Ideal entre 9h et 11h pour le taux d'ouverture</li>
+              </ul>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-amber-100">
+            <h4 className="text-xs font-bold text-amber-800 mb-1.5">Apres chaque envoi</h4>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
+              <span>- Creer une tache de relance dans le CRM (5 a 7 jours)</span>
+              <span>- Noter le contenu de l'echange telephonique</span>
+              <span>- Indiquer les produits qui ont interesse le prospect</span>
+              <span>- "Je passe dans le secteur" cree une urgence douce</span>
+            </div>
+          </div>
+        </div>
+      </details>
 
       {/* Template cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -149,7 +234,7 @@ export default function EmailsPage() {
 
       {/* Edit/Create modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editing ? 'Modifier le template' : 'Nouveau template'}</h3>
@@ -189,7 +274,7 @@ export default function EmailsPage() {
 
       {/* Preview modal */}
       {showPreview && selectedTemplate && (
-        <div className="modal-backdrop" onClick={() => setShowPreview(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Previsualisation</h3>

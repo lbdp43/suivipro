@@ -12,29 +12,52 @@ export function getSeedData() {
     {
       id: 'com-1',
       prenom: 'Guillaume',
-      nom: 'Directeur',
+      nom: 'Commercial',
       email: 'guillaume@labrasseriedesplantes.fr',
       telephone: '06 84 44 40 44',
       role: 'admin',
+      password: 'admin123',
       objectifs: { appels_semaine: 30, rdv_mois: 15, prospects_mois: 40, taux_conversion: 25 },
     },
     {
       id: 'com-2',
       prenom: 'Louis',
-      nom: 'Alternant',
+      nom: 'Prospection',
       email: 'louis@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 01',
       role: 'commercial',
+      password: 'louis123',
       objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
     },
     {
       id: 'com-3',
       prenom: 'Lucas',
-      nom: 'Alternant',
+      nom: 'Prospection',
       email: 'lucas@labrasseriedesplantes.fr',
       telephone: '06 00 00 00 02',
       role: 'commercial',
+      password: 'lucas123',
       objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+    },
+    {
+      id: 'com-4',
+      prenom: 'Alban',
+      nom: 'Commercial',
+      email: 'alban@labrasseriedesplantes.fr',
+      telephone: '06 00 00 00 03',
+      role: 'commercial',
+      password: 'alban123',
+      objectifs: { appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 },
+    },
+    {
+      id: 'com-5',
+      prenom: 'Loic',
+      nom: 'Commercial',
+      email: 'loic@labrasseriedesplantes.fr',
+      telephone: '06 00 00 00 04',
+      role: 'commercial',
+      password: 'loic123',
+      objectifs: { appels_semaine: 40, rdv_mois: 12, prospects_mois: 35, taux_conversion: 22 },
     },
   ];
 
@@ -53,7 +76,7 @@ export function getSeedData() {
       id: 'p-1', nom_etablissement: 'Cave Martin', type_etablissement: 'cave' as EstablishmentType,
       nom_contact: 'Jean Martin', telephone: '04 71 61 12 34', email: 'contact@cavemartin.fr',
       adresse: '12 Rue du Commerce', ville: 'Saint-Etienne', code_postal: '42000', departement: 'Loire', secteur: 'Loire',
-      latitude: 45.4397, longitude: 4.3872, etape_pipeline: 'rdv_pris' as PipelineStage,
+      latitude: 45.4397, longitude: 4.3872, etape_pipeline: 'gagne' as PipelineStage,
       tags: ['tag-2', 'tag-4'], commercial_id: 'com-1', notes: 'Tres interesse par la gamme bio',
       date_creation: '2026-01-10T09:00:00Z', date_modification: '2026-02-10T14:30:00Z', score: 85,
     },
@@ -117,7 +140,7 @@ export function getSeedData() {
       id: 'p-9', nom_etablissement: 'Distrib Boissons 42', type_etablissement: 'distributeur' as EstablishmentType,
       nom_contact: 'Francois Petit', telephone: '04 77 88 99 00', email: 'contact@distrib42.fr',
       adresse: 'ZI La Plaine', ville: 'Andrezieux-Boutheon', code_postal: '42160', departement: 'Loire', secteur: 'Loire',
-      latitude: 45.5280, longitude: 4.2700, etape_pipeline: 'rdv_pris' as PipelineStage,
+      latitude: 45.5280, longitude: 4.2700, etape_pipeline: 'gagne' as PipelineStage,
       tags: ['tag-2'], commercial_id: 'com-2', notes: 'Distributeur regional, gros potentiel',
       date_creation: '2026-01-18T08:00:00Z', date_modification: '2026-02-13T10:00:00Z', score: 90,
     },
@@ -218,104 +241,297 @@ export function getSeedData() {
 
   const emailTemplates: EmailTemplate[] = [
     {
-      id: 'et-1', nom: 'Presentation entreprise', type: 'presentation',
-      sujet: 'La Brasserie des Plantes - Bieres artisanales aux plantes',
+      id: 'et-1', nom: 'Premier contact – Cave / Epicerie fine', type: 'presentation',
+      sujet: 'Catalogue et tarifs La Brasserie des Plantes – Liqueurs artisanales de Haute-Loire',
       corps: `Bonjour {{nom_contact}},
 
-Je me permets de vous contacter au nom de La Brasserie des Plantes, brasserie artisanale basee a Saint-Didier-en-Velay (43).
+Suite a notre echange telephonique de ce jour, je vous transmets comme convenu notre catalogue et nos tarifs cave.
 
-Nous elaborons des bieres originales aux plantes locales (verveine, sauge, thym...) qui seduisent une clientele de plus en plus large.
+La Brasserie des Plantes est un artisan liquoriste de Saint-Didier-en-Velay (43) specialise dans l'assemblage de plantes par maceration. Contrairement aux monoproduits classiques (une verveine, une menthe, un citron...), nous creons des compositions vegetales uniques entre 15° et 50°.
 
-Je serais ravi de vous presenter notre gamme et d'echanger sur une collaboration avec {{nom_etablissement}}.
+Nos liqueurs phares pour votre clientele :
+- L'Alchimie Vegetale (50°) – Meilleur Digestif du Monde 2025 aux World Liqueur Awards de Londres (27 plantes)
+- L'Herbe des Druides (28°) – Medaille d'Or au Concours International de Lyon (verveine, serpolet, carvi)
+- Le Gorgeon des Machures (30°) – Notre liqueur de verveine aux notes complexes
+- La Fleche Ardente (27°) – Fruits rouges assembles (cassis, framboise, myrtille)
 
-Seriez-vous disponible pour un rendez-vous de presentation/degustation ?
+Tous nos produits sont elabores artisanalement, avec des plantes principalement issues de Haute-Loire et d'Ardeche.
 
-Cordialement,
-{{commercial}}
-La Brasserie des Plantes
-{{telephone_commercial}}`,
-    },
-    {
-      id: 'et-2', nom: 'Relance prospect', type: 'relance',
-      sujet: 'Relance - La Brasserie des Plantes',
-      corps: `Bonjour {{nom_contact}},
+Je serais ravi de venir vous presenter notre gamme et organiser une degustation a {{nom_etablissement}}. Etes-vous disponible pour un rendez-vous de 30 minutes ?
 
-Je vous avais contacte recemment au sujet de notre gamme de bieres artisanales aux plantes.
+En piece jointe : catalogue produits et grille tarifaire cave.
 
-N'ayant pas eu de retour, je me permets de revenir vers vous. Nos bieres connaissent un vrai succes aupres des amateurs et nous pensons qu'elles pourraient interesser la clientele de {{nom_etablissement}}.
-
-Puis-je vous proposer un court rendez-vous de degustation sans engagement ?
+N'hesitez pas a me contacter pour toute question.
 
 Bien cordialement,
+
 {{commercial}}
 La Brasserie des Plantes
-{{telephone_commercial}}`,
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
     },
     {
-      id: 'et-3', nom: 'Confirmation RDV', type: 'confirmation',
-      sujet: 'Confirmation de rendez-vous - {{date_rdv}}',
+      id: 'et-2', nom: 'Premier contact – Bar / Restaurant (CHR)', type: 'presentation',
+      sujet: 'Notre gamme liqueurs pour votre carte – La Brasserie des Plantes',
       corps: `Bonjour {{nom_contact}},
 
-Je vous confirme notre rendez-vous le {{date_rdv}} pour une presentation/degustation de nos bieres artisanales.
+Suite a notre echange telephonique, je vous transmets comme convenu notre presentation et nos tarifs CHR.
 
-J'apporterai des echantillons de notre gamme complete afin que vous puissiez decouvrir nos creations.
+Nous proposons des liqueurs artisanales de Haute-Loire parfaites pour vos digestifs et cocktails signature. Nos assemblages de plantes offrent des profils uniques :
 
-N'hesitez pas a me contacter si vous avez des questions.
+- L'Herbe des Druides (28°) – Medaille d'Or, parfaite en digestif ou en cocktail
+- L'Alchimie Vegetale (50°) – Meilleur Digestif du Monde 2025 aux World Liqueur Awards de Londres
+- Le Gorgeon des Machures (30°) – Verveine aux notes de charbon, tres originale en cocktail
+- Gamme 15° a 50° adaptee a tous vos besoins (BIB 5L disponibles)
 
-A tres bientot,
-{{commercial}}
-La Brasserie des Plantes
-{{telephone_commercial}}`,
-    },
-    {
-      id: 'et-4', nom: 'Remerciement post-RDV', type: 'remerciement',
-      sujet: 'Merci pour votre accueil - La Brasserie des Plantes',
-      corps: `Bonjour {{nom_contact}},
+Contrairement aux liqueurs classiques, nos creations permettent de proposer quelque chose de vraiment different a vos clients, avec des marges interessantes.
 
-Je tenais a vous remercier pour le temps que vous m'avez accorde lors de notre rencontre.
+Pourriez-vous me recevoir 20 minutes a {{nom_etablissement}} pour vous presenter notre gamme ? Je peux venir avec des echantillons pour que vous testiez en conditions reelles.
 
-Comme convenu, vous trouverez en piece jointe notre catalogue complet avec les tarifs professionnels.
-
-{{produit_interesse}}
-
-Je reste a votre entiere disposition pour toute question ou pour passer commande.
+En piece jointe : catalogue Bar-Restaurant et grille tarifaire professionnelle.
 
 Bien cordialement,
+
 {{commercial}}
 La Brasserie des Plantes
-{{telephone_commercial}}`,
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
     },
     {
-      id: 'et-5', nom: 'Envoi catalogue', type: 'catalogue',
-      sujet: 'Catalogue et tarifs - La Brasserie des Plantes',
+      id: 'et-3', nom: 'Relance douce (1ere relance)', type: 'relance',
+      sujet: 'Re: Catalogue La Brasserie des Plantes – Rendez-vous degustation ?',
       corps: `Bonjour {{nom_contact}},
 
-Suite a notre echange, je vous fais parvenir notre catalogue et nos tarifs professionnels en piece jointe.
+Je reviens vers vous concernant notre echange et l'envoi de notre catalogue de liqueurs artisanales.
 
-Vous y trouverez notre gamme complete de bieres artisanales aux plantes ainsi que nos conditions commerciales pour {{nom_etablissement}}.
+Avez-vous eu l'occasion de parcourir notre gamme ?
 
-N'hesitez pas a revenir vers moi pour toute question.
+Pour rappel :
+- Artisan liquoriste de Haute-Loire (Saint-Didier-en-Velay)
+- L'Alchimie Vegetale : Meilleur Digestif du Monde 2025 aux World Liqueur Awards de Londres
+- Assemblages de plantes exclusifs (pas de monoproduits)
+- Marges interessantes pour votre activite
 
-Cordialement,
+{{commercial}} sera dans votre secteur prochainement. Plutot que d'echanger par mail, seriez-vous interesse par une degustation rapide de 20 minutes a {{nom_etablissement}} ? Vous pourrez gouter nos produits phares et voir concretement ce qui pourrait convenir a votre clientele.
+
+Si les dates ne conviennent pas, n'hesitez pas a me proposer d'autres creneaux !
+
+Bien cordialement,
+
 {{commercial}}
 La Brasserie des Plantes
-{{telephone_commercial}}`,
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
     },
     {
-      id: 'et-6', nom: 'Annonce nouveaute', type: 'nouveaute',
-      sujet: 'Nouveaute - La Brasserie des Plantes',
+      id: 'et-4', nom: 'Relance insistante (derniere tentative)', type: 'relance',
+      sujet: 'Derniere proposition – Degustation La Brasserie des Plantes',
       corps: `Bonjour {{nom_contact}},
 
-Nous avons le plaisir de vous annoncer le lancement de notre derniere creation !
+Je vous ai contacte il y a quelques semaines concernant nos liqueurs artisanales de Haute-Loire.
 
-{{produit_interesse}}
+Derniere proposition : {{commercial}} passe dans votre region prochainement et peut s'arreter 15 minutes a {{nom_etablissement}} pour une degustation express.
 
-Cette nouveaute est disponible des maintenant. Nous serions ravis de vous en faire decouvrir un echantillon.
+L'opportunite :
+- Gouter l'Alchimie Vegetale (Meilleur Digestif du Monde 2025)
+- Decouvrir nos assemblages exclusifs
+- Evaluer l'interet pour votre etablissement
+- Aucun engagement
 
-A tres bientot,
+Si cette date ne vous convient pas ou si vous n'etes pas interesse, n'hesitez pas a me le faire savoir et je ne vous solliciterai plus.
+
+Merci pour votre temps !
+
+Bien cordialement,
+
 {{commercial}}
 La Brasserie des Plantes
-{{telephone_commercial}}`,
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
+    },
+    {
+      id: 'et-5', nom: 'Confirmation de rendez-vous', type: 'confirmation',
+      sujet: 'Confirmation RDV degustation – La Brasserie des Plantes',
+      corps: `Bonjour {{nom_contact}},
+
+Je vous confirme notre rendez-vous de degustation :
+
+Date : {{date_rdv}}
+Lieu : {{nom_etablissement}}
+
+Je viendrai avec une selection de nos creations pour que vous puissiez gouter et voir ce qui convient le mieux a votre etablissement.
+
+N'hesitez pas a me prevenir si un changement d'horaire est necessaire.
+
+Au plaisir de vous rencontrer !
+
+Bien cordialement,
+
+{{commercial}}
+La Brasserie des Plantes
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
+    },
+    {
+      id: 'et-6', nom: 'Remerciement post-degustation', type: 'remerciement',
+      sujet: 'Suite a notre degustation – Catalogue La Brasserie des Plantes',
+      corps: `Bonjour {{nom_contact}},
+
+Je tenais a vous remercier pour votre accueil chaleureux lors de notre degustation a {{nom_etablissement}}.
+
+Comme convenu, vous trouverez en piece jointe notre catalogue avec les tarifs professionnels et les fiches produits detaillees.
+
+Pour rappel, tous nos produits sont elabores artisanalement a Saint-Didier-en-Velay, avec des plantes principalement issues de Haute-Loire et d'Ardeche.
+
+Je reste a votre disposition pour passer prendre votre commande ou repondre a vos questions.
+
+Dans l'attente de votre retour,
+
+Bien cordialement,
+
+{{commercial}}
+La Brasserie des Plantes
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre
+
+P.J. : Catalogue professionnel + grille tarifaire`,
+    },
+    {
+      id: 'et-7', nom: 'Envoi catalogue (sur demande)', type: 'catalogue',
+      sujet: 'Catalogue professionnel – La Brasserie des Plantes',
+      corps: `Bonjour {{nom_contact}},
+
+Suite a votre demande, vous trouverez en piece jointe notre catalogue professionnel.
+
+Vous y decouvrirez notre gamme complete de liqueurs artisanales a base de plantes de Haute-Loire et d'Ardeche, avec nos tarifs preferentiels pour les professionnels.
+
+Nos produits phares :
+- L'Herbe des Druides (28°) – Medaillee d'Or, assemblage verveine / serpolet / carvi
+- L'Alchimie Vegetale (50°) – Meilleur Digestif du Monde 2025 (27 plantes)
+- Le Gorgeon des Machures (30°) – Liqueur de verveine intense
+- La PraliCoquine (15°) – Aperitif a la praline
+- Le Zeleste (17,5°) – Notre nouveaute qui cartonne
+
+Tous nos produits sont disponibles en differents conditionnements selon vos besoins : bouteilles 20cl a 3L, BIB 5L, formats degustation, etc.
+
+Je reste a votre disposition pour toute question ou pour organiser une degustation a {{nom_etablissement}}.
+
+Bien cordialement,
+
+{{commercial}}
+La Brasserie des Plantes
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre
+
+P.J. : Catalogue professionnel La Brasserie des Plantes`,
+    },
+    {
+      id: 'et-8', nom: 'Annonce nouveaute / medaille', type: 'nouveaute',
+      sujet: 'Nouveaute – La Brasserie des Plantes',
+      corps: `Bonjour {{nom_contact}},
+
+Nous avons le plaisir de vous annoncer une grande nouvelle !
+
+[DECRIRE LA NOUVEAUTE OU LA MEDAILLE ICI]
+
+Cette distinction / nouveaute vient renforcer notre gamme de liqueurs artisanales elaborees a Saint-Didier-en-Velay.
+
+N'hesitez pas a me contacter pour en savoir plus ou organiser une degustation a {{nom_etablissement}}.
+
+Bien cordialement,
+
+{{commercial}}
+La Brasserie des Plantes
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
+    },
+    {
+      id: 'et-9', nom: 'Promotion clients directs', type: 'promotion',
+      sujet: 'Promotion exclusive – La Brasserie des Plantes',
+      corps: `Bonjour {{nom_contact}},
+
+J'espere que tout va bien de votre cote.
+
+Je vous contacte pour vous informer d'une promotion exceptionnelle reservee a nos clients :
+
+PROMOTION : 5 + 1
+5 bouteilles achetees = 1 bouteille offerte
+1 BIB achete = 1 bouteille offerte
+
+Cette promotion s'applique sur toute notre gamme, y compris les Magnums et Jeroboams.
+
+Nos produits phares :
+- L'Herbe des Druides – Quadruple medaillee (Or Lyon 2023-2024, Argent Paris 2024, Argent World Liqueur Awards 2024)
+- L'Alchimie Vegetale – Meilleur Digestif du Monde 2025 aux World Liqueur Awards de Londres
+
+N'hesitez pas a me contacter pour passer commande ou en savoir plus.
+
+[Promotion valable du XX au XX]
+
+Bien cordialement,
+
+{{commercial}}
+La Brasserie des Plantes
+{{telephone_commercial}}
+18 Grand Place, 43140 Saint-Didier-en-Velay
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
+    },
+    {
+      id: 'et-10', nom: 'Promotion distributeurs', type: 'promotion',
+      sujet: 'Promotion – Offre speciale pour vos clients',
+      corps: `Bonjour {{nom_contact}},
+
+J'espere que tout va bien de votre cote.
+
+Je vous contacte pour vous informer que nous mettons en place une promotion exceptionnelle pour vos clients.
+
+PROMOTION : 5 + 1
+5 bouteilles achetees = 1 bouteille offerte
+1 BIB achete = 1 bouteille offerte
+
+Cette promotion s'applique sur toute notre gamme, y compris les Magnums et Jeroboams.
+
+Vos arguments de vente :
+- L'Herbe des Druides – Quadruple medaillee (Or Lyon 2023-2024, Argent Paris 2024, Argent World Liqueur Awards 2024)
+- L'Alchimie Vegetale – Meilleur Digestif du Monde 2025 aux World Liqueur Awards de Londres
+
+N'hesitez pas a relayer cette information aupres de votre reseau. Je reste a votre disposition pour echanger sur les modalites.
+
+[Promotion valable du XX au XX]
+
+Guillaume
+La Brasserie des Plantes
+06 84 44 40 44
+labrasseriedesplantes@gmail.com
+www.labrasseriedesplantes.fr
+
+Artisanalement votre`,
     },
   ];
 

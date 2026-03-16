@@ -1,14 +1,19 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
-  Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2,
-  AlertCircle, BellRing,
+  Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
+  AlertCircle, BellRing, CalendarClock, MessageSquare, User,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useToast } from '../components/Toast';
+import { apiPost, apiPut, apiDelete } from '../api/client';
 import { Reminder, ReminderStatus } from '../types';
-import { generateId, formatDate, isToday } from '../utils/helpers';
+import { generateId, formatDate, isToday, toLocalDateStr } from '../utils/helpers';
 
 export default function RemindersPage() {
-  const { state, dispatch, getProspect } = useApp();
+  const { state, dispatchLocal, getProspect } = useApp();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     prospect_id: '',
@@ -17,53 +22,148 @@ export default function RemindersPage() {
     message: '',
   });
 
+  // Filtre par auteur (persiste dans localStorage)
+  const [filterCommercial, setFilterCommercial] = usePersistedState<string>('reminders_filterCommercial', '');
+
+  // Modale reporter
+  const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
+  const [snoozeDate, setSnoozeDate] = useState('');
+  const [snoozeNote, setSnoozeNote] = useState('');
+
+  // Modale editer
+  const [editTarget, setEditTarget] = useState<Reminder | null>(null);
+  const [editForm, setEditForm] = useState({ date: '', heure: '', message: '' });
+
+  // Pagination rappels termines
+  const [completedPage, setCompletedPage] = useState(1);
+  const COMPLETED_PER_PAGE = 20;
+
   const reminders = useMemo(() => {
-    return [...state.reminders].sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.reminders]);
+    let filtered = [...state.reminders];
+    if (filterCommercial) filtered = filtered.filter(r => r.commercial_id === filterCommercial);
+    return filtered.sort((a, b) => a.date.localeCompare(b.date));
+  }, [state.reminders, filterCommercial]);
 
   const todayReminders = reminders.filter(r => r.statut === 'actif' && isToday(r.date));
-  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= new Date().toISOString().split('T')[0]);
-  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < new Date().toISOString().split('T')[0]);
+  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= toLocalDateStr(new Date()));
+  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < toLocalDateStr(new Date()));
   const completedReminders = reminders.filter(r => r.statut === 'termine');
 
-  const saveReminder = () => {
+  const saveReminder = async () => {
     if (!formData.prospect_id || !formData.date) return;
     const prospect = getProspect(formData.prospect_id);
-    dispatch({
-      type: 'ADD_REMINDER',
-      payload: {
-        id: generateId('rem'),
-        prospect_id: formData.prospect_id,
-        commercial_id: state.currentUser?.id || 'com-1',
-        date: formData.date,
-        heure: formData.heure,
-        message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
-        statut: 'actif',
-      },
-    });
-    setShowForm(false);
-    setFormData({ prospect_id: '', date: '', heure: '09:00', message: '' });
-  };
-
-  const markComplete = (id: string) => {
-    const rem = state.reminders.find(r => r.id === id);
-    if (rem) dispatch({ type: 'UPDATE_REMINDER', payload: { ...rem, statut: 'termine' } });
-  };
-
-  const snooze = (id: string, days: number) => {
-    const rem = state.reminders.find(r => r.id === id);
-    if (rem) {
-      const newDate = new Date(rem.date);
-      newDate.setDate(newDate.getDate() + days);
-      dispatch({
-        type: 'UPDATE_REMINDER',
-        payload: { ...rem, date: newDate.toISOString().split('T')[0], statut: 'actif' },
-      });
+    const payload = {
+      id: generateId('rem'),
+      prospect_id: formData.prospect_id,
+      commercial_id: state.currentUser?.id || 'com-1',
+      date: formData.date,
+      heure: formData.heure,
+      message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
+      statut: 'actif' as const,
+    };
+    try {
+      await apiPost('/reminders', payload);
+      dispatchLocal({ type: 'ADD_REMINDER', payload });
+      toast.success('Rappel programme');
+      setShowForm(false);
+      setFormData({ prospect_id: '', date: '', heure: '09:00', message: '' });
+    } catch (err) {
+      toast.error(`Erreur creation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
   };
 
-  const deleteReminder = (id: string) => {
-    dispatch({ type: 'DELETE_REMINDER', payload: id });
+  const markComplete = async (id: string) => {
+    const rem = state.reminders.find(r => r.id === id);
+    if (!rem) return;
+    const payload = { ...rem, statut: 'termine' as const };
+    try {
+      await apiPut(`/reminders/${id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel termine');
+    } catch (err) {
+      toast.error(`Erreur mise a jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
+  };
+
+  const openSnoozeModal = (rem: Reminder) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 2);
+    setSnoozeTarget(rem);
+    setSnoozeDate(toLocalDateStr(tomorrow));
+    setSnoozeNote('');
+  };
+
+  const executeSnooze = async () => {
+    if (!snoozeTarget || !snoozeDate) return;
+    const newMessage = snoozeNote
+      ? `${snoozeTarget.message}\n[Reporte] ${snoozeNote}`
+      : snoozeTarget.message;
+    const payload = {
+      ...snoozeTarget,
+      date: snoozeDate,
+      message: newMessage,
+      statut: 'actif' as ReminderStatus,
+    };
+    try {
+      await apiPut(`/reminders/${snoozeTarget.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel reporte');
+      setSnoozeTarget(null);
+    } catch (err) {
+      toast.error(`Erreur report rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
+  };
+
+  const snoozeQuickOptions = [
+    { label: 'Demain', days: 1 },
+    { label: 'Dans 2 jours', days: 2 },
+    { label: '1 semaine', days: 7 },
+    { label: '2 semaines', days: 14 },
+  ];
+
+  const setSnoozeQuickDate = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    setSnoozeDate(toLocalDateStr(date));
+  };
+
+  const deleteReminder = async (id: string) => {
+    try {
+      await apiDelete(`/reminders/${id}`);
+      dispatchLocal({ type: 'DELETE_REMINDER', payload: id });
+      toast.success('Rappel supprime');
+    } catch (err) {
+      toast.error(`Erreur suppression rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
+  };
+
+  const openEditModal = (rem: Reminder) => {
+    setEditTarget(rem);
+    setEditForm({ date: rem.date, heure: rem.heure, message: rem.message });
+  };
+
+  const saveEdit = async () => {
+    if (!editTarget || !editForm.date) return;
+    const payload = { ...editTarget, date: editForm.date, heure: editForm.heure, message: editForm.message };
+    try {
+      await apiPut(`/reminders/${editTarget.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel modifie');
+      setEditTarget(null);
+    } catch (err) {
+      toast.error(`Erreur modification rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
+  };
+
+  const reactivateReminder = async (rem: Reminder) => {
+    const payload = { ...rem, statut: 'actif' as ReminderStatus };
+    try {
+      await apiPut(`/reminders/${rem.id}`, payload);
+      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
+      toast.success('Rappel reactive');
+    } catch (err) {
+      toast.error(`Erreur reactivation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    }
   };
 
   // Quick reminder options
@@ -77,17 +177,18 @@ export default function RemindersPage() {
   const setQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setFormData(prev => ({ ...prev, date: date.toISOString().split('T')[0] }));
+    setFormData(prev => ({ ...prev, date: toLocalDateStr(date) }));
   };
 
   const renderReminder = (rem: Reminder, showActions = true) => {
     const prospect = getProspect(rem.prospect_id);
-    const isOverdue = rem.statut === 'actif' && rem.date < new Date().toISOString().split('T')[0];
+    const commercial = state.commerciaux.find(c => c.id === rem.commercial_id);
+    const isOverdue = rem.statut === 'actif' && rem.date < toLocalDateStr(new Date());
     const isTodayRem = isToday(rem.date);
     return (
       <div
         key={rem.id}
-        className={`p-4 rounded-lg border transition-colors ${
+        className={`p-4 rounded-xl border transition-colors ${
           isOverdue ? 'border-red-200 bg-red-50' :
           isTodayRem ? 'border-amber-200 bg-amber-50' :
           rem.statut === 'termine' ? 'border-gray-200 bg-gray-50 opacity-60' :
@@ -107,8 +208,8 @@ export default function RemindersPage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900">{rem.message}</p>
-            <div className="flex items-center gap-3 mt-1">
+            <p className="text-sm font-medium text-gray-900 whitespace-pre-line">{rem.message}</p>
+            <div className="flex items-center gap-3 mt-1.5">
               <span className="text-xs text-gray-500 flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> {formatDate(rem.date)}
               </span>
@@ -116,62 +217,113 @@ export default function RemindersPage() {
                 <Clock className="w-3 h-3" /> {rem.heure}
               </span>
               {prospect && (
-                <span className="text-xs text-brewery-600 font-medium">{prospect.nom_etablissement}</span>
+                <Link
+                  to={`/prospects?id=${prospect.id}`}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium"
+                >
+                  {prospect.nom_etablissement}
+                </Link>
+              )}
+              {commercial && (
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <User className="w-3 h-3" /> {commercial.prenom} {commercial.nom}
+                </span>
               )}
             </div>
+
+            {/* Boutons d'action - actif */}
+            {showActions && rem.statut === 'actif' && (
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                  onClick={() => markComplete(rem.id)}
+                >
+                  <Check className="w-3.5 h-3.5" /> Terminer
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                  onClick={() => openSnoozeModal(rem)}
+                >
+                  <CalendarClock className="w-3.5 h-3.5" /> Reporter
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  onClick={() => openEditModal(rem)}
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Modifier
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                  onClick={() => deleteReminder(rem.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                </button>
+              </div>
+            )}
+            {/* Boutons d'action - termine */}
+            {rem.statut === 'termine' && (
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                  onClick={() => reactivateReminder(rem)}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Reactiver
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  onClick={() => openEditModal(rem)}
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Modifier
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                  onClick={() => deleteReminder(rem.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                </button>
+              </div>
+            )}
           </div>
-          {showActions && rem.statut === 'actif' && (
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                className="p-1.5 rounded bg-green-50 hover:bg-green-100 text-green-600"
-                onClick={() => markComplete(rem.id)}
-                title="Terminer"
-              >
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button
-                className="p-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600"
-                onClick={() => snooze(rem.id, 2)}
-                title="Reporter +2j"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
-              <button
-                className="p-1.5 rounded bg-red-50 hover:bg-red-100 text-red-500"
-                onClick={() => deleteReminder(rem.id)}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
   };
 
   return (
-    <div className="p-6 space-y-6 fade-in">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rappels</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rappels</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
         </div>
-        <button
-          className="bg-brewery-600 text-white px-4 py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
-          onClick={() => setShowForm(true)}
-        >
-          <Plus className="w-4 h-4" /> Nouveau rappel
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <select
+            className="px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg text-xs sm:text-sm bg-white"
+            value={filterCommercial}
+            onChange={e => setFilterCommercial(e.target.value)}
+          >
+            <option value="">Tous les commerciaux</option>
+            {state.commerciaux.map(c => (
+              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+            ))}
+          </select>
+          <button
+            className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium"
+            onClick={() => setShowForm(true)}
+          >
+            <Plus className="w-4 h-4" /> Nouveau rappel
+          </button>
+        </div>
       </div>
 
       {/* Today's reminders - highlighted */}
       {todayReminders.length > 0 && (
-        <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 sm:p-5">
           <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
             <BellRing className="w-5 h-5" />
             Aujourd'hui ({todayReminders.length} rappel{todayReminders.length > 1 ? 's' : ''})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {todayReminders.map(r => renderReminder(r))}
           </div>
         </div>
@@ -183,7 +335,7 @@ export default function RemindersPage() {
           <h3 className="font-semibold text-red-600 mb-3 flex items-center gap-2">
             <AlertCircle className="w-4 h-4" /> En retard ({pastReminders.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {pastReminders.map(r => renderReminder(r))}
           </div>
         </div>
@@ -193,7 +345,7 @@ export default function RemindersPage() {
       {upcomingReminders.length > 0 && (
         <div>
           <h3 className="font-semibold text-gray-900 mb-3">A venir ({upcomingReminders.length})</h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {upcomingReminders.map(r => renderReminder(r))}
           </div>
         </div>
@@ -203,9 +355,17 @@ export default function RemindersPage() {
       {completedReminders.length > 0 && (
         <div>
           <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
-          <div className="space-y-2">
-            {completedReminders.map(r => renderReminder(r, false))}
+          <div className="space-y-3">
+            {completedReminders.slice(0, completedPage * COMPLETED_PER_PAGE).map(r => renderReminder(r))}
           </div>
+          {completedReminders.length > completedPage * COMPLETED_PER_PAGE && (
+            <button
+              className="mt-3 w-full py-2 rounded-lg text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+              onClick={() => setCompletedPage(p => p + 1)}
+            >
+              Voir plus ({completedReminders.length - completedPage * COMPLETED_PER_PAGE} restants)
+            </button>
+          )}
         </div>
       )}
 
@@ -216,9 +376,160 @@ export default function RemindersPage() {
         </div>
       )}
 
+      {/* Modale Reporter */}
+      {snoozeTarget && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-blue-600" /> Reporter le rappel
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setSnoozeTarget(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Rappel concerne */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-gray-800">{snoozeTarget.message}</p>
+                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Actuellement prevu le {formatDate(snoozeTarget.date)} a {snoozeTarget.heure}
+                </p>
+              </div>
+
+              {/* Options rapides */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Reporter a</label>
+                <div className="flex flex-wrap gap-2">
+                  {snoozeQuickOptions.map(opt => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + opt.days);
+                    const dateStr = toLocalDateStr(d);
+                    return (
+                      <button
+                        key={opt.days}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          snoozeDate === dateStr
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        }`}
+                        onClick={() => setSnoozeQuickDate(opt.days)}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date personnalisee */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ou choisir une date</label>
+                <input
+                  type="date"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={snoozeDate}
+                  onChange={e => setSnoozeDate(e.target.value)}
+                  min={toLocalDateStr(new Date())}
+                />
+              </div>
+
+              {/* Note optionnelle */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                  <MessageSquare className="w-3.5 h-3.5" /> Ajouter une note (optionnel)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none"
+                  placeholder="Raison du report, informations complementaires..."
+                  value={snoozeNote}
+                  onChange={e => setSnoozeNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setSnoozeTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={executeSnooze}
+                disabled={!snoozeDate}
+              >
+                <CalendarClock className="w-4 h-4" /> Reporter au {snoozeDate ? formatDate(snoozeDate) : '...'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Modifier */}
+      {editTarget && (
+        <div className="modal-backdrop">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-gray-600" /> Modifier le rappel
+              </h3>
+              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setEditTarget(null)}>
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500">Prospect</p>
+                <p className="text-sm font-medium text-gray-900">{getProspect(editTarget.prospect_id)?.nom_etablissement}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editForm.date}
+                    onChange={e => setEditForm(prev => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Heure</label>
+                  <input
+                    type="time"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editForm.heure}
+                    onChange={e => setEditForm(prev => ({ ...prev, heure: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Message</label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-24 resize-none"
+                  value={editForm.message}
+                  onChange={e => setEditForm(prev => ({ ...prev, message: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setEditTarget(null)}>
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
+                onClick={saveEdit}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Form modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+        <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Programmer un rappel</h3>
