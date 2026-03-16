@@ -1626,6 +1626,54 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
 // EasyBeer Integration
 // ============================================
 
+// Map EasyBeer client type (free text) to SuiviPro ClientType enum
+function mapEasyBeerTypeToClientType(ebType) {
+  if (!ebType) return 'BAR_RESTAURANT_GENERAL';
+  const t = ebType.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  // Cave / Epicerie / Caviste
+  if (t.includes('cave') || t.includes('epicerie') || t.includes('caviste') || t.includes('fromager'))
+    return 'CAVE_EPICERIE';
+
+  // Grand public / Particulier
+  if (t.includes('particulier') || t.includes('grand public') || t.includes('individuel') || t.includes('prive'))
+    return 'GRAND_PUBLIC';
+
+  // Bar / Restaurant (includes many subcategories)
+  if (t.includes('bar') || t.includes('restaurant') || t.includes('brasserie')
+      || t.includes('bistrot') || t.includes('cafe') || t.includes('hotel')
+      || t.includes('traiteur') || t.includes('snack') || t.includes('pizz')
+      || t.includes('creperi') || t.includes('salon de the') || t.includes('pub'))
+    return 'BAR_RESTAURANT_GENERAL';
+
+  // Comite d'entreprise
+  if (t.includes('comite') || t.includes('ce ') || t.includes('cse'))
+    return 'COMITE_ENTREPRISE';
+
+  // Distributeur
+  if (t.includes('distribut') || t.includes('grossiste') || t.includes('revendeur'))
+    return 'DISTRIBUTEUR';
+
+  // Souchon
+  if (t.includes('souchon'))
+    return 'SOUCHON';
+
+  // Export
+  if (t.includes('export'))
+    return 'EXPORT';
+
+  // Mariage / Evenement
+  if (t.includes('mariage') || t.includes('evenement') || t.includes('fete') || t.includes('reception'))
+    return 'MARIAGE';
+
+  // Picologie
+  if (t.includes('picolog'))
+    return 'PICOLOGIE';
+
+  // Fallback
+  return 'BAR_RESTAURANT_GENERAL';
+}
+
 // Shared function to extract fields from EasyBeer API data
 // Handles nested structures: adresses[], contacts[], GPS, tournee, siret, etc.
 function extractEbFieldsSync(data) {
@@ -1970,28 +2018,60 @@ async function handleEasyBeerWebhook(req, res) {
           statut = 'annulee';
         }
 
-        // Extract line items (produits)
+        // Extract line items (produits) - handle various EasyBeer formats
         let lignes = [];
         const rawLignes = orderData.lignes || orderData.details || orderData.articles || orderData.items
-          || orderData.lignesFacture || orderData.lignesCommande || orderData.produits || [];
+          || orderData.lignesFacture || orderData.lignesCommande || orderData.produits
+          || orderData.lignesDetail || orderData.lignesPiece
+          || (orderData.detail && Array.isArray(orderData.detail) ? orderData.detail : null)
+          || [];
         if (Array.isArray(rawLignes)) {
           lignes = rawLignes.map(l => ({
-            produit: l.libelle || l.designation || l.nom || l.produit || l.article || l.description || '',
-            quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || 0) || 0,
-            prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || l.pv || 0) || 0,
-            montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || 0) || 0,
-            tva: parseFloat(l.tauxTVA || l.tva || 0) || 0,
-            reference: l.reference || l.ref || l.code || '',
+            produit: l.libelle || l.designation || l.nom || l.produit || l.article || l.description
+              || l.nomArticle || l.nom_article || l.libelleArticle || '',
+            quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || l.quantiteCommandee || 0) || 0,
+            prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || l.pv || l.prixVente || 0) || 0,
+            montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || l.montantLigne || 0) || 0,
+            tva: parseFloat(l.tauxTVA || l.tva || l.txTVA || 0) || 0,
+            reference: l.reference || l.ref || l.code || l.codeArticle || l.code_article || '',
           }));
         }
 
+        console.log(`[EasyBeer Webhook] Commande details: #${numero}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes, statut=${statut}`);
+
         // Find which client this order belongs to
-        const ebClientId = String(orderData.clientId || orderData.client_id || orderData.tiersId || orderData.tiers_id
-          || orderData.idClient || orderData.id_client || orderData.acheteurId || '');
-        const orderClientName = orderData.clientNom || orderData.client_nom || orderData.nomClient || orderData.raisonSociale
-          || orderData.raison_sociale || orderData.nomTiers || orderData.client || '';
-        const orderClientEmail = orderData.emailClient || orderData.email_client || orderData.clientEmail || '';
-        const orderClientPhone = orderData.telephoneClient || orderData.telephone_client || orderData.clientTelephone || '';
+        // Handle nested client object (e.g. { client: { id: 123, nom: "Bar X" } })
+        let clientObj = null;
+        if (orderData.client && typeof orderData.client === 'object') {
+          clientObj = orderData.client;
+        } else if (orderData.tiers && typeof orderData.tiers === 'object') {
+          clientObj = orderData.tiers;
+        } else if (orderData.acheteur && typeof orderData.acheteur === 'object') {
+          clientObj = orderData.acheteur;
+        }
+
+        const ebClientId = String(
+          orderData.clientId || orderData.client_id || orderData.tiersId || orderData.tiers_id
+          || orderData.idClient || orderData.id_client || orderData.acheteurId
+          || (clientObj && (clientObj.id || clientObj.idClient || clientObj.idTiers))
+          || ''
+        );
+        const orderClientName = orderData.clientNom || orderData.client_nom || orderData.nomClient
+          || orderData.raisonSociale || orderData.raison_sociale || orderData.nomTiers
+          || (typeof orderData.client === 'string' ? orderData.client : '')
+          || (clientObj && (clientObj.nom || clientObj.libelle || clientObj.raisonSociale || clientObj.name))
+          || '';
+        const orderClientEmail = orderData.emailClient || orderData.email_client || orderData.clientEmail
+          || (clientObj && (clientObj.email || clientObj.emailPrincipal))
+          || '';
+        const orderClientPhone = orderData.telephoneClient || orderData.telephone_client || orderData.clientTelephone
+          || (clientObj && (clientObj.telephone || clientObj.telephonePrincipal || clientObj.mobile))
+          || '';
+        const orderClientSiret = orderData.siretClient || orderData.siret
+          || (clientObj && (clientObj.siret || clientObj.siren))
+          || '';
+
+        console.log(`[EasyBeer Webhook] Commande client extraction: ebClientId=${ebClientId}, name="${orderClientName}", email="${orderClientEmail}", siret="${orderClientSiret}", clientObj=${clientObj ? 'oui' : 'non'}`);
 
         let clientId = null;
 
@@ -2003,14 +2083,16 @@ async function handleEasyBeerWebhook(req, res) {
           );
           if (ebMatch.rows.length > 0) {
             clientId = ebMatch.rows[0].imported_client_id;
+            console.log(`[EasyBeer Webhook] Client trouve via easybeer_clients link: ${clientId}`);
           }
         }
 
-        // 2. Try matching by name/email/phone against existing clients (imported from Excel)
+        // 2. Try matching by name/email/phone/SIRET against existing clients
         if (!clientId) {
-          const matchedClient = await findMatchingClient(orderClientName, orderClientEmail, orderClientPhone, '');
+          const matchedClient = await findMatchingClient(orderClientName, orderClientEmail, orderClientPhone, orderClientSiret);
           if (matchedClient) {
             clientId = matchedClient.id;
+            console.log(`[EasyBeer Webhook] Client trouve via matching: ${matchedClient.nom} (${clientId})`);
             // Also link the easybeer_clients entry if ebClientId exists
             if (ebClientId) {
               await db.query(
@@ -2217,11 +2299,13 @@ async function handleEasyBeerWebhook(req, res) {
             const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [f.commercial_email.toLowerCase()]);
             if (ruleResult.rows.length > 0) {
               const rule = ruleResult.rows[0];
-              const clientType = 'BAR_RESTAURANT_GENERAL';
+              const clientType = mapEasyBeerTypeToClientType(f.type);
               const nextVisit = await calculateNextVisit(clientType, null, null);
               const clientId = `cli-${crypto.randomUUID()}`;
 
               const prospect = await findMatchingProspect(f.name, f.email, f.phone);
+
+              console.log(`[EasyBeer Webhook] Auto-import: type EasyBeer="${f.type}" -> type SuiviPro="${clientType}"`);
 
               await db.query(
                 `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
