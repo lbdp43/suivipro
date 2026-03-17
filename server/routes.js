@@ -1341,30 +1341,59 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   let apiClients = [];
   const debugInfo = [];
 
-  try {
-    const pageSize = 100;
-    for (let page = 0; page < 50; page++) {
-      const resp = await fetch(`${apiBase}/parametres/client/liste`, {
+  // Try both URL encodings (same as test-connection)
+  const clientListPaths = ['/parametres/client/liste', '/param%C3%A8tres/client/liste'];
+  let workingPath = null;
+
+  for (const path of clientListPaths) {
+    if (workingPath) break;
+    try {
+      const resp = await fetch(`${apiBase}${path}`, {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 }),
+        signal: AbortSignal.timeout(15000)
+      });
+      console.log(`[EasyBeer Bulk Sync] ${path}: HTTP ${resp.status}`);
+      if (resp.status === 200 || resp.status === 206) {
+        const testData = await resp.json().catch(() => null);
+        if (testData && (testData.liste || Array.isArray(testData))) {
+          workingPath = path;
+          const testList = testData.liste || testData;
+          if (Array.isArray(testList)) apiClients.push(...testList);
+          console.log(`[EasyBeer Bulk Sync] Path OK: ${path}, got ${testList.length} clients in first page`);
+        }
+      } else {
+        debugInfo.push({ endpoint: path, status: resp.status, body: (await resp.text().catch(() => '')).substring(0, 200) });
+      }
+    } catch (err) {
+      debugInfo.push({ endpoint: path, error: err.message });
+    }
+    await delay(500);
+  }
+
+  if (!workingPath) {
+    return res.json({ ok: false, message: 'Impossible de recuperer la liste des clients depuis EasyBeer API', debug: debugInfo });
+  }
+
+  // Paginate to get ALL clients
+  const pageSize = 200;
+  for (let page = 1; page < 50; page++) {
+    try {
+      const resp = await fetch(`${apiBase}${workingPath}`, {
         method: 'POST', headers: hdrs,
         body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: page }),
         signal: AbortSignal.timeout(20000)
       });
-      if (!resp.ok) { debugInfo.push({ endpoint: 'client/liste', status: resp.status }); break; }
+      if (resp.status !== 200 && resp.status !== 206) break;
       const data = await resp.json().catch(() => null);
       if (!data) break;
-      const list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || []);
+      const list = data.liste || (Array.isArray(data) ? data : []);
       if (!Array.isArray(list) || list.length === 0) break;
       apiClients.push(...list);
       console.log(`[EasyBeer Bulk Sync] client/liste page ${page}: ${list.length} clients`);
       if (list.length < pageSize) break;
       await delay(500);
-    }
-  } catch (err) {
-    debugInfo.push({ endpoint: 'client/liste', error: err.message });
-  }
-
-  if (apiClients.length === 0) {
-    return res.json({ ok: false, message: 'Impossible de recuperer la liste des clients depuis EasyBeer API', debug: debugInfo });
+    } catch { break; }
   }
 
   console.log(`[EasyBeer Bulk Sync] ${apiClients.length} clients recuperes depuis l'API EasyBeer`);
