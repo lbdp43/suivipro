@@ -1297,19 +1297,21 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   const hdrs = { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' };
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // Get all EasyBeer-linked clients
-  const linkedClients = await db.query(
-    `SELECT ec.easybeer_id, ec.imported_client_id, ec.name as eb_name, c.nom as client_nom
+  // Get ALL EasyBeer clients (imported + pending + dismissed)
+  const allEbClients = await db.query(
+    `SELECT ec.easybeer_id, ec.imported_client_id, ec.name as eb_name, ec.status as eb_status,
+            c.nom as client_nom
      FROM easybeer_clients ec
-     JOIN clients c ON ec.imported_client_id = c.id
-     WHERE ec.status = 'imported' AND ec.imported_client_id IS NOT NULL`
+     LEFT JOIN clients c ON ec.imported_client_id = c.id
+     WHERE ec.easybeer_id IS NOT NULL`
   );
 
-  if (linkedClients.rows.length === 0) {
-    return res.json({ ok: false, message: 'Aucun client lie a EasyBeer', total_imported: 0 });
+  if (allEbClients.rows.length === 0) {
+    return res.json({ ok: false, message: 'Aucun client EasyBeer connu', total_imported: 0 });
   }
 
-  console.log(`[EasyBeer Bulk Sync] ${linkedClients.rows.length} clients lies, fetching commandes...`);
+  const linkedCount = allEbClients.rows.filter(r => r.imported_client_id).length;
+  console.log(`[EasyBeer Bulk Sync] ${allEbClients.rows.length} clients EasyBeer (${linkedCount} lies), fetching commandes...`);
 
   const now = new Date().toISOString();
   let totalImported = 0;
@@ -1318,11 +1320,13 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   const clientStats = {};
   const debugInfo = [];
 
-  // For each linked client, fetch their orders
-  for (const row of linkedClients.rows) {
+  let totalOrphans = 0;
+
+  // For each EasyBeer client, fetch their orders
+  for (const row of allEbClients.rows) {
     const ebId = row.easybeer_id;
-    const clientId = row.imported_client_id;
-    const clientNom = row.client_nom;
+    const clientId = row.imported_client_id; // null if not imported
+    const clientNom = row.client_nom || row.eb_name || '';
     const orderIds = new Set();
 
     // Step 1: Get historique-commande (delivered orders)
@@ -1364,11 +1368,10 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
 
     // Step 3: Get detail for each order
     for (const orderId of orderIds) {
-      // Anti-doublon
-      const existing = await db.query(
-        'SELECT id FROM commandes WHERE client_id = $1 AND easybeer_id = $2',
-        [clientId, String(orderId)]
-      );
+      // Anti-doublon: check by easybeer_id (with or without client_id)
+      const existing = clientId
+        ? await db.query('SELECT id FROM commandes WHERE client_id = $1 AND easybeer_id = $2', [clientId, String(orderId)])
+        : await db.query('SELECT id FROM commandes WHERE easybeer_id = $1', [String(orderId)]);
       if (existing.rows.length > 0) { totalSkipped++; continue; }
 
       await delay(500);
@@ -1415,18 +1418,30 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
           reference: el.reference || el.code || '',
         }));
 
+        // Also try to extract client name from the order detail itself
+        const detClientName = det.client?.nom || det.client?.raisonSociale || '';
+        const finalClientName = clientNom || detClientName || '';
+
         const cmdId = `cmd-${crypto.randomUUID()}`;
         await db.query(
           `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-          [cmdId, clientId, String(orderId), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
-           JSON.stringify(lignes), '', 'easybeer', clientNom, JSON.stringify(det), now]
+          [cmdId, clientId || null, String(orderId), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
+           JSON.stringify(lignes), '', 'easybeer', finalClientName, JSON.stringify(det), now]
         );
 
         totalImported++;
-        if (!clientStats[clientId]) clientStats[clientId] = { nom: clientNom, count: 0, total_ttc: 0 };
-        clientStats[clientId].count++;
-        clientStats[clientId].total_ttc += montantTtc;
+        if (clientId) {
+          if (!clientStats[clientId]) clientStats[clientId] = { nom: clientNom, count: 0, total_ttc: 0 };
+          clientStats[clientId].count++;
+          clientStats[clientId].total_ttc += montantTtc;
+        } else {
+          totalOrphans++;
+          const orphanKey = `orphan_${ebId}`;
+          if (!clientStats[orphanKey]) clientStats[orphanKey] = { nom: `${finalClientName} (non importe)`, count: 0, total_ttc: 0 };
+          clientStats[orphanKey].count++;
+          clientStats[orphanKey].total_ttc += montantTtc;
+        }
       } catch (err) {
         debugInfo.push({ client: clientNom, endpoint: `commande/detail/${orderId}`, error: err.message });
       }
@@ -1437,7 +1452,7 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     client_id: id, nom: s.nom, commandes_importees: s.count, total_ttc: Math.round(s.total_ttc * 100) / 100
   }));
 
-  console.log(`[EasyBeer Bulk Sync] Termine: ${totalImported} importees, ${totalSkipped} existantes, ${totalFound} trouvees`);
+  console.log(`[EasyBeer Bulk Sync] Termine: ${totalImported} importees, ${totalSkipped} existantes, ${totalOrphans} orphelines, ${totalFound} trouvees`);
 
   const allCommandes = await db.query("SELECT * FROM commandes WHERE source = 'easybeer' ORDER BY date_commande DESC");
   res.json({
@@ -1446,7 +1461,9 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     total_orders_found: totalFound,
     total_imported: totalImported,
     total_skipped: totalSkipped,
-    clients_linked: linkedClients.rows.length,
+    total_orphans: totalOrphans,
+    clients_queried: allEbClients.rows.length,
+    clients_linked: linkedCount,
     details: statsArray,
     debug: debugInfo,
     commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),

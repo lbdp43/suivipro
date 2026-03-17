@@ -1502,16 +1502,18 @@ export default function AdminPage() {
               </button>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Pour chaque client lie, recupere l'historique des commandes livrees via l'API EasyBeer (historique-commande + commande/detail). Les doublons sont ignores.
+              Interroge TOUS les clients EasyBeer connus (importes ou non) pour recuperer leurs commandes via l'API. Les doublons sont ignores.
             </p>
             {syncAllResult && (
               <div className={`p-3 rounded-lg text-sm ${syncAllResult.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
                 <p className="font-medium">{syncAllResult.message}</p>
                 {syncAllResult.ok && (
                   <div className="mt-2 text-xs space-y-1">
+                    <p>Clients EasyBeer interroges: <strong>{syncAllResult.clients_queried || 0}</strong> (dont {syncAllResult.clients_linked || 0} lies)</p>
                     <p>Commandes trouvees: <strong>{syncAllResult.total_orders_found || 0}</strong></p>
                     <p>Nouvelles importees: <strong>{syncAllResult.total_imported || 0}</strong></p>
                     <p>Deja existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
+                    {(syncAllResult.total_orphans || 0) > 0 && <p>Orphelines (client non importe): <strong>{syncAllResult.total_orphans}</strong></p>}
                     {syncAllResult.details && syncAllResult.details.length > 0 && (
                       <div className="mt-2 border-t pt-2">
                         <p className="font-medium mb-1">Detail par client:</p>
