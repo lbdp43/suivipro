@@ -1348,13 +1348,10 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   const clientListPath = '/parametres/client/liste';
   let workingPath = null;
 
+  // Only try 2 formats to conserve rate limit budget (EasyBeer: 10 req/s, ban 5 min)
   const bodyFormats = [
     { label: 'standard', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 } },
-    { label: 'with-page', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10, numeroPage: 0 } },
-    { label: 'nom-tri', body: { colonneTri: 'nom', mode: 'ASC', nombreParPage: 10, numeroPage: 0 } },
     { label: 'empty', body: {} },
-    { label: 'minimal', body: { nombreParPage: 10 } },
-    { label: 'query-params', queryParams: true, body: null },
   ];
 
   for (const fmt of bodyFormats) {
@@ -1401,55 +1398,12 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   }
 
   if (!workingPath) {
-    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, trying targeted ID scan via /parametres/client/detail/{id}`);
-    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible, scan cible par ID via client/detail' });
+    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, using existing DB links (no scan to preserve rate limit)`);
+    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible. Utilisation des clients deja lies en base (pas de scan pour eviter le ban API 5min).' });
 
-    // Strategy: use known easybeer_ids as anchors, scan around them
-    const knownIds = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id IS NOT NULL");
-    const knownNumericIds = knownIds.rows.map(r => parseInt(r.easybeer_id)).filter(n => !isNaN(n));
-
-    debugInfo.push({ endpoint: 'known-ids', ids: knownNumericIds, count: knownNumericIds.length });
-    console.log(`[EasyBeer Bulk Sync] Known EasyBeer IDs: ${JSON.stringify(knownNumericIds)}`);
-
-    if (knownNumericIds.length > 0) {
-      // Scan around known IDs: from min-100 to max+200
-      const minId = Math.max(1, Math.min(...knownNumericIds) - 100);
-      const maxId = Math.max(...knownNumericIds) + 200;
-      const knownSet = new Set(knownNumericIds);
-      let foundCount = 0;
-      let rateLimited = false;
-      console.log(`[EasyBeer Bulk Sync] Scanning client IDs ${minId}-${maxId} (around known IDs)`);
-
-      for (let id = minId; id <= maxId; id++) {
-        if (knownSet.has(id)) {
-          // Still fetch known IDs to get their full details for matching
-        }
-        try {
-          const resp = await fetch(`${apiBase}/parametres/client/detail/${id}`, {
-            headers: hdrs, signal: AbortSignal.timeout(8000)
-          });
-          if (resp.status === 429) {
-            debugInfo.push({ endpoint: 'id-scan', message: `Rate limit a id=${id}`, scanned: id - minId });
-            rateLimited = true;
-            break;
-          }
-          if (resp.ok) {
-            const data = await resp.json().catch(() => null);
-            if (data && (data.nom || data.libelle || data.raisonSociale || data.id)) {
-              apiClients.push({ ...data, idClient: data.idClient || data.id || id });
-              foundCount++;
-            }
-          }
-        } catch {}
-        // Gentle rate limiting: 500ms between each request
-        await delay(500);
-      }
-
-      console.log(`[EasyBeer Bulk Sync] Targeted scan: ${foundCount} clients trouves dans range ${minId}-${maxId}`);
-      debugInfo.push({ endpoint: 'id-scan', found: foundCount, range: `${minId}-${maxId}`, rateLimited });
-    } else {
-      debugInfo.push({ endpoint: 'id-scan', message: 'Aucun easybeer_id connu, scan impossible' });
-    }
+    // Show known IDs for reference
+    const knownIds = await db.query("SELECT easybeer_id, name FROM easybeer_clients WHERE easybeer_id IS NOT NULL");
+    debugInfo.push({ endpoint: 'known-ids', clients: knownIds.rows.map(r => ({ id: r.easybeer_id, name: r.name })), count: knownIds.rows.length });
   } else {
     // Paginate to get ALL clients
     const pageSize = 200;
@@ -1570,7 +1524,12 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     ...unmatchedApiClients.map(c => ({ apiId: c.apiId, clientId: null, clientNom: c.apiNom })),
   ];
 
+  let isBanned = false;
   for (const { apiId, clientId, clientNom } of allClientsToProcess) {
+    if (isBanned) {
+      debugInfo.push({ client: clientNom, endpoint: 'skip', message: 'API banni, client ignore' });
+      continue;
+    }
     const orderIds = new Set();
 
     // commandes-en-cours (current orders)
@@ -1593,6 +1552,8 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
         }
       } else {
         debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', status: encResp.status, body: encText.substring(0, 200) });
+        if (encResp.status === 400 && encText.includes('banned')) { isBanned = true; }
+        if (encResp.status === 429) { isBanned = true; }
       }
     } catch (err) {
       debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', error: err.message });
@@ -1624,6 +1585,8 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
         }
       } else {
         debugInfo.push({ client: clientNom, endpoint: 'historique-commande', status: histResp.status, body: histText.substring(0, 200) });
+        if (histResp.status === 400 && histText.includes('banned')) { isBanned = true; }
+        if (histResp.status === 429) { isBanned = true; }
       }
     } catch (err) {
       debugInfo.push({ client: clientNom, endpoint: 'historique-commande', error: err.message });
