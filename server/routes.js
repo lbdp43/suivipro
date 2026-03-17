@@ -1344,51 +1344,127 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   let apiClients = [];
   const debugInfo = [];
 
-  // Try both URL encodings (same as test-connection)
-  const clientListPaths = ['/parametres/client/liste', '/param%C3%A8tres/client/liste'];
+  // Try multiple body formats for /parametres/client/liste (the API may have changed format)
+  const clientListPath = '/parametres/client/liste';
   let workingPath = null;
 
-  for (const path of clientListPaths) {
+  const bodyFormats = [
+    { label: 'standard', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 } },
+    { label: 'with-page', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10, numeroPage: 0 } },
+    { label: 'nom-tri', body: { colonneTri: 'nom', mode: 'ASC', nombreParPage: 10, numeroPage: 0 } },
+    { label: 'empty', body: {} },
+    { label: 'minimal', body: { nombreParPage: 10 } },
+    { label: 'query-params', queryParams: true, body: null },
+  ];
+
+  for (const fmt of bodyFormats) {
     if (workingPath) break;
-    const fullUrl = `${apiBase}${path}`;
-    const bodyObj = { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 };
-    console.log(`[EasyBeer Bulk Sync] Trying POST ${fullUrl} with body: ${JSON.stringify(bodyObj)}`);
+    let fullUrl = `${apiBase}${clientListPath}`;
+    const fetchOpts = { method: 'POST', headers: hdrs, signal: AbortSignal.timeout(15000) };
+    if (fmt.queryParams) {
+      fullUrl += '?colonneTri=libelle&nombreParPage=10&numeroPage=0';
+      fetchOpts.body = JSON.stringify({});
+    } else if (fmt.body) {
+      fetchOpts.body = JSON.stringify(fmt.body);
+    }
+    console.log(`[EasyBeer Bulk Sync] Trying ${fmt.label}: POST ${fullUrl}`);
     try {
-      const resp = await fetch(fullUrl, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify(bodyObj),
-        signal: AbortSignal.timeout(15000)
-      });
+      const resp = await fetch(fullUrl, fetchOpts);
       const respText = await resp.text();
-      console.log(`[EasyBeer Bulk Sync] ${path}: HTTP ${resp.status}, body length=${respText.length}, first 300 chars: ${respText.substring(0, 300)}`);
+      console.log(`[EasyBeer Bulk Sync] ${fmt.label}: HTTP ${resp.status}, length=${respText.length}`);
       if (resp.status === 200 || resp.status === 206) {
         let testData = null;
         try { testData = JSON.parse(respText); } catch {}
         if (testData) {
-          // Accept any response shape that contains client data
           const testList = testData.liste || testData.contenu || testData.results || (Array.isArray(testData) ? testData : null);
           if (testList && Array.isArray(testList)) {
-            workingPath = path;
+            workingPath = clientListPath;
             apiClients.push(...testList);
-            console.log(`[EasyBeer Bulk Sync] Path OK: ${path}, got ${testList.length} clients in first page`);
+            console.log(`[EasyBeer Bulk Sync] SUCCESS with format "${fmt.label}": ${testList.length} clients`);
+            debugInfo.push({ endpoint: clientListPath, status: resp.status, format: fmt.label, count: testList.length });
           } else {
-            // 200 but unexpected shape - log the keys
-            debugInfo.push({ endpoint: path, status: resp.status, shape: 'unexpected', keys: Object.keys(testData), sample: respText.substring(0, 300) });
+            debugInfo.push({ endpoint: `${clientListPath} (${fmt.label})`, status: resp.status, shape: 'unexpected', keys: Object.keys(testData), sample: respText.substring(0, 300) });
           }
         }
       } else {
-        debugInfo.push({ endpoint: path, status: resp.status, body: respText.substring(0, 300) });
+        // Only log the first failure in detail, others just status
+        if (debugInfo.length === 0) {
+          debugInfo.push({ endpoint: `${clientListPath} (${fmt.label})`, status: resp.status, body: respText.substring(0, 300) });
+        } else {
+          debugInfo.push({ endpoint: `${clientListPath} (${fmt.label})`, status: resp.status });
+        }
       }
     } catch (err) {
-      console.log(`[EasyBeer Bulk Sync] ${path}: ERROR ${err.message}`);
-      debugInfo.push({ endpoint: path, error: err.message });
+      debugInfo.push({ endpoint: `${clientListPath} (${fmt.label})`, error: err.message });
     }
-    await delay(500);
+    await delay(400);
   }
 
   if (!workingPath) {
-    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, falling back to existing easybeer_clients`);
-    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible (HTTP 500), utilisation des clients deja lies' });
+    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, trying ID scan via /parametres/client/detail/{id}`);
+    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible, scan par ID via client/detail' });
+
+    // Strategy: scan EasyBeer client IDs to discover all clients
+    // Find the ID range from known clients
+    const knownIds = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id IS NOT NULL ORDER BY CAST(easybeer_id AS INTEGER) DESC LIMIT 5");
+    const knownNumericIds = knownIds.rows.map(r => parseInt(r.easybeer_id)).filter(n => !isNaN(n));
+    const maxKnownId = knownNumericIds.length > 0 ? Math.max(...knownNumericIds) : 0;
+
+    // Probe to find the max ID (binary search style)
+    let maxId = maxKnownId || 100;
+    // Try probing higher IDs to find the range
+    for (const probeId of [maxId + 100, maxId + 500, maxId + 1000, 5000, 10000, 50000]) {
+      try {
+        const probeResp = await fetch(`${apiBase}/parametres/client/detail/${probeId}`, {
+          headers: hdrs, signal: AbortSignal.timeout(8000)
+        });
+        if (probeResp.ok) {
+          const probeData = await probeResp.json().catch(() => null);
+          if (probeData && (probeData.nom || probeData.libelle || probeData.id)) {
+            maxId = Math.max(maxId, probeId);
+          }
+        }
+      } catch {}
+      await delay(200);
+    }
+
+    // Now scan from 1 to maxId+200 to find all clients
+    const scanMax = Math.min(maxId + 200, 50000); // Safety cap
+    let foundCount = 0;
+    let consecutive404 = 0;
+    console.log(`[EasyBeer Bulk Sync] Scanning client IDs 1-${scanMax} via /parametres/client/detail/`);
+
+    for (let id = 1; id <= scanMax; id++) {
+      // Skip known IDs that are already matched
+      try {
+        const resp = await fetch(`${apiBase}/parametres/client/detail/${id}`, {
+          headers: hdrs, signal: AbortSignal.timeout(8000)
+        });
+        if (resp.status === 429) {
+          debugInfo.push({ endpoint: 'id-scan', message: `Rate limit a id=${id}, arret scan` });
+          break;
+        }
+        if (resp.ok) {
+          const data = await resp.json().catch(() => null);
+          if (data && (data.nom || data.libelle || data.raisonSociale || data.id)) {
+            apiClients.push({ ...data, idClient: data.idClient || data.id || id });
+            foundCount++;
+            consecutive404 = 0;
+          }
+        } else {
+          consecutive404++;
+          // If 50+ consecutive 404s after finding some, probably past the last ID
+          if (consecutive404 > 50 && foundCount > 0) break;
+        }
+      } catch {
+        consecutive404++;
+      }
+      // Rate limit: pause every 5 requests
+      if (id % 5 === 0) await delay(300);
+    }
+
+    console.log(`[EasyBeer Bulk Sync] ID scan: ${foundCount} clients trouves (scanne jusqu'a ${scanMax})`);
+    debugInfo.push({ endpoint: 'id-scan', message: `${foundCount} clients decouverts via scan ID`, scanned_to: scanMax });
   } else {
     // Paginate to get ALL clients
     const pageSize = 200;
