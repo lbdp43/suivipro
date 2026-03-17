@@ -1532,35 +1532,37 @@ export default function AdminPage() {
                         ))}
                       </div>
                     )}
-                    {syncAllResult.debug && syncAllResult.debug.length > 0 && (
-                      <div className="mt-2 border-t pt-2">
-                        <p className="font-medium mb-1">Debug API EasyBeer:</p>
-                        {syncAllResult.debug.map((d: any, i: number) => (
+                  </div>
+                )}
+                {syncAllResult.debug && syncAllResult.debug.length > 0 && (
+                  <div className="mt-2 border-t pt-2 text-xs">
+                    <p className="font-medium mb-1">Debug API EasyBeer:</p>
+                    {syncAllResult.debug.map((d: any, i: number) => (
+                      <div key={i} className="mb-1">
+                        <p><strong>{d.endpoint}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.succes === false ? ` (succes: false)` : ''}</p>
+                        {d.message && <p className="text-red-500 text-sm">{d.message}</p>}
+                        {d.params && <p className="text-gray-500 text-sm">Params: {typeof d.params === 'string' ? d.params : JSON.stringify(d.params)}</p>}
+                        {d.response_keys && d.response_keys.length > 0 && <p className="text-gray-500">Cles: {d.response_keys.join(', ')}</p>}
+                        {d.keys && d.keys.length > 0 && <p className="text-gray-500">Cles: {d.keys.join(', ')}</p>}
+                        {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
+                        {d.body && <p className="text-gray-400 text-xs truncate max-w-full">{d.body.substring(0, 300)}</p>}
+                        {d.shape && <p className="text-gray-500">Shape: {d.shape}</p>}
+                      </div>
+                    ))}
+                    {(syncAllResult.api_url || syncAllResult.apiBase) && <p className="mt-1">URL API: {syncAllResult.api_url || syncAllResult.apiBase}</p>}
+                    {syncAllResult.discovery && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="font-medium mb-1 text-blue-700">Decouverte API (tous les endpoints testes):</p>
+                        {syncAllResult.discovery.filter((d: any) => d.status !== 404).map((d: any, i: number) => (
                           <div key={i} className="mb-1">
-                            <p><strong>{d.endpoint}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.succes === false ? ` (succes: false)` : ''}</p>
-                            {d.message && <p className="text-red-500 text-sm">{d.message}</p>}
-                            {d.params && <p className="text-gray-500 text-sm">Params: {typeof d.params === 'string' ? d.params : JSON.stringify(d.params)}</p>}
-                            {d.response_keys && d.response_keys.length > 0 && <p className="text-gray-500">Cles: {d.response_keys.join(', ')}</p>}
+                            <p><strong>{d.method} {d.path}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.hasListe !== null ? ` (liste: ${d.hasListe})` : ''}</p>
+                            {d.keys && d.keys.length > 0 && <p className="text-gray-500 text-xs">Cles: {d.keys.join(', ')}</p>}
                             {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
                           </div>
                         ))}
-                        {syncAllResult.api_url && <p className="mt-1">URL API: {syncAllResult.api_url}</p>}
-                        <p>Clients lies: {syncAllResult.clients_linked || 0}</p>
-                        {syncAllResult.discovery && (
-                          <div className="mt-3 pt-3 border-t border-gray-200">
-                            <p className="font-medium mb-1 text-blue-700">Decouverte API (tous les endpoints testes):</p>
-                            {syncAllResult.discovery.filter((d: any) => d.status !== 404).map((d: any, i: number) => (
-                              <div key={i} className="mb-1">
-                                <p><strong>{d.method} {d.path}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.hasListe !== null ? ` (liste: ${d.hasListe})` : ''}</p>
-                                {d.keys && d.keys.length > 0 && <p className="text-gray-500 text-xs">Cles: {d.keys.join(', ')}</p>}
-                                {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
-                              </div>
-                            ))}
-                            <p className="text-gray-400 text-xs mt-1">
-                              (Endpoints 404 masques. {syncAllResult.discovery.filter((d: any) => d.status === 404).length} endpoints retournent 404.)
-                            </p>
-                          </div>
-                        )}
+                        <p className="text-gray-400 text-xs mt-1">
+                          (Endpoints 404 masques. {syncAllResult.discovery.filter((d: any) => d.status === 404).length} endpoints retournent 404.)
+                        </p>
                       </div>
                     )}
                   </div>
