@@ -1566,6 +1566,7 @@ export default function AdminPage() {
               </h3>
               <div className="flex flex-wrap gap-1">
                 {[
+                  { round: 7, label: 'Fix document/liste' },
                   { round: 6, label: 'Swagger (documents/commandes)' },
                   { round: 4, label: 'commande/document/facture' },
                   { round: 5, label: 'bl/tournee/commercial' },

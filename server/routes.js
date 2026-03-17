@@ -3076,6 +3076,45 @@ router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, re
     status = await tryEndpoint('parametres/paiement/liste', 'POST', '/parametres/paiement/liste',
       { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
 
+  } else if (round === 7) {
+    // Round 7: Fix /document/liste - try different body schemas for ModeleDocumentParametre
+    // The Swagger ModeleDocumentParametre likely requires periodeSelectionnee
+
+    // Test 1: With periodeSelectionnee (date range)
+    status = await tryEndpoint('document/liste + periode', 'POST', '/document/liste',
+      { periodeSelectionnee: { dateDebut: '2024-01-01T00:00:00', dateFin: '2026-03-17T23:59:59' } },
+      { colonneTri: 'dateCreation', nombreParPage: '10', numeroPage: '0' });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Test 2: With types + periode
+    status = await tryEndpoint('document/liste FACTURE+periode', 'POST', '/document/liste',
+      { types: ['FACTURE'], periodeSelectionnee: { dateDebut: '2024-01-01T00:00:00', dateFin: '2026-03-17T23:59:59' } },
+      { colonneTri: 'dateCreation', nombreParPage: '10', numeroPage: '0' });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Test 3: With all Swagger fields from ModeleDocumentParametre (minimal)
+    status = await tryEndpoint('document/liste full schema', 'POST', '/document/liste',
+      { types: [], idClient: null, periodeSelectionnee: { dateDebut: '2024-01-01T00:00:00', dateFin: '2026-12-31T23:59:59' } },
+      { colonneTri: 'dateCreation', nombreParPage: '5', numeroPage: '0' });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Test 4: With specific client ID in body
+    if (ebClientId) {
+      status = await tryEndpoint('document/liste client filter', 'POST', '/document/liste',
+        { types: ['FACTURE'], idClient: parseInt(ebClientId), periodeSelectionnee: { dateDebut: '2024-01-01T00:00:00', dateFin: '2026-03-17T23:59:59' } },
+        { colonneTri: 'dateCreation', nombreParPage: '5', numeroPage: '0' });
+      if (status === 'stop') return res.json({ ok: true, results, round });
+      await delay(500);
+    }
+
+    // Test 5: No body at all (null) - maybe body is optional?
+    status = await tryEndpoint('document/liste no body', 'POST', '/document/liste',
+      null,
+      { colonneTri: 'dateCreation', nombreParPage: '5', numeroPage: '0' });
+
   } else if (round === 6) {
     // Round 6: SWAGGER-CORRECT calls - query params in URL, proper body schemas
     // /document/liste: colonneTri, nombreParPage, numeroPage are QUERY params per Swagger
