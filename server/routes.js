@@ -1387,28 +1387,29 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   }
 
   if (!workingPath) {
-    return res.json({ ok: false, message: 'Impossible de recuperer la liste des clients depuis EasyBeer API', debug: debugInfo, apiBase });
-  }
-
-  // Paginate to get ALL clients
-  const pageSize = 200;
-  for (let page = 1; page < 50; page++) {
-    try {
-      const resp = await fetch(`${apiBase}${workingPath}`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: page }),
-        signal: AbortSignal.timeout(20000)
-      });
-      if (resp.status !== 200 && resp.status !== 206) break;
-      const data = await resp.json().catch(() => null);
-      if (!data) break;
-      const list = data.liste || (Array.isArray(data) ? data : []);
-      if (!Array.isArray(list) || list.length === 0) break;
-      apiClients.push(...list);
-      console.log(`[EasyBeer Bulk Sync] client/liste page ${page}: ${list.length} clients`);
-      if (list.length < pageSize) break;
-      await delay(500);
-    } catch { break; }
+    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, falling back to existing easybeer_clients`);
+    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible (HTTP 500), utilisation des clients deja lies' });
+  } else {
+    // Paginate to get ALL clients
+    const pageSize = 200;
+    for (let page = 1; page < 50; page++) {
+      try {
+        const resp = await fetch(`${apiBase}${workingPath}`, {
+          method: 'POST', headers: hdrs,
+          body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: page }),
+          signal: AbortSignal.timeout(20000)
+        });
+        if (resp.status !== 200 && resp.status !== 206) break;
+        const data = await resp.json().catch(() => null);
+        if (!data) break;
+        const list = data.liste || (Array.isArray(data) ? data : []);
+        if (!Array.isArray(list) || list.length === 0) break;
+        apiClients.push(...list);
+        console.log(`[EasyBeer Bulk Sync] client/liste page ${page}: ${list.length} clients`);
+        if (list.length < pageSize) break;
+        await delay(500);
+      } catch { break; }
+    }
   }
 
   console.log(`[EasyBeer Bulk Sync] ${apiClients.length} clients recuperes depuis l'API EasyBeer`);
@@ -1427,61 +1428,55 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   const matchedClients = [];
   const unmatchedApiClients = [];
 
-  for (const apiClient of apiClients) {
-    const apiId = apiClient.idClient || apiClient.id;
-    if (!apiId) continue;
+  if (apiClients.length > 0) {
+    // Normal mode: match API clients to local clients
+    for (const apiClient of apiClients) {
+      const apiId = apiClient.idClient || apiClient.id;
+      if (!apiId) continue;
 
-    const apiNom = apiClient.nom || apiClient.libelle || apiClient.raisonSociale || '';
-    const apiEmail = apiClient.email || apiClient.emailPrincipal || apiClient.mail || '';
-    const apiTel = normalize(apiClient.telephone || apiClient.tel || apiClient.phone || '');
-    const apiSiret = normalize(apiClient.siret || apiClient.siren || '');
-    const apiNomNorm = normalize(apiNom);
+      const apiNom = apiClient.nom || apiClient.libelle || apiClient.raisonSociale || '';
+      const apiEmail = apiClient.email || apiClient.emailPrincipal || apiClient.mail || '';
+      const apiTel = normalize(apiClient.telephone || apiClient.tel || apiClient.phone || '');
+      const apiSiret = normalize(apiClient.siret || apiClient.siren || '');
+      const apiNomNorm = normalize(apiNom);
 
-    let bestMatch = null;
+      let bestMatch = null;
 
-    for (const local of localClients.rows) {
-      // Match by stored easybeer_id first
-      if (local.stored_eb_id && String(local.stored_eb_id) === String(apiId)) {
-        bestMatch = local; break;
+      for (const local of localClients.rows) {
+        if (local.stored_eb_id && String(local.stored_eb_id) === String(apiId)) { bestMatch = local; break; }
+        if (apiSiret && apiSiret.length >= 9 && normalize(local.siret).includes(apiSiret)) { bestMatch = local; break; }
+        if (apiEmail && local.email && normalize(apiEmail) === normalize(local.email)) { bestMatch = local; break; }
+        if (apiTel && apiTel.length >= 8 && (normalize(local.telephone).includes(apiTel) || normalize(local.telephone_mobile).includes(apiTel))) { bestMatch = local; break; }
+        if (apiNomNorm && apiNomNorm.length > 3 && (normalize(local.nom) === apiNomNorm || normalize(local.nom).includes(apiNomNorm) || apiNomNorm.includes(normalize(local.nom)))) { bestMatch = local; break; }
+        if (apiNomNorm && local.eb_name && normalize(local.eb_name) === apiNomNorm) { bestMatch = local; break; }
       }
-      // Match by SIRET (strongest)
-      if (apiSiret && apiSiret.length >= 9 && normalize(local.siret).includes(apiSiret)) {
-        bestMatch = local; break;
-      }
-      // Match by email
-      if (apiEmail && local.email && normalize(apiEmail) === normalize(local.email)) {
-        bestMatch = local; break;
-      }
-      // Match by phone
-      if (apiTel && apiTel.length >= 8) {
-        if (normalize(local.telephone).includes(apiTel) || normalize(local.telephone_mobile).includes(apiTel)) {
-          bestMatch = local; break;
+
+      if (bestMatch) {
+        matchedClients.push({ apiId, localClientId: bestMatch.id, clientNom: bestMatch.nom, apiNom });
+        if (bestMatch.stored_eb_id !== String(apiId)) {
+          await db.query(`UPDATE easybeer_clients SET easybeer_id = $1 WHERE imported_client_id = $2`, [String(apiId), bestMatch.id]).catch(() => {});
         }
-      }
-      // Match by name
-      if (apiNomNorm && apiNomNorm.length > 3 && (normalize(local.nom) === apiNomNorm
-        || normalize(local.nom).includes(apiNomNorm) || apiNomNorm.includes(normalize(local.nom)))) {
-        bestMatch = local; break;
-      }
-      // Match by EB name
-      if (apiNomNorm && local.eb_name && normalize(local.eb_name) === apiNomNorm) {
-        bestMatch = local; break;
+      } else {
+        unmatchedApiClients.push({ apiId, apiNom });
       }
     }
-
-    if (bestMatch) {
-      matchedClients.push({ apiId, localClientId: bestMatch.id, clientNom: bestMatch.nom, apiNom });
-
-      // Update easybeer_clients with the correct numeric ID if different
-      if (bestMatch.stored_eb_id !== String(apiId)) {
-        await db.query(
-          `UPDATE easybeer_clients SET easybeer_id = $1 WHERE imported_client_id = $2`,
-          [String(apiId), bestMatch.id]
-        ).catch(() => {});
-      }
-    } else {
-      unmatchedApiClients.push({ apiId, apiNom });
+  } else {
+    // Fallback mode: use existing easybeer_clients links from DB
+    const existingLinks = await db.query(
+      `SELECT ec.easybeer_id, ec.name, ec.imported_client_id, c.nom as client_nom
+       FROM easybeer_clients ec
+       JOIN clients c ON ec.imported_client_id = c.id
+       WHERE ec.status = 'imported' AND ec.easybeer_id IS NOT NULL AND ec.imported_client_id IS NOT NULL`
+    );
+    for (const link of existingLinks.rows) {
+      matchedClients.push({
+        apiId: link.easybeer_id,
+        localClientId: link.imported_client_id,
+        clientNom: link.client_nom || link.name,
+        apiNom: link.name || link.client_nom
+      });
     }
+    console.log(`[EasyBeer Bulk Sync] Fallback: ${matchedClients.length} clients depuis easybeer_clients DB`);
   }
 
   console.log(`[EasyBeer Bulk Sync] ${matchedClients.length} clients matches, ${unmatchedApiClients.length} non matches`);
@@ -1490,11 +1485,14 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     api_clients: apiClients.length,
     matched: matchedClients.length,
     unmatched: unmatchedApiClients.length,
+    fallback: apiClients.length === 0,
     unmatched_names: unmatchedApiClients.slice(0, 10).map(c => c.apiNom),
   });
 
   if (matchedClients.length === 0 && unmatchedApiClients.length === 0) {
-    return res.json({ ok: false, message: 'Aucun client a synchroniser', debug: debugInfo });
+    return res.json({ ok: false, message: apiClients.length === 0
+      ? 'API client/liste indisponible et aucun client lie dans la base. Importez d\'abord des clients via les webhooks ou manuellement.'
+      : 'Aucun client a synchroniser', debug: debugInfo, apiBase });
   }
 
   // Step 3: For each matched client, fetch commandes-en-cours + historique-commande using REAL API ID
@@ -1639,7 +1637,7 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
           clientStats[clientId].total_ttc += montantTtc;
         } else {
           totalOrphans++;
-          const orphanKey = `orphan_${ebId}`;
+          const orphanKey = `orphan_${apiId}`;
           if (!clientStats[orphanKey]) clientStats[orphanKey] = { nom: `${finalClientName} (non importe)`, count: 0, total_ttc: 0 };
           clientStats[orphanKey].count++;
           clientStats[orphanKey].total_ttc += montantTtc;
@@ -2242,13 +2240,24 @@ async function handleEasyBeerWebhook(req, res) {
   const isClientCreation = ['clientcreation', 'clientcreated', 'newclient', 'tiercreation', 'tiercreated', 'newtier'].includes(typeLower)
     || type.includes('CLIENT') || type.includes('client') || type.includes('TIER') || type.includes('tier');
   const isCommande = ['commandefacturation', 'commandecreation', 'facturecreation', 'facturecreated', 'commandecreated',
-    'nouvellecommande', 'nouvellefacture', 'blcreation', 'blcreated'].includes(typeLower)
-    || type.includes('COMMANDE') || type.includes('FACTUR') || type.includes('commande') || type.includes('factur');
+    'nouvellecommande', 'nouvellefacture', 'blcreation', 'blcreated', 'documentcreation', 'documentcreated',
+    'livraison', 'livraisoncreation', 'validation', 'validationcommande'].includes(typeLower)
+    || type.includes('COMMANDE') || type.includes('FACTUR') || type.includes('commande') || type.includes('factur')
+    || type.includes('DOCUMENT') || type.includes('document') || type.includes('LIVRAI') || type.includes('livrai')
+    || type.includes('BL') || type.includes('VALID') || type.includes('valid');
+
+  // Fallback: if type is unknown but payload has order-like data (amounts, orderId), treat as commande
+  const hasOrderData = !!(payloadRoot.montantTTC || payloadRoot.montantHT || payloadRoot.totalTTC || payloadRoot.totalHT
+    || payloadRoot.commandeId || payloadRoot.factureId || payloadRoot.documentId || payloadRoot.blId
+    || payloadRoot.numero || payloadRoot.lignes || payloadRoot.elements);
+  const isLikelyCommande = isCommande || (!isClientCreation && hasOrderData);
+
+  console.log(`[EasyBeer Webhook] Type detection: typeLower="${typeLower}", isCommande=${isCommande}, isClientCreation=${isClientCreation}, hasOrderData=${hasOrderData}, isLikelyCommande=${isLikelyCommande}`);
 
   // ============================================
   // Handle COMMANDE / FACTURATION webhooks
   // ============================================
-  if (isCommande && id && config?.username && config?.api_url) {
+  if (isLikelyCommande && id && config?.username && config?.api_url) {
     setTimeout(async () => {
       try {
         const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
