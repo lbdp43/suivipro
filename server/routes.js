@@ -1401,70 +1401,55 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   }
 
   if (!workingPath) {
-    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, trying ID scan via /parametres/client/detail/{id}`);
-    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible, scan par ID via client/detail' });
+    console.log(`[EasyBeer Bulk Sync] /parametres/client/liste failed, trying targeted ID scan via /parametres/client/detail/{id}`);
+    debugInfo.push({ endpoint: 'fallback', message: 'client/liste indisponible, scan cible par ID via client/detail' });
 
-    // Strategy: scan EasyBeer client IDs to discover all clients
-    // Find the ID range from known clients
-    const knownIds = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id IS NOT NULL ORDER BY CAST(easybeer_id AS INTEGER) DESC LIMIT 5");
+    // Strategy: use known easybeer_ids as anchors, scan around them
+    const knownIds = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id IS NOT NULL");
     const knownNumericIds = knownIds.rows.map(r => parseInt(r.easybeer_id)).filter(n => !isNaN(n));
-    const maxKnownId = knownNumericIds.length > 0 ? Math.max(...knownNumericIds) : 0;
 
-    // Probe to find the max ID (binary search style)
-    let maxId = maxKnownId || 100;
-    // Try probing higher IDs to find the range
-    for (const probeId of [maxId + 100, maxId + 500, maxId + 1000, 5000, 10000, 50000]) {
-      try {
-        const probeResp = await fetch(`${apiBase}/parametres/client/detail/${probeId}`, {
-          headers: hdrs, signal: AbortSignal.timeout(8000)
-        });
-        if (probeResp.ok) {
-          const probeData = await probeResp.json().catch(() => null);
-          if (probeData && (probeData.nom || probeData.libelle || probeData.id)) {
-            maxId = Math.max(maxId, probeId);
+    debugInfo.push({ endpoint: 'known-ids', ids: knownNumericIds, count: knownNumericIds.length });
+    console.log(`[EasyBeer Bulk Sync] Known EasyBeer IDs: ${JSON.stringify(knownNumericIds)}`);
+
+    if (knownNumericIds.length > 0) {
+      // Scan around known IDs: from min-100 to max+200
+      const minId = Math.max(1, Math.min(...knownNumericIds) - 100);
+      const maxId = Math.max(...knownNumericIds) + 200;
+      const knownSet = new Set(knownNumericIds);
+      let foundCount = 0;
+      let rateLimited = false;
+      console.log(`[EasyBeer Bulk Sync] Scanning client IDs ${minId}-${maxId} (around known IDs)`);
+
+      for (let id = minId; id <= maxId; id++) {
+        if (knownSet.has(id)) {
+          // Still fetch known IDs to get their full details for matching
+        }
+        try {
+          const resp = await fetch(`${apiBase}/parametres/client/detail/${id}`, {
+            headers: hdrs, signal: AbortSignal.timeout(8000)
+          });
+          if (resp.status === 429) {
+            debugInfo.push({ endpoint: 'id-scan', message: `Rate limit a id=${id}`, scanned: id - minId });
+            rateLimited = true;
+            break;
           }
-        }
-      } catch {}
-      await delay(200);
-    }
-
-    // Now scan from 1 to maxId+200 to find all clients
-    const scanMax = Math.min(maxId + 200, 50000); // Safety cap
-    let foundCount = 0;
-    let consecutive404 = 0;
-    console.log(`[EasyBeer Bulk Sync] Scanning client IDs 1-${scanMax} via /parametres/client/detail/`);
-
-    for (let id = 1; id <= scanMax; id++) {
-      // Skip known IDs that are already matched
-      try {
-        const resp = await fetch(`${apiBase}/parametres/client/detail/${id}`, {
-          headers: hdrs, signal: AbortSignal.timeout(8000)
-        });
-        if (resp.status === 429) {
-          debugInfo.push({ endpoint: 'id-scan', message: `Rate limit a id=${id}, arret scan` });
-          break;
-        }
-        if (resp.ok) {
-          const data = await resp.json().catch(() => null);
-          if (data && (data.nom || data.libelle || data.raisonSociale || data.id)) {
-            apiClients.push({ ...data, idClient: data.idClient || data.id || id });
-            foundCount++;
-            consecutive404 = 0;
+          if (resp.ok) {
+            const data = await resp.json().catch(() => null);
+            if (data && (data.nom || data.libelle || data.raisonSociale || data.id)) {
+              apiClients.push({ ...data, idClient: data.idClient || data.id || id });
+              foundCount++;
+            }
           }
-        } else {
-          consecutive404++;
-          // If 50+ consecutive 404s after finding some, probably past the last ID
-          if (consecutive404 > 50 && foundCount > 0) break;
-        }
-      } catch {
-        consecutive404++;
+        } catch {}
+        // Gentle rate limiting: 500ms between each request
+        await delay(500);
       }
-      // Rate limit: pause every 5 requests
-      if (id % 5 === 0) await delay(300);
-    }
 
-    console.log(`[EasyBeer Bulk Sync] ID scan: ${foundCount} clients trouves (scanne jusqu'a ${scanMax})`);
-    debugInfo.push({ endpoint: 'id-scan', message: `${foundCount} clients decouverts via scan ID`, scanned_to: scanMax });
+      console.log(`[EasyBeer Bulk Sync] Targeted scan: ${foundCount} clients trouves dans range ${minId}-${maxId}`);
+      debugInfo.push({ endpoint: 'id-scan', found: foundCount, range: `${minId}-${maxId}`, rateLimited });
+    } else {
+      debugInfo.push({ endpoint: 'id-scan', message: 'Aucun easybeer_id connu, scan impossible' });
+    }
   } else {
     // Paginate to get ALL clients
     const pageSize = 200;
@@ -1593,17 +1578,26 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
       const encResp = await fetch(`${apiBase}/parametres/client/commandes-en-cours/${apiId}`, {
         method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
       });
+      const encText = await encResp.text();
+      console.log(`[EasyBeer Bulk Sync] ${clientNom} commandes-en-cours/${apiId}: HTTP ${encResp.status}, length=${encText.length}`);
       if (encResp.ok) {
-        const encData = await encResp.json().catch(() => null);
-        if (Array.isArray(encData)) {
-          encData.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
-          if (encData.length > 0) console.log(`[EasyBeer Bulk Sync] ${clientNom}: ${encData.length} commandes en cours`);
+        let encData = null;
+        try { encData = JSON.parse(encText); } catch {}
+        if (encData) {
+          // Could be array or object with liste/commandes
+          const encList = Array.isArray(encData) ? encData : (encData.liste || encData.commandes || encData.contenu || []);
+          if (Array.isArray(encList)) {
+            encList.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
+          }
+          debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', status: encResp.status, count: Array.isArray(encList) ? encList.length : '?', keys: Object.keys(encData), sample: encText.substring(0, 200) });
         }
+      } else {
+        debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', status: encResp.status, body: encText.substring(0, 200) });
       }
     } catch (err) {
       debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', error: err.message });
     }
-    await delay(300);
+    await delay(500);
 
     // historique-commande (delivered orders)
     try {
@@ -1612,10 +1606,12 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
         body: JSON.stringify({ dateDebut: '2020-01-01T00:00:00', dateFin: new Date().toISOString() }),
         signal: AbortSignal.timeout(15000)
       });
+      const histText = await histResp.text();
+      console.log(`[EasyBeer Bulk Sync] ${clientNom} historique-commande/${apiId}: HTTP ${histResp.status}, length=${histText.length}`);
       if (histResp.ok) {
-        const histData = await histResp.json().catch(() => null);
+        let histData = null;
+        try { histData = JSON.parse(histText); } catch {}
         if (histData) {
-          // Could be array of orders or object with nested list
           const extractIds = (data) => {
             if (Array.isArray(data)) return data;
             return data.liste || data.commandes || data.historique || data.contenu || [];
@@ -1623,14 +1619,16 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
           const histList = extractIds(histData);
           if (Array.isArray(histList)) {
             histList.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
-            if (histList.length > 0) console.log(`[EasyBeer Bulk Sync] ${clientNom}: ${histList.length} commandes historique`);
           }
+          debugInfo.push({ client: clientNom, endpoint: 'historique-commande', status: histResp.status, count: Array.isArray(histList) ? histList.length : '?', keys: Object.keys(histData), sample: histText.substring(0, 200) });
         }
+      } else {
+        debugInfo.push({ client: clientNom, endpoint: 'historique-commande', status: histResp.status, body: histText.substring(0, 200) });
       }
     } catch (err) {
       debugInfo.push({ client: clientNom, endpoint: 'historique-commande', error: err.message });
     }
-    await delay(300);
+    await delay(500);
 
     totalFound += orderIds.size;
 
