@@ -1128,17 +1128,11 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
   if (clientResult.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
 
   const client = clientResult.rows[0];
-  const ebId = client.easybeer_id;
-
-  if (!ebId) {
-    // Try matching by name in easybeer_clients
+  let finalEbId = client.easybeer_id;
+  if (!finalEbId) {
     const ebMatch = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE status = 'imported' AND imported_client_id = $1", [clientId]);
-    if (ebMatch.rows.length === 0) {
-      return res.json({ ok: false, message: 'Client non lie a EasyBeer', commandes: [] });
-    }
+    finalEbId = ebMatch.rows[0]?.easybeer_id;
   }
-
-  const finalEbId = ebId || (await db.query("SELECT easybeer_id FROM easybeer_clients WHERE status = 'imported' AND imported_client_id = $1", [clientId])).rows[0]?.easybeer_id;
   if (!finalEbId) return res.json({ ok: false, message: 'Pas de lien EasyBeer', commandes: [] });
 
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
@@ -1149,164 +1143,148 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
 
   const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
-  const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
+  const hdrs = { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' };
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // EasyBeer API: only /document/liste exists (confirmed by discovery)
-  // All other paths return 404. /document/liste returns 500 server error.
-  // Rate limit: 10 req/s with 300s ban → only make 1 API call
-  let orders = [];
-  let fetchedFrom = '';
-  const pageSize = 50;
+  // Step 1: Get order IDs from historique-commande (delivered orders)
+  let orderIds = [];
+  const debugInfo = [];
 
-  function extractOrderList(data) {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    return data.liste || data.contenu || data.results || data.data || data.items
-      || data.commandes || data.factures || data.documents || data.ventes || [];
-  }
-
-  function filterClientOrders(list) {
-    return list.filter(d => {
-      const dClientId = String(d.clientId || d.client_id || d.idClient || d.tiersId
-        || (d.client && typeof d.client === 'object' ? (d.client.id || d.client.idClient) : '') || '');
-      const dClientName = d.clientNom || d.nomClient || d.raisonSociale
-        || (d.client && typeof d.client === 'object' ? (d.client.nom || d.client.libelle || d.client.raisonSociale) : '')
-        || (typeof d.client === 'string' ? d.client : '') || '';
-      if (dClientId && String(dClientId) === String(finalEbId)) return true;
-      if (dClientName && client.nom) {
-        const normA = dClientName.toLowerCase().trim();
-        const normB = client.nom.toLowerCase().trim();
-        if (normA === normB || normA.includes(normB) || normB.includes(normA)) return true;
-      }
-      return false;
-    });
-  }
-
-  // Single API call to /document/liste (the only existing endpoint)
   try {
-    const paginationBody = { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 };
-    const resp = await fetch(`${apiBase}/document/liste`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify(paginationBody),
+    const histResp = await fetch(`${apiBase}/parametres/client/historique-commande/${finalEbId}`, {
+      method: 'POST', headers: hdrs,
+      body: JSON.stringify({ dateDebut: '2020-01-01T00:00:00', dateFin: new Date().toISOString() }),
       signal: AbortSignal.timeout(15000)
     });
+    const histData = await histResp.json().catch(() => null);
+    debugInfo.push({ endpoint: 'historique-commande', status: histResp.status, keys: histData ? Object.keys(histData) : [] });
 
-    if (resp.ok) {
-      const data = await resp.json().catch(() => null);
-      if (data && data.succes !== false) {
-        const allDocs = extractOrderList(data);
-        orders = filterClientOrders(allDocs);
-        if (orders.length > 0) fetchedFrom = '/document/liste';
-
-        // Paginate if needed
-        if (allDocs.length >= pageSize) {
-          for (let page = 1; page <= 20; page++) {
-            try {
-              const pageResp = await fetch(`${apiBase}/document/liste`, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...paginationBody, numeroPage: page }),
-                signal: AbortSignal.timeout(30000)
-              });
-              if (!pageResp.ok) break;
-              const pageData = await pageResp.json().catch(() => null);
-              if (!pageData) break;
-              const pageList = extractOrderList(pageData);
-              if (!Array.isArray(pageList) || pageList.length === 0) break;
-              const clientOrders = filterClientOrders(pageList);
-              if (clientOrders.length > 0) orders.push(...clientOrders);
-              if (pageList.length < pageSize) break;
-            } catch { break; }
-          }
-        }
+    // Extract order IDs from response (could be array or nested)
+    if (histData) {
+      if (Array.isArray(histData)) {
+        orderIds = histData.map(o => o.idCommande || o.id).filter(Boolean);
+      } else if (histData.liste || histData.commandes || histData.historique) {
+        const list = histData.liste || histData.commandes || histData.historique || [];
+        if (Array.isArray(list)) orderIds = list.map(o => o.idCommande || o.id).filter(Boolean);
       }
     }
-    console.log(`[EasyBeer Client Sync] /document/liste: HTTP ${resp.status}`);
   } catch (err) {
-    console.log(`[EasyBeer Client Sync] /document/liste error: ${err.message}`);
+    debugInfo.push({ endpoint: 'historique-commande', error: err.message });
   }
 
-  if (orders.length === 0) {
+  await delay(500);
+
+  // Step 2: Also get commandes-en-cours as fallback
+  try {
+    const encResp = await fetch(`${apiBase}/parametres/client/commandes-en-cours/${finalEbId}`, {
+      method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
+    });
+    const encData = await encResp.json().catch(() => null);
+    debugInfo.push({ endpoint: 'commandes-en-cours', status: encResp.status, count: Array.isArray(encData) ? encData.length : 0 });
+
+    if (Array.isArray(encData)) {
+      for (const cmd of encData) {
+        const id = cmd.idCommande || cmd.id;
+        if (id && !orderIds.includes(id)) orderIds.push(id);
+      }
+    }
+  } catch (err) {
+    debugInfo.push({ endpoint: 'commandes-en-cours', error: err.message });
+  }
+
+  if (orderIds.length === 0) {
+    const allCommandes = await db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [clientId]);
     return res.json({
       ok: true,
-      message: "L'endpoint /document/liste retourne une erreur serveur. Les commandes seront recues via webhooks.",
-      commandes: [],
+      message: 'Aucune commande trouvee via l\'API. Les commandes existantes sont affichees.',
+      commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
+      debug: debugInfo,
     });
   }
 
-  // Parse and save orders
+  // Step 3: Get full details for each order via /commande/detail/{id}
   const now = new Date().toISOString();
   const imported = [];
+  let skipped = 0;
 
-  for (const order of orders) {
-    const orderId = String(order.id || order.idCommande || order.idFacture || order.numero || '');
-    if (!orderId) continue;
+  for (const orderId of orderIds) {
+    await delay(500);
 
-    const numero = order.numero || order.reference || order.ref || orderId;
-
-    // Anti-doublon: check by easybeer_id OR by numero for this client
+    // Anti-doublon: check if already exists
     const existing = await db.query(
-      'SELECT id FROM commandes WHERE client_id = $1 AND (easybeer_id = $2 OR numero = $3)',
-      [clientId, orderId, numero]
+      'SELECT id FROM commandes WHERE client_id = $1 AND easybeer_id = $2',
+      [clientId, String(orderId)]
     );
-    if (existing.rows.length > 0) continue;
-    const dateCmd = order.date || order.dateCommande || order.dateCreation || order.datePiece || '';
-    const dateLiv = order.dateLivraison || order.dateExpedition || order.dateBL || '';
-    const statut = (order.statut || order.etat || order.status || '').toLowerCase();
-    // Amount extraction with pied/totaux fallback
-    const piedObj = order.pied || order.totaux || order.total || null;
-    let montantHt = parseFloat(order.montantHT || order.totalHT || order.montant_ht || 0) || 0;
-    let montantTtc = parseFloat(order.montantTTC || order.totalTTC || order.montant_ttc || 0) || 0;
-    if ((!montantHt || !montantTtc) && piedObj && typeof piedObj === 'object') {
-      if (!montantHt) montantHt = parseFloat(piedObj.montantHT || piedObj.totalHT || piedObj.ht || 0) || 0;
-      if (!montantTtc) montantTtc = parseFloat(piedObj.montantTTC || piedObj.totalTTC || piedObj.ttc || 0) || 0;
-    }
+    if (existing.rows.length > 0) { skipped++; continue; }
 
-    // Extract line items (including elements* from ModeleCommande)
-    let lignes = [];
-    const rawLignes = order.lignes || order.elements || order.elementsCommande || order.elementsDocument
-      || order.details || order.articles || order.items || [];
-    if (Array.isArray(rawLignes)) {
-      lignes = rawLignes.map(l => ({
-        produit: l.libelle || l.designation || l.nom || l.produit || '',
-        quantite: parseFloat(l.quantite || l.qte || l.qty || 0) || 0,
-        prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prix || 0) || 0,
-        montant: parseFloat(l.montant || l.total || l.montantHT || 0) || 0,
+    try {
+      const detResp = await fetch(`${apiBase}/commande/detail/${orderId}`, {
+        method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
+      });
+      if (!detResp.ok) continue;
+      const det = await detResp.json().catch(() => null);
+      if (!det) continue;
+
+      const numero = String(det.numero || orderId);
+      const dateCmd = det.dateCreation ? new Date(det.dateCreation).toISOString() : now;
+      const dateLiv = det.bonLivraison?.date ? new Date(det.bonLivraison.date).toISOString() : '';
+
+      // Status from boolean flags
+      let statut = 'en_cours';
+      if (det.estLivree || det.estFacturee) statut = 'livree';
+      else if (det.estAnnulee) statut = 'annulee';
+      else if (det.estEnCours) statut = 'en_cours';
+
+      const montantHt = parseFloat(det.totalHT || 0) || 0;
+      const montantTtc = parseFloat(det.totalTTC || 0) || 0;
+
+      // Extract line items from all element arrays
+      let lignes = [];
+      const allElements = [
+        ...(det.elementsBouteilles || []),
+        ...(det.elementsVolumes || []),
+        ...(det.elementsContenants || []),
+        ...(det.elementsSaisieLibre || []),
+        ...(det.elementsAutres || []),
+        ...(det.elementsMatierePremieres || []),
+      ];
+      lignes = allElements.map(el => ({
+        produit: el.libelle || el.designation || el.nom || '',
+        quantite: parseFloat(el.quantite || el.qte || 0) || 0,
+        prix_unitaire: parseFloat(el.prixUnitaire || el.prixUnitaireHT || el.pu || 0) || 0,
+        montant: parseFloat(el.montant || el.montantHT || el.total || 0) || 0,
+        reference: el.reference || el.code || '',
       }));
-    }
 
-    // Determine status
-    let finalStatut = 'en_cours';
-    if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee', 'terminée'].some(s => statut.includes(s))) {
-      finalStatut = 'livree';
-    } else if (['annulee', 'annulée', 'cancelled', 'canceled'].some(s => statut.includes(s))) {
-      finalStatut = 'annulee';
+      const cmdId = `cmd-${crypto.randomUUID()}`;
+      await db.query(
+        `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [cmdId, clientId, String(orderId), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
+         JSON.stringify(lignes), '', 'easybeer', client.nom || '', JSON.stringify(det), now]
+      );
+      imported.push({ id: cmdId, numero, statut, montant_ttc: montantTtc });
+    } catch (err) {
+      debugInfo.push({ endpoint: `commande/detail/${orderId}`, error: err.message });
     }
-
-    const cmdId = `cmd-${crypto.randomUUID()}`;
-    await db.query(
-      `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, date_creation)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [cmdId, clientId, orderId, numero, dateCmd, dateLiv, finalStatut, montantHt, montantTtc,
-       JSON.stringify(lignes), '', 'easybeer', now]
-    );
-    imported.push({ id: cmdId, numero, statut: finalStatut, montant_ttc: montantTtc });
   }
 
-  console.log(`[EasyBeer] Synced ${imported.length} commandes for client ${clientId} from ${fetchedFrom}`);
+  console.log(`[EasyBeer] Synced ${imported.length} commandes for client ${clientId} (${skipped} skipped)`);
 
-  // Return all commandes for this client
   const allCommandes = await db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [clientId]);
   res.json({
     ok: true,
-    message: `${imported.length} nouvelles commandes importees`,
+    message: `${imported.length} nouvelles commandes importees, ${skipped} deja existantes`,
     commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
-    fetched_from: fetchedFrom,
+    total_found: orderIds.length,
+    imported: imported.length,
+    skipped,
+    debug: debugInfo,
   });
 }));
 
-// Bulk sync: fetch ALL orders from EasyBeer and distribute to linked clients
+// Bulk sync: fetch ALL orders from EasyBeer for all linked clients
+// Uses working endpoints: historique-commande, commandes-en-cours, commande/detail
 router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (req, res) => {
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
   const config = configResult.rows[0];
@@ -1316,7 +1294,8 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
 
   const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
-  const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
+  const hdrs = { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' };
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
   // Get all EasyBeer-linked clients
   const linkedClients = await db.query(
@@ -1330,261 +1309,146 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     return res.json({ ok: false, message: 'Aucun client lie a EasyBeer', total_imported: 0 });
   }
 
-  // Build lookup map: easybeer_id -> client info
-  const ebIdToClient = {};
-  const clientNameToId = {};
-  for (const row of linkedClients.rows) {
-    ebIdToClient[String(row.easybeer_id)] = { clientId: row.imported_client_id, nom: row.client_nom };
-    if (row.client_nom) {
-      clientNameToId[row.client_nom.toLowerCase().trim()] = { clientId: row.imported_client_id, nom: row.client_nom };
-    }
-    if (row.eb_name) {
-      clientNameToId[row.eb_name.toLowerCase().trim()] = { clientId: row.imported_client_id, nom: row.client_nom };
-    }
-  }
-
   console.log(`[EasyBeer Bulk Sync] ${linkedClients.rows.length} clients lies, fetching commandes...`);
-
-  // EasyBeer API: only /document/liste exists on this instance (confirmed by discovery)
-  // All other paths (/commande/liste, /facture/liste, /parametres/*, /api/*) return 404
-  // /document/liste returns 500 "erreur inconnue" - likely a server-side issue or permission problem
-  // Rate limit: 10 req/s, ban after exceeding → minimize API calls
-  let allOrders = [];
-  const debugInfo = [];
-  const pageSize = 50;
-
-  // Helper to extract list from API response
-  function extractList(data) {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    return data.liste || data.contenu || data.results || data.data || data.items
-      || data.commandes || data.factures || data.documents || data.ventes || [];
-  }
-
-  // Only try /document/liste - the single endpoint that exists (returns 500 but doesn't 404)
-  // Try with the simplest possible body first, then with filter
-  const bodiesToTry = [
-    { label: 'pagination-only', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 } },
-    { label: 'with-empty-filtre', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0, filtre: {} } },
-  ];
-
-  for (const { label, body } of bodiesToTry) {
-    try {
-      const resp = await fetch(`${apiBase}/document/liste`, {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15000)
-      });
-
-      const status = resp.status;
-      const respText = await resp.text();
-      let data;
-      try { data = JSON.parse(respText); } catch { data = null; }
-
-      console.log(`[EasyBeer Bulk Sync] /document/liste (${label}): HTTP ${status}`);
-
-      debugInfo.push({
-        endpoint: `/document/liste (${label})`,
-        params: body,
-        status,
-        response_keys: data ? Object.keys(data) : [],
-        sample: respText.substring(0, 500),
-        succes: data?.succes,
-        message: data?.message,
-      });
-
-      if (status === 200 && data && data.succes !== false) {
-        const list = extractList(data);
-        if (Array.isArray(list)) {
-          allOrders.push(...list);
-          console.log(`[EasyBeer Bulk Sync] WORKING: /document/liste (${label}), got ${list.length} documents`);
-
-          // Paginate
-          for (let page = 1; page < 100 && list.length >= pageSize; page++) {
-            try {
-              const pageResp = await fetch(`${apiBase}/document/liste`, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...body, numeroPage: page }),
-                signal: AbortSignal.timeout(30000)
-              });
-              if (!pageResp.ok) break;
-              const pageData = await pageResp.json().catch(() => null);
-              if (!pageData) break;
-              const pageList = extractList(pageData);
-              if (!Array.isArray(pageList) || pageList.length === 0) break;
-              allOrders.push(...pageList);
-              if (pageList.length < pageSize) break;
-            } catch { break; }
-          }
-          break;
-        }
-      }
-
-      // Rate limit protection: if we get 429 or 400 ban, stop immediately
-      if (status === 429 || (status === 400 && respText.includes('banned'))) {
-        debugInfo.push({ endpoint: 'RATE_LIMIT', message: 'API rate limit atteint, arret des requetes' });
-        break;
-      }
-    } catch (err) {
-      console.log(`[EasyBeer Bulk Sync] /document/liste (${label}) error: ${err.message}`);
-    }
-  }
-
-  if (allOrders.length === 0) {
-    return res.json({
-      ok: true,
-      message: "L'endpoint /document/liste d'EasyBeer retourne une erreur serveur (HTTP 500). Les commandes seront recues automatiquement via les webhooks EasyBeer. Contactez le support EasyBeer si vous souhaitez activer l'acces aux documents via l'API.",
-      total_imported: 0,
-      total_orders: 0,
-      debug: debugInfo,
-      api_url: apiBase,
-      clients_linked: linkedClients.rows.length,
-    });
-  }
-
-  console.log(`[EasyBeer Bulk Sync] ${allOrders.length} commandes totales recuperees, attribution aux clients...`);
 
   const now = new Date().toISOString();
   let totalImported = 0;
   let totalSkipped = 0;
-  let totalOrphans = 0;
+  let totalFound = 0;
   const clientStats = {};
+  const debugInfo = [];
 
-  for (const order of allOrders) {
-    // Extract client ID from order
-    const orderClientId = String(
-      order.clientId || order.client_id || order.idClient || order.tiersId
-      || (order.client && typeof order.client === 'object' ? (order.client.id || order.client.idClient) : '')
-      || ''
-    );
-    const orderClientName =
-      order.clientNom || order.nomClient || order.raisonSociale
-      || (order.client && typeof order.client === 'object' ? (order.client.nom || order.client.libelle || order.client.raisonSociale) : '')
-      || (typeof order.client === 'string' ? order.client : '')
-      || '';
+  // For each linked client, fetch their orders
+  for (const row of linkedClients.rows) {
+    const ebId = row.easybeer_id;
+    const clientId = row.imported_client_id;
+    const clientNom = row.client_nom;
+    const orderIds = new Set();
 
-    // Find matching SuiviPro client
-    let match = null;
-    if (orderClientId && ebIdToClient[orderClientId]) {
-      match = ebIdToClient[orderClientId];
-    }
-    if (!match && orderClientName) {
-      const normName = orderClientName.toLowerCase().trim();
-      if (clientNameToId[normName]) {
-        match = clientNameToId[normName];
-      } else {
-        // Fuzzy: check if order client name includes or is included in any known client name
-        for (const [knownName, info] of Object.entries(clientNameToId)) {
-          if (normName.includes(knownName) || knownName.includes(normName)) {
-            match = info;
-            break;
-          }
+    // Step 1: Get historique-commande (delivered orders)
+    try {
+      const histResp = await fetch(`${apiBase}/parametres/client/historique-commande/${ebId}`, {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ dateDebut: '2020-01-01T00:00:00', dateFin: new Date().toISOString() }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const histData = await histResp.json().catch(() => null);
+      if (histData) {
+        if (Array.isArray(histData)) {
+          histData.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
+        } else {
+          const list = histData.liste || histData.commandes || histData.historique || [];
+          if (Array.isArray(list)) list.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
         }
       }
+    } catch (err) {
+      debugInfo.push({ client: clientNom, endpoint: 'historique-commande', error: err.message });
     }
+    await delay(500);
 
-    if (!match) {
-      totalOrphans++;
-      continue;
+    // Step 2: Get commandes-en-cours
+    try {
+      const encResp = await fetch(`${apiBase}/parametres/client/commandes-en-cours/${ebId}`, {
+        method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
+      });
+      const encData = await encResp.json().catch(() => null);
+      if (Array.isArray(encData)) {
+        encData.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
+      }
+    } catch (err) {
+      debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', error: err.message });
     }
+    await delay(500);
 
-    const clientId = match.clientId;
+    totalFound += orderIds.size;
 
-    // Extract order details
-    const orderId = String(order.id || order.idCommande || order.idFacture || order.numero || '');
-    if (!orderId) continue;
+    // Step 3: Get detail for each order
+    for (const orderId of orderIds) {
+      // Anti-doublon
+      const existing = await db.query(
+        'SELECT id FROM commandes WHERE client_id = $1 AND easybeer_id = $2',
+        [clientId, String(orderId)]
+      );
+      if (existing.rows.length > 0) { totalSkipped++; continue; }
 
-    const numero = order.numero || order.reference || order.ref || orderId;
+      await delay(500);
 
-    // Anti-doublon: check by easybeer_id OR by numero for this client
-    const existing = await db.query(
-      'SELECT id FROM commandes WHERE client_id = $1 AND (easybeer_id = $2 OR numero = $3)',
-      [clientId, orderId, numero]
-    );
-    if (existing.rows.length > 0) {
-      totalSkipped++;
-      continue;
-    }
-    const dateCmd = order.date || order.dateCommande || order.dateCreation || order.datePiece || '';
-    const dateLiv = order.dateLivraison || order.dateExpedition || order.dateBL || '';
-    const statutRaw = (order.statut || order.etat || order.status || '').toLowerCase();
+      try {
+        const detResp = await fetch(`${apiBase}/commande/detail/${orderId}`, {
+          method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
+        });
+        if (!detResp.ok) continue;
+        const det = await detResp.json().catch(() => null);
+        if (!det) continue;
 
-    let statut = 'en_cours';
-    if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee', 'terminée', 'validee', 'validée'].some(s => statutRaw.includes(s))) {
-      statut = 'livree';
-    } else if (['annulee', 'annulée', 'cancelled', 'canceled'].some(s => statutRaw.includes(s))) {
-      statut = 'annulee';
-    }
+        // Rate limit check
+        if (detResp.status === 429) {
+          debugInfo.push({ endpoint: 'RATE_LIMIT', message: 'Rate limit atteint, arret' });
+          break;
+        }
 
-    // Amount extraction with pied/totaux fallback
-    const piedObj = order.pied || order.totaux || order.total || null;
-    let montantHt = parseFloat(order.montantHT || order.totalHT || order.montant_ht || 0) || 0;
-    let montantTtc = parseFloat(order.montantTTC || order.totalTTC || order.montant_ttc || 0) || 0;
-    if ((!montantHt || !montantTtc) && piedObj && typeof piedObj === 'object') {
-      if (!montantHt) montantHt = parseFloat(piedObj.montantHT || piedObj.totalHT || piedObj.ht || 0) || 0;
-      if (!montantTtc) montantTtc = parseFloat(piedObj.montantTTC || piedObj.totalTTC || piedObj.ttc || 0) || 0;
-    }
+        const numero = String(det.numero || orderId);
+        const dateCmd = det.dateCreation ? new Date(det.dateCreation).toISOString() : now;
+        const dateLiv = det.bonLivraison?.date ? new Date(det.bonLivraison.date).toISOString() : '';
 
-    // Extract line items
-    let lignes = [];
-    const rawLignes = order.lignes || order.elements || order.elementsCommande || order.elementsDocument
-      || order.details || order.articles || order.items || [];
-    if (Array.isArray(rawLignes)) {
-      lignes = rawLignes.map(l => ({
-        produit: l.libelle || l.designation || l.nom || l.produit || l.article || l.description || '',
-        quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || 0) || 0,
-        prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || 0) || 0,
-        montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || 0) || 0,
-        tva: parseFloat(l.tauxTVA || l.tva || l.txTVA || 0) || 0,
-        reference: l.reference || l.ref || l.code || l.codeArticle || '',
-      }));
-    }
+        let statut = 'en_cours';
+        if (det.estLivree || det.estFacturee) statut = 'livree';
+        else if (det.estAnnulee) statut = 'annulee';
 
-    // Compute totals from lines if missing
-    if ((!montantHt || !montantTtc) && lignes.length > 0) {
-      if (!montantHt) montantHt = lignes.reduce((sum, l) => sum + (l.montant || l.prix_unitaire * l.quantite || 0), 0);
-      if (!montantTtc && montantHt > 0) {
-        const avgTva = lignes.filter(l => l.tva > 0).length > 0
-          ? lignes.reduce((sum, l) => sum + (l.tva || 0), 0) / lignes.filter(l => l.tva > 0).length : 20;
-        montantTtc = montantHt * (1 + avgTva / 100);
+        const montantHt = parseFloat(det.totalHT || 0) || 0;
+        const montantTtc = parseFloat(det.totalTTC || 0) || 0;
+
+        // Extract line items from all element arrays
+        const allElements = [
+          ...(det.elementsBouteilles || []),
+          ...(det.elementsVolumes || []),
+          ...(det.elementsContenants || []),
+          ...(det.elementsSaisieLibre || []),
+          ...(det.elementsAutres || []),
+          ...(det.elementsMatierePremieres || []),
+        ];
+        const lignes = allElements.map(el => ({
+          produit: el.libelle || el.designation || el.nom || '',
+          quantite: parseFloat(el.quantite || el.qte || 0) || 0,
+          prix_unitaire: parseFloat(el.prixUnitaire || el.prixUnitaireHT || el.pu || 0) || 0,
+          montant: parseFloat(el.montant || el.montantHT || el.total || 0) || 0,
+          reference: el.reference || el.code || '',
+        }));
+
+        const cmdId = `cmd-${crypto.randomUUID()}`;
+        await db.query(
+          `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [cmdId, clientId, String(orderId), numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
+           JSON.stringify(lignes), '', 'easybeer', clientNom, JSON.stringify(det), now]
+        );
+
+        totalImported++;
+        if (!clientStats[clientId]) clientStats[clientId] = { nom: clientNom, count: 0, total_ttc: 0 };
+        clientStats[clientId].count++;
+        clientStats[clientId].total_ttc += montantTtc;
+      } catch (err) {
+        debugInfo.push({ client: clientNom, endpoint: `commande/detail/${orderId}`, error: err.message });
       }
     }
-
-    const clientName = orderClientName || match.nom || '';
-    const cmdId = `cmd-${crypto.randomUUID()}`;
-    await db.query(
-      `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-      [cmdId, clientId, orderId, numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
-       JSON.stringify(lignes), '', 'easybeer', clientName, JSON.stringify(order), now]
-    );
-
-    totalImported++;
-    if (!clientStats[clientId]) clientStats[clientId] = { nom: match.nom, count: 0, total_ttc: 0 };
-    clientStats[clientId].count++;
-    clientStats[clientId].total_ttc += montantTtc;
   }
 
   const statsArray = Object.entries(clientStats).map(([id, s]) => ({
     client_id: id, nom: s.nom, commandes_importees: s.count, total_ttc: Math.round(s.total_ttc * 100) / 100
   }));
 
-  console.log(`[EasyBeer Bulk Sync] Termine: ${totalImported} importees, ${totalSkipped} deja existantes, ${totalOrphans} orphelines`);
-  statsArray.forEach(s => console.log(`  - ${s.nom}: ${s.commandes_importees} commandes, ${s.total_ttc}€ TTC`));
+  console.log(`[EasyBeer Bulk Sync] Termine: ${totalImported} importees, ${totalSkipped} existantes, ${totalFound} trouvees`);
 
-  // Return updated commandes for all clients
   const allCommandes = await db.query("SELECT * FROM commandes WHERE source = 'easybeer' ORDER BY date_commande DESC");
   res.json({
     ok: true,
     message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`,
-    total_orders_easybeer: allOrders.length,
+    total_orders_found: totalFound,
     total_imported: totalImported,
     total_skipped: totalSkipped,
-    total_orphans: totalOrphans,
     clients_linked: linkedClients.rows.length,
     details: statsArray,
+    debug: debugInfo,
     commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
   });
 }));
