@@ -476,17 +476,6 @@ export default function AdminPage() {
       } else {
         toast.error(data.message || 'Erreur');
       }
-      // Auto-run API discovery if no orders found and debug shows failures
-      if (data.ok && data.total_orders === 0 && !data.discovery) {
-        try {
-          const discRes = await fetch('/api/easybeer/discover-api', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          });
-          const discData = await discRes.json();
-          setSyncAllResult((prev: any) => ({ ...prev, discovery: discData.results }));
-        } catch { /* ignore */ }
-      }
     } catch { toast.error('Erreur de synchronisation des commandes'); }
     setSyncingAllCommandes(false);
   };
