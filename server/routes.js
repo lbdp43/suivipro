@@ -1792,10 +1792,24 @@ async function handleEasyBeerWebhook(req, res) {
   const now = new Date().toISOString();
 
   // Extract type and id flexibly from various EasyBeer payload formats
-  const type = body.type || body.event || body.eventType || body.action || '';
-  const id = String(body.id || body.clientId || body.client_id || body.tiersId || body.tiers_id || body.externalId || '');
+  // Handle nested data wrapper
+  const payloadRoot = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
 
-  console.log(`[EasyBeer Webhook] Recu: type=${type}, id=${id}, body keys=${Object.keys(body).join(',')}`);
+  const type = payloadRoot.type || payloadRoot.event || payloadRoot.eventType || payloadRoot.action || '';
+
+  // Extract order-specific ID (for commande/facture webhooks)
+  const orderId = String(payloadRoot.commandeId || payloadRoot.commande_id || payloadRoot.factureId || payloadRoot.facture_id
+    || payloadRoot.documentId || payloadRoot.document_id || payloadRoot.blId || payloadRoot.bl_id || '');
+  // Extract general entity ID
+  const entityId = String(payloadRoot.id || payloadRoot.externalId || payloadRoot.external_id || '');
+  // Extract client-specific ID
+  const webhookClientId = String(payloadRoot.clientId || payloadRoot.client_id || payloadRoot.tiersId || payloadRoot.tiers_id
+    || payloadRoot.idClient || payloadRoot.id_client || payloadRoot.idTiers || payloadRoot.id_tiers || '');
+
+  // For general use: prefer order-specific ID, then entity ID, then client ID
+  const id = orderId || entityId || webhookClientId;
+
+  console.log(`[EasyBeer Webhook] Recu: type=${type}, id=${id}, orderId=${orderId}, entityId=${entityId}, clientId=${webhookClientId}, body keys=${Object.keys(body).join(',')}`);
 
   // Log webhook
   await db.query(
@@ -1830,10 +1844,12 @@ async function handleEasyBeerWebhook(req, res) {
         let orderData = null;
         let fetchedFrom = '';
 
-        // Try various possible endpoints
-        const orderPaths = [
+        // Try various possible endpoints - direct detail lookups
+        const orderDetailPaths = [
           `/ventes/facture/detail/${id}`,
           `/ventes/facture/${id}`,
+          `/ventes/commande/detail/${id}`,
+          `/ventes/commande/${id}`,
           `/commandes/detail/${id}`,
           `/commandes/${id}`,
           `/documents/facture/${id}`,
@@ -1841,16 +1857,25 @@ async function handleEasyBeerWebhook(req, res) {
           `/parametres/facture/detail/${id}`,
           `/param%C3%A8tres/facture/detail/${id}`,
           `/ventes/bl/detail/${id}`,
+          `/ventes/bl/${id}`,
+        ];
+
+        // List-based endpoints to search by ID (like client fetch uses POST)
+        const orderListPaths = [
+          '/ventes/facture/liste',
+          '/ventes/commande/liste',
+          '/ventes/bl/liste',
         ];
 
         for (let attempt = 0; attempt <= 3; attempt++) {
-          for (const path of orderPaths) {
+          // Strategy 1: Direct detail lookup
+          for (const path of orderDetailPaths) {
             try {
               const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
               if (resp.ok) {
                 let data = await resp.json();
-                if (Array.isArray(data)) data = data[0];
-                if (data && (data.id || data.numero || data.reference || data.montantTTC || data.montantHT || data.totalTTC)) {
+                if (Array.isArray(data)) data = data.find(d => String(d.id) === String(id)) || data[0];
+                if (data && (data.id || data.numero || data.reference || data.montantTTC || data.montantHT || data.totalTTC || data.lignes || data.details)) {
                   orderData = data;
                   fetchedFrom = path;
                   break;
@@ -1859,6 +1884,46 @@ async function handleEasyBeerWebhook(req, res) {
             } catch { /* next */ }
           }
           if (orderData) break;
+
+          // Strategy 2: List-based search (POST) - find by ID in list results
+          for (const path of orderListPaths) {
+            try {
+              const resp = await fetch(`${apiBase}${path}`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colonneTri: 'date', mode: 'DESC', nombreParPage: 200 }),
+                signal: AbortSignal.timeout(20000)
+              });
+              if (resp.ok) {
+                let data = await resp.json();
+                let list = Array.isArray(data) ? data : (data.liste || data.results || data.data || data.items || []);
+                if (Array.isArray(list)) {
+                  const found = list.find(d => String(d.id) === String(id) || String(d.numero) === String(id) || String(d.reference) === String(id));
+                  if (found) {
+                    orderData = found;
+                    fetchedFrom = `${path} (liste)`;
+
+                    // If found in list, try to get detail version for more info (line items etc.)
+                    const detailPath = path.replace('/liste', `/detail/${found.id || id}`);
+                    try {
+                      const detResp = await fetch(`${apiBase}${detailPath}`, { headers, signal: AbortSignal.timeout(10000) });
+                      if (detResp.ok) {
+                        let detData = await detResp.json();
+                        if (Array.isArray(detData)) detData = detData[0];
+                        if (detData && (detData.lignes || detData.details || detData.montantTTC || detData.montantHT)) {
+                          orderData = { ...found, ...detData };
+                          fetchedFrom = detailPath + ' (via liste)';
+                        }
+                      }
+                    } catch { /* use list version */ }
+                    break;
+                  }
+                }
+              }
+            } catch { /* next */ }
+          }
+          if (orderData) break;
+
           if (attempt < 3) {
             const delay = [5000, 10000, 20000][attempt];
             console.log(`[EasyBeer Webhook] Commande id=${id} attempt ${attempt + 1} echoue, retry dans ${delay / 1000}s...`);
@@ -1869,17 +1934,31 @@ async function handleEasyBeerWebhook(req, res) {
         if (!orderData) {
           console.log(`[EasyBeer Webhook] Impossible de recuperer la commande/facture id=${id}, stockage payload brut`);
           // Store what we have from the webhook payload itself
-          orderData = body;
+          // EasyBeer may wrap data in a nested object
+          const bodyData = body.data && typeof body.data === 'object' ? { ...body, ...body.data }
+            : body.document && typeof body.document === 'object' ? { ...body, ...body.document }
+            : body.detail && typeof body.detail === 'object' && !Array.isArray(body.detail) ? { ...body, ...body.detail }
+            : body.facture && typeof body.facture === 'object' ? { ...body, ...body.facture }
+            : body.commande && typeof body.commande === 'object' ? { ...body, ...body.commande }
+            : body;
+          orderData = bodyData;
         }
 
         console.log(`[EasyBeer Webhook] Commande recue: keys=${Object.keys(orderData).join(',')}${fetchedFrom ? ` from ${fetchedFrom}` : ' (payload brut)'}`);
 
-        // Extract order details
+        // Extract order details - handle nested pied/totaux objects for amounts
         const numero = String(orderData.numero || orderData.reference || orderData.ref || orderData.numPiece || orderData.num_piece || id);
         const dateCmd = orderData.date || orderData.dateCommande || orderData.dateCreation || orderData.datePiece || orderData.date_commande || now;
         const dateLiv = orderData.dateLivraison || orderData.dateExpedition || orderData.dateBL || orderData.date_livraison || '';
-        const montantHt = parseFloat(orderData.montantHT || orderData.totalHT || orderData.montant_ht || orderData.ht || 0) || 0;
-        const montantTtc = parseFloat(orderData.montantTTC || orderData.totalTTC || orderData.montant_ttc || orderData.ttc || 0) || 0;
+
+        // Amount extraction with more fallbacks including nested totaux/pied objects
+        const piedObj = orderData.pied || orderData.totaux || orderData.total || null;
+        let montantHt = parseFloat(orderData.montantHT || orderData.totalHT || orderData.montant_ht || orderData.ht || 0) || 0;
+        let montantTtc = parseFloat(orderData.montantTTC || orderData.totalTTC || orderData.montant_ttc || orderData.ttc || 0) || 0;
+        if ((!montantHt || !montantTtc) && piedObj && typeof piedObj === 'object') {
+          if (!montantHt) montantHt = parseFloat(piedObj.montantHT || piedObj.totalHT || piedObj.ht || piedObj.montant_ht || 0) || 0;
+          if (!montantTtc) montantTtc = parseFloat(piedObj.montantTTC || piedObj.totalTTC || piedObj.ttc || piedObj.montant_ttc || 0) || 0;
+        }
         const statutRaw = (orderData.statut || orderData.etat || orderData.status || '').toLowerCase();
 
         let statut = 'en_cours';
@@ -1908,6 +1987,20 @@ async function handleEasyBeerWebhook(req, res) {
           }));
         }
 
+        // If totals are still 0 but we have line items, compute from them
+        if ((!montantHt || !montantTtc) && lignes.length > 0) {
+          if (!montantHt) {
+            montantHt = lignes.reduce((sum, l) => sum + (l.montant || l.prix_unitaire * l.quantite || 0), 0);
+          }
+          if (!montantTtc && montantHt > 0) {
+            // Estimate TTC from HT using average TVA from lignes, default 20%
+            const avgTva = lignes.filter(l => l.tva > 0).length > 0
+              ? lignes.reduce((sum, l) => sum + (l.tva || 0), 0) / lignes.filter(l => l.tva > 0).length
+              : 20;
+            montantTtc = montantHt * (1 + avgTva / 100);
+          }
+        }
+
         console.log(`[EasyBeer Webhook] Commande details: #${numero}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes, statut=${statut}`);
 
         // Find which client this order belongs to
@@ -1919,26 +2012,32 @@ async function handleEasyBeerWebhook(req, res) {
           clientObj = orderData.tiers;
         } else if (orderData.acheteur && typeof orderData.acheteur === 'object') {
           clientObj = orderData.acheteur;
+        } else if (orderData.destinataire && typeof orderData.destinataire === 'object') {
+          clientObj = orderData.destinataire;
         }
 
         const ebClientId = String(
           orderData.clientId || orderData.client_id || orderData.tiersId || orderData.tiers_id
-          || orderData.idClient || orderData.id_client || orderData.acheteurId
+          || orderData.idClient || orderData.id_client || orderData.acheteurId || orderData.idTiers || orderData.id_tiers
+          || orderData.destinataireId || orderData.id_destinataire
           || (clientObj && (clientObj.id || clientObj.idClient || clientObj.idTiers))
+          || webhookClientId  // Fallback to client ID extracted from the webhook payload itself
           || ''
         );
         const orderClientName = orderData.clientNom || orderData.client_nom || orderData.nomClient
-          || orderData.raisonSociale || orderData.raison_sociale || orderData.nomTiers
+          || orderData.raisonSociale || orderData.raison_sociale || orderData.nomTiers || orderData.nom_tiers
+          || orderData.libelleClient || orderData.libelle_client
           || (typeof orderData.client === 'string' ? orderData.client : '')
-          || (clientObj && (clientObj.nom || clientObj.libelle || clientObj.raisonSociale || clientObj.name))
+          || (typeof orderData.tiers === 'string' ? orderData.tiers : '')
+          || (clientObj && (clientObj.nom || clientObj.libelle || clientObj.raisonSociale || clientObj.name || clientObj.denomination))
           || '';
         const orderClientEmail = orderData.emailClient || orderData.email_client || orderData.clientEmail
-          || (clientObj && (clientObj.email || clientObj.emailPrincipal))
+          || (clientObj && (clientObj.email || clientObj.emailPrincipal || clientObj.mail))
           || '';
         const orderClientPhone = orderData.telephoneClient || orderData.telephone_client || orderData.clientTelephone
-          || (clientObj && (clientObj.telephone || clientObj.telephonePrincipal || clientObj.mobile))
+          || (clientObj && (clientObj.telephone || clientObj.telephonePrincipal || clientObj.mobile || clientObj.portable))
           || '';
-        const orderClientSiret = orderData.siretClient || orderData.siret
+        const orderClientSiret = orderData.siretClient || orderData.siret || orderData.siret_client
           || (clientObj && (clientObj.siret || clientObj.siren))
           || '';
 
@@ -1974,6 +2073,30 @@ async function handleEasyBeerWebhook(req, res) {
               );
               console.log(`[EasyBeer Webhook] Client ${orderClientName} lie via commande: easybeer_id=${ebClientId} -> ${clientId}`);
             }
+          }
+        }
+
+        // 3. If we have ebClientId but no match, try fetching client from EasyBeer API
+        if (!clientId && ebClientId) {
+          try {
+            const clientData = await fetchFromEasyBeerWithRetry(apiBase, headers, ebClientId, 2);
+            if (clientData) {
+              const cf = extractEbFields(clientData);
+              console.log(`[EasyBeer Webhook] Client EasyBeer fetche pour commande: name="${cf.name}", email="${cf.email}", siret="${cf.siret}"`);
+              const matchedClient = await findMatchingClient(cf.name || orderClientName, cf.email || orderClientEmail, cf.phone || orderClientPhone, cf.siret || orderClientSiret);
+              if (matchedClient) {
+                clientId = matchedClient.id;
+                console.log(`[EasyBeer Webhook] Client trouve via fetch EasyBeer + matching: ${matchedClient.nom} (${clientId})`);
+                await db.query(
+                  `INSERT INTO easybeer_clients (easybeer_id, name, status, imported_client_id, synced_at, updated_at)
+                  VALUES ($1,$2,'imported',$3,$4,$4)
+                  ON CONFLICT (easybeer_id) DO UPDATE SET status = 'imported', imported_client_id = $3, updated_at = $4`,
+                  [ebClientId, cf.name || orderClientName, clientId, now]
+                );
+              }
+            }
+          } catch (err) {
+            console.log(`[EasyBeer Webhook] Fetch client ${ebClientId} echoue: ${err.message}`);
           }
         }
 
@@ -2067,18 +2190,62 @@ async function handleEasyBeerWebhook(req, res) {
   // Always create a pending entry when we receive a webhook with an id, even if we can't fetch details
   if (id) {
     // Extract any name/info directly from the webhook payload
-    const directName = body.nom || body.name || body.libelle || body.raisonSociale || body.raison_sociale || '';
-    const directEmail = body.email || '';
-    const directPhone = body.phone || body.telephone || body.mobile || '';
-    const directCity = body.ville || body.city || '';
-    const directAddress = body.adresse || body.address || body.rue || '';
-    const directPostalCode = body.codePostal || body.code_postal || body.cp || body.postal_code || '';
-    const directContact = body.contact || body.contactName || body.contact_name || '';
+    // Handle nested data object: EasyBeer may wrap the actual data
+    const payloadData = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
+
+    const directName = payloadData.nom || payloadData.name || payloadData.libelle || payloadData.raisonSociale || payloadData.raison_sociale || '';
+    const directEmail = payloadData.emailPrincipal || payloadData.email || payloadData.mail || '';
+    const directPhone = payloadData.phone || payloadData.telephone || payloadData.telephonePrincipal || payloadData.mobile || payloadData.portable || '';
+    const directCity = payloadData.ville || payloadData.city || '';
+    const directAddress = payloadData.adresse || payloadData.address || payloadData.rue || '';
+    const directPostalCode = payloadData.codePostal || payloadData.code_postal || payloadData.cp || payloadData.postal_code || '';
+    const directContact = payloadData.contact || payloadData.contactName || payloadData.contact_name || '';
+
+    // Handle type as string or nested object { libelle: "Cave", code: "CAV" }
+    let directType = payloadData.type || payloadData.typeClient || payloadData.type_client || payloadData.categorie || '';
+    if (typeof directType === 'object' && directType !== null) {
+      directType = directType.libelle || directType.nom || directType.code || directType.label || '';
+    }
+
+    // Handle commercial as nested object { email: "...", nom: "..." } or direct fields
+    let directCommercialEmail = '';
+    if (payloadData.commercial && typeof payloadData.commercial === 'object') {
+      directCommercialEmail = payloadData.commercial.email || payloadData.commercial.emailPrincipal || payloadData.commercial.mail || '';
+    }
+    if (!directCommercialEmail) {
+      directCommercialEmail = payloadData.commercialEmail || payloadData.commercial_email || payloadData.emailCommercial || payloadData.email_commercial || '';
+    }
+    // Also check representant / vendeur fields
+    if (!directCommercialEmail) {
+      const rep = payloadData.representant || payloadData.vendeur || payloadData.agent;
+      if (rep && typeof rep === 'object') {
+        directCommercialEmail = rep.email || rep.emailPrincipal || rep.mail || '';
+      } else if (typeof rep === 'string' && rep.includes('@')) {
+        directCommercialEmail = rep;
+      }
+    }
+
+    // Handle SIRET from payload
+    const directSiret = payloadData.siret || payloadData.siren || '';
+
+    // Handle contacts array from payload
+    let contactFromPayload = directContact;
+    let emailFromContacts = '';
+    let phoneFromContacts = '';
+    if (!contactFromPayload && payloadData.contacts && Array.isArray(payloadData.contacts) && payloadData.contacts.length > 0) {
+      const c = payloadData.contacts.find(c => c.type === 'Principal' || c.principal) || payloadData.contacts[0];
+      contactFromPayload = c.denomination || c.libelle || `${c.prenom || ''} ${c.nom || ''}`.trim();
+      emailFromContacts = c.email || c.emailPrincipal || c.mail || '';
+      phoneFromContacts = c.mobile || c.telephone || c.portable || '';
+    }
+
+    const finalEmail = directEmail || emailFromContacts;
+    const finalPhone = directPhone || phoneFromContacts;
 
     // Insert/update pending client with whatever info we have from the payload
     await db.query(
-      `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, raw_data, status, synced_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, siret, raw_data, status, synced_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (easybeer_id) DO UPDATE SET
         name = CASE WHEN $2 != '' THEN $2 ELSE easybeer_clients.name END,
         type = CASE WHEN $3 != '' THEN $3 ELSE easybeer_clients.type END,
@@ -2088,12 +2255,13 @@ async function handleEasyBeerWebhook(req, res) {
         city = CASE WHEN $7 != '' THEN $7 ELSE easybeer_clients.city END,
         address = CASE WHEN $8 != '' THEN $8 ELSE easybeer_clients.address END,
         postal_code = CASE WHEN $9 != '' THEN $9 ELSE easybeer_clients.postal_code END,
-        raw_data = $12, updated_at = $15`,
-      [id, directName, body.type || '', directContact, directPhone, directEmail,
-       directCity, directAddress, directPostalCode, body.notes || '',
-       body.commercialEmail || body.commercial_email || '', JSON.stringify(body), 'pending', now, now]
+        siret = CASE WHEN $12 != '' THEN $12 ELSE easybeer_clients.siret END,
+        raw_data = $13, updated_at = $16`,
+      [id, directName, String(directType), contactFromPayload, finalPhone, finalEmail,
+       directCity, directAddress, directPostalCode, payloadData.notes || payloadData.commentaire || payloadData.observation || '',
+       directCommercialEmail, directSiret, JSON.stringify(body), 'pending', now, now]
     );
-    console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name=${directName || '(depuis webhook)'}`);
+    console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name="${directName || '(depuis webhook)'}", type="${directType}", commercial="${directCommercialEmail}", siret="${directSiret}", email="${finalEmail}", phone="${finalPhone}"`);
   }
 
   // Use shared extractEbFieldsSync function (defined above)

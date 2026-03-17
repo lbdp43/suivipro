@@ -1380,9 +1380,24 @@ export default function AdminPage() {
                       <p className="text-xs text-gray-500 truncate">
                         {[client.city, client.phone, client.email].filter(Boolean).join(' - ') || `ID: ${client.easybeer_id} — En attente de synchronisation`}
                       </p>
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                        {client.commercial_email && (
-                          <p className="text-[10px] text-gray-400">Commercial: {client.commercial_email}</p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                        {client.type && (
+                          <p className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full font-medium">
+                            Type: {client.type}
+                          </p>
+                        )}
+                        {client.commercial_email && (() => {
+                          const matchedRule = assignmentRules.find(r => r.email.toLowerCase() === client.commercial_email?.toLowerCase());
+                          const matchedCom = matchedRule ? state.commerciaux.find(c => c.id === matchedRule.commercial_id) : null;
+                          return (
+                            <p className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
+                              Commercial: {matchedCom ? `${matchedCom.prenom} ${matchedCom.nom}` : client.commercial_email}
+                              {matchedCom && <span className="text-green-600 ml-1">(auto)</span>}
+                            </p>
+                          );
+                        })()}
+                        {client.contact_name && (
+                          <p className="text-[10px] text-gray-400">Contact: {client.contact_name}</p>
                         )}
                         {client.tournee && (
                           <p className="text-[10px] text-indigo-500">Tournee: {client.tournee}</p>
