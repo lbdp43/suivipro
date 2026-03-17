@@ -1344,26 +1344,29 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   let apiClients = [];
   const debugInfo = [];
 
-  // Try multiple body formats for /parametres/client/liste (the API may have changed format)
+  // Swagger-correct format: POST /parametres/client/liste with query params for pagination + ModeleClientFiltre body
   const clientListPath = '/parametres/client/liste';
   let workingPath = null;
+  let workingFormat = null;
 
-  // Only try 2 formats to conserve rate limit budget (EasyBeer: 10 req/s, ban 5 min)
-  const bodyFormats = [
-    { label: 'standard', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 } },
-    { label: 'empty', body: {} },
+  // Try Swagger-correct format first (query params + empty filter body), then legacy body format
+  const listFormats = [
+    { label: 'swagger-query', queryParams: { colonneTri: 'libelle', nombreParPage: '10', numeroPage: '0' }, body: {} },
+    { label: 'swagger-query-mode', queryParams: { colonneTri: 'libelle', nombreParPage: '10', numeroPage: '0', mode: 'ASC' }, body: {} },
+    { label: 'legacy-body', queryParams: null, body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10, numeroPage: 0 } },
   ];
 
-  for (const fmt of bodyFormats) {
+  for (const fmt of listFormats) {
     if (workingPath) break;
     let fullUrl = `${apiBase}${clientListPath}`;
-    const fetchOpts = { method: 'POST', headers: hdrs, signal: AbortSignal.timeout(15000) };
     if (fmt.queryParams) {
-      fullUrl += '?colonneTri=libelle&nombreParPage=10&numeroPage=0';
-      fetchOpts.body = JSON.stringify({});
-    } else if (fmt.body) {
-      fetchOpts.body = JSON.stringify(fmt.body);
+      fullUrl += '?' + new URLSearchParams(fmt.queryParams).toString();
     }
+    const fetchOpts = {
+      method: 'POST', headers: hdrs,
+      body: JSON.stringify(fmt.body),
+      signal: AbortSignal.timeout(15000)
+    };
     console.log(`[EasyBeer Bulk Sync] Trying ${fmt.label}: POST ${fullUrl}`);
     try {
       const resp = await fetch(fullUrl, fetchOpts);
@@ -1376,6 +1379,7 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
           const testList = testData.liste || testData.contenu || testData.results || (Array.isArray(testData) ? testData : null);
           if (testList && Array.isArray(testList)) {
             workingPath = clientListPath;
+            workingFormat = fmt;
             apiClients.push(...testList);
             console.log(`[EasyBeer Bulk Sync] SUCCESS with format "${fmt.label}": ${testList.length} clients`);
             debugInfo.push({ endpoint: clientListPath, status: resp.status, format: fmt.label, count: testList.length });
@@ -1384,7 +1388,6 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
           }
         }
       } else {
-        // Only log the first failure in detail, others just status
         if (debugInfo.length === 0) {
           debugInfo.push({ endpoint: `${clientListPath} (${fmt.label})`, status: resp.status, body: respText.substring(0, 300) });
         } else {
@@ -1405,13 +1408,23 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     const knownIds = await db.query("SELECT easybeer_id, name FROM easybeer_clients WHERE easybeer_id IS NOT NULL");
     debugInfo.push({ endpoint: 'known-ids', clients: knownIds.rows.map(r => ({ id: r.easybeer_id, name: r.name })), count: knownIds.rows.length });
   } else {
-    // Paginate to get ALL clients
+    // Paginate to get ALL clients using the format that worked
     const pageSize = 200;
     for (let page = 1; page < 50; page++) {
       try {
-        const resp = await fetch(`${apiBase}${workingPath}`, {
-          method: 'POST', headers: hdrs,
-          body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: page }),
+        let pageUrl = `${apiBase}${workingPath}`;
+        let pageBody;
+        if (workingFormat && workingFormat.queryParams) {
+          // Swagger format: pagination in query params, filter in body
+          const qp = { ...workingFormat.queryParams, nombreParPage: String(pageSize), numeroPage: String(page) };
+          pageUrl += '?' + new URLSearchParams(qp).toString();
+          pageBody = JSON.stringify(workingFormat.body || {});
+        } else {
+          // Legacy format: pagination in body
+          pageBody = JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: page });
+        }
+        const resp = await fetch(pageUrl, {
+          method: 'POST', headers: hdrs, body: pageBody,
           signal: AbortSignal.timeout(20000)
         });
         if (resp.status !== 200 && resp.status !== 206) break;
@@ -2194,13 +2207,17 @@ async function fetchFromEasyBeerWithRetry(apiBase, headers, id, maxRetries = 4) 
       } catch { /* next */ }
     }
 
-    // Strategy 2: List search (POST with pagination in body, like test-connection)
-    for (const path of ['/parametres/client/liste', '/param%C3%A8tres/client/liste']) {
+    // Strategy 2: List search - try Swagger format (query params) then legacy (body params)
+    const listSearchFormats = [
+      { path: '/parametres/client/liste', queryParams: `?colonneTri=libelle&nombreParPage=1000&numeroPage=0`, body: {} },
+      { path: '/parametres/client/liste', queryParams: '', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000, numeroPage: 0 } },
+    ];
+    for (const fmt of listSearchFormats) {
       try {
-        const resp = await fetch(`${apiBase}${path}`, {
+        const resp = await fetch(`${apiBase}${fmt.path}${fmt.queryParams}`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000, numeroPage: 0 }),
+          body: JSON.stringify(fmt.body),
           signal: AbortSignal.timeout(20000)
         });
         if (resp.ok) {
@@ -2209,7 +2226,7 @@ async function fetchFromEasyBeerWithRetry(apiBase, headers, id, maxRetries = 4) 
           if (Array.isArray(list)) {
             const found = list.find(d => String(d.id || d.idClient) === String(id));
             if (found) {
-              console.log(`[EasyBeer] Trouve dans liste ${path} (attempt ${attempt + 1})`);
+              console.log(`[EasyBeer] Trouve dans liste ${fmt.path} (attempt ${attempt + 1})`);
               return found;
             }
           }
@@ -2337,16 +2354,17 @@ async function handleEasyBeerWebhook(req, res) {
           if (orderData) break;
 
           // Strategy 2: List-based search via /parametres/ endpoints
+          // Swagger format: pagination as query params, filter as body
           if (!orderData) {
             const webhookListEndpoints = ['/parametres/commande/liste', '/parametres/document/liste', '/parametres/facture/liste'];
-            const webhookPagBody = { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 50, numeroPage: 0 };
             for (const listEp of webhookListEndpoints) {
               if (orderData) break;
               try {
-                const resp = await fetch(`${apiBase}${listEp}`, {
+                const listUrl = `${apiBase}${listEp}?colonneTri=dateCreation&nombreParPage=50&numeroPage=0&mode=DESC`;
+                const resp = await fetch(listUrl, {
                   method: 'POST',
                   headers: { ...headers, 'Content-Type': 'application/json' },
-                  body: JSON.stringify(webhookPagBody),
+                  body: JSON.stringify({}),
                   signal: AbortSignal.timeout(20000)
                 });
                 if (resp.ok) {
@@ -3016,27 +3034,31 @@ router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
   const headers = { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' };
 
-  // Try EasyBeer endpoint paths (correct path: POST /parametres/client/liste)
-  const pathsToTry = ['/parametres/client/liste', '/param%C3%A8tres/client/liste'];
+  // Try EasyBeer endpoint: POST /parametres/client/liste
+  // Swagger format: pagination as query params, ModeleClientFiltre as body
+  const testFormats = [
+    { url: `${baseUrl}/parametres/client/liste?colonneTri=libelle&nombreParPage=10&numeroPage=0`, body: {} },
+    { url: `${baseUrl}/parametres/client/liste`, body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10, numeroPage: 0 } },
+  ];
 
-  for (const path of pathsToTry) {
+  for (const fmt of testFormats) {
     try {
-      const resp = await fetch(`${baseUrl}${path}`, {
+      const resp = await fetch(fmt.url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 }),
+        body: JSON.stringify(fmt.body),
         signal: AbortSignal.timeout(8000)
       });
       if (resp.status === 200 || resp.status === 206) {
         const data = await resp.json().catch(() => null);
-        const count = data?.liste?.length || 0;
+        const count = data?.liste?.length || (Array.isArray(data) ? data.length : 0);
         return res.json({ ok: true, message: `Connexion reussie (${count} clients)` });
       }
       if (resp.status === 401 || resp.status === 403) {
         return res.json({ ok: false, message: `Serveur accessible mais identifiants refuses (${resp.status})` });
       }
     } catch {
-      // network error on this path → try next
+      // network error → try next format
     }
   }
 
@@ -3471,13 +3493,17 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
   }
 
   // Strategy 2: Fetch the full list via POST /parametres/client/liste and search by ID
-  const listPaths = ['/parametres/client/liste', '/param%C3%A8tres/client/liste'];
-  for (const path of listPaths) {
+  // Try Swagger format (query params) then legacy (body params)
+  const listFormats = [
+    { url: `${apiBase}/parametres/client/liste?colonneTri=libelle&nombreParPage=1000&numeroPage=0`, body: {} },
+    { url: `${apiBase}/parametres/client/liste`, body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000, numeroPage: 0 } },
+  ];
+  for (const fmt of listFormats) {
     try {
-      const resp = await fetch(`${apiBase}${path}`, {
+      const resp = await fetch(fmt.url, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000 }),
+        body: JSON.stringify(fmt.body),
         signal: AbortSignal.timeout(20000)
       });
       if (resp.ok) {
@@ -3486,9 +3512,9 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
         if (Array.isArray(items)) {
           const match = items.find(d => String(d.id || d.idClient) === String(ebId));
           if (match) {
-            return await updateFromData(match, `${path} (liste)`);
+            return await updateFromData(match, `client/liste (${fmt.url.includes('?') ? 'swagger' : 'legacy'})`);
           }
-          errors.push(`${path}: liste OK (${items.length} items) mais ID ${ebId} non trouve`);
+          errors.push(`client/liste: OK (${items.length} items) mais ID ${ebId} non trouve`);
         }
       }
     } catch { /* ignore list errors */ }
