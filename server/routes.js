@@ -1742,13 +1742,14 @@ async function fetchFromEasyBeerWithRetry(apiBase, headers, id, maxRetries = 4) 
       } catch { /* next */ }
     }
 
-    // Strategy 2: List search
+    // Strategy 2: List search (POST with query params for pagination, empty filter body)
     for (const path of ['/parametres/client/liste', '/param%C3%A8tres/client/liste']) {
       try {
-        const resp = await fetch(`${apiBase}${path}`, {
+        const listUrl = `${apiBase}${path}?colonneTri=libelle&nombreParPage=1000&numeroPage=0`;
+        const resp = await fetch(listUrl, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 1000 }),
+          body: JSON.stringify({}),
           signal: AbortSignal.timeout(20000)
         });
         if (resp.ok) {
@@ -1846,12 +1847,12 @@ async function handleEasyBeerWebhook(req, res) {
 
         // EasyBeer API endpoints based on Swagger spec v2.2.8
         // Pattern: /{controller}/{action} - French singular, no /ventes/ prefix
-        // Direct detail lookup (GET)
+        // Direct detail lookup (GET) - confirmed: /commande/token/{token}
+        // /commande/detail/{id} and /document/detail/{id} are speculative but follow the pattern of /parametres/client/detail/{id}
         const orderDetailPaths = [
-          `/commande/${id}`,                    // controleur-commande: GET detail
-          `/commande/detail/${id}`,             // possible detail variant
-          `/document/${id}`,                    // controleur-document: factures are documents
-          `/document/detail/${id}`,             // possible detail variant
+          `/commande/token/${id}`,              // controleur-commande: GET by token (confirmed in Swagger)
+          `/commande/detail/${id}`,             // possible detail variant (follows client pattern)
+          `/document/detail/${id}`,             // possible document detail variant
         ];
 
         // List-based endpoints (POST with pagination) - like /parametres/client/liste
@@ -1879,13 +1880,14 @@ async function handleEasyBeerWebhook(req, res) {
           }
           if (orderData) break;
 
-          // Strategy 2: List-based search (POST) - find by ID in list results
+          // Strategy 2: List-based search (POST with query params for pagination, filter body)
           for (const path of orderListPaths) {
             try {
-              const resp = await fetch(`${apiBase}${path}`, {
+              const listUrl = `${apiBase}${path}?colonneTri=date&nombreParPage=200&numeroPage=0`;
+              const resp = await fetch(listUrl, {
                 method: 'POST',
                 headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ colonneTri: 'date', mode: 'DESC', nombreParPage: 200 }),
+                body: JSON.stringify({}),
                 signal: AbortSignal.timeout(20000)
               });
               if (resp.ok) {
@@ -1973,7 +1975,8 @@ async function handleEasyBeerWebhook(req, res) {
 
         // Extract line items (produits) - handle various EasyBeer formats
         let lignes = [];
-        const rawLignes = orderData.lignes || orderData.details || orderData.articles || orderData.items
+        const rawLignes = orderData.lignes || orderData.elements || orderData.elementsCommande || orderData.elementsDocument
+          || orderData.details || orderData.articles || orderData.items
           || orderData.lignesFacture || orderData.lignesCommande || orderData.produits
           || orderData.lignesDetail || orderData.lignesPiece
           || (orderData.detail && Array.isArray(orderData.detail) ? orderData.detail : null)
