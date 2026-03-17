@@ -1501,6 +1501,20 @@ export default function AdminPage() {
                         ))}
                       </div>
                     )}
+                    {syncAllResult.debug && syncAllResult.debug.length > 0 && (
+                      <div className="mt-2 border-t pt-2">
+                        <p className="font-medium mb-1">Debug API EasyBeer:</p>
+                        {syncAllResult.debug.map((d: any, i: number) => (
+                          <div key={i} className="mb-1">
+                            <p><strong>{d.endpoint}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}</p>
+                            {d.response_keys && <p className="text-gray-500">Cles: {d.response_keys.join(', ') || 'vide'}</p>}
+                            {d.sample && <p className="text-gray-400 truncate max-w-full">{d.sample.substring(0, 200)}</p>}
+                          </div>
+                        ))}
+                        {syncAllResult.api_url && <p className="mt-1">URL API: {syncAllResult.api_url}</p>}
+                        <p>Clients lies: {syncAllResult.clients_linked || 0}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
