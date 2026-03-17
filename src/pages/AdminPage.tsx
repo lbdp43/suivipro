@@ -476,6 +476,17 @@ export default function AdminPage() {
       } else {
         toast.error(data.message || 'Erreur');
       }
+      // Auto-run API discovery if no orders found and debug shows failures
+      if (data.ok && data.total_orders === 0 && !data.discovery) {
+        try {
+          const discRes = await fetch('/api/easybeer/discover-api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          });
+          const discData = await discRes.json();
+          setSyncAllResult((prev: any) => ({ ...prev, discovery: discData.results }));
+        } catch { /* ignore */ }
+      }
     } catch { toast.error('Erreur de synchronisation des commandes'); }
     setSyncingAllCommandes(false);
   };
@@ -1515,6 +1526,21 @@ export default function AdminPage() {
                         ))}
                         {syncAllResult.api_url && <p className="mt-1">URL API: {syncAllResult.api_url}</p>}
                         <p>Clients lies: {syncAllResult.clients_linked || 0}</p>
+                        {syncAllResult.discovery && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <p className="font-medium mb-1 text-blue-700">Decouverte API (tous les endpoints testes):</p>
+                            {syncAllResult.discovery.filter((d: any) => d.status !== 404).map((d: any, i: number) => (
+                              <div key={i} className="mb-1">
+                                <p><strong>{d.method} {d.path}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.hasListe !== null ? ` (liste: ${d.hasListe})` : ''}</p>
+                                {d.keys && d.keys.length > 0 && <p className="text-gray-500 text-xs">Cles: {d.keys.join(', ')}</p>}
+                                {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
+                              </div>
+                            ))}
+                            <p className="text-gray-400 text-xs mt-1">
+                              (Endpoints 404 masques. {syncAllResult.discovery.filter((d: any) => d.status === 404).length} endpoints retournent 404.)
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
