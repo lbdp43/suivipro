@@ -186,17 +186,14 @@ export default function ClientsPlanningPage() {
     }).filter(Boolean) as Array<{ client: Client; date: string; startTime: string; endTime: string }>;
   }, [scheduleEntries, scheduleDate, schedulingDay, state.clients]);
 
-  const handleExportICS = useCallback(() => {
-    const entries = getScheduleICSEntries();
-    if (entries.length === 0) return;
-    downloadICSClientBatch(entries, `visites-${entries[0].date}.ics`);
-    toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} exportee${entries.length > 1 ? 's' : ''} en .ICS`);
-    setShowSchedulingModal(false);
-    setSelectedClients(new Set());
-    setSchedulingDay(null);
-  }, [getScheduleICSEntries, toast]);
+  const [showConfirmExport, setShowConfirmExport] = useState(false);
 
-  const handleValidateAndExport = useCallback(async () => {
+  const handleExportICS = useCallback(() => {
+    if (scheduleEntries.length === 0) return;
+    setShowConfirmExport(true);
+  }, [scheduleEntries]);
+
+  const confirmExportAndSave = useCallback(async () => {
     const entries = getScheduleICSEntries();
     if (entries.length === 0) return;
     const userId = state.currentUser?.id;
@@ -221,6 +218,7 @@ export default function ClientsPlanningPage() {
 
       downloadICSClientBatch(entries, `visites-${entries[0].date}.ics`);
       toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} enregistree${entries.length > 1 ? 's' : ''} et exportee${entries.length > 1 ? 's' : ''}`);
+      setShowConfirmExport(false);
       setShowSchedulingModal(false);
       setSelectedClients(new Set());
       setSchedulingDay(null);
@@ -1205,34 +1203,82 @@ export default function ClientsPlanningPage() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-gray-200 space-y-2">
-              <div className="flex justify-between items-center gap-2">
-                <button
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-                  onClick={() => setShowSchedulingModal(false)}
-                >
-                  Annuler
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50 font-medium"
-                    onClick={handleExportICS}
-                    disabled={scheduleEntries.length === 0 || scheduleSaving}
-                  >
-                    <Download className="w-4 h-4" /> .ICS uniquement
-                  </button>
-                  <button
-                    className="px-5 py-2.5 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50 font-medium"
-                    onClick={handleValidateAndExport}
-                    disabled={scheduleEntries.length === 0 || scheduleSaving}
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> {scheduleSaving ? 'Enregistrement...' : 'Valider + Exporter'}
-                  </button>
+            <div className="p-4 border-t border-gray-200 flex justify-between items-center">
+              <button
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setShowSchedulingModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-5 py-2.5 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                onClick={handleExportICS}
+                disabled={scheduleEntries.length === 0}
+              >
+                <Download className="w-4 h-4" /> Exporter .ICS
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal before export */}
+      {showConfirmExport && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setShowConfirmExport(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-brewery-100 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-brewery-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-800">Confirmer les visites</h3>
+                  <p className="text-sm text-gray-500">
+                    {planningData.days.find(d => d.dateStr === scheduleDate)?.label || scheduleDate}
+                  </p>
                 </div>
               </div>
-              <p className="text-[10px] text-gray-400 text-right italic">
-                "Valider" enregistre les visites et recalcule les prochaines visites
+
+              <div className="bg-brewery-50 border border-brewery-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-brewery-800">
+                  <strong>{scheduleEntries.length}</strong> visite{scheduleEntries.length > 1 ? 's' : ''} {scheduleEntries.length > 1 ? 'vont' : 'va'} etre enregistree{scheduleEntries.length > 1 ? 's' : ''} :
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {scheduleEntries.map(entry => {
+                    const client = state.clients.find(c => c.id === entry.clientId);
+                    return client ? (
+                      <li key={entry.clientId} className="text-sm text-brewery-700 flex items-center gap-2">
+                        <Clock className="w-3 h-3 flex-shrink-0" />
+                        <span className="font-medium">{entry.startTime} - {entry.endTime}</span>
+                        <span>{client.nom}</span>
+                        <span className="text-brewery-500 text-xs">{client.ville}</span>
+                      </li>
+                    ) : null;
+                  })}
+                </ul>
+              </div>
+
+              <p className="text-xs text-gray-500 italic mb-4">
+                Les visites seront enregistrees sur la fiche de chaque client et la prochaine visite sera recalculee automatiquement. Le fichier .ICS sera telecharge pour import dans Google Agenda.
               </p>
+            </div>
+
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setShowConfirmExport(false)}
+                disabled={scheduleSaving}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-5 py-2.5 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                onClick={confirmExportAndSave}
+                disabled={scheduleSaving}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {scheduleSaving ? 'Enregistrement...' : 'Valider et exporter'}
+              </button>
             </div>
           </div>
         </div>
