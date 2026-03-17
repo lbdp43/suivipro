@@ -2330,8 +2330,9 @@ async function handleEasyBeerWebhook(req, res) {
         let orderData = null;
         let fetchedFrom = '';
 
-        // EasyBeer API: detail endpoints under /parametres/ prefix (matching working /parametres/client/detail/{id})
+        // EasyBeer API: /commande/detail/{id} is the working endpoint (confirmed in sync)
         const orderDetailPaths = [
+          `/commande/detail/${id}`,             // controleur-commande: works in sync-all-commandes
           `/parametres/commande/detail/${id}`,
           `/parametres/document/detail/${id}`,
           `/parametres/facture/detail/${id}`,
