@@ -2,14 +2,14 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X, Mail, FileText, Filter, Users,
+  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import {
   Client, Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS,
 } from '../types';
-import { toLocalDateStr } from '../utils/helpers';
+import { toLocalDateStr, downloadICSClientBatch } from '../utils/helpers';
 import { apiPut } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import ClientDetailModal from '../components/ClientDetailModal';
@@ -59,6 +59,19 @@ export default function ClientsPlanningPage() {
   const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
   const [crSaving, setCrSaving] = useState<string | null>(null);
 
+  // Scheduling mode state
+  const [schedulingDay, setSchedulingDay] = useState<string | null>(null);
+  const [selectedClients, setSelectedClients] = useState<Set<string>>(new Set());
+  const [showSchedulingModal, setShowSchedulingModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState<string>('');
+  const [scheduleStartTime, setScheduleStartTime] = useState('09:00');
+  const [scheduleSlotDuration, setScheduleSlotDuration] = useState(30);
+  const [scheduleEntries, setScheduleEntries] = useState<Array<{
+    clientId: string;
+    startTime: string;
+    endTime: string;
+  }>>([]);
+
   // Results card state
   const [resultsPeriod, setResultsPeriod] = usePersistedState<'semaine' | 'mois' | 'trimestre' | 'tout'>('planning_results_period', 'semaine');
   const [expandedResult, setExpandedResult] = useState<string | null>(null);
@@ -85,6 +98,90 @@ export default function ClientsPlanningPage() {
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setCrSaving(null); }
   };
+
+  // --- Scheduling helpers ---
+  const parseTimeToMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const minutesToTime = (mins: number) => {
+    const h = Math.floor(mins / 60) % 24;
+    const m = mins % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  const computeScheduleEntries = useCallback((clientIds: string[], startTime: string, duration: number) => {
+    let current = parseTimeToMinutes(startTime);
+    return clientIds.map(id => {
+      const start = minutesToTime(current);
+      const end = minutesToTime(current + duration);
+      current += duration;
+      return { clientId: id, startTime: start, endTime: end };
+    });
+  }, []);
+
+  const toggleSchedulingDay = useCallback((dateStr: string) => {
+    if (schedulingDay === dateStr) {
+      setSchedulingDay(null);
+      setSelectedClients(new Set());
+    } else {
+      setSchedulingDay(dateStr);
+      setSelectedClients(new Set());
+      // Auto-expand the day
+      setCollapsedDays(prev => {
+        const next = new Set(prev);
+        next.delete(dateStr);
+        return next;
+      });
+    }
+  }, [schedulingDay]);
+
+  const toggleClientSelection = useCallback((clientId: string) => {
+    setSelectedClients(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId); else next.add(clientId);
+      return next;
+    });
+  }, []);
+
+  const openSchedulingModal = useCallback(() => {
+    const dayStr = schedulingDay || '';
+    setScheduleDate(dayStr);
+    const entries = computeScheduleEntries(Array.from(selectedClients), scheduleStartTime, scheduleSlotDuration);
+    setScheduleEntries(entries);
+    setShowSchedulingModal(true);
+  }, [schedulingDay, selectedClients, scheduleStartTime, scheduleSlotDuration, computeScheduleEntries]);
+
+  const recalculateSchedule = useCallback(() => {
+    const ids = scheduleEntries.map(e => e.clientId);
+    setScheduleEntries(computeScheduleEntries(ids, scheduleStartTime, scheduleSlotDuration));
+  }, [scheduleEntries, scheduleStartTime, scheduleSlotDuration, computeScheduleEntries]);
+
+  const removeFromSchedule = useCallback((clientId: string) => {
+    setScheduleEntries(prev => prev.filter(e => e.clientId !== clientId));
+    setSelectedClients(prev => {
+      const next = new Set(prev);
+      next.delete(clientId);
+      return next;
+    });
+  }, []);
+
+  const handleExportICS = useCallback(() => {
+    if (scheduleEntries.length === 0) return;
+    const dateToUse = scheduleDate || schedulingDay || '';
+    const entries = scheduleEntries.map(e => {
+      const client = state.clients.find(c => c.id === e.clientId);
+      return client ? { client, date: dateToUse, startTime: e.startTime, endTime: e.endTime } : null;
+    }).filter(Boolean) as Array<{ client: Client; date: string; startTime: string; endTime: string }>;
+
+    if (entries.length === 0) return;
+    downloadICSClientBatch(entries, `visites-${dateToUse}.ics`);
+    toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} exportee${entries.length > 1 ? 's' : ''} en .ICS`);
+
+    setShowSchedulingModal(false);
+    setSelectedClients(new Set());
+    setSchedulingDay(null);
+  }, [scheduleEntries, scheduleDate, schedulingDay, state.clients, toast]);
 
   const getRdvEntityName = (rdv: Appointment) => {
     if (rdv.client_id) {
@@ -555,30 +652,46 @@ export default function ClientsPlanningPage() {
                 isToday ? 'bg-brewery-50 border-brewery-300' : isPast ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-gray-200'
               }`}
             >
-              {/* Day header - clickable to toggle */}
-              <button
-                onClick={() => toggleDay(day.dateStr)}
-                className="w-full flex items-center justify-between p-3 text-left"
-              >
-                <h3 className={`text-sm font-semibold ${isToday ? 'text-brewery-700' : 'text-gray-700'}`}>
-                  {day.label}
-                  {isToday && <span className="ml-2 px-1.5 py-0.5 bg-brewery-600 text-white rounded text-[10px]">Aujourd'hui</span>}
-                </h3>
-                <div className="flex items-center gap-2">
-                  {day.visitDueCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
-                      {day.visitDueCount} a visiter
-                    </span>
-                  )}
-                  <span className="text-xs text-gray-400">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
-                  {(planningData.rdvByDate[day.dateStr] || []).length > 0 && (
-                    <span className="text-xs font-medium text-blue-600">
-                      {planningData.rdvByDate[day.dateStr].length} rendez-vous
-                    </span>
-                  )}
-                  {isCollapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
-                </div>
-              </button>
+              {/* Day header */}
+              <div className="flex items-center justify-between p-3">
+                <button
+                  onClick={() => toggleDay(day.dateStr)}
+                  className="flex-1 flex items-center justify-between text-left"
+                >
+                  <h3 className={`text-sm font-semibold ${isToday ? 'text-brewery-700' : 'text-gray-700'}`}>
+                    {day.label}
+                    {isToday && <span className="ml-2 px-1.5 py-0.5 bg-brewery-600 text-white rounded text-[10px]">Aujourd'hui</span>}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {day.visitDueCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
+                        {day.visitDueCount} a visiter
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
+                    {(planningData.rdvByDate[day.dateStr] || []).length > 0 && (
+                      <span className="text-xs font-medium text-blue-600">
+                        {planningData.rdvByDate[day.dateStr].length} rendez-vous
+                      </span>
+                    )}
+                    {isCollapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+                  </div>
+                </button>
+                {day.totalClients > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleSchedulingDay(day.dateStr); }}
+                    className={`ml-2 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all flex-shrink-0 ${
+                      schedulingDay === day.dateStr
+                        ? 'bg-brewery-600 text-white ring-2 ring-brewery-300'
+                        : 'bg-gray-100 text-gray-500 hover:bg-brewery-50 hover:text-brewery-600'
+                    }`}
+                    title="Selectionner des clients pour planifier les visites"
+                  >
+                    <CalendarPlus className="w-3.5 h-3.5" />
+                    {schedulingDay === day.dateStr ? 'Annuler' : 'Planifier'}
+                  </button>
+                )}
+              </div>
 
               {/* Day content - collapsible */}
               {!isCollapsed && (
@@ -664,17 +777,21 @@ export default function ClientsPlanningPage() {
                                 const comm = getCommercial(c.commercial_id);
                                 const isDue = c.next_visit && c.next_visit <= day.dateStr;
                                 const isLate = c.next_visit && c.next_visit < toLocalDateStr(new Date());
+                                const isInSchedulingMode = schedulingDay === day.dateStr;
+                                const isSelected = isInSchedulingMode && selectedClients.has(c.id);
                                 return (
                                   <button
                                     key={c.id}
-                                    onClick={() => setSelectedClientId(c.id)}
-                                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm text-left ${
-                                      isLate ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                                    onClick={() => isInSchedulingMode ? toggleClientSelection(c.id) : setSelectedClientId(c.id)}
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm text-left flex items-center gap-1 ${
+                                      isSelected ? 'ring-2 ring-brewery-500 bg-brewery-50 border-brewery-400 text-brewery-800'
+                                      : isLate ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
                                       : isDue ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100'
                                       : isToday ? 'bg-white border-brewery-200 text-brewery-700 hover:bg-brewery-100'
                                       : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
                                     }`}
                                   >
+                                    {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-brewery-600 flex-shrink-0" />}
                                     <span className="font-medium">{c.nom}</span>
                                     <span className="text-gray-400 ml-1">{c.ville}</span>
                                     {isDue && c.next_visit && (
@@ -766,6 +883,175 @@ export default function ClientsPlanningPage() {
                 disabled={crSaving === crModalRdv.id || !crForms[crModalRdv.id]?.compte_rendu || !crForms[crModalRdv.id]?.notes?.trim()}
               >
                 <ClipboardCheck className="w-4 h-4" /> {crSaving === crModalRdv.id ? 'Enregistrement...' : 'Valider le compte-rendu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating selection bar */}
+      {schedulingDay && selectedClients.size > 0 && !showSchedulingModal && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white border border-brewery-300 rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 max-w-lg">
+          <CalendarPlus className="w-5 h-5 text-brewery-600 flex-shrink-0" />
+          <span className="text-sm font-semibold text-brewery-700 whitespace-nowrap">
+            {selectedClients.size} client{selectedClients.size > 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => setSelectedClients(new Set())}
+            className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
+          >
+            Tout deselectionner
+          </button>
+          <button
+            onClick={openSchedulingModal}
+            className="px-4 py-2 bg-brewery-600 text-white rounded-lg text-sm font-semibold hover:bg-brewery-700 flex items-center gap-2 whitespace-nowrap"
+          >
+            <Calendar className="w-4 h-4" /> Planifier les visites
+          </button>
+        </div>
+      )}
+
+      {/* Scheduling Modal */}
+      {showSchedulingModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowSchedulingModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                  <CalendarPlus className="w-5 h-5 text-brewery-600" />
+                  Planifier les visites
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {scheduleEntries.length} client{scheduleEntries.length > 1 ? 's' : ''} - {planningData.days.find(d => d.dateStr === scheduleDate)?.label || scheduleDate}
+                </p>
+              </div>
+              <button onClick={() => setShowSchedulingModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Settings */}
+            <div className="p-4 border-b border-gray-100 space-y-3">
+              {/* Day selector */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium text-gray-600 w-12">Jour</label>
+                <select
+                  value={scheduleDate}
+                  onChange={e => setScheduleDate(e.target.value)}
+                  className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brewery-300"
+                >
+                  {planningData.days.map(d => (
+                    <option key={d.dateStr} value={d.dateStr}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Start time */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium text-gray-600 w-12">Debut</label>
+                <input
+                  type="time"
+                  value={scheduleStartTime}
+                  onChange={e => setScheduleStartTime(e.target.value)}
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brewery-300"
+                />
+              </div>
+
+              {/* Duration selector */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium text-gray-600 w-12">Duree</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {[15, 30, 45, 60, 90].map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setScheduleSlotDuration(d)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+                        scheduleSlotDuration === d
+                          ? 'bg-brewery-100 text-brewery-700 ring-1 ring-brewery-300'
+                          : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      {d < 60 ? `${d}min` : d === 60 ? '1h' : '1h30'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recalculate button */}
+              <button
+                onClick={recalculateSchedule}
+                className="text-xs text-brewery-600 hover:text-brewery-800 font-medium flex items-center gap-1"
+              >
+                <Clock className="w-3.5 h-3.5" /> Recalculer les horaires
+              </button>
+            </div>
+
+            {/* Client list */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {scheduleEntries.length === 0 ? (
+                <p className="text-sm text-gray-400 italic text-center py-4">Aucun client selectionne</p>
+              ) : (
+                scheduleEntries.map((entry, idx) => {
+                  const client = state.clients.find(c => c.id === entry.clientId);
+                  if (!client) return null;
+                  return (
+                    <div key={entry.clientId} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2.5 border border-gray-200">
+                      <span className="text-[10px] text-gray-400 font-mono w-5 text-center">{idx + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{client.nom}</p>
+                        <p className="text-[11px] text-gray-400 truncate">{client.ville}{client.adresse ? ` - ${client.adresse}` : ''}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <input
+                          type="time"
+                          value={entry.startTime}
+                          onChange={e => {
+                            const newEntries = [...scheduleEntries];
+                            newEntries[idx] = { ...newEntries[idx], startTime: e.target.value };
+                            setScheduleEntries(newEntries);
+                          }}
+                          className="text-xs border border-gray-300 rounded px-1.5 py-1 w-20 focus:ring-2 focus:ring-brewery-300"
+                        />
+                        <span className="text-gray-300 text-xs">-</span>
+                        <input
+                          type="time"
+                          value={entry.endTime}
+                          onChange={e => {
+                            const newEntries = [...scheduleEntries];
+                            newEntries[idx] = { ...newEntries[idx], endTime: e.target.value };
+                            setScheduleEntries(newEntries);
+                          }}
+                          className="text-xs border border-gray-300 rounded px-1.5 py-1 w-20 focus:ring-2 focus:ring-brewery-300"
+                        />
+                        <button
+                          onClick={() => removeFromSchedule(entry.clientId)}
+                          className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                          title="Retirer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 flex justify-between items-center">
+              <button
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                onClick={() => setShowSchedulingModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-5 py-2.5 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                onClick={handleExportICS}
+                disabled={scheduleEntries.length === 0}
+              >
+                <Download className="w-4 h-4" /> Exporter .ICS
               </button>
             </div>
           </div>

@@ -216,6 +216,41 @@ export function downloadICSClient(appointment: Appointment, client: Client) {
 /**
  * Export ICS avec plusieurs RDV (un seul fichier .ics contenant tous les evenements).
  */
+/**
+ * Export ICS batch pour visites clients planifiees (Planning semaine).
+ */
+export function downloadICSClientBatch(
+  entries: Array<{ client: Client; date: string; startTime: string; endTime: string }>,
+  filename?: string,
+) {
+  if (entries.length === 0) return;
+
+  const events = entries.map(({ client, date, startTime, endTime }) => {
+    const dtStart = icsFormatTime(date, startTime);
+    const dtEnd = icsFormatTime(date, endTime);
+    const location = [client.adresse, client.code_postal, client.ville].filter(Boolean).join(', ');
+    const descParts: string[] = [];
+    if (client.contact) descParts.push(`Contact: ${client.contact}`);
+    if (client.telephone) descParts.push(`Tel: ${client.telephone}`);
+    if (client.telephone_mobile) descParts.push(`Mobile: ${client.telephone_mobile}`);
+
+    return [
+      'BEGIN:VEVENT',
+      `UID:${icsUid()}`,
+      `DTSTAMP:${icsDtstamp()}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${icsEscape(`Visite ${client.nom}`)}`,
+      `DESCRIPTION:${icsEscape(descParts.join('\n'))}`,
+      `LOCATION:${icsEscape(location)}`,
+      'END:VEVENT',
+    ].join('\r\n');
+  });
+
+  const ics = buildICSFile(events);
+  triggerICSDownload(ics, filename || `planning-visites-${entries[0].date}.ics`);
+}
+
 export function downloadICSBatch(
   appointments: Appointment[],
   getProspect: (id: string) => Prospect | undefined,
