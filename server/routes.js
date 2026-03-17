@@ -1331,10 +1331,13 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     return res.json({ ok: false, message: 'Configuration EasyBeer incomplete' });
   }
 
-  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
+  const decryptedPassword = decrypt(config.password);
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decryptedPassword}`).toString('base64');
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const hdrs = { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' };
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+  console.log(`[EasyBeer Bulk Sync] Config: username=${config.username}, api_url=${apiBase}, password_length=${decryptedPassword?.length || 0}`);
 
   // Step 1: Fetch ALL clients from EasyBeer API to get their real numeric idClient
   console.log(`[EasyBeer Bulk Sync] Fetching client list from EasyBeer API...`);
@@ -1347,32 +1350,44 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
 
   for (const path of clientListPaths) {
     if (workingPath) break;
+    const fullUrl = `${apiBase}${path}`;
+    const bodyObj = { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 };
+    console.log(`[EasyBeer Bulk Sync] Trying POST ${fullUrl} with body: ${JSON.stringify(bodyObj)}`);
     try {
-      const resp = await fetch(`${apiBase}${path}`, {
+      const resp = await fetch(fullUrl, {
         method: 'POST', headers: hdrs,
-        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 }),
+        body: JSON.stringify(bodyObj),
         signal: AbortSignal.timeout(15000)
       });
-      console.log(`[EasyBeer Bulk Sync] ${path}: HTTP ${resp.status}`);
+      const respText = await resp.text();
+      console.log(`[EasyBeer Bulk Sync] ${path}: HTTP ${resp.status}, body length=${respText.length}, first 300 chars: ${respText.substring(0, 300)}`);
       if (resp.status === 200 || resp.status === 206) {
-        const testData = await resp.json().catch(() => null);
-        if (testData && (testData.liste || Array.isArray(testData))) {
-          workingPath = path;
-          const testList = testData.liste || testData;
-          if (Array.isArray(testList)) apiClients.push(...testList);
-          console.log(`[EasyBeer Bulk Sync] Path OK: ${path}, got ${testList.length} clients in first page`);
+        let testData = null;
+        try { testData = JSON.parse(respText); } catch {}
+        if (testData) {
+          // Accept any response shape that contains client data
+          const testList = testData.liste || testData.contenu || testData.results || (Array.isArray(testData) ? testData : null);
+          if (testList && Array.isArray(testList)) {
+            workingPath = path;
+            apiClients.push(...testList);
+            console.log(`[EasyBeer Bulk Sync] Path OK: ${path}, got ${testList.length} clients in first page`);
+          } else {
+            // 200 but unexpected shape - log the keys
+            debugInfo.push({ endpoint: path, status: resp.status, shape: 'unexpected', keys: Object.keys(testData), sample: respText.substring(0, 300) });
+          }
         }
       } else {
-        debugInfo.push({ endpoint: path, status: resp.status, body: (await resp.text().catch(() => '')).substring(0, 200) });
+        debugInfo.push({ endpoint: path, status: resp.status, body: respText.substring(0, 300) });
       }
     } catch (err) {
+      console.log(`[EasyBeer Bulk Sync] ${path}: ERROR ${err.message}`);
       debugInfo.push({ endpoint: path, error: err.message });
     }
     await delay(500);
   }
 
   if (!workingPath) {
-    return res.json({ ok: false, message: 'Impossible de recuperer la liste des clients depuis EasyBeer API', debug: debugInfo });
+    return res.json({ ok: false, message: 'Impossible de recuperer la liste des clients depuis EasyBeer API', debug: debugInfo, apiBase });
   }
 
   // Paginate to get ALL clients
