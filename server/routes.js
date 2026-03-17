@@ -1844,31 +1844,24 @@ async function handleEasyBeerWebhook(req, res) {
         let orderData = null;
         let fetchedFrom = '';
 
-        // Try various possible endpoints - direct detail lookups
+        // EasyBeer API endpoints based on Swagger spec v2.2.8
+        // Pattern: /{controller}/{action} - French singular, no /ventes/ prefix
+        // Direct detail lookup (GET)
         const orderDetailPaths = [
-          `/ventes/facture/detail/${id}`,
-          `/ventes/facture/${id}`,
-          `/ventes/commande/detail/${id}`,
-          `/ventes/commande/${id}`,
-          `/commandes/detail/${id}`,
-          `/commandes/${id}`,
-          `/documents/facture/${id}`,
-          `/documents/commande/${id}`,
-          `/parametres/facture/detail/${id}`,
-          `/param%C3%A8tres/facture/detail/${id}`,
-          `/ventes/bl/detail/${id}`,
-          `/ventes/bl/${id}`,
+          `/commande/${id}`,                    // controleur-commande: GET detail
+          `/commande/detail/${id}`,             // possible detail variant
+          `/document/${id}`,                    // controleur-document: factures are documents
+          `/document/detail/${id}`,             // possible detail variant
         ];
 
-        // List-based endpoints to search by ID (like client fetch uses POST)
+        // List-based endpoints (POST with pagination) - like /parametres/client/liste
         const orderListPaths = [
-          '/ventes/facture/liste',
-          '/ventes/commande/liste',
-          '/ventes/bl/liste',
+          '/commande/liste',                    // controleur-commande: list orders
+          '/document/liste',                    // controleur-document: list factures/BL
         ];
 
         for (let attempt = 0; attempt <= 3; attempt++) {
-          // Strategy 1: Direct detail lookup
+          // Strategy 1: Direct detail lookup (GET)
           for (const path of orderDetailPaths) {
             try {
               const resp = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(15000) });
@@ -1878,6 +1871,7 @@ async function handleEasyBeerWebhook(req, res) {
                 if (data && (data.id || data.numero || data.reference || data.montantTTC || data.montantHT || data.totalTTC || data.lignes || data.details)) {
                   orderData = data;
                   fetchedFrom = path;
+                  console.log(`[EasyBeer Webhook] Commande trouvee via ${path}, keys=${Object.keys(data).join(',')}`);
                   break;
                 }
               }
@@ -1896,26 +1890,35 @@ async function handleEasyBeerWebhook(req, res) {
               });
               if (resp.ok) {
                 let data = await resp.json();
-                let list = Array.isArray(data) ? data : (data.liste || data.results || data.data || data.items || []);
+                let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
                 if (Array.isArray(list)) {
                   const found = list.find(d => String(d.id) === String(id) || String(d.numero) === String(id) || String(d.reference) === String(id));
                   if (found) {
                     orderData = found;
                     fetchedFrom = `${path} (liste)`;
+                    console.log(`[EasyBeer Webhook] Commande trouvee dans ${path}, id=${found.id}, keys=${Object.keys(found).join(',')}`);
 
                     // If found in list, try to get detail version for more info (line items etc.)
-                    const detailPath = path.replace('/liste', `/detail/${found.id || id}`);
-                    try {
-                      const detResp = await fetch(`${apiBase}${detailPath}`, { headers, signal: AbortSignal.timeout(10000) });
-                      if (detResp.ok) {
-                        let detData = await detResp.json();
-                        if (Array.isArray(detData)) detData = detData[0];
-                        if (detData && (detData.lignes || detData.details || detData.montantTTC || detData.montantHT)) {
-                          orderData = { ...found, ...detData };
-                          fetchedFrom = detailPath + ' (via liste)';
+                    const foundId = found.id || id;
+                    const detailPaths = [
+                      path.replace('/liste', `/${foundId}`),
+                      path.replace('/liste', `/detail/${foundId}`),
+                    ];
+                    for (const detailPath of detailPaths) {
+                      try {
+                        const detResp = await fetch(`${apiBase}${detailPath}`, { headers, signal: AbortSignal.timeout(10000) });
+                        if (detResp.ok) {
+                          let detData = await detResp.json();
+                          if (Array.isArray(detData)) detData = detData[0];
+                          if (detData && (detData.lignes || detData.details || detData.articles || detData.montantTTC || detData.montantHT)) {
+                            orderData = { ...found, ...detData };
+                            fetchedFrom = detailPath + ' (via liste)';
+                            console.log(`[EasyBeer Webhook] Detail enrichi via ${detailPath}, keys=${Object.keys(detData).join(',')}`);
+                            break;
+                          }
                         }
-                      }
-                    } catch { /* use list version */ }
+                      } catch { /* use list version */ }
+                    }
                     break;
                   }
                 }
