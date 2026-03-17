@@ -1174,10 +1174,13 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
     const histData = await histResp.json().catch(() => null);
     debugInfo.push({ endpoint: 'historique-commande', status: histResp.status, keys: histData ? Object.keys(histData) : [] });
 
-    // Extract order IDs from response (could be array or nested)
+    // Extract order IDs from response
+    // EasyBeer returns a client object with historiqueCommandes nested inside
     if (histData) {
       if (Array.isArray(histData)) {
         orderIds = histData.map(o => o.idCommande || o.id).filter(Boolean);
+      } else if (histData.historiqueCommandes && Array.isArray(histData.historiqueCommandes)) {
+        orderIds = histData.historiqueCommandes.map(o => o.idCommande || o.id).filter(Boolean);
       } else if (histData.liste || histData.commandes || histData.historique) {
         const list = histData.liste || histData.commandes || histData.historique || [];
         if (Array.isArray(list)) orderIds = list.map(o => o.idCommande || o.id).filter(Boolean);
@@ -1574,6 +1577,7 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     await delay(500);
 
     // historique-commande (delivered orders)
+    // Note: This endpoint returns a CLIENT object with historiqueCommandes nested inside
     try {
       const histResp = await fetch(`${apiBase}/parametres/client/historique-commande/${apiId}`, {
         method: 'POST', headers: hdrs,
@@ -1588,13 +1592,15 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
         if (histData) {
           const extractIds = (data) => {
             if (Array.isArray(data)) return data;
+            // EasyBeer returns a client object — orders are in historiqueCommandes
+            if (data.historiqueCommandes && Array.isArray(data.historiqueCommandes)) return data.historiqueCommandes;
             return data.liste || data.commandes || data.historique || data.contenu || [];
           };
           const histList = extractIds(histData);
           if (Array.isArray(histList)) {
             histList.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
           }
-          debugInfo.push({ client: clientNom, endpoint: 'historique-commande', status: histResp.status, count: Array.isArray(histList) ? histList.length : '?', keys: Object.keys(histData), sample: histText.substring(0, 200) });
+          debugInfo.push({ client: clientNom, endpoint: 'historique-commande', status: histResp.status, count: Array.isArray(histList) ? histList.length : '?', keys: Object.keys(histData).slice(0, 10), hasHistorique: !!histData.historiqueCommandes, sample: histText.substring(0, 200) });
         }
       } else {
         debugInfo.push({ client: clientNom, endpoint: 'historique-commande', status: histResp.status, body: histText.substring(0, 200) });
