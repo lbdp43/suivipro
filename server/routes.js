@@ -2934,11 +2934,16 @@ router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, re
   const results = [];
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-  async function tryEndpoint(label, method, path, body) {
+  async function tryEndpoint(label, method, path, body, queryParams) {
     try {
       const opts = { method, headers, signal: AbortSignal.timeout(10000) };
       if (body) opts.body = JSON.stringify(body);
-      const resp = await fetch(`${apiBase}${path}`, opts);
+      let url = `${apiBase}${path}`;
+      if (queryParams) {
+        const qs = new URLSearchParams(queryParams).toString();
+        url += `?${qs}`;
+      }
+      const resp = await fetch(url, opts);
       const text = await resp.text();
       let data;
       try { data = JSON.parse(text); } catch { data = null; }
@@ -3070,6 +3075,43 @@ router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, re
 
     status = await tryEndpoint('parametres/paiement/liste', 'POST', '/parametres/paiement/liste',
       { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+
+  } else if (round === 6) {
+    // Round 6: SWAGGER-CORRECT calls - query params in URL, proper body schemas
+    // /document/liste: colonneTri, nombreParPage, numeroPage are QUERY params per Swagger
+    status = await tryEndpoint('document/liste (Swagger)', 'POST', '/document/liste',
+      {}, // empty ModeleDocumentParametre body
+      { colonneTri: 'dateCreation', nombreParPage: '10', numeroPage: '0' });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // /document/liste with FACTURE type filter
+    status = await tryEndpoint('document/liste FACTURE', 'POST', '/document/liste',
+      { types: ['FACTURE'] },
+      { colonneTri: 'dateCreation', nombreParPage: '10', numeroPage: '0' });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Client commandes-en-cours (GET, per Swagger)
+    if (ebClientId) {
+      status = await tryEndpoint('commandes-en-cours client', 'GET',
+        `/parametres/client/commandes-en-cours/${ebClientId}`, null);
+      if (status === 'stop') return res.json({ ok: true, results, round });
+      await delay(500);
+
+      // Client historique-commande (POST with Periode body)
+      status = await tryEndpoint('historique-commande client', 'POST',
+        `/parametres/client/historique-commande/${ebClientId}`,
+        { dateDebut: '2024-01-01T00:00:00', dateFin: '2026-03-17T23:59:59' });
+      if (status === 'stop') return res.json({ ok: true, results, round });
+      await delay(500);
+
+      // Client avoirs-disponibles (GET)
+      status = await tryEndpoint('avoirs-disponibles client', 'GET',
+        `/parametres/client/avoirs-disponibles/${ebClientId}`, null);
+    } else {
+      results.push({ label: 'SKIP', message: 'Pas de client EasyBeer lie - impossible de tester les endpoints client' });
+    }
 
   } else {
     // Fallback round 1 (original tests)
