@@ -2,15 +2,15 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical,
+  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical, Settings2, UserX, MessageSquarePlus, UserCheck,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import {
-  Client, Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS,
+  Client, Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, Interaction,
 } from '../types';
-import { toLocalDateStr, downloadICSClientBatch } from '../utils/helpers';
-import { apiPut } from '../api/client';
+import { toLocalDateStr, downloadICSClientBatch, generateId } from '../utils/helpers';
+import { apiPut, apiPost } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import ClientDetailModal from '../components/ClientDetailModal';
 
@@ -72,6 +72,15 @@ export default function ClientsPlanningPage() {
     endTime: string;
   }>>([]);
 
+  // Mass action mode state
+  const [massActionDay, setMassActionDay] = useState<string | null>(null);
+  const [massSelectedClients, setMassSelectedClients] = useState<Set<string>>(new Set());
+  const [showMassActionModal, setShowMassActionModal] = useState(false);
+  const [massAction, setMassAction] = useState<'inactif' | 'note' | 'visite' | 'commercial' | null>(null);
+  const [massNote, setMassNote] = useState('');
+  const [massCommercialId, setMassCommercialId] = useState('');
+  const [massSaving, setMassSaving] = useState(false);
+
   // Results card state
   const [resultsPeriod, setResultsPeriod] = usePersistedState<'semaine' | 'mois' | 'trimestre' | 'tout'>('planning_results_period', 'semaine');
   const [expandedResult, setExpandedResult] = useState<string | null>(null);
@@ -121,20 +130,21 @@ export default function ClientsPlanningPage() {
   }, []);
 
   const toggleSchedulingDay = useCallback((dateStr: string) => {
+    // Exit mass action mode if active
+    if (massActionDay) { setMassActionDay(null); setMassSelectedClients(new Set()); }
     if (schedulingDay === dateStr) {
       setSchedulingDay(null);
       setSelectedClients(new Set());
     } else {
       setSchedulingDay(dateStr);
       setSelectedClients(new Set());
-      // Auto-expand the day
       setCollapsedDays(prev => {
         const next = new Set(prev);
         next.delete(dateStr);
         return next;
       });
     }
-  }, [schedulingDay]);
+  }, [schedulingDay, massActionDay]);
 
   const toggleClientSelection = useCallback((clientId: string) => {
     setSelectedClients(prev => {
@@ -166,22 +176,156 @@ export default function ClientsPlanningPage() {
     });
   }, []);
 
-  const handleExportICS = useCallback(() => {
-    if (scheduleEntries.length === 0) return;
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
+  const getScheduleICSEntries = useCallback(() => {
     const dateToUse = scheduleDate || schedulingDay || '';
-    const entries = scheduleEntries.map(e => {
+    return scheduleEntries.map(e => {
       const client = state.clients.find(c => c.id === e.clientId);
       return client ? { client, date: dateToUse, startTime: e.startTime, endTime: e.endTime } : null;
     }).filter(Boolean) as Array<{ client: Client; date: string; startTime: string; endTime: string }>;
+  }, [scheduleEntries, scheduleDate, schedulingDay, state.clients]);
 
+  const handleExportICS = useCallback(() => {
+    const entries = getScheduleICSEntries();
     if (entries.length === 0) return;
-    downloadICSClientBatch(entries, `visites-${dateToUse}.ics`);
+    downloadICSClientBatch(entries, `visites-${entries[0].date}.ics`);
     toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} exportee${entries.length > 1 ? 's' : ''} en .ICS`);
-
     setShowSchedulingModal(false);
     setSelectedClients(new Set());
     setSchedulingDay(null);
-  }, [scheduleEntries, scheduleDate, schedulingDay, state.clients, toast]);
+  }, [getScheduleICSEntries, toast]);
+
+  const handleValidateAndExport = useCallback(async () => {
+    const entries = getScheduleICSEntries();
+    if (entries.length === 0) return;
+    const userId = state.currentUser?.id;
+    if (!userId) return;
+
+    setScheduleSaving(true);
+    try {
+      const now = new Date().toISOString();
+      for (const entry of entries) {
+        const interaction: Interaction = {
+          id: generateId('int'),
+          client_id: entry.client.id,
+          commercial_id: userId,
+          type: 'VISITE',
+          date: `${entry.date}T${entry.startTime}:00`,
+          comment: `Visite planifiee (${entry.startTime} - ${entry.endTime})`,
+          date_creation: now,
+        };
+        await apiPost('/interactions', interaction);
+        dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+      }
+
+      downloadICSClientBatch(entries, `visites-${entries[0].date}.ics`);
+      toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} enregistree${entries.length > 1 ? 's' : ''} et exportee${entries.length > 1 ? 's' : ''}`);
+      setShowSchedulingModal(false);
+      setSelectedClients(new Set());
+      setSchedulingDay(null);
+    } catch {
+      toast.error('Erreur lors de l\'enregistrement des visites');
+    } finally {
+      setScheduleSaving(false);
+    }
+  }, [getScheduleICSEntries, state.currentUser, dispatchLocal, toast]);
+
+  // --- Mass action helpers ---
+  const toggleMassActionDay = useCallback((dateStr: string) => {
+    if (massActionDay === dateStr) {
+      setMassActionDay(null);
+      setMassSelectedClients(new Set());
+    } else {
+      setMassActionDay(dateStr);
+      setMassSelectedClients(new Set());
+      setCollapsedDays(prev => { const next = new Set(prev); next.delete(dateStr); return next; });
+    }
+    // Exit scheduling mode if active
+    if (schedulingDay) { setSchedulingDay(null); setSelectedClients(new Set()); }
+  }, [massActionDay, schedulingDay]);
+
+  const toggleMassClientSelection = useCallback((clientId: string) => {
+    setMassSelectedClients(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId); else next.add(clientId);
+      return next;
+    });
+  }, []);
+
+  const openMassActionModal = useCallback(() => {
+    setMassAction(null);
+    setMassNote('');
+    setMassCommercialId('');
+    setShowMassActionModal(true);
+  }, []);
+
+  const executeMassAction = useCallback(async () => {
+    if (!massAction || massSelectedClients.size === 0) return;
+    const userId = state.currentUser?.id;
+    if (!userId) return;
+    setMassSaving(true);
+    const now = new Date().toISOString();
+    const clientIds = Array.from(massSelectedClients);
+
+    try {
+      if (massAction === 'inactif') {
+        for (const clientId of clientIds) {
+          const client = state.clients.find(c => c.id === clientId);
+          if (!client) continue;
+          const updated = { ...client, statut: 'INACTIF' as const, date_modification: now };
+          await apiPut(`/clients/${clientId}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        }
+        toast.success(`${clientIds.length} client${clientIds.length > 1 ? 's' : ''} passe${clientIds.length > 1 ? 's' : ''} en inactif`);
+      } else if (massAction === 'note') {
+        if (!massNote.trim()) { toast.error('La note est obligatoire'); setMassSaving(false); return; }
+        for (const clientId of clientIds) {
+          const client = state.clients.find(c => c.id === clientId);
+          if (!client) continue;
+          const existingNotes = client.notes ? `${client.notes}\n` : '';
+          const updated = { ...client, notes: `${existingNotes}[${new Date().toLocaleDateString('fr-FR')}] ${massNote.trim()}`, date_modification: now };
+          await apiPut(`/clients/${clientId}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        }
+        toast.success(`Note ajoutee a ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
+      } else if (massAction === 'visite') {
+        for (const clientId of clientIds) {
+          const interaction: Interaction = {
+            id: generateId('int'),
+            client_id: clientId,
+            commercial_id: userId,
+            type: 'VISITE',
+            date: now,
+            comment: massNote.trim() || 'Visite enregistree',
+            date_creation: now,
+          };
+          await apiPost('/interactions', interaction);
+          dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+        }
+        toast.success(`Visite enregistree pour ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
+      } else if (massAction === 'commercial') {
+        if (!massCommercialId) { toast.error('Selectionnez un commercial'); setMassSaving(false); return; }
+        for (const clientId of clientIds) {
+          const client = state.clients.find(c => c.id === clientId);
+          if (!client) continue;
+          const updated = { ...client, commercial_id: massCommercialId, date_modification: now };
+          await apiPut(`/clients/${clientId}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+        }
+        const comm = getCommercial(massCommercialId);
+        toast.success(`${clientIds.length} client${clientIds.length > 1 ? 's' : ''} reassigne${clientIds.length > 1 ? 's' : ''} a ${comm?.prenom || 'commercial'}`);
+      }
+
+      setShowMassActionModal(false);
+      setMassSelectedClients(new Set());
+      setMassActionDay(null);
+    } catch {
+      toast.error('Erreur lors de l\'action de masse');
+    } finally {
+      setMassSaving(false);
+    }
+  }, [massAction, massSelectedClients, massNote, massCommercialId, state.clients, state.currentUser, dispatchLocal, toast, getCommercial]);
 
   const getRdvEntityName = (rdv: Appointment) => {
     if (rdv.client_id) {
@@ -678,18 +822,32 @@ export default function ClientsPlanningPage() {
                   </div>
                 </button>
                 {day.totalClients > 0 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleSchedulingDay(day.dateStr); }}
-                    className={`ml-2 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all flex-shrink-0 ${
-                      schedulingDay === day.dateStr
-                        ? 'bg-brewery-600 text-white ring-2 ring-brewery-300'
-                        : 'bg-gray-100 text-gray-500 hover:bg-brewery-50 hover:text-brewery-600'
-                    }`}
-                    title="Selectionner des clients pour planifier les visites"
-                  >
-                    <CalendarPlus className="w-3.5 h-3.5" />
-                    {schedulingDay === day.dateStr ? 'Annuler' : 'Planifier'}
-                  </button>
+                  <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleSchedulingDay(day.dateStr); }}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                        schedulingDay === day.dateStr
+                          ? 'bg-brewery-600 text-white ring-2 ring-brewery-300'
+                          : 'bg-gray-100 text-gray-500 hover:bg-brewery-50 hover:text-brewery-600'
+                      }`}
+                      title="Selectionner des clients pour planifier les visites"
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                      {schedulingDay === day.dateStr ? 'Annuler' : 'Planifier'}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleMassActionDay(day.dateStr); }}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                        massActionDay === day.dateStr
+                          ? 'bg-indigo-600 text-white ring-2 ring-indigo-300'
+                          : 'bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'
+                      }`}
+                      title="Selectionner des clients pour actions de masse"
+                    >
+                      <Settings2 className="w-3.5 h-3.5" />
+                      {massActionDay === day.dateStr ? 'Annuler' : 'Actions'}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -778,13 +936,20 @@ export default function ClientsPlanningPage() {
                                 const isDue = c.next_visit && c.next_visit <= day.dateStr;
                                 const isLate = c.next_visit && c.next_visit < toLocalDateStr(new Date());
                                 const isInSchedulingMode = schedulingDay === day.dateStr;
+                                const isInMassMode = massActionDay === day.dateStr;
                                 const isSelected = isInSchedulingMode && selectedClients.has(c.id);
+                                const isMassSelected = isInMassMode && massSelectedClients.has(c.id);
                                 return (
                                   <button
                                     key={c.id}
-                                    onClick={() => isInSchedulingMode ? toggleClientSelection(c.id) : setSelectedClientId(c.id)}
+                                    onClick={() =>
+                                      isInSchedulingMode ? toggleClientSelection(c.id)
+                                      : isInMassMode ? toggleMassClientSelection(c.id)
+                                      : setSelectedClientId(c.id)
+                                    }
                                     className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors hover:shadow-sm text-left flex items-center gap-1 ${
                                       isSelected ? 'ring-2 ring-brewery-500 bg-brewery-50 border-brewery-400 text-brewery-800'
+                                      : isMassSelected ? 'ring-2 ring-indigo-500 bg-indigo-50 border-indigo-400 text-indigo-800'
                                       : isLate ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
                                       : isDue ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100'
                                       : isToday ? 'bg-white border-brewery-200 text-brewery-700 hover:bg-brewery-100'
@@ -792,6 +957,7 @@ export default function ClientsPlanningPage() {
                                     }`}
                                   >
                                     {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-brewery-600 flex-shrink-0" />}
+                                    {isMassSelected && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />}
                                     <span className="font-medium">{c.nom}</span>
                                     <span className="text-gray-400 ml-1">{c.ville}</span>
                                     {isDue && c.next_visit && (
@@ -1039,19 +1205,196 @@ export default function ClientsPlanningPage() {
             </div>
 
             {/* Footer */}
+            <div className="p-4 border-t border-gray-200 space-y-2">
+              <div className="flex justify-between items-center gap-2">
+                <button
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                  onClick={() => setShowSchedulingModal(false)}
+                >
+                  Annuler
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50 font-medium"
+                    onClick={handleExportICS}
+                    disabled={scheduleEntries.length === 0 || scheduleSaving}
+                  >
+                    <Download className="w-4 h-4" /> .ICS uniquement
+                  </button>
+                  <button
+                    className="px-5 py-2.5 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50 font-medium"
+                    onClick={handleValidateAndExport}
+                    disabled={scheduleEntries.length === 0 || scheduleSaving}
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> {scheduleSaving ? 'Enregistrement...' : 'Valider + Exporter'}
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 text-right italic">
+                "Valider" enregistre les visites et recalcule les prochaines visites
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mass action floating bar */}
+      {massActionDay && massSelectedClients.size > 0 && !showMassActionModal && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white border border-indigo-300 rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 max-w-lg">
+          <Settings2 className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+          <span className="text-sm font-semibold text-indigo-700 whitespace-nowrap">
+            {massSelectedClients.size} client{massSelectedClients.size > 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => setMassSelectedClients(new Set())}
+            className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
+          >
+            Tout deselectionner
+          </button>
+          <button
+            onClick={openMassActionModal}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 whitespace-nowrap"
+          >
+            <Settings2 className="w-4 h-4" /> Actions
+          </button>
+        </div>
+      )}
+
+      {/* Mass Action Modal */}
+      {showMassActionModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowMassActionModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                  <Settings2 className="w-5 h-5 text-indigo-600" />
+                  Actions de masse
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {massSelectedClients.size} client{massSelectedClients.size > 1 ? 's' : ''} selectionne{massSelectedClients.size > 1 ? 's' : ''}
+                </p>
+              </div>
+              <button onClick={() => setShowMassActionModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Action selection */}
+            <div className="p-4 space-y-4">
+              <label className="text-sm font-medium text-gray-700 block">Choisir une action</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { key: 'inactif' as const, icon: UserX, label: 'Rendre inactif', color: 'text-red-600', bg: 'border-red-200 hover:bg-red-50', activeBg: 'border-red-400 bg-red-50 ring-2 ring-red-200' },
+                  { key: 'note' as const, icon: MessageSquarePlus, label: 'Ajouter une note', color: 'text-blue-600', bg: 'border-blue-200 hover:bg-blue-50', activeBg: 'border-blue-400 bg-blue-50 ring-2 ring-blue-200' },
+                  { key: 'visite' as const, icon: CheckCircle2, label: 'Enregistrer visite', color: 'text-green-600', bg: 'border-green-200 hover:bg-green-50', activeBg: 'border-green-400 bg-green-50 ring-2 ring-green-200' },
+                  { key: 'commercial' as const, icon: UserCheck, label: 'Changer commercial', color: 'text-purple-600', bg: 'border-purple-200 hover:bg-purple-50', activeBg: 'border-purple-400 bg-purple-50 ring-2 ring-purple-200' },
+                ] as const).map(a => {
+                  const Icon = a.icon;
+                  const isActive = massAction === a.key;
+                  return (
+                    <button
+                      key={a.key}
+                      onClick={() => setMassAction(a.key)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-all ${isActive ? a.activeBg : `${a.bg} border-gray-200`}`}
+                    >
+                      <Icon className={`w-4 h-4 ${a.color}`} />
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Action-specific fields */}
+              {massAction === 'inactif' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-sm text-red-700">
+                    <strong>{massSelectedClients.size}</strong> client{massSelectedClients.size > 1 ? 's' : ''} seront passes en <strong>INACTIF</strong>.
+                    Ils ne seront plus affiches dans le planning.
+                  </p>
+                </div>
+              )}
+
+              {massAction === 'note' && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Note a ajouter *</label>
+                  <textarea
+                    value={massNote}
+                    onChange={e => setMassNote(e.target.value)}
+                    placeholder="Cette note sera ajoutee a chaque client selectionne..."
+                    className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-20 focus:ring-2 focus:ring-indigo-300 ${!massNote.trim() ? 'border-red-300' : 'border-gray-300'}`}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {massAction === 'visite' && (
+                <div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-2">
+                    <p className="text-sm text-green-700">
+                      Une visite sera enregistree pour chaque client. La date de prochaine visite sera automatiquement recalculee.
+                    </p>
+                  </div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Commentaire (optionnel)</label>
+                  <textarea
+                    value={massNote}
+                    onChange={e => setMassNote(e.target.value)}
+                    placeholder="Commentaire pour la visite..."
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none h-16 focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+              )}
+
+              {massAction === 'commercial' && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Nouveau commercial *</label>
+                  <select
+                    value={massCommercialId}
+                    onChange={e => setMassCommercialId(e.target.value)}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300"
+                  >
+                    <option value="">Selectionner...</option>
+                    {state.commerciaux.map(c => (
+                      <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Selected clients preview */}
+              {massAction && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Clients concernes :</p>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                    {Array.from(massSelectedClients).map(id => {
+                      const client = state.clients.find(c => c.id === id);
+                      return client ? (
+                        <span key={id} className="text-[11px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
+                          {client.nom}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
             <div className="p-4 border-t border-gray-200 flex justify-between items-center">
               <button
                 className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-                onClick={() => setShowSchedulingModal(false)}
+                onClick={() => setShowMassActionModal(false)}
               >
                 Annuler
               </button>
               <button
-                className="px-5 py-2.5 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50 font-medium"
-                onClick={handleExportICS}
-                disabled={scheduleEntries.length === 0}
+                className={`px-5 py-2.5 text-sm text-white rounded-lg flex items-center gap-2 disabled:opacity-50 font-medium ${
+                  massAction === 'inactif' ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+                onClick={executeMassAction}
+                disabled={!massAction || massSaving || (massAction === 'note' && !massNote.trim()) || (massAction === 'commercial' && !massCommercialId)}
               >
-                <Download className="w-4 h-4" /> Exporter .ICS
+                {massSaving ? 'En cours...' : massAction === 'inactif' ? 'Confirmer la desactivation' : 'Valider'}
               </button>
             </div>
           </div>
