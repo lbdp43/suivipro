@@ -230,9 +230,27 @@ export function downloadICSClientBatch(
     const dtEnd = icsFormatTime(date, endTime);
     const location = [client.adresse, client.code_postal, client.ville].filter(Boolean).join(', ');
     const descParts: string[] = [];
+
+    // Coordonnees
     if (client.contact) descParts.push(`Contact: ${client.contact}`);
     if (client.telephone) descParts.push(`Tel: ${client.telephone}`);
     if (client.telephone_mobile) descParts.push(`Mobile: ${client.telephone_mobile}`);
+    if (client.email) descParts.push(`Email: ${client.email}`);
+
+    // Infos client
+    descParts.push(`Type: ${client.type_client}`);
+    if (client.siret) descParts.push(`SIRET: ${client.siret}`);
+    if (client.tournee) descParts.push(`Tournee: ${client.tournee}`);
+
+    // Historique visites
+    if (client.last_visit) descParts.push(`Derniere visite: ${client.last_visit}`);
+
+    // Notes
+    if (client.notes) {
+      descParts.push('');
+      descParts.push(`--- Notes ---`);
+      descParts.push(client.notes);
+    }
 
     return [
       'BEGIN:VEVENT',
