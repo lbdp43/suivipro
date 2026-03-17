@@ -1152,87 +1152,123 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
   // Try fetching orders from EasyBeer API using correct Swagger v2.2.8 endpoints
-  // The API uses POST /commande/liste with query params for pagination and a filter body
-  // There is NO /commandes/client/{id} or /parametres/client/{id}/commandes endpoint
+  // Try multiple endpoint paths and parameter combinations
+  // /parametres/client/liste works with body { colonneTri, mode, nombreParPage }
+  // /document/liste exists but returns 500 with colonneTri:'date' - try different column names
   let orders = [];
   let fetchedFrom = '';
 
-  // Strategy 1: Search orders via /commande/liste filtered by client
-  for (const path of ['/commande/liste', '/document/liste', '/facture/liste', '/vente/liste']) {
-    try {
-      // Send pagination in body (like /parametres/client/liste which works)
-      const resp = await fetch(`${apiBase}${path}`, {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ colonneTri: 'date', mode: 'DESC', nombreParPage: 500, numeroPage: 0 }),
-        signal: AbortSignal.timeout(30000)
-      });
-      if (resp.ok) {
-        let data = await resp.json();
-        let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
+  const orderPaths = ['/document/liste', '/commande/liste', '/ventes/commande/liste', '/ventes/document/liste', '/facture/liste', '/vente/liste'];
+  const orderParamCombos = [
+    { colonneTri: 'numero', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'datePiece', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'libelle', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'date', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    {},
+  ];
+
+  function extractOrderList(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.liste || data.contenu || data.results || data.data || data.items
+      || data.commandes || data.factures || data.documents || data.ventes || [];
+  }
+
+  function filterClientOrders(list) {
+    return list.filter(d => {
+      const dClientId = String(d.clientId || d.client_id || d.idClient || d.tiersId
+        || (d.client && typeof d.client === 'object' ? (d.client.id || d.client.idClient) : '')
+        || '');
+      const dClientName = d.clientNom || d.nomClient || d.raisonSociale
+        || (d.client && typeof d.client === 'object' ? (d.client.nom || d.client.libelle || d.client.raisonSociale) : '')
+        || (typeof d.client === 'string' ? d.client : '')
+        || '';
+      if (dClientId && String(dClientId) === String(finalEbId)) return true;
+      if (dClientName && client.nom) {
+        const normA = dClientName.toLowerCase().trim();
+        const normB = client.nom.toLowerCase().trim();
+        if (normA === normB || normA.includes(normB) || normB.includes(normA)) return true;
+      }
+      return false;
+    });
+  }
+
+  // Find a working path + params combo
+  let workingPath = null;
+  let workingParams = null;
+
+  for (const path of orderPaths) {
+    if (workingPath) break;
+    for (const params of orderParamCombos) {
+      try {
+        const resp = await fetch(`${apiBase}${path}`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+          signal: AbortSignal.timeout(15000)
+        });
+        if (resp.status === 404 || resp.status === 405 || resp.status === 401) break;
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => null);
+          if (errData?.succes === false) continue; // wrong params, try next combo
+          break;
+        }
+        const data = await resp.json().catch(() => null);
+        if (!data) continue;
+        const list = extractOrderList(data);
         if (Array.isArray(list) && list.length > 0) {
-          // Filter orders that belong to this client
-          const clientOrders = list.filter(d => {
-            const dClientId = String(d.clientId || d.client_id || d.idClient || d.tiersId
-              || (d.client && typeof d.client === 'object' ? (d.client.id || d.client.idClient) : '')
-              || '');
-            const dClientName = d.clientNom || d.nomClient || d.raisonSociale
-              || (d.client && typeof d.client === 'object' ? (d.client.nom || d.client.libelle || d.client.raisonSociale) : '')
-              || (typeof d.client === 'string' ? d.client : '')
-              || '';
-            // Match by EasyBeer client ID
-            if (dClientId && String(dClientId) === String(finalEbId)) return true;
-            // Match by client name (fuzzy)
-            if (dClientName && client.nom) {
-              const normA = dClientName.toLowerCase().trim();
-              const normB = client.nom.toLowerCase().trim();
-              if (normA === normB || normA.includes(normB) || normB.includes(normA)) return true;
-            }
-            return false;
-          });
+          const clientOrders = filterClientOrders(list);
           if (clientOrders.length > 0) {
             orders = clientOrders;
             fetchedFrom = path;
+            workingPath = path;
+            workingParams = params;
             break;
           }
+          // Orders exist but none match this client on this page - still a working combo
+          workingPath = path;
+          workingParams = params;
+          break;
         }
-      }
-    } catch { /* try next */ }
+        if (data.succes !== false) {
+          workingPath = path;
+          workingParams = params;
+          break;
+        }
+      } catch { /* try next */ }
+    }
   }
 
-  // Strategy 2: If no orders found via list, try fetching all and match by page
-  if (orders.length === 0) {
-    for (const path of ['/commande/liste', '/document/liste', '/facture/liste', '/vente/liste']) {
-      for (let page = 1; page <= 5; page++) {
-        try {
-          const resp = await fetch(`${apiBase}${path}`, {
-            method: 'POST',
-            headers: { ...headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ colonneTri: 'date', mode: 'DESC', nombreParPage: 500, numeroPage: page }),
-            signal: AbortSignal.timeout(30000)
-          });
-          if (resp.ok) {
-            let data = await resp.json();
-            let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
-            if (!Array.isArray(list) || list.length === 0) break; // No more pages
-            const clientOrders = list.filter(d => {
-              const dClientId = String(d.clientId || d.client_id || d.idClient || d.tiersId
-                || (d.client && typeof d.client === 'object' ? (d.client.id || d.client.idClient) : '') || '');
-              return dClientId && String(dClientId) === String(finalEbId);
-            });
-            if (clientOrders.length > 0) {
-              orders.push(...clientOrders);
-              fetchedFrom = `${path} (page ${page})`;
-            }
-          }
-        } catch { break; }
-      }
-      if (orders.length > 0) break;
+  // If we found a working combo but no client orders yet, paginate to search more pages
+  if (workingPath && orders.length === 0 && workingParams) {
+    const pageSize = workingParams.nombreParPage || 50;
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const resp = await fetch(`${apiBase}${workingPath}`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...workingParams, numeroPage: page }),
+          signal: AbortSignal.timeout(30000)
+        });
+        if (!resp.ok) break;
+        const data = await resp.json().catch(() => null);
+        if (!data) break;
+        const list = extractOrderList(data);
+        if (!Array.isArray(list) || list.length === 0) break;
+        const clientOrders = filterClientOrders(list);
+        if (clientOrders.length > 0) {
+          orders.push(...clientOrders);
+          fetchedFrom = `${workingPath} (page ${page})`;
+        }
+        if (list.length < pageSize) break;
+      } catch { break; }
     }
   }
 
   if (orders.length === 0) {
-    return res.json({ ok: true, message: 'Aucune commande trouvee sur EasyBeer', commandes: [], tried: orderPaths });
+    return res.json({ ok: true, message: 'Aucune commande trouvee sur EasyBeer', commandes: [] });
   }
 
   // Parse and save orders
@@ -1346,30 +1382,57 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   console.log(`[EasyBeer Bulk Sync] ${linkedClients.rows.length} clients lies, fetching commandes...`);
 
   // Fetch ALL orders from EasyBeer
-  // Try multiple endpoint paths and param styles (body vs query)
+  // The working endpoint /parametres/client/liste uses body { colonneTri, mode, nombreParPage }
+  // /document/liste exists but returns 500 with colonneTri:'date' - try different column names
+  // /commande/liste returns 404 on some instances
   let allOrders = [];
-  const endpointsToTry = [
-    // Path, method, description
-    { path: '/commande/liste', desc: 'commande/liste (body params)' },
-    { path: '/document/liste', desc: 'document/liste (body params)' },
-    { path: '/facture/liste', desc: 'facture/liste (body params)' },
-    { path: '/vente/liste', desc: 'vente/liste (body params)' },
-  ];
-
   const debugInfo = [];
 
-  for (const ep of endpointsToTry) {
-    if (allOrders.length > 0) break;
+  // Paths to try - include /ventes/ prefix variants since some EasyBeer instances use it
+  const pathsToTry = [
+    '/document/liste',
+    '/commande/liste',
+    '/ventes/commande/liste',
+    '/ventes/document/liste',
+    '/ventes/facture/liste',
+    '/facture/liste',
+    '/vente/liste',
+  ];
 
-    for (let page = 0; page < 20; page++) {
+  // Parameter combinations to try for each path
+  // /document/liste returns 500 with colonneTri:'date' - the column name may differ
+  const paramCombos = [
+    { colonneTri: 'numero', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'datePiece', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { colonneTri: 'libelle', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    { mode: 'DESC', nombreParPage: 50, numeroPage: 0 },  // no colonneTri
+    { colonneTri: 'date', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+    {},  // empty body
+  ];
+
+  // Helper to extract list from API response
+  function extractList(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.liste || data.contenu || data.results || data.data || data.items
+      || data.commandes || data.factures || data.documents || data.ventes || [];
+  }
+
+  // Phase 1: Find a working path + param combination
+  let workingPath = null;
+  let workingParams = null;
+
+  for (const path of pathsToTry) {
+    if (workingPath) break;
+
+    for (const params of paramCombos) {
       try {
-        // Strategy A: pagination in BODY (like test-connection which works)
-        const bodyParams = { colonneTri: 'date', mode: 'DESC', nombreParPage: 500, numeroPage: page };
-        const resp = await fetch(`${apiBase}${ep.path}`, {
+        const resp = await fetch(`${apiBase}${path}`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyParams),
-          signal: AbortSignal.timeout(30000)
+          body: JSON.stringify(params),
+          signal: AbortSignal.timeout(15000)
         });
 
         const status = resp.status;
@@ -1377,55 +1440,109 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
         let data;
         try { data = JSON.parse(respText); } catch { data = null; }
 
-        console.log(`[EasyBeer Bulk Sync] ${ep.desc} page ${page}: HTTP ${status}, response length=${respText.length}, keys=${data ? Object.keys(data).join(',') : 'parse_error'}`);
+        const desc = `${path} ${JSON.stringify(params)}`;
+        console.log(`[EasyBeer Bulk Sync] Try ${desc}: HTTP ${status}, length=${respText.length}, keys=${data ? Object.keys(data).join(',') : 'parse_error'}`);
 
-        if (page === 0) {
-          debugInfo.push({ endpoint: ep.path, status, response_keys: data ? Object.keys(data) : [], sample: respText.substring(0, 300) });
+        debugInfo.push({
+          endpoint: path,
+          params: Object.keys(params).length > 0 ? params : '(empty)',
+          status,
+          response_keys: data ? Object.keys(data) : [],
+          sample: respText.substring(0, 500),
+          succes: data?.succes,
+          message: data?.message,
+        });
+
+        if (status === 404 || status === 405 || status === 401 || status === 403) break; // Wrong path, try next
+
+        if (data && data.succes === false) continue; // Valid path but wrong params, try next combo
+
+        const list = Array.isArray(data) ? data : extractList(data);
+        if (Array.isArray(list) && list.length > 0) {
+          workingPath = path;
+          workingParams = params;
+          allOrders.push(...list);
+          console.log(`[EasyBeer Bulk Sync] Found working combo: ${path} with ${JSON.stringify(params)}, got ${list.length} results`);
+          break;
         }
 
-        if (status === 404 || status === 405 || status === 403 || status === 401) break; // Wrong endpoint or auth
+        // If we got a 200 with succes !== false but empty list, this combo might work for pagination
+        if (status === 200 && data && data.succes !== false) {
+          workingPath = path;
+          workingParams = params;
+          console.log(`[EasyBeer Bulk Sync] Found working combo (0 results): ${path} with ${JSON.stringify(params)}`);
+          break;
+        }
+      } catch { /* try next combo */ }
+    }
 
-        if (!data) break;
+    // Also try with query params if no body combo worked for this path
+    if (!workingPath) {
+      try {
+        const queryUrl = `${apiBase}${path}?colonneTri=numero&nombreParPage=50&numeroPage=0&mode=DESC`;
+        const resp = await fetch(queryUrl, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          signal: AbortSignal.timeout(15000)
+        });
+        const status = resp.status;
+        const text = await resp.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = null; }
 
-        let list = Array.isArray(data) ? data
-          : (data.liste || data.contenu || data.results || data.data || data.items
-             || data.commandes || data.factures || data.documents || data.ventes || []);
-        if (!Array.isArray(list) || list.length === 0) {
-          // If page 0 returned nothing, try query params style instead
-          if (page === 0) {
-            try {
-              const queryUrl = `${apiBase}${ep.path}?colonneTri=date&nombreParPage=500&numeroPage=0`;
-              const resp2 = await fetch(queryUrl, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-                signal: AbortSignal.timeout(30000)
-              });
-              const text2 = await resp2.text();
-              let data2;
-              try { data2 = JSON.parse(text2); } catch { data2 = null; }
-              console.log(`[EasyBeer Bulk Sync] ${ep.path} (query params): HTTP ${resp2.status}, length=${text2.length}, keys=${data2 ? Object.keys(data2).join(',') : 'parse_error'}`);
-              if (data2) {
-                list = Array.isArray(data2) ? data2
-                  : (data2.liste || data2.contenu || data2.results || data2.data || data2.items
-                     || data2.commandes || data2.factures || data2.documents || []);
-                debugInfo.push({ endpoint: ep.path + ' (query)', status: resp2.status, response_keys: data2 ? Object.keys(data2) : [], sample: text2.substring(0, 300) });
-              }
-            } catch (e2) {
-              console.log(`[EasyBeer Bulk Sync] ${ep.path} (query params) error: ${e2.message}`);
-            }
+        console.log(`[EasyBeer Bulk Sync] Try ${path} (query params): HTTP ${status}, keys=${data ? Object.keys(data).join(',') : 'parse_error'}`);
+        debugInfo.push({ endpoint: path + ' (query)', status, response_keys: data ? Object.keys(data) : [], sample: text.substring(0, 500), succes: data?.succes, message: data?.message });
+
+        if (data && data.succes !== false) {
+          const list = extractList(data);
+          if (Array.isArray(list) && list.length > 0) {
+            workingPath = path;
+            workingParams = { _queryParams: true, colonneTri: 'numero', nombreParPage: 50, numeroPage: 0, mode: 'DESC' };
+            allOrders.push(...list);
+            console.log(`[EasyBeer Bulk Sync] Found working combo (query): ${path}, got ${list.length} results`);
           }
-          if (!Array.isArray(list) || list.length === 0) break;
         }
+      } catch { /* try next path */ }
+    }
+  }
 
-        allOrders.push(...list);
-        console.log(`[EasyBeer Bulk Sync] ${ep.desc} page ${page}: ${list.length} commandes (total: ${allOrders.length})`);
-        if (list.length < 500) break;
-      } catch (err) {
-        console.log(`[EasyBeer Bulk Sync] ${ep.desc} page ${page} error: ${err.message}`);
-        debugInfo.push({ endpoint: ep.path, error: err.message });
-        break;
+  // Phase 2: If we found a working combo, paginate to get all orders
+  if (workingPath && allOrders.length > 0) {
+    const pageSize = workingParams?.nombreParPage || workingParams?._queryParams && 50 || 50;
+    for (let page = 1; page < 100; page++) {
+      if (allOrders.length >= page * pageSize) {
+        // We got a full page, there might be more
+      } else {
+        break; // Last page was partial, no more
       }
+      try {
+        let resp;
+        if (workingParams?._queryParams) {
+          const queryUrl = `${apiBase}${workingPath}?colonneTri=numero&nombreParPage=${pageSize}&numeroPage=${page}&mode=DESC`;
+          resp = await fetch(queryUrl, {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+            signal: AbortSignal.timeout(30000)
+          });
+        } else {
+          resp = await fetch(`${apiBase}${workingPath}`, {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...workingParams, numeroPage: page }),
+            signal: AbortSignal.timeout(30000)
+          });
+        }
+        if (!resp.ok) break;
+        const data = await resp.json().catch(() => null);
+        if (!data) break;
+        const list = extractList(data);
+        if (!Array.isArray(list) || list.length === 0) break;
+        allOrders.push(...list);
+        console.log(`[EasyBeer Bulk Sync] ${workingPath} page ${page}: ${list.length} commandes (total: ${allOrders.length})`);
+        if (list.length < pageSize) break;
+      } catch { break; }
     }
   }
 
@@ -2184,10 +2301,17 @@ async function handleEasyBeerWebhook(req, res) {
           `/document/detail/${id}`,             // possible document detail variant
         ];
 
-        // List-based endpoints (POST with pagination) - like /parametres/client/liste
+        // List-based endpoints with multiple param combos (like /parametres/client/liste)
         const orderListPaths = [
-          '/commande/liste',                    // controleur-commande: list orders
-          '/document/liste',                    // controleur-document: list factures/BL
+          '/document/liste', '/commande/liste', '/ventes/commande/liste', '/ventes/document/liste',
+        ];
+        const webhookParamCombos = [
+          { colonneTri: 'numero', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+          { colonneTri: 'datePiece', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+          { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+          { mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+          { colonneTri: 'date', mode: 'DESC', nombreParPage: 50, numeroPage: 0 },
+          {},
         ];
 
         for (let attempt = 0; attempt <= 3; attempt++) {
@@ -2209,16 +2333,23 @@ async function handleEasyBeerWebhook(req, res) {
           }
           if (orderData) break;
 
-          // Strategy 2: List-based search (POST with pagination in body, like /parametres/client/liste)
+          // Strategy 2: List-based search - try multiple paths and param combos
           for (const path of orderListPaths) {
-            try {
-              const resp = await fetch(`${apiBase}${path}`, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ colonneTri: 'date', mode: 'DESC', nombreParPage: 200, numeroPage: 0 }),
-                signal: AbortSignal.timeout(20000)
-              });
-              if (resp.ok) {
+            if (orderData) break;
+            for (const params of webhookParamCombos) {
+              try {
+                const resp = await fetch(`${apiBase}${path}`, {
+                  method: 'POST',
+                  headers: { ...headers, 'Content-Type': 'application/json' },
+                  body: JSON.stringify(params),
+                  signal: AbortSignal.timeout(20000)
+                });
+                if (resp.status === 404 || resp.status === 405 || resp.status === 401) break; // wrong path
+                if (!resp.ok) {
+                  const errData = await resp.json().catch(() => null);
+                  if (errData?.succes === false) continue; // wrong params, try next combo
+                  break;
+                }
                 let data = await resp.json();
                 let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
                 if (Array.isArray(list)) {
@@ -2228,13 +2359,9 @@ async function handleEasyBeerWebhook(req, res) {
                     fetchedFrom = `${path} (liste)`;
                     console.log(`[EasyBeer Webhook] Commande trouvee dans ${path}, id=${found.id}, keys=${Object.keys(found).join(',')}`);
 
-                    // If found in list, try to get detail version for more info (line items etc.)
+                    // Try to get detail version for more info (line items etc.)
                     const foundId = found.id || id;
-                    const detailPaths = [
-                      path.replace('/liste', `/${foundId}`),
-                      path.replace('/liste', `/detail/${foundId}`),
-                    ];
-                    for (const detailPath of detailPaths) {
+                    for (const detailPath of [path.replace('/liste', `/${foundId}`), path.replace('/liste', `/detail/${foundId}`)]) {
                       try {
                         const detResp = await fetch(`${apiBase}${detailPath}`, { headers, signal: AbortSignal.timeout(10000) });
                         if (detResp.ok) {
@@ -2252,8 +2379,10 @@ async function handleEasyBeerWebhook(req, res) {
                     break;
                   }
                 }
-              }
-            } catch { /* next */ }
+                // If we got a valid response with this combo, no need to try more combos for this path
+                if (data && data.succes !== false) break;
+              } catch { /* next */ }
+            }
           }
           if (orderData) break;
 
@@ -2415,7 +2544,7 @@ async function handleEasyBeerWebhook(req, res) {
           try {
             const clientData = await fetchFromEasyBeerWithRetry(apiBase, headers, ebClientId, 2);
             if (clientData) {
-              const cf = extractEbFields(clientData);
+              const cf = extractEbFieldsSync(clientData);
               console.log(`[EasyBeer Webhook] Client EasyBeer fetche pour commande: name="${cf.name}", email="${cf.email}", siret="${cf.siret}"`);
               const matchedClient = await findMatchingClient(cf.name || orderClientName, cf.email || orderClientEmail, cf.phone || orderClientPhone, cf.siret || orderClientSiret);
               if (matchedClient) {

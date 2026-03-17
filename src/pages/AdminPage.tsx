@@ -1506,9 +1506,11 @@ export default function AdminPage() {
                         <p className="font-medium mb-1">Debug API EasyBeer:</p>
                         {syncAllResult.debug.map((d: any, i: number) => (
                           <div key={i} className="mb-1">
-                            <p><strong>{d.endpoint}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}</p>
-                            {d.response_keys && <p className="text-gray-500">Cles: {d.response_keys.join(', ') || 'vide'}</p>}
-                            {d.sample && <p className="text-gray-400 truncate max-w-full">{d.sample.substring(0, 200)}</p>}
+                            <p><strong>{d.endpoint}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.succes === false ? ` (succes: false)` : ''}</p>
+                            {d.message && <p className="text-red-500 text-sm">{d.message}</p>}
+                            {d.params && <p className="text-gray-500 text-sm">Params: {typeof d.params === 'string' ? d.params : JSON.stringify(d.params)}</p>}
+                            {d.response_keys && d.response_keys.length > 0 && <p className="text-gray-500">Cles: {d.response_keys.join(', ')}</p>}
+                            {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
                           </div>
                         ))}
                         {syncAllResult.api_url && <p className="mt-1">URL API: {syncAllResult.api_url}</p>}
