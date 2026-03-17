@@ -324,6 +324,7 @@ async function initDatabase(attempt = 1) {
         postal_code TEXT DEFAULT '',
         notes TEXT DEFAULT '',
         commercial_email TEXT DEFAULT '',
+        commercial_name TEXT DEFAULT '',
         siret TEXT DEFAULT '',
         tournee TEXT DEFAULT '',
         latitude DOUBLE PRECISION DEFAULT 0,
@@ -483,6 +484,7 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS tournee TEXT DEFAULT ''"); } catch { /* */ }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS commercial_name TEXT DEFAULT ''"); } catch { /* */ }
 
     // Add tournee_info and week_pattern to tournee_config
     try {
