@@ -482,17 +482,20 @@ export default function AdminPage() {
     setSyncingAllCommandes(false);
   };
 
-  const exploreEasyBeerApi = async () => {
+  const exploreEasyBeerApi = async (round = 2) => {
     setExploringApi(true);
-    setExploreResult(null);
     try {
       const token = localStorage.getItem('suivipro_token');
       const res = await fetch('/api/easybeer/explore-api', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ round }),
       });
       const data = await res.json();
-      setExploreResult(data);
+      setExploreResult((prev: any) => {
+        if (!prev) return data;
+        return { ...data, results: [...(prev.results || []), ...(data.results || [])] };
+      });
     } catch { toast.error('Erreur exploration API'); }
     setExploringApi(false);
   };
@@ -1561,14 +1564,30 @@ export default function AdminPage() {
               <h3 className="font-semibold text-purple-800 flex items-center gap-2">
                 <Search className="w-4 h-4" /> Explorer l'API EasyBeer
               </h3>
-              <button
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${exploringApi ? 'bg-purple-400 cursor-wait' : 'bg-purple-600 hover:bg-purple-700'}`}
-                onClick={exploreEasyBeerApi}
-                disabled={exploringApi}
-              >
-                <Search className={`w-4 h-4 ${exploringApi ? 'animate-pulse' : ''}`} />
-                {exploringApi ? 'Exploration...' : 'Explorer (5 appels max)'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className={`px-3 py-2 text-xs font-medium text-white rounded-lg flex items-center gap-1 ${exploringApi ? 'bg-purple-400 cursor-wait' : 'bg-purple-600 hover:bg-purple-700'}`}
+                  onClick={() => exploreEasyBeerApi(2)}
+                  disabled={exploringApi}
+                >
+                  <Search className={`w-3 h-3 ${exploringApi ? 'animate-pulse' : ''}`} />
+                  {exploringApi ? '...' : 'Sous-ressources client'}
+                </button>
+                <button
+                  className={`px-3 py-2 text-xs font-medium text-white rounded-lg flex items-center gap-1 ${exploringApi ? 'bg-purple-400 cursor-wait' : 'bg-purple-600 hover:bg-purple-700'}`}
+                  onClick={() => exploreEasyBeerApi(3)}
+                  disabled={exploringApi}
+                >
+                  <Search className={`w-3 h-3 ${exploringApi ? 'animate-pulse' : ''}`} />
+                  {exploringApi ? '...' : 'Parametres + POST'}
+                </button>
+                <button
+                  className="px-2 py-2 text-xs text-purple-600 hover:bg-purple-50 rounded-lg"
+                  onClick={() => setExploreResult(null)}
+                >
+                  Reset
+                </button>
+              </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
               Teste differentes approches pour trouver les commandes: detail client, formats alternatifs, endpoints racine. Maximum 5 appels API avec delai de 500ms.

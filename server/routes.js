@@ -2963,37 +2963,88 @@ router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, re
     }
   }
 
-  // Test 1: /document/liste with EXACT same body format as working /parametres/client/liste
-  // (colonneTri: 'libelle', no numeroPage - this is what WORKS for clients)
-  let status = await tryEndpoint('document/liste format-client', 'POST', '/document/liste',
-    { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
-  if (status === 'stop') return res.json({ ok: true, results });
+  // Round 2: Based on previous discovery, /parametres/client/detail/{id} works (HTTP 200)
+  // Now test sub-resources of client and other /parametres/ patterns
+  const round = req.body?.round || 2;
+  let status;
 
-  await delay(500);
-
-  // Test 2: Client detail - maybe it includes commandes?
-  if (ebClientId) {
-    status = await tryEndpoint(`client/detail/${ebClientId}`, 'GET', `/parametres/client/detail/${ebClientId}`, null);
-    if (status === 'stop') return res.json({ ok: true, results });
+  if (round === 2 && ebClientId) {
+    // Test 1: Client sub-resource - documents
+    status = await tryEndpoint('client documents', 'GET', `/parametres/client/${ebClientId}/documents`, null);
+    if (status === 'stop') return res.json({ ok: true, results, round });
     await delay(500);
+
+    // Test 2: Client sub-resource - commandes
+    status = await tryEndpoint('client commandes', 'GET', `/parametres/client/${ebClientId}/commandes`, null);
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Test 3: Client sub-resource - factures
+    status = await tryEndpoint('client factures', 'GET', `/parametres/client/${ebClientId}/factures`, null);
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Test 4: /devis/liste and /avoir/liste (POST)
+    status = await tryEndpoint('devis/liste', 'POST', '/devis/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // Test 5: /bon-livraison/liste or /bl/liste
+    status = await tryEndpoint('bon-livraison/liste', 'POST', '/bon-livraison/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+
+  } else if (round === 3 && ebClientId) {
+    // Test more /parametres/ prefixed paths and POST variants
+    status = await tryEndpoint('parametres/devis/liste', 'POST', '/parametres/devis/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/avoir/liste', 'POST', '/parametres/avoir/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/bon-livraison/liste', 'POST', '/parametres/bon-livraison/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    // POST client documents/commandes (maybe POST is required like /liste endpoints)
+    status = await tryEndpoint('client commandes POST', 'POST', `/parametres/client/${ebClientId}/commandes`,
+      { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('client documents POST', 'POST', `/parametres/client/${ebClientId}/documents`,
+      { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 10 });
+
+  } else {
+    // Fallback round 1 (original tests)
+    status = await tryEndpoint('document/liste format-client', 'POST', '/document/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    if (ebClientId) {
+      status = await tryEndpoint(`client/detail/${ebClientId}`, 'GET', `/parametres/client/detail/${ebClientId}`, null);
+      if (status === 'stop') return res.json({ ok: true, results, round });
+      await delay(500);
+    }
+
+    status = await tryEndpoint('commande/liste (root)', 'POST', '/commande/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('facture/liste (root)', 'POST', '/facture/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('document/liste GET', 'GET', '/document/liste', null);
   }
-
-  // Test 3: /commande/liste (POST, without /parametres/ prefix)
-  status = await tryEndpoint('commande/liste (root)', 'POST', '/commande/liste',
-    { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
-  if (status === 'stop') return res.json({ ok: true, results });
-
-  await delay(500);
-
-  // Test 4: /facture/liste (POST, without /parametres/ prefix)
-  status = await tryEndpoint('facture/liste (root)', 'POST', '/facture/liste',
-    { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
-  if (status === 'stop') return res.json({ ok: true, results });
-
-  await delay(500);
-
-  // Test 5: /document/liste with GET instead of POST
-  status = await tryEndpoint('document/liste GET', 'GET', '/document/liste', null);
 
   res.json({ ok: true, results, api_url: apiBase, client_id_tested: ebClientId || 'aucun' });
 }));
