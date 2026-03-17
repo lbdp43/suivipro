@@ -1047,6 +1047,21 @@ router.get('/commandes/client/:clientId', authMiddleware, asyncHandler(async (re
   res.json(result.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })));
 }));
 
+// Debug: inspect raw EasyBeer element structure for a commande
+router.get('/commandes/:id/debug-elements', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT raw_data FROM commandes WHERE id = $1', [req.params.id]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Commande non trouvee' });
+  const raw = JSON.parse(result.rows[0].raw_data || '{}');
+  const elementTypes = ['elementsBouteilles', 'elementsVolumes', 'elementsContenants', 'elementsSaisieLibre', 'elementsAutres', 'elementsMatierePremieres'];
+  const elements = {};
+  for (const type of elementTypes) {
+    if (raw[type] && raw[type].length > 0) {
+      elements[type] = { count: raw[type].length, first_element_keys: Object.keys(raw[type][0]), first_element: raw[type][0] };
+    }
+  }
+  res.json({ commande_keys: Object.keys(raw), elements });
+}));
+
 router.post('/commandes', authMiddleware, asyncHandler(async (req, res) => {
   const c = req.body;
   if (!c.client_id) return validationError(res, ['client_id est requis']);
@@ -1248,13 +1263,30 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
         ...(det.elementsAutres || []),
         ...(det.elementsMatierePremieres || []),
       ];
-      lignes = allElements.map(el => ({
-        produit: el.libelle || el.designation || el.nom || '',
-        quantite: parseFloat(el.quantite || el.qte || 0) || 0,
-        prix_unitaire: parseFloat(el.prixUnitaire || el.prixUnitaireHT || el.pu || 0) || 0,
-        montant: parseFloat(el.montant || el.montantHT || el.total || 0) || 0,
-        reference: el.reference || el.code || '',
-      }));
+      // Log first element structure for debugging product name fields
+      if (allElements.length > 0) {
+        console.log(`[EasyBeer] Element keys: ${Object.keys(allElements[0]).join(', ')}`);
+        const el0 = allElements[0];
+        if (el0.article) console.log(`[EasyBeer] article keys: ${Object.keys(el0.article).join(', ')}`);
+        if (el0.produit) console.log(`[EasyBeer] produit keys: ${Object.keys(el0.produit).join(', ')}`);
+      }
+      lignes = allElements.map(el => {
+        // Try to get the actual product/beer name from nested objects
+        const articleNom = el.article?.nom || el.article?.libelle || el.article?.designation || '';
+        const produitNom = el.produit?.nom || el.produit?.libelle || el.produit?.designation || '';
+        const format = el.libelle || el.designation || el.nom || '';
+        // Combine: "Herbe des Druides - ZADIG 50 CL" or just the format if no product name
+        const nomProduit = el.nomProduit || el.nomArticle || articleNom || produitNom || '';
+        return {
+          produit: nomProduit ? `${nomProduit} - ${format}` : format,
+          nom_produit: nomProduit,
+          format: format,
+          quantite: parseFloat(el.quantite || el.qte || 0) || 0,
+          prix_unitaire: parseFloat(el.prixUnitaire || el.prixUnitaireHT || el.pu || 0) || 0,
+          montant: parseFloat(el.montant || el.montantHT || el.total || 0) || 0,
+          reference: el.reference || el.code || el.article?.reference || el.article?.code || '',
+        };
+      });
 
       const cmdId = `cmd-${crypto.randomUUID()}`;
       await db.query(
@@ -1283,9 +1315,16 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
   });
 }));
 
-// Bulk sync: fetch ALL orders from EasyBeer for all linked clients
+// Bulk sync: fetch ALL orders from EasyBeer for all known clients
 // Uses working endpoints: historique-commande, commandes-en-cours, commande/detail
+// Pass { force: true } to delete existing EasyBeer commandes and re-import (useful for updating product names)
 router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (req, res) => {
+  const { force } = req.body || {};
+  if (force) {
+    const deleted = await db.query("DELETE FROM commandes WHERE source = 'easybeer'");
+    console.log(`[EasyBeer Bulk Sync] Force mode: deleted ${deleted.rowCount} existing commandes`);
+  }
+
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
   const config = configResult.rows[0];
   if (!config?.username || !config?.api_url) {
@@ -1410,13 +1449,21 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
           ...(det.elementsAutres || []),
           ...(det.elementsMatierePremieres || []),
         ];
-        const lignes = allElements.map(el => ({
-          produit: el.libelle || el.designation || el.nom || '',
-          quantite: parseFloat(el.quantite || el.qte || 0) || 0,
-          prix_unitaire: parseFloat(el.prixUnitaire || el.prixUnitaireHT || el.pu || 0) || 0,
-          montant: parseFloat(el.montant || el.montantHT || el.total || 0) || 0,
-          reference: el.reference || el.code || '',
-        }));
+        const lignes = allElements.map(el => {
+          const articleNom = el.article?.nom || el.article?.libelle || el.article?.designation || '';
+          const produitNom = el.produit?.nom || el.produit?.libelle || el.produit?.designation || '';
+          const format = el.libelle || el.designation || el.nom || '';
+          const nomProduit = el.nomProduit || el.nomArticle || articleNom || produitNom || '';
+          return {
+            produit: nomProduit ? `${nomProduit} - ${format}` : format,
+            nom_produit: nomProduit,
+            format: format,
+            quantite: parseFloat(el.quantite || el.qte || 0) || 0,
+            prix_unitaire: parseFloat(el.prixUnitaire || el.prixUnitaireHT || el.pu || 0) || 0,
+            montant: parseFloat(el.montant || el.montantHT || el.total || 0) || 0,
+            reference: el.reference || el.code || el.article?.reference || el.article?.code || '',
+          };
+        });
 
         // Also try to extract client name from the order detail itself
         const detClientName = det.client?.nom || det.client?.raisonSociale || '';
@@ -2190,15 +2237,23 @@ async function handleEasyBeerWebhook(req, res) {
           || (orderData.detail && Array.isArray(orderData.detail) ? orderData.detail : null)
           || [];
         if (Array.isArray(rawLignes)) {
-          lignes = rawLignes.map(l => ({
-            produit: l.libelle || l.designation || l.nom || l.produit || l.article || l.description
-              || l.nomArticle || l.nom_article || l.libelleArticle || '',
-            quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || l.quantiteCommandee || 0) || 0,
-            prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || l.pv || l.prixVente || 0) || 0,
-            montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || l.montantLigne || 0) || 0,
-            tva: parseFloat(l.tauxTVA || l.tva || l.txTVA || 0) || 0,
-            reference: l.reference || l.ref || l.code || l.codeArticle || l.code_article || '',
-          }));
+          lignes = rawLignes.map(l => {
+            const articleNom = l.article?.nom || l.article?.libelle || l.article?.designation || '';
+            const produitObj = l.produit && typeof l.produit === 'object' ? (l.produit.nom || l.produit.libelle || '') : '';
+            const format = l.libelle || l.designation || l.nom || (typeof l.produit === 'string' ? l.produit : '') || l.article || l.description
+              || l.nomArticle || l.nom_article || l.libelleArticle || '';
+            const nomProduit = l.nomProduit || l.nomArticle || articleNom || produitObj || '';
+            return {
+              produit: nomProduit ? `${nomProduit} - ${format}` : format,
+              nom_produit: nomProduit,
+              format: format,
+              quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || l.quantiteCommandee || 0) || 0,
+              prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || l.pv || l.prixVente || 0) || 0,
+              montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || l.montantLigne || 0) || 0,
+              tva: parseFloat(l.tauxTVA || l.tva || l.txTVA || 0) || 0,
+              reference: l.reference || l.ref || l.code || l.codeArticle || l.code_article || l.article?.reference || '',
+            };
+          });
         }
 
         // If totals are still 0 but we have line items, compute from them

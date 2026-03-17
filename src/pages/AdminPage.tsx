@@ -459,7 +459,7 @@ export default function AdminPage() {
     } catch { toast.error('Erreur de synchronisation'); }
   };
 
-  const syncAllCommandes = async () => {
+  const syncAllCommandes = async (force = false) => {
     setSyncingAllCommandes(true);
     setSyncAllResult(null);
     try {
@@ -467,6 +467,7 @@ export default function AdminPage() {
       const res = await fetch('/api/easybeer/sync-all-commandes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ force }),
       });
       const data = await res.json();
       setSyncAllResult(data);
@@ -1492,14 +1493,23 @@ export default function AdminPage() {
               <h3 className="font-semibold text-blue-800 flex items-center gap-2">
                 <RefreshCw className="w-4 h-4" /> Synchroniser les commandes EasyBeer
               </h3>
-              <button
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${syncingAllCommandes ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'}`}
-                onClick={syncAllCommandes}
-                disabled={syncingAllCommandes}
-              >
-                <RefreshCw className={`w-4 h-4 ${syncingAllCommandes ? 'animate-spin' : ''}`} />
-                {syncingAllCommandes ? 'Synchronisation...' : 'Lancer la synchronisation'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${syncingAllCommandes ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'}`}
+                  onClick={() => syncAllCommandes(false)}
+                  disabled={syncingAllCommandes}
+                >
+                  <RefreshCw className={`w-4 h-4 ${syncingAllCommandes ? 'animate-spin' : ''}`} />
+                  {syncingAllCommandes ? 'Sync...' : 'Synchroniser'}
+                </button>
+                <button
+                  className={`px-3 py-2 text-xs font-medium text-white rounded-lg ${syncingAllCommandes ? 'bg-orange-300 cursor-wait' : 'bg-orange-500 hover:bg-orange-600'}`}
+                  onClick={() => { if (confirm('Supprimer et re-importer toutes les commandes EasyBeer ?')) syncAllCommandes(true); }}
+                  disabled={syncingAllCommandes}
+                >
+                  Re-sync total
+                </button>
+              </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
               Interroge TOUS les clients EasyBeer connus (importes ou non) pour recuperer leurs commandes via l'API. Les doublons sont ignores.
