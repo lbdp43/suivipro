@@ -1151,12 +1151,11 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
   const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
   const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
 
-  // EasyBeer API v2.2.8: POST /document/liste
-  // Try multiple body formats to find what the API accepts
+  // EasyBeer API: all list endpoints are under /parametres/ prefix
+  // (matching the working /parametres/client/liste endpoint)
   let orders = [];
   let fetchedFrom = '';
   const pageSize = 50;
-  const documentTypes = ['FACTURE', 'BON_COMMANDE', 'BON_LIVRAISON', 'AVOIR', 'DEVIS'];
 
   function extractOrderList(data) {
     if (!data) return [];
@@ -1182,77 +1181,93 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
     });
   }
 
-  // Try multiple request formats (same discovery as bulk sync)
-  const clientRequestFormats = [
-    { label: 'body-pagination', url: '/document/liste', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 } },
-    { label: 'body-pagination-numero', url: '/document/liste', body: { colonneTri: 'numero', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 } },
-    { label: 'body-pagination-libelle', url: '/document/liste', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: 0 } },
-    { label: 'body-mixed-filtre', url: '/document/liste', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0, filtre: { types: documentTypes } } },
-    { label: 'body-mixed-empty-filtre', url: '/document/liste', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0, filtre: {} } },
-    { label: 'query+swagger-body', url: `/document/liste?colonneTri=dateCreation&mode=DESC&nombreParPage=${pageSize}&numeroPage=0`, body: { filtre: { types: documentTypes }, periodeSelectionnee: {} } },
-    { label: 'query+empty-body', url: `/document/liste?colonneTri=dateCreation&mode=DESC&nombreParPage=${pageSize}&numeroPage=0`, body: {} },
-    { label: 'empty-body', url: '/document/liste', body: {} },
-    { label: 'body-no-sort', url: '/document/liste', body: { nombreParPage: pageSize, numeroPage: 0 } },
-  ];
-
-  let workingClientFormat = null;
-  let allDocs = [];
-
-  for (const fmt of clientRequestFormats) {
-    try {
-      const resp = await fetch(`${apiBase}${fmt.url}`, {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(fmt.body),
-        signal: AbortSignal.timeout(15000)
-      });
-      if (resp.status === 200) {
-        const data = await resp.json().catch(() => null);
-        if (data && data.succes !== false) {
-          const list = extractOrderList(data);
-          if (Array.isArray(list)) {
-            allDocs = list;
-            workingClientFormat = fmt;
-            console.log(`[EasyBeer Client Sync] WORKING: ${fmt.label}, got ${list.length} docs`);
-            break;
-          }
+  // Strategy 1: Direct client orders endpoint
+  try {
+    const resp = await fetch(`${apiBase}/parametres/client/${finalEbId}/commandes`, {
+      method: 'GET',
+      headers: { ...headers },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data) {
+        const list = extractOrderList(data);
+        if (Array.isArray(list) && list.length > 0) {
+          orders = list;
+          fetchedFrom = `/parametres/client/${finalEbId}/commandes`;
+          console.log(`[EasyBeer Client Sync] Direct client orders: ${list.length} results`);
         }
       }
-      console.log(`[EasyBeer Client Sync] ${fmt.label}: HTTP ${resp.status}`);
-    } catch { /* next */ }
+    } else {
+      console.log(`[EasyBeer Client Sync] /parametres/client/${finalEbId}/commandes: HTTP ${resp.status}`);
+    }
+  } catch (err) {
+    console.log(`[EasyBeer Client Sync] Direct client orders error: ${err.message}`);
   }
 
-  // Filter for this client and paginate if needed
-  if (workingClientFormat && allDocs.length > 0) {
-    orders = filterClientOrders(allDocs);
-    fetchedFrom = workingClientFormat.label;
+  // Strategy 2: Try /parametres/ prefixed list endpoints (same body format as working /parametres/client/liste)
+  if (orders.length === 0) {
+    const paginationBody = { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 };
+    const listEndpoints = [
+      '/parametres/commande/liste',
+      '/parametres/document/liste',
+      '/parametres/facture/liste',
+      '/parametres/vente/liste',
+    ];
 
-    // Paginate to find more client orders
-    if (allDocs.length >= pageSize) {
-      for (let page = 1; page <= 20; page++) {
-        try {
-          let pageUrl = workingClientFormat.url;
-          let pageBody = { ...workingClientFormat.body };
-          if (pageUrl.includes('?')) {
-            pageUrl = pageUrl.replace(/numeroPage=\d+/, `numeroPage=${page}`);
-          } else {
-            pageBody.numeroPage = page;
+    let workingEndpoint = null;
+    let allDocs = [];
+
+    for (const endpoint of listEndpoints) {
+      try {
+        const resp = await fetch(`${apiBase}${endpoint}`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(paginationBody),
+          signal: AbortSignal.timeout(15000)
+        });
+        if (resp.status === 200) {
+          const data = await resp.json().catch(() => null);
+          if (data && data.succes !== false) {
+            const list = extractOrderList(data);
+            if (Array.isArray(list)) {
+              allDocs = list;
+              workingEndpoint = endpoint;
+              console.log(`[EasyBeer Client Sync] WORKING: ${endpoint}, got ${list.length} docs`);
+              break;
+            }
           }
-          const pageResp = await fetch(`${apiBase}${pageUrl}`, {
-            method: 'POST',
-            headers: { ...headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify(pageBody),
-            signal: AbortSignal.timeout(30000)
-          });
-          if (!pageResp.ok) break;
-          const pageData = await pageResp.json().catch(() => null);
-          if (!pageData) break;
-          const pageList = extractOrderList(pageData);
-          if (!Array.isArray(pageList) || pageList.length === 0) break;
-          const clientOrders = filterClientOrders(pageList);
-          if (clientOrders.length > 0) orders.push(...clientOrders);
-          if (pageList.length < pageSize) break;
-        } catch { break; }
+        }
+        console.log(`[EasyBeer Client Sync] ${endpoint}: HTTP ${resp.status}`);
+      } catch (err) {
+        console.log(`[EasyBeer Client Sync] ${endpoint} error: ${err.message}`);
+      }
+    }
+
+    // Filter for this client and paginate
+    if (workingEndpoint && allDocs.length > 0) {
+      orders = filterClientOrders(allDocs);
+      fetchedFrom = workingEndpoint;
+
+      if (allDocs.length >= pageSize) {
+        for (let page = 1; page <= 20; page++) {
+          try {
+            const pageResp = await fetch(`${apiBase}${workingEndpoint}`, {
+              method: 'POST',
+              headers: { ...headers, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...paginationBody, numeroPage: page }),
+              signal: AbortSignal.timeout(30000)
+            });
+            if (!pageResp.ok) break;
+            const pageData = await pageResp.json().catch(() => null);
+            if (!pageData) break;
+            const pageList = extractOrderList(pageData);
+            if (!Array.isArray(pageList) || pageList.length === 0) break;
+            const clientOrders = filterClientOrders(pageList);
+            if (clientOrders.length > 0) orders.push(...clientOrders);
+            if (pageList.length < pageSize) break;
+          } catch { break; }
+        }
       }
     }
   }
@@ -1371,12 +1386,12 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
 
   console.log(`[EasyBeer Bulk Sync] ${linkedClients.rows.length} clients lies, fetching commandes...`);
 
-  // EasyBeer API v2.2.8: POST /document/liste
-  // Try multiple body formats to find what the API accepts
+  // EasyBeer API: all list endpoints are under /parametres/ prefix
+  // (same as the working /parametres/client/liste endpoint)
   let allOrders = [];
   const debugInfo = [];
   const pageSize = 50;
-  const documentTypes = ['FACTURE', 'BON_COMMANDE', 'BON_LIVRAISON', 'AVOIR', 'DEVIS'];
+  const paginationBody = { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 };
 
   // Helper to extract list from API response
   function extractList(data) {
@@ -1386,37 +1401,22 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
       || data.commandes || data.factures || data.documents || data.ventes || [];
   }
 
-  // Try multiple request formats for /document/liste
-  // Format A: query params for pagination + ModeleDocumentParametre body (Swagger spec)
-  // Format B: pagination in body (like /parametres/client/liste test-connection)
-  // Format C: mixed (pagination in body + filter fields)
-  // Format D: minimal bodies
-  const requestFormats = [
-    // Format B: pagination in body like working /parametres/client/liste
-    { label: 'body-pagination-only', url: '/document/liste', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 } },
-    { label: 'body-pagination-numero', url: '/document/liste', body: { colonneTri: 'numero', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0 } },
-    { label: 'body-pagination-libelle', url: '/document/liste', body: { colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: 0 } },
-    // Format C: pagination in body + filtre
-    { label: 'body-mixed-filtre', url: '/document/liste', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0, filtre: { types: documentTypes } } },
-    { label: 'body-mixed-empty-filtre', url: '/document/liste', body: { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: pageSize, numeroPage: 0, filtre: {} } },
-    // Format A: query params + Swagger body
-    { label: 'query+swagger-body', url: `/document/liste?colonneTri=dateCreation&mode=DESC&nombreParPage=${pageSize}&numeroPage=0`, body: { filtre: { types: documentTypes }, periodeSelectionnee: {} } },
-    { label: 'query+empty-body', url: `/document/liste?colonneTri=dateCreation&mode=DESC&nombreParPage=${pageSize}&numeroPage=0`, body: {} },
-    { label: 'query+null-period', url: `/document/liste?colonneTri=dateCreation&mode=DESC&nombreParPage=${pageSize}&numeroPage=0`, body: { filtre: { types: documentTypes } } },
-    { label: 'query+empty-filtre', url: `/document/liste?colonneTri=dateCreation&mode=DESC&nombreParPage=${pageSize}&numeroPage=0`, body: { filtre: {} } },
-    // Format D: minimal
-    { label: 'empty-body', url: '/document/liste', body: {} },
-    { label: 'body-no-sort', url: '/document/liste', body: { nombreParPage: pageSize, numeroPage: 0 } },
+  // Try /parametres/ prefixed endpoints (same body format as working /parametres/client/liste)
+  const listEndpoints = [
+    '/parametres/commande/liste',
+    '/parametres/document/liste',
+    '/parametres/facture/liste',
+    '/parametres/vente/liste',
   ];
 
-  let workingFormat = null;
+  let workingEndpoint = null;
 
-  for (const fmt of requestFormats) {
+  for (const endpoint of listEndpoints) {
     try {
-      const resp = await fetch(`${apiBase}${fmt.url}`, {
+      const resp = await fetch(`${apiBase}${endpoint}`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(fmt.body),
+        body: JSON.stringify(paginationBody),
         signal: AbortSignal.timeout(15000)
       });
 
@@ -1425,12 +1425,11 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
       let data;
       try { data = JSON.parse(respText); } catch { data = null; }
 
-      console.log(`[EasyBeer Bulk Sync] ${fmt.label}: HTTP ${status}, keys=${data ? Object.keys(data).join(',') : 'parse_error'}, sample=${respText.substring(0, 200)}`);
+      console.log(`[EasyBeer Bulk Sync] ${endpoint}: HTTP ${status}, keys=${data ? Object.keys(data).join(',') : 'parse_error'}, sample=${respText.substring(0, 200)}`);
 
       debugInfo.push({
-        endpoint: fmt.label,
-        params: fmt.body,
-        url: fmt.url,
+        endpoint,
+        params: paginationBody,
         status,
         response_keys: data ? Object.keys(data) : [],
         sample: respText.substring(0, 500),
@@ -1442,36 +1441,25 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
         const list = extractList(data);
         if (Array.isArray(list)) {
           allOrders.push(...list);
-          workingFormat = fmt;
-          console.log(`[EasyBeer Bulk Sync] WORKING: ${fmt.label}, got ${list.length} documents`);
+          workingEndpoint = endpoint;
+          console.log(`[EasyBeer Bulk Sync] WORKING: ${endpoint}, got ${list.length} documents`);
           break;
         }
       }
     } catch (err) {
-      console.log(`[EasyBeer Bulk Sync] ${fmt.label} error: ${err.message}`);
+      console.log(`[EasyBeer Bulk Sync] ${endpoint} error: ${err.message}`);
+      debugInfo.push({ endpoint, error: err.message });
     }
   }
 
-  // Paginate if we found a working format
-  if (workingFormat && allOrders.length >= pageSize) {
+  // Paginate if we found a working endpoint
+  if (workingEndpoint && allOrders.length >= pageSize) {
     for (let page = 1; page < 100; page++) {
       try {
-        // Build paginated request based on working format
-        let pageUrl = workingFormat.url;
-        let pageBody = { ...workingFormat.body };
-
-        if (pageUrl.includes('?')) {
-          // Query param pagination - update in URL
-          pageUrl = pageUrl.replace(/numeroPage=\d+/, `numeroPage=${page}`);
-        } else {
-          // Body pagination
-          pageBody.numeroPage = page;
-        }
-
-        const pageResp = await fetch(`${apiBase}${pageUrl}`, {
+        const pageResp = await fetch(`${apiBase}${workingEndpoint}`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify(pageBody),
+          body: JSON.stringify({ ...paginationBody, numeroPage: page }),
           signal: AbortSignal.timeout(30000)
         });
         if (!pageResp.ok) break;
@@ -2231,18 +2219,15 @@ async function handleEasyBeerWebhook(req, res) {
         let orderData = null;
         let fetchedFrom = '';
 
-        // EasyBeer API endpoints based on Swagger spec v2.2.8
-        // Pattern: /{controller}/{action} - French singular, no /ventes/ prefix
-        // Direct detail lookup (GET) - confirmed: /commande/token/{token}
-        // /commande/detail/{id} and /document/detail/{id} are speculative but follow the pattern of /parametres/client/detail/{id}
+        // EasyBeer API: detail endpoints under /parametres/ prefix (matching working /parametres/client/detail/{id})
         const orderDetailPaths = [
-          `/commande/token/${id}`,              // controleur-commande: GET by token (confirmed in Swagger)
-          `/commande/detail/${id}`,             // possible detail variant (follows client pattern)
-          `/document/detail/${id}`,             // possible document detail variant
+          `/parametres/commande/detail/${id}`,
+          `/parametres/document/detail/${id}`,
+          `/parametres/facture/detail/${id}`,
+          `/commande/token/${id}`,              // controleur-commande: GET by token
         ];
 
-        // Swagger v2.2.8: POST /document/liste with query params for pagination, body for filter
-        const documentTypes = ['FACTURE', 'BON_COMMANDE', 'BON_LIVRAISON', 'AVOIR', 'DEVIS'];
+        // EasyBeer API: list endpoints under /parametres/ prefix
 
         for (let attempt = 0; attempt <= 3; attempt++) {
           // Strategy 1: Direct detail lookup (GET)
@@ -2263,48 +2248,53 @@ async function handleEasyBeerWebhook(req, res) {
           }
           if (orderData) break;
 
-          // Strategy 2: List-based search via /document/liste
-          // Try body-pagination format first (like working /parametres/client/liste)
+          // Strategy 2: List-based search via /parametres/ endpoints
           if (!orderData) {
-            try {
-              const webhookDocBody = { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 50, numeroPage: 0 };
-              const resp = await fetch(`${apiBase}/document/liste`, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify(webhookDocBody),
-                signal: AbortSignal.timeout(20000)
-              });
-              if (resp.ok) {
-                let data = await resp.json();
-                let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
-                if (Array.isArray(list)) {
-                  const found = list.find(d => String(d.id) === String(id) || String(d.numero) === String(id) || String(d.reference) === String(id));
-                  if (found) {
-                    orderData = found;
-                    fetchedFrom = '/document/liste (liste)';
-                    console.log(`[EasyBeer Webhook] Commande trouvee dans /document/liste, id=${found.id}, keys=${Object.keys(found).join(',')}`);
+            const webhookListEndpoints = ['/parametres/commande/liste', '/parametres/document/liste', '/parametres/facture/liste'];
+            const webhookPagBody = { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 50, numeroPage: 0 };
+            for (const listEp of webhookListEndpoints) {
+              if (orderData) break;
+              try {
+                const resp = await fetch(`${apiBase}${listEp}`, {
+                  method: 'POST',
+                  headers: { ...headers, 'Content-Type': 'application/json' },
+                  body: JSON.stringify(webhookPagBody),
+                  signal: AbortSignal.timeout(20000)
+                });
+                if (resp.ok) {
+                  let data = await resp.json();
+                  let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
+                  if (Array.isArray(list)) {
+                    const found = list.find(d => String(d.id) === String(id) || String(d.numero) === String(id) || String(d.reference) === String(id));
+                    if (found) {
+                      orderData = found;
+                      fetchedFrom = `${listEp} (liste)`;
+                      console.log(`[EasyBeer Webhook] Commande trouvee dans ${listEp}, id=${found.id}, keys=${Object.keys(found).join(',')}`);
 
-                    // Try to get detail version for more info
-                    const foundId = found.id || id;
-                    for (const detailPath of [`/document/${foundId}`, `/document/detail/${foundId}`]) {
-                      try {
-                        const detResp = await fetch(`${apiBase}${detailPath}`, { headers, signal: AbortSignal.timeout(10000) });
-                        if (detResp.ok) {
-                          let detData = await detResp.json();
-                          if (Array.isArray(detData)) detData = detData[0];
-                          if (detData && (detData.lignes || detData.details || detData.articles || detData.montantTTC || detData.montantHT)) {
-                            orderData = { ...found, ...detData };
-                            fetchedFrom = detailPath + ' (via liste)';
-                            console.log(`[EasyBeer Webhook] Detail enrichi via ${detailPath}, keys=${Object.keys(detData).join(',')}`);
-                            break;
+                      // Try to get detail version for more info
+                      const foundId = found.id || id;
+                      const detailBase = listEp.replace('/liste', '');
+                      for (const detailPath of [`${detailBase}/${foundId}`, `${detailBase}/detail/${foundId}`]) {
+                        try {
+                          const detResp = await fetch(`${apiBase}${detailPath}`, { headers, signal: AbortSignal.timeout(10000) });
+                          if (detResp.ok) {
+                            let detData = await detResp.json();
+                            if (Array.isArray(detData)) detData = detData[0];
+                            if (detData && (detData.lignes || detData.details || detData.articles || detData.montantTTC || detData.montantHT)) {
+                              orderData = { ...found, ...detData };
+                              fetchedFrom = detailPath + ' (via liste)';
+                              console.log(`[EasyBeer Webhook] Detail enrichi via ${detailPath}, keys=${Object.keys(detData).join(',')}`);
+                              break;
+                            }
                           }
-                        }
-                      } catch { /* use list version */ }
+                        } catch { /* use list version */ }
+                      }
+                      break;
                     }
                   }
                 }
-              }
-            } catch { /* next attempt */ }
+              } catch { /* next endpoint */ }
+            }
           }
           if (orderData) break;
 
