@@ -1244,12 +1244,14 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
     const orderId = String(order.id || order.idCommande || order.idFacture || order.numero || '');
     if (!orderId) continue;
 
-    // Check if already imported
-    const existing = await db.query('SELECT id FROM commandes WHERE easybeer_id = $1 AND client_id = $2', [orderId, clientId]);
-    if (existing.rows.length > 0) continue;
-
-    // Extract order data
     const numero = order.numero || order.reference || order.ref || orderId;
+
+    // Anti-doublon: check by easybeer_id OR by numero for this client
+    const existing = await db.query(
+      'SELECT id FROM commandes WHERE client_id = $1 AND (easybeer_id = $2 OR numero = $3)',
+      [clientId, orderId, numero]
+    );
+    if (existing.rows.length > 0) continue;
     const dateCmd = order.date || order.dateCommande || order.dateCreation || order.datePiece || '';
     const dateLiv = order.dateLivraison || order.dateExpedition || order.dateBL || '';
     const statut = (order.statut || order.etat || order.status || '').toLowerCase();
@@ -1302,6 +1304,222 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
     message: `${imported.length} nouvelles commandes importees`,
     commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
     fetched_from: fetchedFrom,
+  });
+}));
+
+// Bulk sync: fetch ALL orders from EasyBeer and distribute to linked clients
+router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (req, res) => {
+  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  const config = configResult.rows[0];
+  if (!config?.username || !config?.api_url) {
+    return res.json({ ok: false, message: 'Configuration EasyBeer incomplete' });
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
+  const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+  const headers = { 'Authorization': authHeader, 'Accept': 'application/json' };
+
+  // Get all EasyBeer-linked clients
+  const linkedClients = await db.query(
+    `SELECT ec.easybeer_id, ec.imported_client_id, ec.name as eb_name, c.nom as client_nom
+     FROM easybeer_clients ec
+     JOIN clients c ON ec.imported_client_id = c.id
+     WHERE ec.status = 'imported' AND ec.imported_client_id IS NOT NULL`
+  );
+
+  if (linkedClients.rows.length === 0) {
+    return res.json({ ok: false, message: 'Aucun client lie a EasyBeer', total_imported: 0 });
+  }
+
+  // Build lookup map: easybeer_id -> client info
+  const ebIdToClient = {};
+  const clientNameToId = {};
+  for (const row of linkedClients.rows) {
+    ebIdToClient[String(row.easybeer_id)] = { clientId: row.imported_client_id, nom: row.client_nom };
+    if (row.client_nom) {
+      clientNameToId[row.client_nom.toLowerCase().trim()] = { clientId: row.imported_client_id, nom: row.client_nom };
+    }
+    if (row.eb_name) {
+      clientNameToId[row.eb_name.toLowerCase().trim()] = { clientId: row.imported_client_id, nom: row.client_nom };
+    }
+  }
+
+  console.log(`[EasyBeer Bulk Sync] ${linkedClients.rows.length} clients lies, fetching commandes...`);
+
+  // Fetch ALL orders from EasyBeer (paginated)
+  let allOrders = [];
+  for (const path of ['/commande/liste', '/document/liste']) {
+    for (let page = 0; page < 20; page++) {
+      try {
+        const listUrl = `${apiBase}${path}?colonneTri=date&nombreParPage=500&numeroPage=${page}`;
+        const resp = await fetch(listUrl, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          signal: AbortSignal.timeout(30000)
+        });
+        if (!resp.ok) break;
+        let data = await resp.json();
+        let list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || data.items || []);
+        if (!Array.isArray(list) || list.length === 0) break;
+        allOrders.push(...list);
+        console.log(`[EasyBeer Bulk Sync] ${path} page ${page}: ${list.length} commandes (total: ${allOrders.length})`);
+        // If we got fewer than 500, we've reached the last page
+        if (list.length < 500) break;
+      } catch (err) {
+        console.log(`[EasyBeer Bulk Sync] ${path} page ${page} error: ${err.message}`);
+        break;
+      }
+    }
+    if (allOrders.length > 0) break; // Found orders in first endpoint, no need for second
+  }
+
+  if (allOrders.length === 0) {
+    return res.json({ ok: true, message: 'Aucune commande trouvee sur EasyBeer', total_imported: 0, total_orders: 0 });
+  }
+
+  console.log(`[EasyBeer Bulk Sync] ${allOrders.length} commandes totales recuperees, attribution aux clients...`);
+
+  const now = new Date().toISOString();
+  let totalImported = 0;
+  let totalSkipped = 0;
+  let totalOrphans = 0;
+  const clientStats = {};
+
+  for (const order of allOrders) {
+    // Extract client ID from order
+    const orderClientId = String(
+      order.clientId || order.client_id || order.idClient || order.tiersId
+      || (order.client && typeof order.client === 'object' ? (order.client.id || order.client.idClient) : '')
+      || ''
+    );
+    const orderClientName =
+      order.clientNom || order.nomClient || order.raisonSociale
+      || (order.client && typeof order.client === 'object' ? (order.client.nom || order.client.libelle || order.client.raisonSociale) : '')
+      || (typeof order.client === 'string' ? order.client : '')
+      || '';
+
+    // Find matching SuiviPro client
+    let match = null;
+    if (orderClientId && ebIdToClient[orderClientId]) {
+      match = ebIdToClient[orderClientId];
+    }
+    if (!match && orderClientName) {
+      const normName = orderClientName.toLowerCase().trim();
+      if (clientNameToId[normName]) {
+        match = clientNameToId[normName];
+      } else {
+        // Fuzzy: check if order client name includes or is included in any known client name
+        for (const [knownName, info] of Object.entries(clientNameToId)) {
+          if (normName.includes(knownName) || knownName.includes(normName)) {
+            match = info;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!match) {
+      totalOrphans++;
+      continue;
+    }
+
+    const clientId = match.clientId;
+
+    // Extract order details
+    const orderId = String(order.id || order.idCommande || order.idFacture || order.numero || '');
+    if (!orderId) continue;
+
+    const numero = order.numero || order.reference || order.ref || orderId;
+
+    // Anti-doublon: check by easybeer_id OR by numero for this client
+    const existing = await db.query(
+      'SELECT id FROM commandes WHERE client_id = $1 AND (easybeer_id = $2 OR numero = $3)',
+      [clientId, orderId, numero]
+    );
+    if (existing.rows.length > 0) {
+      totalSkipped++;
+      continue;
+    }
+    const dateCmd = order.date || order.dateCommande || order.dateCreation || order.datePiece || '';
+    const dateLiv = order.dateLivraison || order.dateExpedition || order.dateBL || '';
+    const statutRaw = (order.statut || order.etat || order.status || '').toLowerCase();
+
+    let statut = 'en_cours';
+    if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee', 'terminée', 'validee', 'validée'].some(s => statutRaw.includes(s))) {
+      statut = 'livree';
+    } else if (['annulee', 'annulée', 'cancelled', 'canceled'].some(s => statutRaw.includes(s))) {
+      statut = 'annulee';
+    }
+
+    // Amount extraction with pied/totaux fallback
+    const piedObj = order.pied || order.totaux || order.total || null;
+    let montantHt = parseFloat(order.montantHT || order.totalHT || order.montant_ht || 0) || 0;
+    let montantTtc = parseFloat(order.montantTTC || order.totalTTC || order.montant_ttc || 0) || 0;
+    if ((!montantHt || !montantTtc) && piedObj && typeof piedObj === 'object') {
+      if (!montantHt) montantHt = parseFloat(piedObj.montantHT || piedObj.totalHT || piedObj.ht || 0) || 0;
+      if (!montantTtc) montantTtc = parseFloat(piedObj.montantTTC || piedObj.totalTTC || piedObj.ttc || 0) || 0;
+    }
+
+    // Extract line items
+    let lignes = [];
+    const rawLignes = order.lignes || order.elements || order.elementsCommande || order.elementsDocument
+      || order.details || order.articles || order.items || [];
+    if (Array.isArray(rawLignes)) {
+      lignes = rawLignes.map(l => ({
+        produit: l.libelle || l.designation || l.nom || l.produit || l.article || l.description || '',
+        quantite: parseFloat(l.quantite || l.qte || l.qty || l.nombre || 0) || 0,
+        prix_unitaire: parseFloat(l.prixUnitaire || l.pu || l.prixUnitaireHT || l.prix || 0) || 0,
+        montant: parseFloat(l.montant || l.total || l.montantHT || l.totalLigne || 0) || 0,
+        tva: parseFloat(l.tauxTVA || l.tva || l.txTVA || 0) || 0,
+        reference: l.reference || l.ref || l.code || l.codeArticle || '',
+      }));
+    }
+
+    // Compute totals from lines if missing
+    if ((!montantHt || !montantTtc) && lignes.length > 0) {
+      if (!montantHt) montantHt = lignes.reduce((sum, l) => sum + (l.montant || l.prix_unitaire * l.quantite || 0), 0);
+      if (!montantTtc && montantHt > 0) {
+        const avgTva = lignes.filter(l => l.tva > 0).length > 0
+          ? lignes.reduce((sum, l) => sum + (l.tva || 0), 0) / lignes.filter(l => l.tva > 0).length : 20;
+        montantTtc = montantHt * (1 + avgTva / 100);
+      }
+    }
+
+    const clientName = orderClientName || match.nom || '';
+    const cmdId = `cmd-${crypto.randomUUID()}`;
+    await db.query(
+      `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc, lignes, notes, source, client_name, raw_data, date_creation)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [cmdId, clientId, orderId, numero, dateCmd, dateLiv, statut, montantHt, montantTtc,
+       JSON.stringify(lignes), '', 'easybeer', clientName, JSON.stringify(order), now]
+    );
+
+    totalImported++;
+    if (!clientStats[clientId]) clientStats[clientId] = { nom: match.nom, count: 0, total_ttc: 0 };
+    clientStats[clientId].count++;
+    clientStats[clientId].total_ttc += montantTtc;
+  }
+
+  const statsArray = Object.entries(clientStats).map(([id, s]) => ({
+    client_id: id, nom: s.nom, commandes_importees: s.count, total_ttc: Math.round(s.total_ttc * 100) / 100
+  }));
+
+  console.log(`[EasyBeer Bulk Sync] Termine: ${totalImported} importees, ${totalSkipped} deja existantes, ${totalOrphans} orphelines`);
+  statsArray.forEach(s => console.log(`  - ${s.nom}: ${s.commandes_importees} commandes, ${s.total_ttc}€ TTC`));
+
+  // Return updated commandes for all clients
+  const allCommandes = await db.query("SELECT * FROM commandes WHERE source = 'easybeer' ORDER BY date_commande DESC");
+  res.json({
+    ok: true,
+    message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`,
+    total_orders_easybeer: allOrders.length,
+    total_imported: totalImported,
+    total_skipped: totalSkipped,
+    total_orphans: totalOrphans,
+    clients_linked: linkedClients.rows.length,
+    details: statsArray,
+    commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
   });
 }));
 
@@ -2159,6 +2377,20 @@ async function handleEasyBeerWebhook(req, res) {
         const cmdClientName = orderClientName || '';
 
         if (!clientId) {
+          // Anti-doublon orphelins: check by easybeer_id OR numero
+          const existingOrphan = await db.query(
+            'SELECT id FROM commandes WHERE client_id IS NULL AND (easybeer_id = $1 OR numero = $2)',
+            [String(id), numero]
+          );
+          if (existingOrphan.rows.length > 0) {
+            console.log(`[EasyBeer Webhook] Commande orpheline ${numero} deja existante, mise a jour`);
+            await db.query(
+              `UPDATE commandes SET statut = $1, montant_ht = $2, montant_ttc = $3, lignes = $4, client_name = $5, raw_data = $6 WHERE id = $7`,
+              [statut, montantHt, montantTtc, JSON.stringify(lignes), cmdClientName, JSON.stringify(orderData), existingOrphan.rows[0].id]
+            );
+            return;
+          }
+
           // Store as orphan commande (client_id = null) for admin to assign
           const cmdId = `cmd-${crypto.randomUUID()}`;
           await db.query(
@@ -2188,13 +2420,16 @@ async function handleEasyBeerWebhook(req, res) {
           return;
         }
 
-        // Check if already imported
-        const existing = await db.query('SELECT id FROM commandes WHERE easybeer_id = $1 AND client_id = $2', [String(id), clientId]);
+        // Anti-doublon: check by easybeer_id OR by numero for this client
+        const existing = await db.query(
+          'SELECT id, easybeer_id FROM commandes WHERE client_id = $1 AND (easybeer_id = $2 OR numero = $3)',
+          [clientId, String(id), numero]
+        );
         if (existing.rows.length > 0) {
           console.log(`[EasyBeer Webhook] Commande ${numero} deja importee, mise a jour...`);
           await db.query(
-            `UPDATE commandes SET statut = $1, montant_ht = $2, montant_ttc = $3, lignes = $4, date_livraison = $5 WHERE easybeer_id = $6 AND client_id = $7`,
-            [statut, montantHt, montantTtc, JSON.stringify(lignes), dateLiv, String(id), clientId]
+            `UPDATE commandes SET statut = $1, montant_ht = $2, montant_ttc = $3, lignes = $4, date_livraison = $5, easybeer_id = $6 WHERE id = $7`,
+            [statut, montantHt, montantTtc, JSON.stringify(lignes), dateLiv, String(id), existing.rows[0].id]
           );
           return;
         }

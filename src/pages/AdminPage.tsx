@@ -134,6 +134,8 @@ export default function AdminPage() {
   const [orphanCommandes, setOrphanCommandes] = useState<any[]>([]);
   const [assigningCmd, setAssigningCmd] = useState<string | null>(null);
   const [assignCmdClientSearch, setAssignCmdClientSearch] = useState('');
+  const [syncingAllCommandes, setSyncingAllCommandes] = useState(false);
+  const [syncAllResult, setSyncAllResult] = useState<any>(null);
 
   // Tournee config state
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }>>({});
@@ -453,6 +455,29 @@ export default function AdminPage() {
         toast.error(data.message || 'Echec de la synchronisation');
       }
     } catch { toast.error('Erreur de synchronisation'); }
+  };
+
+  const syncAllCommandes = async () => {
+    setSyncingAllCommandes(true);
+    setSyncAllResult(null);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch('/api/easybeer/sync-all-commandes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const data = await res.json();
+      setSyncAllResult(data);
+      if (data.ok && data.total_imported > 0) {
+        toast.success(`${data.total_imported} commandes importees pour ${data.details?.length || 0} clients`);
+        loadEasyBeerData(); // Refresh orphan list
+      } else if (data.ok && data.total_imported === 0) {
+        toast.success(data.message || 'Aucune nouvelle commande');
+      } else {
+        toast.error(data.message || 'Erreur');
+      }
+    } catch { toast.error('Erreur de synchronisation des commandes'); }
+    setSyncingAllCommandes(false);
   };
 
   const dismissEbClient = async (ebId: number) => {
@@ -1437,6 +1462,47 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Synchronisation des commandes EasyBeer */}
+          <div className="bg-white rounded-xl border border-blue-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-blue-800 flex items-center gap-2">
+                <RefreshCw className="w-4 h-4" /> Synchroniser les commandes EasyBeer
+              </h3>
+              <button
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${syncingAllCommandes ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'}`}
+                onClick={syncAllCommandes}
+                disabled={syncingAllCommandes}
+              >
+                <RefreshCw className={`w-4 h-4 ${syncingAllCommandes ? 'animate-spin' : ''}`} />
+                {syncingAllCommandes ? 'Synchronisation...' : 'Lancer la synchronisation'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Recupere toutes les commandes depuis EasyBeer et les associe aux clients importes (par nom, ID EasyBeer). Les doublons sont ignores automatiquement.
+            </p>
+            {syncAllResult && (
+              <div className={`p-3 rounded-lg text-sm ${syncAllResult.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                <p className="font-medium">{syncAllResult.message}</p>
+                {syncAllResult.ok && (
+                  <div className="mt-2 text-xs space-y-1">
+                    <p>Commandes EasyBeer trouvees: <strong>{syncAllResult.total_orders_easybeer || 0}</strong></p>
+                    <p>Nouvelles importees: <strong>{syncAllResult.total_imported || 0}</strong></p>
+                    <p>Deja existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
+                    <p>Orphelines (client non trouve): <strong>{syncAllResult.total_orphans || 0}</strong></p>
+                    {syncAllResult.details && syncAllResult.details.length > 0 && (
+                      <div className="mt-2 border-t pt-2">
+                        <p className="font-medium mb-1">Detail par client:</p>
+                        {syncAllResult.details.map((d: any, i: number) => (
+                          <p key={i}>{d.nom}: {d.commandes_importees} commande{d.commandes_importees > 1 ? 's' : ''} ({d.total_ttc}€ TTC)</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
