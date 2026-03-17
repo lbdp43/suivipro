@@ -1336,72 +1336,183 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   const hdrs = { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' };
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // Get ALL EasyBeer clients (imported + pending + dismissed)
-  const allEbClients = await db.query(
-    `SELECT ec.easybeer_id, ec.imported_client_id, ec.name as eb_name, ec.status as eb_status,
-            c.nom as client_nom
-     FROM easybeer_clients ec
-     LEFT JOIN clients c ON ec.imported_client_id = c.id
-     WHERE ec.easybeer_id IS NOT NULL`
-  );
+  // Step 1: Fetch ALL clients from EasyBeer API to get their real numeric idClient
+  console.log(`[EasyBeer Bulk Sync] Fetching client list from EasyBeer API...`);
+  let apiClients = [];
+  const debugInfo = [];
 
-  if (allEbClients.rows.length === 0) {
-    return res.json({ ok: false, message: 'Aucun client EasyBeer connu', total_imported: 0 });
+  try {
+    const pageSize = 100;
+    for (let page = 0; page < 50; page++) {
+      const resp = await fetch(`${apiBase}/parametres/client/liste`, {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: pageSize, numeroPage: page }),
+        signal: AbortSignal.timeout(20000)
+      });
+      if (!resp.ok) { debugInfo.push({ endpoint: 'client/liste', status: resp.status }); break; }
+      const data = await resp.json().catch(() => null);
+      if (!data) break;
+      const list = Array.isArray(data) ? data : (data.liste || data.contenu || data.results || data.data || []);
+      if (!Array.isArray(list) || list.length === 0) break;
+      apiClients.push(...list);
+      console.log(`[EasyBeer Bulk Sync] client/liste page ${page}: ${list.length} clients`);
+      if (list.length < pageSize) break;
+      await delay(500);
+    }
+  } catch (err) {
+    debugInfo.push({ endpoint: 'client/liste', error: err.message });
   }
 
-  const linkedCount = allEbClients.rows.filter(r => r.imported_client_id).length;
-  console.log(`[EasyBeer Bulk Sync] ${allEbClients.rows.length} clients EasyBeer (${linkedCount} lies), fetching commandes...`);
+  if (apiClients.length === 0) {
+    return res.json({ ok: false, message: 'Impossible de recuperer la liste des clients depuis EasyBeer API', debug: debugInfo });
+  }
 
+  console.log(`[EasyBeer Bulk Sync] ${apiClients.length} clients recuperes depuis l'API EasyBeer`);
+
+  // Step 2: Match API clients to our local clients (by SIRET, email, phone, name)
+  const localClients = await db.query(
+    `SELECT c.id, c.nom, c.email, c.telephone, c.telephone_mobile, c.siret, c.contact,
+            ec.easybeer_id as stored_eb_id, ec.name as eb_name
+     FROM clients c
+     LEFT JOIN easybeer_clients ec ON ec.imported_client_id = c.id`
+  );
+
+  function normalize(s) { return (s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, ''); }
+
+  // Build matched list: { apiId (numeric), localClientId, clientNom }
+  const matchedClients = [];
+  const unmatchedApiClients = [];
+
+  for (const apiClient of apiClients) {
+    const apiId = apiClient.idClient || apiClient.id;
+    if (!apiId) continue;
+
+    const apiNom = apiClient.nom || apiClient.libelle || apiClient.raisonSociale || '';
+    const apiEmail = apiClient.email || apiClient.emailPrincipal || apiClient.mail || '';
+    const apiTel = normalize(apiClient.telephone || apiClient.tel || apiClient.phone || '');
+    const apiSiret = normalize(apiClient.siret || apiClient.siren || '');
+    const apiNomNorm = normalize(apiNom);
+
+    let bestMatch = null;
+
+    for (const local of localClients.rows) {
+      // Match by stored easybeer_id first
+      if (local.stored_eb_id && String(local.stored_eb_id) === String(apiId)) {
+        bestMatch = local; break;
+      }
+      // Match by SIRET (strongest)
+      if (apiSiret && apiSiret.length >= 9 && normalize(local.siret).includes(apiSiret)) {
+        bestMatch = local; break;
+      }
+      // Match by email
+      if (apiEmail && local.email && normalize(apiEmail) === normalize(local.email)) {
+        bestMatch = local; break;
+      }
+      // Match by phone
+      if (apiTel && apiTel.length >= 8) {
+        if (normalize(local.telephone).includes(apiTel) || normalize(local.telephone_mobile).includes(apiTel)) {
+          bestMatch = local; break;
+        }
+      }
+      // Match by name
+      if (apiNomNorm && apiNomNorm.length > 3 && (normalize(local.nom) === apiNomNorm
+        || normalize(local.nom).includes(apiNomNorm) || apiNomNorm.includes(normalize(local.nom)))) {
+        bestMatch = local; break;
+      }
+      // Match by EB name
+      if (apiNomNorm && local.eb_name && normalize(local.eb_name) === apiNomNorm) {
+        bestMatch = local; break;
+      }
+    }
+
+    if (bestMatch) {
+      matchedClients.push({ apiId, localClientId: bestMatch.id, clientNom: bestMatch.nom, apiNom });
+
+      // Update easybeer_clients with the correct numeric ID if different
+      if (bestMatch.stored_eb_id !== String(apiId)) {
+        await db.query(
+          `UPDATE easybeer_clients SET easybeer_id = $1 WHERE imported_client_id = $2`,
+          [String(apiId), bestMatch.id]
+        ).catch(() => {});
+      }
+    } else {
+      unmatchedApiClients.push({ apiId, apiNom });
+    }
+  }
+
+  console.log(`[EasyBeer Bulk Sync] ${matchedClients.length} clients matches, ${unmatchedApiClients.length} non matches`);
+  debugInfo.push({
+    endpoint: 'matching',
+    api_clients: apiClients.length,
+    matched: matchedClients.length,
+    unmatched: unmatchedApiClients.length,
+    unmatched_names: unmatchedApiClients.slice(0, 10).map(c => c.apiNom),
+  });
+
+  if (matchedClients.length === 0 && unmatchedApiClients.length === 0) {
+    return res.json({ ok: false, message: 'Aucun client a synchroniser', debug: debugInfo });
+  }
+
+  // Step 3: For each matched client, fetch commandes-en-cours + historique-commande using REAL API ID
   const now = new Date().toISOString();
   let totalImported = 0;
   let totalSkipped = 0;
   let totalFound = 0;
-  const clientStats = {};
-  const debugInfo = [];
-
   let totalOrphans = 0;
+  const clientStats = {};
 
-  // For each EasyBeer client, fetch their orders
-  for (const row of allEbClients.rows) {
-    const ebId = row.easybeer_id;
-    const clientId = row.imported_client_id; // null if not imported
-    const clientNom = row.client_nom || row.eb_name || '';
+  // Process matched clients (linked to local clients)
+  const allClientsToProcess = [
+    ...matchedClients.map(c => ({ apiId: c.apiId, clientId: c.localClientId, clientNom: c.clientNom })),
+    ...unmatchedApiClients.map(c => ({ apiId: c.apiId, clientId: null, clientNom: c.apiNom })),
+  ];
+
+  for (const { apiId, clientId, clientNom } of allClientsToProcess) {
     const orderIds = new Set();
 
-    // Step 1: Get historique-commande (delivered orders)
+    // commandes-en-cours (current orders)
     try {
-      const histResp = await fetch(`${apiBase}/parametres/client/historique-commande/${ebId}`, {
+      const encResp = await fetch(`${apiBase}/parametres/client/commandes-en-cours/${apiId}`, {
+        method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
+      });
+      if (encResp.ok) {
+        const encData = await encResp.json().catch(() => null);
+        if (Array.isArray(encData)) {
+          encData.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
+          if (encData.length > 0) console.log(`[EasyBeer Bulk Sync] ${clientNom}: ${encData.length} commandes en cours`);
+        }
+      }
+    } catch (err) {
+      debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', error: err.message });
+    }
+    await delay(300);
+
+    // historique-commande (delivered orders)
+    try {
+      const histResp = await fetch(`${apiBase}/parametres/client/historique-commande/${apiId}`, {
         method: 'POST', headers: hdrs,
         body: JSON.stringify({ dateDebut: '2020-01-01T00:00:00', dateFin: new Date().toISOString() }),
         signal: AbortSignal.timeout(15000)
       });
-      const histData = await histResp.json().catch(() => null);
-      if (histData) {
-        if (Array.isArray(histData)) {
-          histData.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
-        } else {
-          const list = histData.liste || histData.commandes || histData.historique || [];
-          if (Array.isArray(list)) list.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
+      if (histResp.ok) {
+        const histData = await histResp.json().catch(() => null);
+        if (histData) {
+          // Could be array of orders or object with nested list
+          const extractIds = (data) => {
+            if (Array.isArray(data)) return data;
+            return data.liste || data.commandes || data.historique || data.contenu || [];
+          };
+          const histList = extractIds(histData);
+          if (Array.isArray(histList)) {
+            histList.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
+            if (histList.length > 0) console.log(`[EasyBeer Bulk Sync] ${clientNom}: ${histList.length} commandes historique`);
+          }
         }
       }
     } catch (err) {
       debugInfo.push({ client: clientNom, endpoint: 'historique-commande', error: err.message });
     }
-    await delay(500);
-
-    // Step 2: Get commandes-en-cours
-    try {
-      const encResp = await fetch(`${apiBase}/parametres/client/commandes-en-cours/${ebId}`, {
-        method: 'GET', headers: hdrs, signal: AbortSignal.timeout(15000)
-      });
-      const encData = await encResp.json().catch(() => null);
-      if (Array.isArray(encData)) {
-        encData.forEach(o => { if (o.idCommande || o.id) orderIds.add(o.idCommande || o.id); });
-      }
-    } catch (err) {
-      debugInfo.push({ client: clientNom, endpoint: 'commandes-en-cours', error: err.message });
-    }
-    await delay(500);
+    await delay(300);
 
     totalFound += orderIds.size;
 
@@ -1509,8 +1620,9 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     total_imported: totalImported,
     total_skipped: totalSkipped,
     total_orphans: totalOrphans,
-    clients_queried: allEbClients.rows.length,
-    clients_linked: linkedCount,
+    api_clients: apiClients.length,
+    clients_matched: matchedClients.length,
+    clients_unmatched: unmatchedApiClients.length,
     details: statsArray,
     debug: debugInfo,
     commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),

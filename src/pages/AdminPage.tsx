@@ -1512,14 +1512,14 @@ export default function AdminPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Interroge TOUS les clients EasyBeer connus (importes ou non) pour recuperer leurs commandes via l'API. Les doublons sont ignores.
+              Recupere la liste des clients depuis l'API EasyBeer, les matche par SIRET/nom/email, puis recupere toutes leurs commandes (en cours + livrees).
             </p>
             {syncAllResult && (
               <div className={`p-3 rounded-lg text-sm ${syncAllResult.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
                 <p className="font-medium">{syncAllResult.message}</p>
                 {syncAllResult.ok && (
                   <div className="mt-2 text-xs space-y-1">
-                    <p>Clients EasyBeer interroges: <strong>{syncAllResult.clients_queried || 0}</strong> (dont {syncAllResult.clients_linked || 0} lies)</p>
+                    <p>Clients API EasyBeer: <strong>{syncAllResult.api_clients || 0}</strong> — matches: <strong>{syncAllResult.clients_matched || 0}</strong>, non matches: {syncAllResult.clients_unmatched || 0}</p>
                     <p>Commandes trouvees: <strong>{syncAllResult.total_orders_found || 0}</strong></p>
                     <p>Nouvelles importees: <strong>{syncAllResult.total_imported || 0}</strong></p>
                     <p>Deja existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
