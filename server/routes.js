@@ -2914,6 +2914,90 @@ router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req
   }
 }));
 
+// Explore EasyBeer API - try new endpoint approaches to find commandes (max 5 calls, 500ms delay)
+router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, res) => {
+  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  const config = configResult.rows[0];
+  if (!config?.username || !config?.api_url) {
+    return res.json({ ok: false, message: 'Configuration EasyBeer incomplete' });
+  }
+  const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
+  const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+  const headers = { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' };
+
+  // Get first linked client for detail test
+  const linkedClient = await db.query(
+    "SELECT easybeer_id FROM easybeer_clients WHERE status = 'imported' AND easybeer_id IS NOT NULL LIMIT 1"
+  );
+  const ebClientId = linkedClient.rows[0]?.easybeer_id;
+
+  const results = [];
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+  async function tryEndpoint(label, method, path, body) {
+    try {
+      const opts = { method, headers, signal: AbortSignal.timeout(10000) };
+      if (body) opts.body = JSON.stringify(body);
+      const resp = await fetch(`${apiBase}${path}`, opts);
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = null; }
+      results.push({
+        label, method, path, body: body || null,
+        status: resp.status,
+        succes: data?.succes,
+        message: data?.message,
+        keys: data ? Object.keys(data) : [],
+        sample: text.substring(0, 800),
+        hasData: data ? !!(data.liste || data.contenu || data.results || data.data || data.commandes || data.documents) : false,
+      });
+      // Stop if rate limited
+      if (resp.status === 429 || (resp.status === 400 && text.includes('banned'))) {
+        results.push({ label: 'RATE_LIMIT', message: 'Banni - arret immediat' });
+        return 'stop';
+      }
+      return resp.status;
+    } catch (err) {
+      results.push({ label, method, path, error: err.message });
+      return 'error';
+    }
+  }
+
+  // Test 1: /document/liste with EXACT same body format as working /parametres/client/liste
+  // (colonneTri: 'libelle', no numeroPage - this is what WORKS for clients)
+  let status = await tryEndpoint('document/liste format-client', 'POST', '/document/liste',
+    { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+  if (status === 'stop') return res.json({ ok: true, results });
+
+  await delay(500);
+
+  // Test 2: Client detail - maybe it includes commandes?
+  if (ebClientId) {
+    status = await tryEndpoint(`client/detail/${ebClientId}`, 'GET', `/parametres/client/detail/${ebClientId}`, null);
+    if (status === 'stop') return res.json({ ok: true, results });
+    await delay(500);
+  }
+
+  // Test 3: /commande/liste (POST, without /parametres/ prefix)
+  status = await tryEndpoint('commande/liste (root)', 'POST', '/commande/liste',
+    { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+  if (status === 'stop') return res.json({ ok: true, results });
+
+  await delay(500);
+
+  // Test 4: /facture/liste (POST, without /parametres/ prefix)
+  status = await tryEndpoint('facture/liste (root)', 'POST', '/facture/liste',
+    { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+  if (status === 'stop') return res.json({ ok: true, results });
+
+  await delay(500);
+
+  // Test 5: /document/liste with GET instead of POST
+  status = await tryEndpoint('document/liste GET', 'GET', '/document/liste', null);
+
+  res.json({ ok: true, results, api_url: apiBase, client_id_tested: ebClientId || 'aucun' });
+}));
+
 // Webhook logs
 router.get('/easybeer/webhook-logs', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 20');

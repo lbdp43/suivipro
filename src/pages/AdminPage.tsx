@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Settings, Users, Target, TrendingUp, Tag, Plus, X, Save, Edit2,
   Trash2, BarChart3, Phone, Calendar, Award, Shield, User, Eye, EyeOff, Key,
-  Building2, Link2, RefreshCw, Check, AlertCircle, Loader2, MapPin, Activity, Clock,
+  Building2, Link2, RefreshCw, Check, AlertCircle, Loader2, MapPin, Activity, Clock, Search,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -136,6 +136,8 @@ export default function AdminPage() {
   const [assignCmdClientSearch, setAssignCmdClientSearch] = useState('');
   const [syncingAllCommandes, setSyncingAllCommandes] = useState(false);
   const [syncAllResult, setSyncAllResult] = useState<any>(null);
+  const [exploringApi, setExploringApi] = useState(false);
+  const [exploreResult, setExploreResult] = useState<any>(null);
 
   // Tournee config state
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }>>({});
@@ -478,6 +480,21 @@ export default function AdminPage() {
       }
     } catch { toast.error('Erreur de synchronisation des commandes'); }
     setSyncingAllCommandes(false);
+  };
+
+  const exploreEasyBeerApi = async () => {
+    setExploringApi(true);
+    setExploreResult(null);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch('/api/easybeer/explore-api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const data = await res.json();
+      setExploreResult(data);
+    } catch { toast.error('Erreur exploration API'); }
+    setExploringApi(false);
   };
 
   const dismissEbClient = async (ebId: number) => {
@@ -1534,6 +1551,48 @@ export default function AdminPage() {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Explorer API EasyBeer */}
+          <div className="bg-white rounded-xl border border-purple-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-purple-800 flex items-center gap-2">
+                <Search className="w-4 h-4" /> Explorer l'API EasyBeer
+              </h3>
+              <button
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${exploringApi ? 'bg-purple-400 cursor-wait' : 'bg-purple-600 hover:bg-purple-700'}`}
+                onClick={exploreEasyBeerApi}
+                disabled={exploringApi}
+              >
+                <Search className={`w-4 h-4 ${exploringApi ? 'animate-pulse' : ''}`} />
+                {exploringApi ? 'Exploration...' : 'Explorer (5 appels max)'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Teste differentes approches pour trouver les commandes: detail client, formats alternatifs, endpoints racine. Maximum 5 appels API avec delai de 500ms.
+            </p>
+            {exploreResult && (
+              <div className="p-3 rounded-lg text-sm bg-purple-50 text-purple-900">
+                <p className="font-medium mb-2">Resultats de l'exploration ({exploreResult.results?.length || 0} endpoints testes):</p>
+                {exploreResult.api_url && <p className="text-xs text-gray-500 mb-2">API: {exploreResult.api_url} | Client teste: {exploreResult.client_id_tested}</p>}
+                {exploreResult.results?.map((r: any, i: number) => (
+                  <div key={i} className="mb-2 p-2 bg-white rounded border">
+                    <p className="font-medium">
+                      <span className={r.status === 200 ? 'text-green-600' : r.status === 404 ? 'text-gray-400' : 'text-red-500'}>
+                        {r.method} {r.path} → HTTP {r.status}
+                      </span>
+                      {r.succes === false && <span className="text-red-500 ml-2">(succes: false)</span>}
+                      {r.hasData && <span className="text-green-600 ml-2 font-bold">✓ CONTIENT DES DONNEES!</span>}
+                    </p>
+                    {r.label && <p className="text-xs text-gray-500">Test: {r.label}</p>}
+                    {r.message && <p className="text-xs text-red-500">{r.message}</p>}
+                    {r.keys && r.keys.length > 0 && <p className="text-xs text-gray-500">Cles: {r.keys.join(', ')}</p>}
+                    {r.sample && <p className="text-xs text-gray-400 break-all">{r.sample.substring(0, 400)}</p>}
+                    {r.error && <p className="text-xs text-red-400">{r.error}</p>}
+                  </div>
+                ))}
               </div>
             )}
           </div>
