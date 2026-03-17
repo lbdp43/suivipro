@@ -3020,6 +3020,57 @@ router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, re
     status = await tryEndpoint('client documents POST', 'POST', `/parametres/client/${ebClientId}/documents`,
       { colonneTri: 'dateCreation', mode: 'DESC', nombreParPage: 10 });
 
+  } else if (round === 4) {
+    // Round 4: Follow EXACT same pattern as /parametres/client/liste (which works)
+    // Try other entity names with /parametres/{entity}/liste
+    status = await tryEndpoint('parametres/commande/liste', 'POST', '/parametres/commande/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/document/liste', 'POST', '/parametres/document/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/facture/liste', 'POST', '/parametres/facture/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/article/liste', 'POST', '/parametres/article/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/produit/liste', 'POST', '/parametres/produit/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+
+  } else if (round === 5) {
+    // Round 5: More entity names + singular/plural variants
+    status = await tryEndpoint('parametres/bl/liste', 'POST', '/parametres/bl/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/bonLivraison/liste', 'POST', '/parametres/bonLivraison/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/tournee/liste', 'POST', '/parametres/tournee/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/commercial/liste', 'POST', '/parametres/commercial/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+    if (status === 'stop') return res.json({ ok: true, results, round });
+    await delay(500);
+
+    status = await tryEndpoint('parametres/paiement/liste', 'POST', '/parametres/paiement/liste',
+      { colonneTri: 'libelle', mode: 'ASC', nombreParPage: 10 });
+
   } else {
     // Fallback round 1 (original tests)
     status = await tryEndpoint('document/liste format-client', 'POST', '/document/liste',
