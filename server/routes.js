@@ -3364,24 +3364,21 @@ router.get('/easybeer/webhook-logs', authMiddleware, asyncHandler(async (req, re
   res.json(result.rows);
 }));
 
-// Test webhook: simulate a webhook call internally
+// Test webhook: simulate a webhook call by inserting directly into webhooks table
+// and triggering the same processing logic
 router.post('/easybeer/test-webhook', authMiddleware, asyncHandler(async (req, res) => {
   const { type } = req.body; // 'commande' or 'client'
 
-  // Get config for webhook secret
-  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
-  const config = configResult.rows[0];
-
   let testPayload;
+  let testId = '999999';
+
   if (type === 'commande') {
-    let testId = '999999';
     try {
       const lastCmd = await db.query("SELECT easybeer_id FROM commandes WHERE source = 'easybeer' AND easybeer_id != '' ORDER BY date_creation DESC LIMIT 1");
       if (lastCmd.rows.length > 0) testId = lastCmd.rows[0].easybeer_id;
     } catch { /* use default */ }
     testPayload = { type: 'COMMANDE_FACTURATION', id: parseInt(testId) || 999999 };
   } else {
-    let testId = '999999';
     try {
       const lastClient = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id != '' ORDER BY synced_at DESC LIMIT 1");
       if (lastClient.rows.length > 0) testId = lastClient.rows[0].easybeer_id;
@@ -3389,22 +3386,51 @@ router.post('/easybeer/test-webhook', authMiddleware, asyncHandler(async (req, r
     testPayload = { type: 'CLIENT_CREATION', id: parseInt(testId) || 999999 };
   }
 
-  // Call webhook handler directly with mock req/res
+  // Insert a test webhook entry
+  const now = new Date().toISOString();
+  const webhookInsert = await db.query(
+    'INSERT INTO webhooks (source, type, external_id, payload, received_at, processing_result) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+    ['easybeer-test', testPayload.type, String(testPayload.id), JSON.stringify(testPayload), now, 'En cours de traitement...']
+  );
+  const webhookDbId = webhookInsert.rows[0]?.id;
+
+  // Now trigger the actual webhook handler logic
+  // Use a mock req/res that won't interfere with the real response
   try {
     const mockReq = {
-      params: { secret: config?.webhook_secret || '' },
-      headers: { 'content-type': 'application/json' },
-      body: testPayload
+      params: { secret: '' },
+      headers: { 'content-type': 'application/json', 'x-webhook-secret': '' },
+      body: testPayload,
+      get: () => ''
     };
-    let mockResult = null;
+
+    // Skip secret validation by setting it to empty
+    const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+    const config = configResult.rows[0];
+    if (config?.webhook_secret) {
+      mockReq.params.secret = config.webhook_secret;
+      mockReq.headers['x-webhook-secret'] = config.webhook_secret;
+    }
+
+    let mockResponseData = null;
     const mockRes = {
-      status: (code) => ({ json: (data) => { mockResult = { status: code, ...data }; } }),
-      json: (data) => { mockResult = { status: 200, ...data }; }
+      status: function(code) { this._code = code; return this; },
+      json: (data) => { mockResponseData = data; },
+      _code: 200
     };
+
     await handleEasyBeerWebhook(mockReq, mockRes);
-    res.json({ ok: true, message: `Test webhook ${type} envoyé (ID: ${testPayload.id})`, payload: testPayload, response: mockResult });
+
+    res.json({
+      ok: true,
+      message: `Test ${type} envoyé avec ID: ${testPayload.id}. Résultat visible dans le journal après rafraîchissement (traitement en ~5s).`,
+      payload: testPayload,
+      webhook_id: webhookDbId
+    });
   } catch (err) {
-    res.json({ ok: false, message: `Erreur: ${err.message}`, payload: testPayload });
+    // Update the webhook entry with the error
+    try { await db.query('UPDATE webhooks SET processing_result = $1 WHERE id = $2', [`ERREUR TEST: ${err.message}`, webhookDbId]); } catch {}
+    res.json({ ok: false, message: `Erreur serveur: ${err.message || 'inconnue'}`, payload: testPayload });
   }
 }));
 

@@ -1849,10 +1849,11 @@ export default function AdminPage() {
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify({ type: 'commande' })
                       });
+                      if (!resp.ok) { alert(`Erreur serveur ${resp.status}: ${resp.statusText}`); return; }
                       const result = await resp.json();
-                      alert(result.ok ? `Test commande envoyé ! ID: ${result.payload?.id}` : `Erreur: ${result.message}`);
-                      setTimeout(() => loadEasyBeerData(), 5000);
-                    } catch (err: unknown) { alert('Erreur: ' + (err instanceof Error ? err.message : String(err))); }
+                      alert(result.ok ? result.message : `Erreur: ${result.message || 'inconnue'}`);
+                      setTimeout(() => loadEasyBeerData(), 6000);
+                    } catch (err: unknown) { alert('Erreur réseau: ' + (err instanceof Error ? err.message : String(err))); }
                   }}
                 >
                   Test Commande
@@ -1867,10 +1868,11 @@ export default function AdminPage() {
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify({ type: 'client' })
                       });
+                      if (!resp.ok) { alert(`Erreur serveur ${resp.status}: ${resp.statusText}`); return; }
                       const result = await resp.json();
-                      alert(result.ok ? `Test client envoyé ! ID: ${result.payload?.id}` : `Erreur: ${result.message}`);
-                      setTimeout(() => loadEasyBeerData(), 5000);
-                    } catch (err: unknown) { alert('Erreur: ' + (err instanceof Error ? err.message : String(err))); }
+                      alert(result.ok ? result.message : `Erreur: ${result.message || 'inconnue'}`);
+                      setTimeout(() => loadEasyBeerData(), 6000);
+                    } catch (err: unknown) { alert('Erreur réseau: ' + (err instanceof Error ? err.message : String(err))); }
                   }}
                 >
                   Test Client
