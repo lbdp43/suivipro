@@ -39,6 +39,13 @@ const NOTIF_ICONS: Record<string, string> = {
   VISIT_REMINDER: '📍',
   NEW_CLIENT_ASSIGNED: '🏢',
   CLIENT_PENDING: '⏳',
+  commande: '📦',
+  commande_auto: '📦',
+  commande_orpheline: '⚠️',
+  easybeer_client_linked: '🔗',
+  easybeer_client_created: '🆕',
+  easybeer_client_pending: '⏳',
+  easybeer_doublon: '⚠️',
   info: 'ℹ️',
 };
 

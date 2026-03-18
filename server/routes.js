@@ -2140,32 +2140,47 @@ async function findMatchingProspect(name, email, phone) {
   return null;
 }
 
+// Helper: send a notification to all admins
+async function notifyAdmins(type, title, message, data = {}) {
+  try {
+    const admins = await db.query("SELECT id FROM commerciaux WHERE role = 'admin'");
+    const now = new Date().toISOString();
+    for (const admin of admins.rows) {
+      const notifId = `notif-${crypto.randomUUID()}`;
+      await db.query(
+        'INSERT INTO notifications (id, user_id, type, title, message, data, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [notifId, admin.id, type, title, message, JSON.stringify(data), now]
+      );
+    }
+  } catch (err) { console.error('[notifyAdmins] Erreur:', err.message); }
+}
+
 // Helper: find matching existing client by name, email, phone, or SIRET
-// Used to link EasyBeer data to clients already imported via Excel
+// Returns { client, confidence: 'high'|'medium'|'low', matchType } or null
 async function findMatchingClient(name, email, phone, siret) {
   if (!name && !email && !phone && !siret) return null;
   // SIRET is a strong identifier
   if (siret && siret.length >= 9) {
     const r = await db.query("SELECT * FROM clients WHERE siret = $1 LIMIT 1", [siret]);
-    if (r.rows.length > 0) return r.rows[0];
+    if (r.rows.length > 0) return { client: r.rows[0], confidence: 'high', matchType: 'siret' };
   }
   // Email match
   if (email) {
     const r = await db.query('SELECT * FROM clients WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
-    if (r.rows.length > 0) return r.rows[0];
+    if (r.rows.length > 0) return { client: r.rows[0], confidence: 'high', matchType: 'email' };
   }
   // Phone match (strip formatting)
   if (phone) {
     const cleanPhone = phone.replace(/[\s\-\.]/g, '');
     if (cleanPhone.length >= 8) {
       const r = await db.query("SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') = $1 OR REPLACE(REPLACE(REPLACE(telephone_mobile, ' ', ''), '-', ''), '.', '') = $1 LIMIT 1", [cleanPhone]);
-      if (r.rows.length > 0) return r.rows[0];
+      if (r.rows.length > 0) return { client: r.rows[0], confidence: 'high', matchType: 'phone' };
     }
   }
   // Name match (exact, case-insensitive)
   if (name) {
     const r = await db.query('SELECT * FROM clients WHERE LOWER(nom) = LOWER($1) LIMIT 1', [name]);
-    if (r.rows.length > 0) return r.rows[0];
+    if (r.rows.length > 0) return { client: r.rows[0], confidence: 'medium', matchType: 'name_exact' };
   }
   // Fuzzy name: try without common suffixes/prefixes and trimmed
   if (name && name.length > 4) {
@@ -2175,7 +2190,7 @@ async function findMatchingClient(name, email, phone, siret) {
       .trim();
     if (normalized.length > 3) {
       const r = await db.query("SELECT * FROM clients WHERE LOWER(nom) LIKE $1 LIMIT 1", [`%${normalized}%`]);
-      if (r.rows.length > 0) return r.rows[0];
+      if (r.rows.length > 0) return { client: r.rows[0], confidence: 'low', matchType: 'name_fuzzy' };
     }
   }
   return null;
@@ -2559,10 +2574,10 @@ async function handleEasyBeerWebhook(req, res) {
 
         // 2. Try matching by name/email/phone/SIRET against existing clients
         if (!clientId) {
-          const matchedClient = await findMatchingClient(orderClientName, orderClientEmail, orderClientPhone, orderClientSiret);
-          if (matchedClient) {
-            clientId = matchedClient.id;
-            console.log(`[EasyBeer Webhook] Client trouve via matching: ${matchedClient.nom} (${clientId})`);
+          const match = await findMatchingClient(orderClientName, orderClientEmail, orderClientPhone, orderClientSiret);
+          if (match && match.confidence !== 'low') {
+            clientId = match.client.id;
+            console.log(`[EasyBeer Webhook] Client trouve via matching (${match.matchType}, ${match.confidence}): ${match.client.nom} (${clientId})`);
             // Also link the easybeer_clients entry if ebClientId exists
             if (ebClientId) {
               await db.query(
@@ -2573,6 +2588,13 @@ async function handleEasyBeerWebhook(req, res) {
               );
               console.log(`[EasyBeer Webhook] Client ${orderClientName} lie via commande: easybeer_id=${ebClientId} -> ${clientId}`);
             }
+          } else if (match && match.confidence === 'low') {
+            console.log(`[EasyBeer Webhook] Match faible (${match.matchType}) pour commande: "${orderClientName}" ~ "${match.client.nom}" -> a valider`);
+            await notifyAdmins('easybeer_doublon',
+              `Commande: doublon possible`,
+              `La commande du client "${orderClientName}" ressemble au client existant "${match.client.nom}" (match par ${match.matchType}). A valider manuellement.`,
+              { easybeer_client_name: orderClientName, existing_client_id: match.client.id, existing_client_name: match.client.nom, match_type: match.matchType }
+            );
           }
         }
 
@@ -2583,15 +2605,22 @@ async function handleEasyBeerWebhook(req, res) {
             if (clientData) {
               const cf = extractEbFieldsSync(clientData);
               console.log(`[EasyBeer Webhook] Client EasyBeer fetche pour commande: name="${cf.name}", email="${cf.email}", siret="${cf.siret}"`);
-              const matchedClient = await findMatchingClient(cf.name || orderClientName, cf.email || orderClientEmail, cf.phone || orderClientPhone, cf.siret || orderClientSiret);
-              if (matchedClient) {
-                clientId = matchedClient.id;
-                console.log(`[EasyBeer Webhook] Client trouve via fetch EasyBeer + matching: ${matchedClient.nom} (${clientId})`);
+              const match = await findMatchingClient(cf.name || orderClientName, cf.email || orderClientEmail, cf.phone || orderClientPhone, cf.siret || orderClientSiret);
+              if (match && match.confidence !== 'low') {
+                clientId = match.client.id;
+                console.log(`[EasyBeer Webhook] Client trouve via fetch EasyBeer + matching (${match.matchType}, ${match.confidence}): ${match.client.nom} (${clientId})`);
                 await db.query(
                   `INSERT INTO easybeer_clients (easybeer_id, name, status, imported_client_id, synced_at, updated_at)
                   VALUES ($1,$2,'imported',$3,$4,$4)
                   ON CONFLICT (easybeer_id) DO UPDATE SET status = 'imported', imported_client_id = $3, updated_at = $4`,
                   [ebClientId, cf.name || orderClientName, clientId, now]
+                );
+              } else if (match && match.confidence === 'low') {
+                console.log(`[EasyBeer Webhook] Match faible via fetch EasyBeer (${match.matchType}): "${cf.name}" ~ "${match.client.nom}" -> a valider`);
+                await notifyAdmins('easybeer_doublon',
+                  `Commande: doublon possible`,
+                  `Le client EasyBeer "${cf.name || orderClientName}" ressemble au client existant "${match.client.nom}" (match par ${match.matchType}). Commande en orpheline, a valider.`,
+                  { easybeer_id: ebClientId, easybeer_client_name: cf.name || orderClientName, existing_client_id: match.client.id, existing_client_name: match.client.nom }
                 );
               }
             }
@@ -2695,6 +2724,13 @@ async function handleEasyBeerWebhook(req, res) {
             );
           }
         } catch (err) { console.error('[EasyBeer Webhook] Notification error:', err.message); }
+
+        // Notify admins about auto-imported order
+        await notifyAdmins('commande_auto',
+          `Commande #${numero} importee`,
+          `${cmdClientName || 'Client'} - ${montantTtc.toFixed(2)}€ TTC${lignes.length > 0 ? ` (${lignes.length} produits)` : ''} - Rattachee automatiquement`,
+          { client_id: clientId, commande_id: cmdId, numero, montant_ttc: montantTtc }
+        );
 
       } catch (err) {
         console.error(`[EasyBeer Webhook] Erreur traitement commande id=${id}:`, err.message);
@@ -2851,9 +2887,10 @@ async function handleEasyBeerWebhook(req, res) {
           console.log(`[EasyBeer Webhook] Enrichi: ${f.name}, GPS=${f.latitude},${f.longitude}, tournee=${f.tournee}, mobile=${f.phone_mobile}`);
 
           // Check if this EasyBeer client matches an existing client (imported from Excel)
-          const existingClient = await findMatchingClient(f.name, f.email, f.phone, f.siret);
+          const match = await findMatchingClient(f.name, f.email, f.phone, f.siret);
 
-          if (existingClient) {
+          if (match && match.confidence !== 'low') {
+            const existingClient = match.client;
             // Link EasyBeer entry to existing client - no duplicate creation
             await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [existingClient.id, id]);
 
@@ -2877,8 +2914,25 @@ async function handleEasyBeerWebhook(req, res) {
               await linkClientToProspect(existingClient.id, prospect, clientNow);
             }
 
-            console.log(`[EasyBeer Webhook] Client existant lie: ${f.name} (${existingClient.id}) <- easybeer_id=${id}`);
-            await updateClientWebhookResult(`OK CLIENT LIE: ${f.name} -> client existant ${existingClient.id}`);
+            console.log(`[EasyBeer Webhook] Client existant lie (${match.matchType}): ${f.name} (${existingClient.id}) <- easybeer_id=${id}`);
+            await updateClientWebhookResult(`OK CLIENT LIE: ${f.name} -> client existant ${existingClient.id} (via ${match.matchType})`);
+
+            // Notify admin about auto-linked client
+            await notifyAdmins('easybeer_client_linked',
+              `Client EasyBeer lie automatiquement`,
+              `"${f.name}" lie au client existant "${existingClient.nom}" (via ${match.matchType})`,
+              { easybeer_id: id, existing_client_id: existingClient.id, match_type: match.matchType }
+            );
+          } else if (match && match.confidence === 'low') {
+            // Fuzzy match - don't auto-link, notify admin for validation
+            console.log(`[EasyBeer Webhook] Match faible (${match.matchType}): "${f.name}" ~ "${match.client.nom}" -> a valider par admin`);
+            await updateClientWebhookResult(`DOUBLON POSSIBLE: "${f.name}" ~ "${match.client.nom}" (${match.matchType}) -> a valider`);
+
+            await notifyAdmins('easybeer_doublon',
+              `Doublon possible: ${f.name}`,
+              `Le client EasyBeer "${f.name}" ressemble au client existant "${match.client.nom}" (match par ${match.matchType}). A valider manuellement.`,
+              { easybeer_id: id, easybeer_client_name: f.name, existing_client_id: match.client.id, existing_client_name: match.client.nom, match_type: match.matchType }
+            );
           } else {
             // No existing client found - try to find commercial assignment
             let commercialId = null;
@@ -2965,9 +3019,23 @@ async function handleEasyBeerWebhook(req, res) {
 
               console.log(`[EasyBeer Webhook] Nouveau client cree: ${f.name} -> commercial ${commercialId}`);
               await updateClientWebhookResult(`OK CLIENT CREE: ${f.name} -> commercial ${commercialId}`);
+
+              // Notify admin about auto-created client
+              await notifyAdmins('easybeer_client_created',
+                `Nouveau client cree automatiquement`,
+                `"${f.name}" (${f.city || 'ville inconnue'}) cree et assigne au commercial ${commercialId}`,
+                { easybeer_id: id, client_id: clientId, client_name: f.name, commercial_id: commercialId }
+              );
             } else {
               console.log(`[EasyBeer Webhook] Client ${f.name} en attente: aucun commercial trouve (email="${f.commercial_email}", nom="${f.commercial_name}")`);
               await updateClientWebhookResult(`EN ATTENTE: ${f.name}, pas de commercial (email="${f.commercial_email}", nom="${f.commercial_name}")`);
+
+              // Notify admin about pending client requiring action
+              await notifyAdmins('easybeer_client_pending',
+                `Client EasyBeer en attente`,
+                `"${f.name}" (${f.city || 'ville inconnue'}) - Aucun commercial trouve. A assigner manuellement.`,
+                { easybeer_id: id, client_name: f.name, commercial_email: f.commercial_email, commercial_name: f.commercial_name }
+              );
             }
           }
         } else {
@@ -3449,10 +3517,11 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const now = new Date().toISOString();
 
   // Check if a matching client already exists (imported from Excel)
-  const existingClient = await findMatchingClient(eb.name, eb.email, eb.phone, eb.siret);
+  const match = await findMatchingClient(eb.name, eb.email, eb.phone, eb.siret);
+  const existingClient = match?.client;
 
   if (existingClient) {
-    // Link to existing client instead of creating a duplicate
+    // Link to existing client instead of creating a duplicate (admin action, always proceed)
     await db.query(
       `UPDATE clients SET
         telephone_mobile = CASE WHEN (telephone_mobile IS NULL OR telephone_mobile = '') AND $2 != '' THEN $2 ELSE telephone_mobile END,
@@ -3475,7 +3544,7 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
       await linkClientToProspect(existingClient.id, prospect, now);
     }
 
-    return res.json({ ok: true, client_id: existingClient.id, linked_existing: true, linked_prospect: prospect?.id || null });
+    return res.json({ ok: true, client_id: existingClient.id, linked_existing: true, linked_prospect: prospect?.id || null, match_type: match.matchType, confidence: match.confidence });
   }
 
   // No existing client found - create new one
