@@ -3374,8 +3374,6 @@ router.post('/easybeer/test-webhook', authMiddleware, asyncHandler(async (req, r
 
   let testPayload;
   if (type === 'commande') {
-    // Simulate a commande facturation webhook
-    // Use a real commande ID from the last sync if available
     let testId = '999999';
     try {
       const lastCmd = await db.query("SELECT easybeer_id FROM commandes WHERE source = 'easybeer' AND easybeer_id != '' ORDER BY date_creation DESC LIMIT 1");
@@ -3383,7 +3381,6 @@ router.post('/easybeer/test-webhook', authMiddleware, asyncHandler(async (req, r
     } catch { /* use default */ }
     testPayload = { type: 'COMMANDE_FACTURATION', id: parseInt(testId) || 999999 };
   } else {
-    // Simulate a client creation webhook
     let testId = '999999';
     try {
       const lastClient = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id != '' ORDER BY synced_at DESC LIMIT 1");
@@ -3392,21 +3389,20 @@ router.post('/easybeer/test-webhook', authMiddleware, asyncHandler(async (req, r
     testPayload = { type: 'CLIENT_CREATION', id: parseInt(testId) || 999999 };
   }
 
-  // Call our own webhook handler internally
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const webhookUrl = config?.webhook_secret
-    ? `${baseUrl}/api/webhook/easybeer/${config.webhook_secret}`
-    : `${baseUrl}/api/webhook/easybeer`;
-
+  // Call webhook handler directly with mock req/res
   try {
-    const resp = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testPayload),
-      signal: AbortSignal.timeout(10000)
-    });
-    const result = await resp.json();
-    res.json({ ok: true, message: `Test webhook ${type} envoyé`, payload: testPayload, response: result });
+    const mockReq = {
+      params: { secret: config?.webhook_secret || '' },
+      headers: { 'content-type': 'application/json' },
+      body: testPayload
+    };
+    let mockResult = null;
+    const mockRes = {
+      status: (code) => ({ json: (data) => { mockResult = { status: code, ...data }; } }),
+      json: (data) => { mockResult = { status: 200, ...data }; }
+    };
+    await handleEasyBeerWebhook(mockReq, mockRes);
+    res.json({ ok: true, message: `Test webhook ${type} envoyé (ID: ${testPayload.id})`, payload: testPayload, response: mockResult });
   } catch (err) {
     res.json({ ok: false, message: `Erreur: ${err.message}`, payload: testPayload });
   }
