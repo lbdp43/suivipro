@@ -1843,7 +1843,7 @@ export default function AdminPage() {
                   className="px-3 py-1.5 text-xs text-green-700 bg-green-50 hover:bg-green-100 rounded-lg flex items-center gap-1 border border-green-200"
                   onClick={async () => {
                     try {
-                      const token = localStorage.getItem('token');
+                      const token = localStorage.getItem('suivipro_token');
                       const resp = await fetch('/api/easybeer/test-webhook', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1862,7 +1862,7 @@ export default function AdminPage() {
                   className="px-3 py-1.5 text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg flex items-center gap-1 border border-purple-200"
                   onClick={async () => {
                     try {
-                      const token = localStorage.getItem('token');
+                      const token = localStorage.getItem('suivipro_token');
                       const resp = await fetch('/api/easybeer/test-webhook', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
