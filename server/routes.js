@@ -2450,7 +2450,7 @@ async function handleEasyBeerWebhook(req, res) {
           if (!montantHt) montantHt = parseFloat(piedObj.montantHT || piedObj.totalHT || piedObj.ht || piedObj.montant_ht || 0) || 0;
           if (!montantTtc) montantTtc = parseFloat(piedObj.montantTTC || piedObj.totalTTC || piedObj.ttc || piedObj.montant_ttc || 0) || 0;
         }
-        const statutRaw = (orderData.statut || orderData.etat || orderData.status || '').toLowerCase();
+        const statutRaw = String(orderData.statut || orderData.etat || orderData.status || '').toLowerCase();
 
         let statut = 'en_cours';
         if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee', 'terminée', 'validee', 'validée'].some(s => statutRaw.includes(s))) {
