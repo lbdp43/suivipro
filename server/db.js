@@ -342,7 +342,8 @@ async function initDatabase(attempt = 1) {
         type TEXT NOT NULL DEFAULT '',
         external_id TEXT DEFAULT '',
         payload TEXT DEFAULT '{}',
-        received_at TEXT NOT NULL DEFAULT ''
+        received_at TEXT NOT NULL DEFAULT '',
+        processing_result TEXT DEFAULT ''
       );
 
       CREATE TABLE IF NOT EXISTS assignment_rules (
@@ -485,6 +486,9 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS commercial_name TEXT DEFAULT ''"); } catch { /* */ }
+
+    // Add processing_result to webhooks
+    try { await client.query("ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS processing_result TEXT DEFAULT ''"); } catch { /* */ }
 
     // Add tournee_info and week_pattern to tournee_config
     try {

@@ -1838,12 +1838,50 @@ export default function AdminPage() {
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <RefreshCw className="w-4 h-4" /> Journal des webhooks ({webhookLogs.length})
               </h3>
-              <button
-                className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
-                onClick={loadEasyBeerData}
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 text-xs text-green-700 bg-green-50 hover:bg-green-100 rounded-lg flex items-center gap-1 border border-green-200"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const resp = await fetch('/api/easybeer/test-webhook', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ type: 'commande' })
+                      });
+                      const result = await resp.json();
+                      alert(result.ok ? `Test commande envoyé ! ID: ${result.payload?.id}` : `Erreur: ${result.message}`);
+                      setTimeout(() => loadEasyBeerData(), 5000);
+                    } catch (err: unknown) { alert('Erreur: ' + (err instanceof Error ? err.message : String(err))); }
+                  }}
+                >
+                  Test Commande
+                </button>
+                <button
+                  className="px-3 py-1.5 text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg flex items-center gap-1 border border-purple-200"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const resp = await fetch('/api/easybeer/test-webhook', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ type: 'client' })
+                      });
+                      const result = await resp.json();
+                      alert(result.ok ? `Test client envoyé ! ID: ${result.payload?.id}` : `Erreur: ${result.message}`);
+                      setTimeout(() => loadEasyBeerData(), 5000);
+                    } catch (err: unknown) { alert('Erreur: ' + (err instanceof Error ? err.message : String(err))); }
+                  }}
+                >
+                  Test Client
+                </button>
+                <button
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
+                  onClick={loadEasyBeerData}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
+                </button>
+              </div>
             </div>
             {webhookLogs.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-6">Aucun webhook recu</p>
@@ -1864,6 +1902,16 @@ export default function AdminPage() {
                           {date ? date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR') : ''}
                         </span>
                       </div>
+                      {log.processing_result && (
+                        <div className={`mt-1 px-2 py-1 rounded text-[11px] ${
+                          log.processing_result.startsWith('OK') ? 'bg-green-50 text-green-700' :
+                          log.processing_result.startsWith('ERREUR') ? 'bg-red-50 text-red-700' :
+                          log.processing_result.startsWith('ORPHELINE') ? 'bg-orange-50 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {log.processing_result}
+                        </div>
+                      )}
                       <details className="mt-1">
                         <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Voir le payload</summary>
                         <pre className="mt-1 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600">

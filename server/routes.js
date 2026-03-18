@@ -2287,10 +2287,11 @@ async function handleEasyBeerWebhook(req, res) {
   console.log(`[EasyBeer Webhook] Recu: type=${type}, id=${id}, orderId=${orderId}, entityId=${entityId}, clientId=${webhookClientId}, body keys=${Object.keys(body).join(',')}`);
 
   // Log webhook
-  await db.query(
-    'INSERT INTO webhooks (source, type, external_id, payload, received_at) VALUES ($1,$2,$3,$4,$5)',
+  const webhookInsert = await db.query(
+    'INSERT INTO webhooks (source, type, external_id, payload, received_at) VALUES ($1,$2,$3,$4,$5) RETURNING id',
     ['easybeer', type, id, JSON.stringify(body), now]
   );
+  const webhookDbId = webhookInsert.rows[0]?.id;
 
   // Keep only last 100 webhooks
   await db.query(`DELETE FROM webhooks WHERE id NOT IN (SELECT id FROM webhooks ORDER BY received_at DESC LIMIT 100)`);
@@ -2319,6 +2320,9 @@ async function handleEasyBeerWebhook(req, res) {
   // ============================================
   if (isLikelyCommande && id && config?.username && config?.api_url) {
     setTimeout(async () => {
+      const updateWebhookResult = async (result) => {
+        try { await db.query('UPDATE webhooks SET processing_result = $1 WHERE id = $2', [result, webhookDbId]); } catch {}
+      };
       try {
         const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
         const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
@@ -2611,6 +2615,7 @@ async function handleEasyBeerWebhook(req, res) {
               `UPDATE commandes SET statut = $1, montant_ht = $2, montant_ttc = $3, lignes = $4, client_name = $5, raw_data = $6 WHERE id = $7`,
               [statut, montantHt, montantTtc, JSON.stringify(lignes), cmdClientName, JSON.stringify(orderData), existingOrphan.rows[0].id]
             );
+            await updateWebhookResult(`MAJ ORPHELINE: #${numero}, ${montantTtc.toFixed(2)}€ TTC`);
             return;
           }
 
@@ -2625,6 +2630,7 @@ async function handleEasyBeerWebhook(req, res) {
 
           const lignesStr = lignes.length > 0 ? lignes.map(l => `${l.produit} x${l.quantite}`).join(', ') : 'aucun detail';
           console.log(`[EasyBeer Webhook] Commande ORPHELINE: #${numero}, client="${cmdClientName}" (ebClientId=${ebClientId}), ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits (${lignesStr})`);
+          await updateWebhookResult(`ORPHELINE: #${numero}, client="${cmdClientName}", ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits, fetched=${fetchedFrom || 'payload brut'}`);
 
           // Notify admins
           try {
@@ -2654,6 +2660,7 @@ async function handleEasyBeerWebhook(req, res) {
             `UPDATE commandes SET statut = $1, montant_ht = $2, montant_ttc = $3, lignes = $4, date_livraison = $5, easybeer_id = $6 WHERE id = $7`,
             [statut, montantHt, montantTtc, JSON.stringify(lignes), dateLiv, String(id), existing.rows[0].id]
           );
+          await updateWebhookResult(`MAJ: #${numero} -> client ${clientId}, ${montantTtc.toFixed(2)}€ TTC`);
           return;
         }
 
@@ -2670,6 +2677,7 @@ async function handleEasyBeerWebhook(req, res) {
           ? lignes.map(l => `${l.produit} x${l.quantite}`).join(', ')
           : 'aucun detail produit';
         console.log(`[EasyBeer Webhook] Commande importee: #${numero} -> client ${clientId}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes (${lignesStr})`);
+        await updateWebhookResult(`OK: #${numero} -> client ${clientId}, ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits, fetched=${fetchedFrom || 'payload brut'}`);
 
         // Create notification for the commercial
         try {
@@ -2690,6 +2698,7 @@ async function handleEasyBeerWebhook(req, res) {
 
       } catch (err) {
         console.error(`[EasyBeer Webhook] Erreur traitement commande id=${id}:`, err.message);
+        await updateWebhookResult(`ERREUR: ${err.message}`);
       }
     }, 3000);
 
@@ -2803,6 +2812,9 @@ async function handleEasyBeerWebhook(req, res) {
   // Try to enrich with EasyBeer API data in background (with retries and backoff)
   if (id && config?.username && config?.api_url) {
     setTimeout(async () => {
+      const updateClientWebhookResult = async (result) => {
+        try { await db.query('UPDATE webhooks SET processing_result = $1 WHERE id = $2', [result, webhookDbId]); } catch {}
+      };
       try {
         const authHeader = 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64');
         const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
@@ -2866,6 +2878,7 @@ async function handleEasyBeerWebhook(req, res) {
             }
 
             console.log(`[EasyBeer Webhook] Client existant lie: ${f.name} (${existingClient.id}) <- easybeer_id=${id}`);
+            await updateClientWebhookResult(`OK CLIENT LIE: ${f.name} -> client existant ${existingClient.id}`);
           } else {
             // No existing client found - try to find commercial assignment
             let commercialId = null;
@@ -2951,15 +2964,19 @@ async function handleEasyBeerWebhook(req, res) {
               }
 
               console.log(`[EasyBeer Webhook] Nouveau client cree: ${f.name} -> commercial ${commercialId}`);
+              await updateClientWebhookResult(`OK CLIENT CREE: ${f.name} -> commercial ${commercialId}`);
             } else {
               console.log(`[EasyBeer Webhook] Client ${f.name} en attente: aucun commercial trouve (email="${f.commercial_email}", nom="${f.commercial_name}")`);
+              await updateClientWebhookResult(`EN ATTENTE: ${f.name}, pas de commercial (email="${f.commercial_email}", nom="${f.commercial_name}")`);
             }
           }
         } else {
           console.log(`[EasyBeer Webhook] Impossible de recuperer les details pour id=${id} apres 5 tentatives`);
+          await updateClientWebhookResult(`ECHEC API: impossible de recuperer les details pour id=${id}`);
         }
       } catch (err) {
         console.error(`[EasyBeer Webhook] Enrichissement echoue:`, err.message);
+        await updateClientWebhookResult(`ERREUR: ${err.message}`);
       }
     }, 5000); // Initial delay 5s (EasyBeer needs time to propagate)
   }
@@ -3345,6 +3362,54 @@ router.post('/easybeer/explore-api', authMiddleware, asyncHandler(async (req, re
 router.get('/easybeer/webhook-logs', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 20');
   res.json(result.rows);
+}));
+
+// Test webhook: simulate a webhook call internally
+router.post('/easybeer/test-webhook', authMiddleware, asyncHandler(async (req, res) => {
+  const { type } = req.body; // 'commande' or 'client'
+
+  // Get config for webhook secret
+  const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
+  const config = configResult.rows[0];
+
+  let testPayload;
+  if (type === 'commande') {
+    // Simulate a commande facturation webhook
+    // Use a real commande ID from the last sync if available
+    let testId = '999999';
+    try {
+      const lastCmd = await db.query("SELECT easybeer_id FROM commandes WHERE source = 'easybeer' AND easybeer_id != '' ORDER BY date_creation DESC LIMIT 1");
+      if (lastCmd.rows.length > 0) testId = lastCmd.rows[0].easybeer_id;
+    } catch { /* use default */ }
+    testPayload = { type: 'COMMANDE_FACTURATION', id: parseInt(testId) || 999999 };
+  } else {
+    // Simulate a client creation webhook
+    let testId = '999999';
+    try {
+      const lastClient = await db.query("SELECT easybeer_id FROM easybeer_clients WHERE easybeer_id != '' ORDER BY synced_at DESC LIMIT 1");
+      if (lastClient.rows.length > 0) testId = lastClient.rows[0].easybeer_id;
+    } catch { /* use default */ }
+    testPayload = { type: 'CLIENT_CREATION', id: parseInt(testId) || 999999 };
+  }
+
+  // Call our own webhook handler internally
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const webhookUrl = config?.webhook_secret
+    ? `${baseUrl}/api/webhook/easybeer/${config.webhook_secret}`
+    : `${baseUrl}/api/webhook/easybeer`;
+
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testPayload),
+      signal: AbortSignal.timeout(10000)
+    });
+    const result = await resp.json();
+    res.json({ ok: true, message: `Test webhook ${type} envoyé`, payload: testPayload, response: result });
+  } catch (err) {
+    res.json({ ok: false, message: `Erreur: ${err.message}`, payload: testPayload });
+  }
 }));
 
 // Pending clients from EasyBeer
