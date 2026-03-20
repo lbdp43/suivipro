@@ -11,10 +11,10 @@ import { useToast } from '../components/Toast';
 import {
   Appointment, Client, Interaction, InteractionType,
   APPOINTMENT_RESULT_LABELS, INTERACTION_TYPE_LABELS,
-  AppointmentResult, CLIENT_TYPE_LABELS,
+  AppointmentResult, CLIENT_TYPE_LABELS, PipelineStage,
 } from '../types';
 import { generateId, detectConflicts } from '../utils/helpers';
-import { apiPost, apiPut } from '../api/client';
+import { apiPost, apiPut, apiPatch } from '../api/client';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -554,6 +554,51 @@ export default function CompteRenduPage() {
       const updated = { ...crModalRdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
       await apiPut(`/appointments/${crModalRdv.id}`, updated);
       dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+
+      // Update prospect pipeline stage based on result (same logic as ProspectsPage)
+      const prospect = state.prospects.find((p: any) => p.id === crModalRdv.prospect_id);
+      if (prospect) {
+        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+        let newStage: PipelineStage | null = null;
+        if (form.compte_rendu === 'client') {
+          newStage = 'client_gagne';
+        } else if (form.compte_rendu === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (form.compte_rendu === 'mail_envoye') {
+          if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
+        } else if (form.compte_rendu === 'commande_plus_tard' || form.compte_rendu === 'a_relancer') {
+          if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
+        }
+        if (newStage) {
+          try {
+            await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
+            dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
+          } catch (err) {
+            toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
+          }
+        }
+      }
+
+      // Create reminder if rappel section is filled
+      if (showRappelSection && rappelDate) {
+        const autoMessage = rappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[form.compte_rendu] || 'RDV termine'}`;
+        const reminderPayload = {
+          id: generateId('rem'),
+          prospect_id: crModalRdv.prospect_id,
+          commercial_id: crModalRdv.commercial_id,
+          date: rappelDate,
+          heure: '09:00',
+          message: autoMessage,
+          statut: 'actif' as const,
+        };
+        try {
+          await apiPost('/reminders', reminderPayload);
+          dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+        } catch (err) {
+          toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+        }
+      }
+
       toast.success('Compte rendu enregistre');
       setCrModalRdv(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }

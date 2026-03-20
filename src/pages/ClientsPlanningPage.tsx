@@ -2,15 +2,15 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical, Settings2, UserX, MessageSquarePlus, UserCheck,
+  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical, Settings2, UserX, MessageSquarePlus, UserCheck, Bell,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import {
-  Client, Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, Interaction,
+  Client, Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, Interaction, PipelineStage,
 } from '../types';
 import { toLocalDateStr, downloadICSClientBatch, generateId } from '../utils/helpers';
-import { apiPut, apiPost } from '../api/client';
+import { apiPut, apiPost, apiPatch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import ClientDetailModal from '../components/ClientDetailModal';
 
@@ -58,6 +58,9 @@ export default function ClientsPlanningPage() {
   const [crModalRdv, setCrModalRdv] = useState<Appointment | null>(null);
   const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
   const [crSaving, setCrSaving] = useState<string | null>(null);
+  const [showRappelSection, setShowRappelSection] = useState(false);
+  const [rappelDate, setRappelDate] = useState('');
+  const [rappelMessage, setRappelMessage] = useState('');
 
   // Scheduling mode state
   const [schedulingDay, setSchedulingDay] = useState<string | null>(null);
@@ -90,6 +93,9 @@ export default function ClientsPlanningPage() {
     if (!crForms[rdv.id]) {
       setCrForms(prev => ({ ...prev, [rdv.id]: { compte_rendu: (rdv.compte_rendu || '') as AppointmentResult, notes: rdv.notes_compte_rendu || '' } }));
     }
+    setShowRappelSection(false);
+    setRappelDate('');
+    setRappelMessage('');
   };
 
   const saveCrModal = async () => {
@@ -102,6 +108,51 @@ export default function ClientsPlanningPage() {
       const updated = { ...crModalRdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
       await apiPut(`/appointments/${crModalRdv.id}`, updated);
       dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
+
+      // Update prospect pipeline stage based on result (same logic as ProspectsPage)
+      const prospect = state.prospects.find((p: any) => p.id === crModalRdv.prospect_id);
+      if (prospect) {
+        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
+        let newStage: PipelineStage | null = null;
+        if (form.compte_rendu === 'client') {
+          newStage = 'client_gagne';
+        } else if (form.compte_rendu === 'pas_interesse') {
+          newStage = 'perdu';
+        } else if (form.compte_rendu === 'mail_envoye') {
+          if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
+        } else if (form.compte_rendu === 'commande_plus_tard' || form.compte_rendu === 'a_relancer') {
+          if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
+        }
+        if (newStage) {
+          try {
+            await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
+            dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
+          } catch (err) {
+            toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
+          }
+        }
+      }
+
+      // Create reminder if rappel section is filled
+      if (showRappelSection && rappelDate) {
+        const autoMessage = rappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[form.compte_rendu] || 'RDV termine'}`;
+        const reminderPayload = {
+          id: generateId('rem'),
+          prospect_id: crModalRdv.prospect_id,
+          commercial_id: crModalRdv.commercial_id,
+          date: rappelDate,
+          heure: '09:00',
+          message: autoMessage,
+          statut: 'actif' as const,
+        };
+        try {
+          await apiPost('/reminders', reminderPayload);
+          dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+        } catch (err) {
+          toast.error(`Erreur creation rappel: ${(err as Error).message}`);
+        }
+      }
+
       toast.success('Compte rendu enregistre');
       setCrModalRdv(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
@@ -1038,6 +1089,28 @@ export default function ClientsPlanningPage() {
                   <p className="text-xs text-red-500 mt-1">Les notes sont obligatoires pour valider le compte-rendu</p>
                 )}
               </div>
+
+              {/* Programmer un rappel */}
+              <button
+                onClick={() => setShowRappelSection(!showRappelSection)}
+                className="w-full py-2.5 border-2 border-dashed border-yellow-300 rounded-lg text-sm font-medium text-yellow-600 hover:bg-yellow-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <Bell className="w-4 h-4" /> Programmer un rappel
+              </button>
+              {showRappelSection && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-yellow-700 block mb-0.5">Date du rappel</label>
+                    <input type="date" value={rappelDate} onChange={e => setRappelDate(e.target.value)}
+                      className="w-full text-sm border border-yellow-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-yellow-700 block mb-0.5">Message</label>
+                    <input type="text" value={rappelMessage} onChange={e => setRappelMessage(e.target.value)}
+                      placeholder="Rappel pour..." className="w-full text-sm border border-yellow-200 rounded-lg px-2 py-1.5" />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setCrModalRdv(null)}>Annuler</button>
