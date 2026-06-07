@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Passerelle EasyBeer → Pennylane</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>🍺 → 📒 Passerelle EasyBeer → Pennylane</h1>
+    <div class="status" id="conn-status">
+      <span class="dot" id="dot-eb"></span> EasyBeer
+      <span class="dot" id="dot-pl"></span> Pennylane
+      <button id="btn-test" class="ghost">Tester les connexions</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="actions" class="active">Synchronisation</button>
+    <button data-tab="reconcile">Réconciliation</button>
+    <button data-tab="state">État &amp; logs</button>
+    <button data-tab="config">Configuration</button>
+  </nav>
+
+  <main>
+    <!-- ACTIONS -->
+    <section id="tab-actions" class="tab active">
+      <div class="cards">
+        <div class="card">
+          <h3>👥 Clients</h3>
+          <p>Crée/aligne les clients EasyBeer dans Pennylane.</p>
+          <button data-action="clients">Synchroniser les clients</button>
+        </div>
+        <div class="card">
+          <h3>🧾 Factures</h3>
+          <p>Pousse les factures EasyBeer vers Pennylane.</p>
+          <button data-action="invoices">Synchroniser les factures</button>
+        </div>
+        <div class="card">
+          <h3>💶 Paiements</h3>
+          <p>Reporte les règlements EasyBeer dans Pennylane.</p>
+          <button data-action="payments">Synchroniser les paiements</button>
+        </div>
+        <div class="card highlight">
+          <h3>⚡ Tout synchroniser</h3>
+          <p>Clients → Factures → Paiements.</p>
+          <button data-action="all">Lancer la synchro complète</button>
+        </div>
+      </div>
+      <label class="since">Depuis la date (optionnel) :
+        <input type="date" id="since" />
+      </label>
+      <pre id="action-result" class="result"></pre>
+    </section>
+
+    <!-- RECONCILIATION -->
+    <section id="tab-reconcile" class="tab">
+      <button data-action="reconcile">Lancer la réconciliation</button>
+      <div id="recon-summary" class="summary"></div>
+      <table id="recon-table" class="data">
+        <thead>
+          <tr><th>N° facture</th><th>Client</th><th>Montant TTC</th><th>Payée EB</th><th>État</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- STATE -->
+    <section id="tab-state" class="tab">
+      <h3>Factures synchronisées</h3>
+      <table id="state-invoices" class="data">
+        <thead><tr><th>EB id</th><th>N°</th><th>TTC</th><th>Statut</th><th>Payée</th><th>PL id</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h3>Journal</h3>
+      <pre id="logs" class="result"></pre>
+    </section>
+
+    <!-- CONFIG -->
+    <section id="tab-config" class="tab">
+      <form id="config-form">
+        <fieldset>
+          <legend>EasyBeer (source)</legend>
+          <label>URL API <input name="eb-apiUrl" placeholder="https://api.easybeer.fr" /></label>
+          <label>Identifiant <input name="eb-username" /></label>
+          <label>Mot de passe <input name="eb-password" type="password" placeholder="(inchangé)" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Pennylane (destination)</legend>
+          <label>URL API <input name="pl-apiUrl" placeholder="https://app.pennylane.com/api/external/v2" /></label>
+          <label>Token API <input name="pl-token" type="password" placeholder="(inchangé)" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Options</legend>
+          <label class="row"><input type="checkbox" name="opt-finalize" /> Finaliser les factures (sinon brouillon)</label>
+          <label>Pays par défaut <input name="opt-country" value="FR" maxlength="2" /></label>
+          <label>Devise <input name="opt-currency" value="EUR" /></label>
+          <label>Synchro auto (min, 0 = off) <input name="opt-interval" type="number" min="0" value="0" /></label>
+          <label>Secret webhook <input name="webhookSecret" type="password" placeholder="(inchangé)" /></label>
+        </fieldset>
+        <button type="submit">Enregistrer la configuration</button>
+        <span id="config-saved" class="saved"></span>
+      </form>
+      <p class="hint">⚠️ Les secrets définis via variables d'environnement sont prioritaires et masqués ici.</p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

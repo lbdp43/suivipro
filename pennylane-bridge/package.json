@@ -1,0 +1,14 @@
+{
+  "name": "easybeer-pennylane-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portail de synchronisation EasyBeer -> Pennylane (clients, factures, paiements, reconciliation)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "sync": "node src/cli.js"
+  }
+}
