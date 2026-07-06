@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
@@ -90,9 +90,28 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
   const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien' | 'creation_recent' | 'creation_ancien'>('clients_sort', 'none');
-  const [pageSize, setPageSize] = useState(50);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [showFilters, setShowFilters] = useState(false);
+  const [pageSize, setPageSize] = usePersistedState('clients_pageSize', 50);
+  const [currentPage, setCurrentPage] = usePersistedState('clients_currentPage', 0);
+  const [showFilters, setShowFilters] = usePersistedState('clients_showFilters', false);
+
+  // Scroll position restore
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const savedScroll = sessionStorage.getItem('clients_scrollTop');
+    if (savedScroll && listRef.current) {
+      listRef.current.scrollTop = parseInt(savedScroll, 10);
+      sessionStorage.removeItem('clients_scrollTop');
+    }
+  }, []);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      sessionStorage.setItem('clients_scrollTop', String(el.scrollTop));
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Email modal
   const [emailClient, setEmailClient] = useState<Client | null>(null);
@@ -848,13 +867,13 @@ export default function ClientsPage() {
             </div>
             <div className="flex gap-2">
               {/* Link to planning page */}
-              <a
-                href="/clients/planning"
+              <Link
+                to="/clients/planning"
                 className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
                 title="Planning semaine"
               >
                 <CalendarDays className="w-4 h-4" />
-              </a>
+              </Link>
               <button
                 onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
                 className={`p-2 rounded-lg transition-colors ${selectionMode ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
@@ -1226,7 +1245,7 @@ export default function ClientsPage() {
 
         {/* Client list */}
         {(
-        <div className="flex-1 overflow-y-auto">
+        <div ref={listRef} className="flex-1 overflow-y-auto">
           {paginated.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
