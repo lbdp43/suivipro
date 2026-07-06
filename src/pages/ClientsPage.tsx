@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
@@ -46,6 +46,7 @@ const VISIT_STATUS_CONFIG = {
 export default function ClientsPage() {
   const { state, dispatch, dispatchLocal, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient, pausePolling } = useApp();
   const toast = useToast();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -1424,7 +1425,13 @@ export default function ClientsPage() {
           {/* Detail header */}
           <div className="p-4 border-b border-gray-200 flex-shrink-0">
             <div className="flex items-center justify-between mb-2">
-              <button onClick={() => setSearchParams({})} className="md:hidden p-1 rounded hover:bg-gray-100">
+              <button onClick={() => {
+                if (window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  setSearchParams({});
+                }
+              }} className="md:hidden p-1 rounded hover:bg-gray-100">
                 <ChevronLeft className="w-5 h-5 text-gray-600" />
               </button>
               <h2 className="text-lg font-bold text-gray-900 flex-1 truncate">{selectedClient.nom}</h2>
