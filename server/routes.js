@@ -1394,8 +1394,13 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     if (!orderId) continue;
     const ebCliId = cmd.client && cmd.client.idClient ? String(cmd.client.idClient) : '';
     const lien = ebCliId ? idToLocal.get(ebCliId) : null;
-    const clientId = lien ? lien.clientId : null;
-    const clientNom = (lien && lien.clientNom) || (cmd.client && cmd.client.nom) || '';
+    let clientId = lien ? lien.clientId : null;
+    let clientNom = (lien && lien.clientNom) || (cmd.client && cmd.client.nom) || '';
+    // Commande du site internet non liée -> groupe « Site internet »
+    if (!clientId && estCommandeWeb(cmd)) {
+      clientId = await ensureSiteInternetGroup();
+      clientNom = clientNom || 'Site internet';
+    }
 
     // Anti-doublon global par easybeer_id ; au passage, on raccroche les orphelines
     // dont on connaît désormais le client.
@@ -1875,6 +1880,43 @@ async function findMatchingProspect(name, email, phone) {
   return null;
 }
 
+// Helper: garantir le groupe « Site internet » (commandes WooCommerce/Shopify…)
+// Un pseudo-commercial sans login + un client de regroupement : les ventes web
+// n'appartiennent à personne mais restent visibles et comptées au même endroit.
+const SITE_INTERNET_COMMERCIAL_ID = 'com-site-internet';
+const SITE_INTERNET_CLIENT_ID = 'cli-site-internet';
+
+async function ensureSiteInternetGroup() {
+  const now = new Date().toISOString();
+  // Pseudo-commercial (mot de passe aléatoire : personne ne se connecte avec)
+  const com = await db.query('SELECT id FROM commerciaux WHERE id = $1', [SITE_INTERNET_COMMERCIAL_ID]);
+  if (com.rows.length === 0) {
+    const motDePasse = await bcrypt.hash(crypto.randomUUID(), 10);
+    await db.query(
+      `INSERT INTO commerciaux (id, prenom, nom, email, role, password) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO NOTHING`,
+      [SITE_INTERNET_COMMERCIAL_ID, 'Site', 'Internet', 'site-internet@suivipro.local', 'commercial', motDePasse]
+    );
+    console.log('[Site internet] Pseudo-commercial cree');
+  }
+  const cli = await db.query('SELECT id FROM clients WHERE id = $1', [SITE_INTERNET_CLIENT_ID]);
+  if (cli.rows.length === 0) {
+    await db.query(
+      `INSERT INTO clients (id, nom, type_client, statut, commercial_id, notes, date_creation, date_modification)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7) ON CONFLICT (id) DO NOTHING`,
+      [SITE_INTERNET_CLIENT_ID, 'Site internet (ventes web)', 'BAR_RESTAURANT_GENERAL', 'ACTIF',
+       SITE_INTERNET_COMMERCIAL_ID, 'Groupe automatique : toutes les commandes du site internet (WooCommerce). Non affecté à un commercial.', now]
+    );
+    console.log('[Site internet] Client de regroupement cree');
+  }
+  return SITE_INTERNET_CLIENT_ID;
+}
+
+// Une commande Easybeer vient-elle du site web ? (drapeaux posés par Easybeer)
+function estCommandeWeb(det) {
+  return Boolean(det && (det.wooCommerce || det.shopify || det.prestashop || det.marketPlace));
+}
+
 // Helper: send a notification to all admins
 async function notifyAdmins(type, title, message, data = {}) {
   try {
@@ -2097,6 +2139,38 @@ async function handleEasyBeerWebhook(req, res) {
         console.log(`[EasyBeer Webhook] Commande #${numero}: ebClientId=${ebClientId}, client="${orderClientName}", ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes, statut=${statut}`);
 
         let clientId = null;
+
+        // 0. Commande du site internet (WooCommerce/Shopify…) : pas d'affectation à
+        // un commercial ni de suggestion — tout part dans le groupe « Site internet »,
+        // sauf si le client Easybeer est déjà lié à un vrai client SuiviPro (un pro
+        // qui commande via le site reste chez son commercial).
+        const commandeWeb = estCommandeWeb(orderData);
+        if (commandeWeb) {
+          let lienExistant = null;
+          if (ebClientId) {
+            const r = await db.query(
+              "SELECT imported_client_id FROM easybeer_clients WHERE easybeer_id = $1 AND status = 'imported' AND imported_client_id IS NOT NULL",
+              [ebClientId]
+            );
+            lienExistant = r.rows[0]?.imported_client_id || null;
+          }
+          if (lienExistant) {
+            clientId = lienExistant;
+            console.log(`[EasyBeer Webhook] Commande web d'un client lie -> ${clientId}`);
+          } else {
+            clientId = await ensureSiteInternetGroup();
+            console.log(`[EasyBeer Webhook] Commande web -> groupe Site internet`);
+            // Le client Easybeer web sort de la file « en attente » (pas un prospect terrain)
+            if (ebClientId) {
+              await db.query(
+                `INSERT INTO easybeer_clients (easybeer_id, name, status, synced_at, updated_at)
+                 VALUES ($1,$2,'site_internet',$3,$3)
+                 ON CONFLICT (easybeer_id) DO UPDATE SET status = CASE WHEN easybeer_clients.status = 'imported' THEN easybeer_clients.status ELSE 'site_internet' END, updated_at = $3`,
+                [ebClientId, orderClientName, now]
+              );
+            }
+          }
+        }
 
         // 1. Try via easybeer_clients link
         if (ebClientId) {
@@ -3138,7 +3212,7 @@ router.post('/easybeer/liens/:easybeerId/relier', authMiddleware, asyncHandler(a
 }));
 
 router.get('/easybeer/pending-clients', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query("SELECT * FROM easybeer_clients WHERE status = 'pending' ORDER BY synced_at DESC");
+  const result = await db.query("SELECT * FROM easybeer_clients WHERE status = 'pending' ORDER BY synced_at DESC"); // les statuts 'site_internet' sont volontairement exclus
   res.json(result.rows);
 }));
 
