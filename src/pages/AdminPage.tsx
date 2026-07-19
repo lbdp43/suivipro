@@ -119,6 +119,9 @@ export default function AdminPage() {
 
   // EasyBeer state
   const [ebConfig, setEbConfig] = useState({ username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
+  const [ebAudit, setEbAudit] = useState<{ total: number; suspects: number; a_verifier: number; liens: any[] } | null>(null);
+  const [ebAuditLoading, setEbAuditLoading] = useState(false);
+  const [ebRelierChoix, setEbRelierChoix] = useState<Record<string, string>>({});
   const [ebConfigLoaded, setEbConfigLoaded] = useState(false);
   const [ebSaving, setEbSaving] = useState(false);
   const [ebTesting, setEbTesting] = useState(false);
@@ -368,6 +371,38 @@ export default function AdminPage() {
     } finally {
       setFrequencySaving(false);
     }
+  };
+
+  const chargerAuditLiens = async () => {
+    setEbAuditLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
+      const res = await fetch('/api/easybeer/audit-liens', { headers });
+      if (res.ok) setEbAudit(await res.json());
+    } catch { /* silencieux */ }
+    setEbAuditLoading(false);
+  };
+
+  const delierLienEasybeer = async (easybeerId: string, nom: string) => {
+    if (!confirm(`Délier « ${nom} » ? Ses futures commandes partiront en orphelines jusqu'à re-liaison.`)) return;
+    const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}`, 'Content-Type': 'application/json' };
+    const res = await fetch(`/api/easybeer/liens/${easybeerId}/delier`, { method: 'POST', headers });
+    if (res.ok) { toast.success('Lien supprimé'); chargerAuditLiens(); }
+    else toast.error('Échec de la suppression du lien');
+  };
+
+  const relierLienEasybeer = async (easybeerId: string) => {
+    const clientId = ebRelierChoix[easybeerId];
+    if (!clientId) { toast.error('Choisis d\'abord le bon client'); return; }
+    const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}`, 'Content-Type': 'application/json' };
+    const res = await fetch(`/api/easybeer/liens/${easybeerId}/relier`, {
+      method: 'POST', headers, body: JSON.stringify({ client_id: clientId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      toast.success(`Relié — ${data.commandes_rattachees} commande(s) orpheline(s) rattachée(s)`);
+      chargerAuditLiens();
+    } else toast.error('Échec de la liaison');
   };
 
   const loadEasyBeerData = async () => {
@@ -1302,6 +1337,70 @@ export default function AdminPage() {
               </code>
               <p className="mt-2 text-gray-500">EasyBeer envoie le secret dans l'URL. Le format supporte aussi le header <code className="bg-gray-200 px-1 rounded">X-Webhook-Secret</code>.</p>
             </div>
+          </div>
+
+          {/* Audit des liens Easybeer <-> clients */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <Link2 className="w-4 h-4" /> Audit des liens Easybeer → clients
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Vérifie que chaque client Easybeer est relié au bon client SuiviPro. Les liens « suspects »
+              viennent de l'ancien rapprochement par nom — délie puis relie au bon client (ses commandes
+              orphelines suivront automatiquement).
+            </p>
+            <button
+              className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 mb-3"
+              onClick={chargerAuditLiens}
+              disabled={ebAuditLoading}
+            >
+              {ebAuditLoading ? 'Analyse…' : ebAudit ? 'Relancer l\'audit' : 'Lancer l\'audit'}
+            </button>
+
+            {ebAudit && (
+              <div>
+                <div className="flex gap-3 mb-3 text-sm">
+                  <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{ebAudit.total} lien(s)</span>
+                  <span className={`px-2 py-1 rounded ${ebAudit.suspects ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{ebAudit.suspects} suspect(s)</span>
+                  <span className={`px-2 py-1 rounded ${ebAudit.a_verifier ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>{ebAudit.a_verifier} à vérifier</span>
+                </div>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {ebAudit.liens.filter(l => l.verdict !== 'ok').map(l => (
+                    <div key={l.easybeer_id} className={`p-3 rounded-lg border text-sm ${l.verdict === 'suspect' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900">{l.eb_name || `Easybeer #${l.easybeer_id}`}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-gray-800">{l.client_nom}</span>
+                        <span className="text-xs text-gray-500">({l.nb_commandes} commande(s) · preuves : {l.preuves.join(', ') || 'aucune'})</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <select
+                          className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                          value={ebRelierChoix[l.easybeer_id] || ''}
+                          onChange={e => setEbRelierChoix(prev => ({ ...prev, [l.easybeer_id]: e.target.value }))}
+                        >
+                          <option value="">Relier au bon client…</option>
+                          {[...state.clients].sort((a, b) => a.nom.localeCompare(b.nom)).map(c => (
+                            <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` (${c.ville})` : ''}</option>
+                          ))}
+                        </select>
+                        <button
+                          className="px-2 py-1.5 bg-brewery-600 text-white rounded-lg text-xs hover:bg-brewery-700"
+                          onClick={() => relierLienEasybeer(l.easybeer_id)}
+                        >Relier</button>
+                        <button
+                          className="px-2 py-1.5 bg-white border border-red-300 text-red-600 rounded-lg text-xs hover:bg-red-50"
+                          onClick={() => delierLienEasybeer(l.easybeer_id, l.eb_name || l.client_nom)}
+                        >Délier</button>
+                      </div>
+                    </div>
+                  ))}
+                  {ebAudit.liens.filter(l => l.verdict !== 'ok').length === 0 && (
+                    <p className="text-sm text-green-700">Tous les liens sont cohérents ✓</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Regles d'affectation */}
