@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import cron from 'node-cron';
 import { dbReady } from './server/db.js';
-import apiRoutes, { runZoneSync } from './server/routes.js';
+import apiRoutes, { runZoneSync, syncNocturneEasybeer } from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -107,6 +107,12 @@ app.use((err, req, res, _next) => {
 dbReady.then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`SuiviPro API + Frontend running on port ${PORT}`);
+  });
+
+  // CRON: Synchro nocturne Easybeer (filet de sécurité) — tous les jours 02:30 UTC
+  cron.schedule('30 2 * * *', async () => {
+    console.log('[CRON] Synchro nocturne Easybeer...');
+    try { await syncNocturneEasybeer(); } catch (e) { console.error('[CRON] Sync nocturne échec:', e.message); }
   });
 
   // CRON: Sync zone INSEE every Monday at 6:00 UTC

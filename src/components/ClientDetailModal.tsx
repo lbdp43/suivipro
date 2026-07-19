@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   X, Phone, Mail, MapPin, User, Edit2, Calendar,
   CheckCircle2, PhoneCall, Navigation, Clock, AlertTriangle,
@@ -26,6 +26,36 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
   const interactions = client ? getInteractionsForClient(client.id) : [];
   const tasks = client ? getTasksForClient(client.id) : [];
   const commandes = client ? getCommandesForClient(client.id) : [];
+
+  // Chiffres Easybeer pour préparer la visite (calculés sur les commandes synchronisées)
+  const statsCommandes = useMemo(() => {
+    const valides = commandes
+      .filter(c => c.statut !== 'annulee' && c.date_commande)
+      .sort((a, b) => (a.date_commande < b.date_commande ? -1 : 1));
+    if (valides.length === 0) return null;
+    const totalTtc = valides.reduce((s, c) => s + (c.montant_ttc || 0), 0);
+    const derniere = valides[valides.length - 1];
+    const unAnAvant = new Date(Date.now() - 365 * 86400000).toISOString();
+    const ca12Mois = valides.filter(c => c.date_commande >= unAnAvant).reduce((s, c) => s + (c.montant_ttc || 0), 0);
+    // fréquence moyenne : intervalle moyen entre deux commandes (jours)
+    let frequenceJours: number | null = null;
+    if (valides.length >= 2) {
+      const premiere = new Date(valides[0].date_commande).getTime();
+      const derniereTs = new Date(derniere.date_commande).getTime();
+      frequenceJours = Math.round((derniereTs - premiere) / 86400000 / (valides.length - 1));
+    }
+    const joursDepuisDerniere = Math.floor((Date.now() - new Date(derniere.date_commande).getTime()) / 86400000);
+    return {
+      nb: valides.length,
+      totalTtc,
+      panierMoyen: totalTtc / valides.length,
+      ca12Mois,
+      derniere,
+      joursDepuisDerniere,
+      frequenceJours,
+      enRetard: frequenceJours != null && joursDepuisDerniere > frequenceJours * 1.5,
+    };
+  }, [commandes]);
 
   // Interaction form
   const [showInteraction, setShowInteraction] = useState(false);
@@ -442,6 +472,36 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
               </div>
             )}
           </div>
+
+          {/* Chiffres Easybeer — pour préparer la visite */}
+          {statsCommandes && (
+            <div className="px-4 pt-3 pb-2 border-t border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Chiffres Easybeer</h3>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="p-2.5 bg-emerald-50 rounded-lg">
+                  <div className="text-[10px] text-emerald-700 uppercase tracking-wide">CA total</div>
+                  <div className="text-sm font-bold text-emerald-900">{statsCommandes.totalTtc.toFixed(0)} € TTC</div>
+                  <div className="text-[10px] text-emerald-700">{statsCommandes.nb} commande{statsCommandes.nb > 1 ? 's' : ''} · panier moyen {statsCommandes.panierMoyen.toFixed(0)} €</div>
+                </div>
+                <div className="p-2.5 bg-blue-50 rounded-lg">
+                  <div className="text-[10px] text-blue-700 uppercase tracking-wide">12 derniers mois</div>
+                  <div className="text-sm font-bold text-blue-900">{statsCommandes.ca12Mois.toFixed(0)} € TTC</div>
+                </div>
+                <div className="p-2.5 bg-gray-50 rounded-lg">
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wide">Dernière commande</div>
+                  <div className="text-sm font-bold text-gray-900">{(statsCommandes.derniere.montant_ttc || 0).toFixed(0)} €</div>
+                  <div className="text-[10px] text-gray-500">{formatDate(statsCommandes.derniere.date_commande)} · il y a {statsCommandes.joursDepuisDerniere} j</div>
+                </div>
+                <div className={`p-2.5 rounded-lg ${statsCommandes.enRetard ? 'bg-red-50' : 'bg-gray-50'}`}>
+                  <div className={`text-[10px] uppercase tracking-wide ${statsCommandes.enRetard ? 'text-red-700' : 'text-gray-500'}`}>Fréquence d'achat</div>
+                  <div className={`text-sm font-bold ${statsCommandes.enRetard ? 'text-red-900' : 'text-gray-900'}`}>
+                    {statsCommandes.frequenceJours != null ? `tous les ~${statsCommandes.frequenceJours} j` : '—'}
+                  </div>
+                  {statsCommandes.enRetard && <div className="text-[10px] text-red-700 font-medium">⚠ en retard sur son rythme</div>}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Commandes */}
           {commandes.length > 0 && (
