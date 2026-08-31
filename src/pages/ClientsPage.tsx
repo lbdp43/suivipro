@@ -140,11 +140,13 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'retirer_recurrence' | 'supprimer_visites'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'retirer_recurrence' | 'supprimer_visites' | 'note'>('none');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkNextVisit, setBulkNextVisit] = useState('');
   const [bulkVisiteComment, setBulkVisiteComment] = useState('');
   const [bulkVisiteType, setBulkVisiteType] = useState<InteractionType>('VISITE');
+  const [bulkNoteText, setBulkNoteText] = useState('');
+  const [bulkNoteMode, setBulkNoteMode] = useState<'append' | 'replace'>('append');
 
 
   // Quick note
@@ -290,9 +292,11 @@ export default function ClientsPage() {
   };
 
   const applyBulkAction = async () => {
-    // Visite action uses bulkVisiteComment, others use bulkValue
+    // Visite action uses bulkVisiteComment, note uses bulkNoteText, others use bulkValue
     if (bulkAction === 'visite') {
       if (!bulkVisiteComment.trim()) { toast.error('Le commentaire est obligatoire'); return; }
+    } else if (bulkAction === 'note') {
+      if (!bulkNoteText.trim()) { toast.error('Le texte de la note est obligatoire'); return; }
     } else if (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') {
       // No value needed
     } else if (!bulkValue.trim() && bulkAction !== 'recurrence') {
@@ -331,6 +335,28 @@ export default function ClientsPage() {
       if (count > 0) toast.success(`${count} visite(s) enregistree(s)`);
       setBulkVisiteComment('');
       setBulkVisiteType('VISITE');
+      exitSelectionMode();
+      return;
+    }
+
+    if (bulkAction === 'note') {
+      if (!bulkNoteText.trim()) { toast.error('Le texte de la note est obligatoire'); return; }
+      for (const id of selectedIds) {
+        const client = state.clients.find(c => c.id === id);
+        if (!client) continue;
+        const newNotes = bulkNoteMode === 'replace'
+          ? bulkNoteText.trim()
+          : (client.notes ? client.notes + '\n' + bulkNoteText.trim() : bulkNoteText.trim());
+        const updated: Client = { ...client, notes: newNotes, date_modification: now };
+        try {
+          await apiPut(`/clients/${id}`, updated);
+          dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
+          count++;
+        } catch { errors++; }
+      }
+      if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
+      if (count > 0) toast.success(`Note ${bulkNoteMode === 'replace' ? 'remplacee' : 'ajoutee'} pour ${count} client(s)`);
+      setBulkNoteText('');
       exitSelectionMode();
       return;
     }
@@ -1118,10 +1144,11 @@ export default function ClientsPage() {
             <select
               className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-gray-700"
               value={bulkAction}
-              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); setBulkVisiteComment(''); setBulkVisiteType('VISITE'); }}
+              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); setBulkVisiteComment(''); setBulkVisiteType('VISITE'); setBulkNoteText(''); setBulkNoteMode('append'); }}
             >
               <option value="none">Choisir une action…</option>
               <option value="visite">Enregistrer une visite</option>
+              <option value="note">Ajouter / modifier une note</option>
               {isAdmin && <option value="commercial">Changer le commercial</option>}
               <option value="tournee">Changer la tournée</option>
               <option value="type">Changer le type</option>
@@ -1129,7 +1156,6 @@ export default function ClientsPage() {
               <option value="next_visit">Definir date de visite</option>
               <option value="recurrence">Recurrence + prochaine visite</option>
               <option value="retirer_recurrence">Retirer récurrence + supprimer visites</option>
-
             </select>
 
             {bulkAction === 'visite' && (
@@ -1148,6 +1174,25 @@ export default function ClientsPage() {
                   value={bulkVisiteComment}
                   onChange={e => setBulkVisiteComment(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && bulkVisiteComment.trim()) applyBulkAction(); }}
+                />
+              </div>
+            )}
+            {bulkAction === 'note' && (
+              <div className="flex items-center gap-2 flex-1">
+                <select
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkNoteMode}
+                  onChange={e => setBulkNoteMode(e.target.value as 'append' | 'replace')}
+                >
+                  <option value="append">Ajouter a la note</option>
+                  <option value="replace">Remplacer la note</option>
+                </select>
+                <input
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white flex-1 min-w-[200px]"
+                  placeholder="Texte de la note…"
+                  value={bulkNoteText}
+                  onChange={e => setBulkNoteText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && bulkNoteText.trim()) applyBulkAction(); }}
                 />
               </div>
             )}
@@ -1225,10 +1270,10 @@ export default function ClientsPage() {
             {bulkAction !== 'none' && (
               <button
                 onClick={applyBulkAction}
-                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
+                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : bulkAction === 'note' ? !bulkNoteText.trim() : (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
                 className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
               >
-                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
+                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'note' ? `${bulkNoteMode === 'append' ? 'Ajouter' : 'Remplacer'} (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
               </button>
             )}
             <button
