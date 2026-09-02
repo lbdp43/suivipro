@@ -662,7 +662,7 @@ export default function TourneesPage() {
             {config?.tournee_info && (
               <div className="flex items-start gap-2 p-2 sm:p-3 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs sm:text-sm text-blue-800">
                 <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <p>{config.tournee_info}</p>
+                <p className="whitespace-pre-wrap">{config.tournee_info}</p>
               </div>
             )}
 
