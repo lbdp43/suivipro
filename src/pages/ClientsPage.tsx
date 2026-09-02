@@ -140,13 +140,18 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'retirer_recurrence' | 'supprimer_visites' | 'note'>('none');
+  const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'retirer_recurrence' | 'supprimer_visites' | 'note' | 'tache'>('none');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkNextVisit, setBulkNextVisit] = useState('');
   const [bulkVisiteComment, setBulkVisiteComment] = useState('');
   const [bulkVisiteType, setBulkVisiteType] = useState<InteractionType>('VISITE');
   const [bulkNoteText, setBulkNoteText] = useState('');
   const [bulkNoteMode, setBulkNoteMode] = useState<'append' | 'replace'>('append');
+  const [bulkTaskTitle, setBulkTaskTitle] = useState('');
+  const [bulkTaskDate, setBulkTaskDate] = useState('');
+  const [bulkTaskCommercialId, setBulkTaskCommercialId] = useState('');
+  const [bulkTaskPriority, setBulkTaskPriority] = useState<'BASSE' | 'MOYENNE' | 'HAUTE'>('MOYENNE');
+  const [bulkTaskType, setBulkTaskType] = useState<'appel' | 'visite'>('appel');
 
 
   // Quick note
@@ -292,11 +297,13 @@ export default function ClientsPage() {
   };
 
   const applyBulkAction = async () => {
-    // Visite action uses bulkVisiteComment, note uses bulkNoteText, others use bulkValue
+    // Visite action uses bulkVisiteComment, note uses bulkNoteText, tache uses bulkTaskTitle, others use bulkValue
     if (bulkAction === 'visite') {
       if (!bulkVisiteComment.trim()) { toast.error('Le commentaire est obligatoire'); return; }
     } else if (bulkAction === 'note') {
       if (!bulkNoteText.trim()) { toast.error('Le texte de la note est obligatoire'); return; }
+    } else if (bulkAction === 'tache') {
+      if (!bulkTaskTitle.trim()) { toast.error('Le titre de la tache est obligatoire'); return; }
     } else if (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') {
       // No value needed
     } else if (!bulkValue.trim() && bulkAction !== 'recurrence') {
@@ -335,6 +342,40 @@ export default function ClientsPage() {
       if (count > 0) toast.success(`${count} visite(s) enregistree(s)`);
       setBulkVisiteComment('');
       setBulkVisiteType('VISITE');
+      exitSelectionMode();
+      return;
+    }
+
+    if (bulkAction === 'tache') {
+      if (!bulkTaskTitle.trim()) { toast.error('Le titre de la tache est obligatoire'); return; }
+      const assigneeId = bulkTaskCommercialId || state.currentUser?.id || '';
+      const typeLabel = bulkTaskType === 'appel' ? 'Appel' : 'Visite';
+      for (const id of selectedIds) {
+        const client = state.clients.find(c => c.id === id);
+        if (!client) continue;
+        const payload = {
+          id: generateId('task'),
+          titre: `${typeLabel} - ${client.nom} : ${bulkTaskTitle.trim()}`,
+          description: '',
+          statut: 'A_FAIRE' as const,
+          priorite: bulkTaskPriority,
+          date_echeance: bulkTaskDate || null,
+          commercial_id: assigneeId,
+          client_id: id,
+          date_creation: now,
+          completed_at: null,
+        };
+        try {
+          await apiPost('/tasks-client', payload);
+          dispatchLocal({ type: 'ADD_TASK_CLIENT', payload });
+          count++;
+        } catch { errors++; }
+      }
+      if (errors > 0) toast.error(`${errors} tache(s) non creee(s)`);
+      if (count > 0) toast.success(`${count} tache(s) creee(s) et assignee(s)`);
+      setBulkTaskTitle('');
+      setBulkTaskDate('');
+      setBulkTaskCommercialId('');
       exitSelectionMode();
       return;
     }
@@ -1144,10 +1185,11 @@ export default function ClientsPage() {
             <select
               className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-gray-700"
               value={bulkAction}
-              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); setBulkVisiteComment(''); setBulkVisiteType('VISITE'); setBulkNoteText(''); setBulkNoteMode('append'); }}
+              onChange={e => { setBulkAction(e.target.value as typeof bulkAction); setBulkValue(''); setBulkNextVisit(''); setBulkVisiteComment(''); setBulkVisiteType('VISITE'); setBulkNoteText(''); setBulkNoteMode('append'); setBulkTaskTitle(''); setBulkTaskDate(''); setBulkTaskCommercialId(''); setBulkTaskPriority('MOYENNE'); setBulkTaskType('appel'); }}
             >
               <option value="none">Choisir une action…</option>
               <option value="visite">Enregistrer une visite</option>
+              <option value="tache">Creer une tache (appels/visites)</option>
               <option value="note">Ajouter / modifier une note</option>
               {isAdmin && <option value="commercial">Changer le commercial</option>}
               <option value="tournee">Changer la tournée</option>
@@ -1194,6 +1236,48 @@ export default function ClientsPage() {
                   onChange={e => setBulkNoteText(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && bulkNoteText.trim()) applyBulkAction(); }}
                 />
+              </div>
+            )}
+            {bulkAction === 'tache' && (
+              <div className="flex items-center gap-2 flex-wrap flex-1">
+                <select
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkTaskType}
+                  onChange={e => setBulkTaskType(e.target.value as 'appel' | 'visite')}
+                >
+                  <option value="appel">Appel</option>
+                  <option value="visite">Visite</option>
+                </select>
+                <input
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white flex-1 min-w-[150px]"
+                  placeholder="Objet de la tache (obligatoire)…"
+                  value={bulkTaskTitle}
+                  onChange={e => setBulkTaskTitle(e.target.value)}
+                />
+                <select
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkTaskCommercialId}
+                  onChange={e => setBulkTaskCommercialId(e.target.value)}
+                >
+                  <option value="">Assigner a…</option>
+                  {state.commerciaux.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+                </select>
+                <input
+                  type="date"
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkTaskDate}
+                  onChange={e => setBulkTaskDate(e.target.value)}
+                  placeholder="Echeance"
+                />
+                <select
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  value={bulkTaskPriority}
+                  onChange={e => setBulkTaskPriority(e.target.value as 'BASSE' | 'MOYENNE' | 'HAUTE')}
+                >
+                  <option value="BASSE">Basse</option>
+                  <option value="MOYENNE">Moyenne</option>
+                  <option value="HAUTE">Haute</option>
+                </select>
               </div>
             )}
             {bulkAction === 'commercial' && (
@@ -1270,10 +1354,10 @@ export default function ClientsPage() {
             {bulkAction !== 'none' && (
               <button
                 onClick={applyBulkAction}
-                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : bulkAction === 'note' ? !bulkNoteText.trim() : (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
+                disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : bulkAction === 'note' ? !bulkNoteText.trim() : bulkAction === 'tache' ? !bulkTaskTitle.trim() : (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
                 className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
               >
-                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'note' ? `${bulkNoteMode === 'append' ? 'Ajouter' : 'Remplacer'} (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
+                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'tache' ? `Creer ${selectedIds.size} tache(s)` : bulkAction === 'note' ? `${bulkNoteMode === 'append' ? 'Ajouter' : 'Remplacer'} (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
               </button>
             )}
             <button
