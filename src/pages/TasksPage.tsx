@@ -3,11 +3,12 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import {
   ListTodo, Plus, Edit2, Trash2, Save, X, RefreshCw, Filter,
   AlertTriangle, CheckCircle2, Clock, ChevronDown, ChevronRight,
-  User, Building2, Calendar, Flag, Search, Loader2,
+  User, Building2, Calendar, Flag, Search, Loader2, Phone, ClipboardCheck,
+  PhoneOff, MessageCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { toLocalDateStr } from '../utils/helpers';
+import { toLocalDateStr, generateId } from '../utils/helpers';
 
 interface Task {
   id: string;
@@ -53,6 +54,8 @@ const CATEGORIES: Record<string, string> = {
 interface ClientOption {
   id: string;
   nom: string;
+  telephone?: string;
+  telephone_mobile?: string;
 }
 
 const emptyForm = {
@@ -83,6 +86,14 @@ export default function TasksPage() {
   const [showCompleted, setShowCompleted] = usePersistedState('tasks_showCompleted', false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
+  // Compte-rendu (appel/visite) modal for a task
+  const [crTask, setCrTask] = useState<Task | null>(null);
+  const [crType, setCrType] = useState<'APPEL' | 'VISITE'>('APPEL');
+  const [crOutcome, setCrOutcome] = useState<'repondu' | 'pas_repondu' | ''>('');
+  const [crComment, setCrComment] = useState('');
+  const [crCompleteTask, setCrCompleteTask] = useState(true);
+  const [crSaving, setCrSaving] = useState(false);
+
   const isAdmin = state.currentUser?.role === 'admin';
   const currentUserId = state.currentUser?.id;
   const token = localStorage.getItem('suivipro_token');
@@ -101,7 +112,7 @@ export default function TasksPage() {
       if (tasksRes.ok) setTasks(await tasksRes.json());
       if (clientsRes.ok) {
         const all = await clientsRes.json();
-        setClients(all.map((c: any) => ({ id: c.id, nom: c.nom })).sort((a: ClientOption, b: ClientOption) => a.nom.localeCompare(b.nom)));
+        setClients(all.map((c: any) => ({ id: c.id, nom: c.nom, telephone: c.telephone || '', telephone_mobile: c.telephone_mobile || '' })).sort((a: ClientOption, b: ClientOption) => a.nom.localeCompare(b.nom)));
       }
     } catch {
       toast.error('Erreur chargement');
@@ -187,6 +198,60 @@ export default function TasksPage() {
       toast.success('Tache supprimee');
     } catch {
       toast.error('Erreur suppression');
+    }
+  };
+
+  const getClientById = (clientId: string | null) => clients.find(c => c.id === clientId) || null;
+  const getClientPhone = (clientId: string | null) => {
+    const c = getClientById(clientId);
+    return c ? (c.telephone_mobile || c.telephone || '') : '';
+  };
+
+  const openCrModal = (task: Task) => {
+    setCrTask(task);
+    setCrType(task.titre.toLowerCase().startsWith('visite') ? 'VISITE' : 'APPEL');
+    setCrOutcome('');
+    setCrComment('');
+    setCrCompleteTask(true);
+  };
+
+  const saveCr = async () => {
+    if (!crTask || !crTask.client_id) return;
+    if (crOutcome !== 'pas_repondu' && !crComment.trim()) { toast.warning('Indiquez ce qui a ete dit ou constate'); return; }
+    setCrSaving(true);
+    try {
+      const outcomePrefix = crOutcome === 'pas_repondu' ? "N'a pas repondu. " : crOutcome === 'repondu' ? 'A repondu. ' : '';
+      const interaction = {
+        id: generateId('int'),
+        client_id: crTask.client_id,
+        commercial_id: crTask.commercial_id || currentUserId || '',
+        type: crType,
+        date: new Date().toISOString(),
+        comment: (outcomePrefix + crComment.trim()).trim(),
+        date_creation: new Date().toISOString(),
+      };
+      const res = await fetch('/api/interactions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(interaction),
+      });
+      if (!res.ok) { toast.error('Erreur enregistrement'); return; }
+
+      if (crCompleteTask && crTask.statut !== 'TERMINEE') {
+        await fetch(`/api/tasks-client/${crTask.id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ ...crTask, statut: 'TERMINEE' }),
+        });
+      }
+
+      toast.success(crType === 'APPEL' ? 'Appel enregistre' : 'Visite enregistree');
+      setCrTask(null);
+      loadTasks();
+    } catch {
+      toast.error('Erreur enregistrement');
+    } finally {
+      setCrSaving(false);
     }
   };
 
@@ -533,6 +598,105 @@ export default function TasksPage() {
         </div>
       )}
 
+      {/* Compte-rendu (appel/visite) modal */}
+      {crTask && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setCrTask(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="font-semibold text-gray-900 text-lg flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+                  Compte-rendu
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">{getClientById(crTask.client_id)?.nom || crTask.client_nom}</p>
+              </div>
+              <button onClick={() => setCrTask(null)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Type */}
+              <div className="flex gap-2">
+                {(['APPEL', 'VISITE'] as const).map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setCrType(type)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      crType === type ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {type === 'APPEL' ? 'Appel' : 'Visite'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Outcome (only relevant for appel) */}
+              {crType === 'APPEL' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCrOutcome('repondu')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      crOutcome === 'repondu' ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <MessageCircle className="w-4 h-4" /> A repondu
+                  </button>
+                  <button
+                    onClick={() => setCrOutcome('pas_repondu')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      crOutcome === 'pas_repondu' ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <PhoneOff className="w-4 h-4" /> N'a pas repondu
+                  </button>
+                </div>
+              )}
+
+              {/* Comment */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  {crOutcome === 'pas_repondu' ? 'Note (optionnel)' : 'Qu\'a-t-il dit / que s\'est-il passe ? *'}
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  rows={4}
+                  value={crComment}
+                  onChange={e => setCrComment(e.target.value)}
+                  placeholder={crOutcome === 'pas_repondu' ? 'Ex: rappeler demain matin...' : 'Ex: tout va bien, va recommander la semaine prochaine...'}
+                  autoFocus
+                />
+              </div>
+
+              {/* Complete task checkbox */}
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={crCompleteTask}
+                  onChange={e => setCrCompleteTask(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Marquer la tache comme terminee
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={() => setCrTask(null)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">
+                Annuler
+              </button>
+              <button
+                onClick={saveCr}
+                disabled={crSaving || (crOutcome !== 'pas_repondu' && !crComment.trim())}
+                className="px-4 py-2 text-sm font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-2 disabled:opacity-50"
+              >
+                {crSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Task list */}
       <div className="space-y-2">
         {filtered.length === 0 && (
@@ -623,6 +787,26 @@ export default function TasksPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Quick actions: call + compte-rendu (when task is linked to a client) */}
+                  {task.client_id && !isDone && canEdit && (
+                    <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                      {getClientPhone(task.client_id) && (
+                        <a
+                          href={`tel:${getClientPhone(task.client_id)}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg"
+                        >
+                          <Phone className="w-3.5 h-3.5" /> Appeler
+                        </a>
+                      )}
+                      <button
+                        onClick={() => openCrModal(task)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
+                      >
+                        <ClipboardCheck className="w-3.5 h-3.5" /> Compte-rendu
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Expand arrow */}
