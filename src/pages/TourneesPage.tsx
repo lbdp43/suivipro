@@ -660,9 +660,9 @@ export default function TourneesPage() {
         {isExpanded && (
           <div className="px-3 sm:px-4 pb-3 sm:pb-4">
             {config?.tournee_info && (
-              <div className="flex items-start gap-2 p-2 sm:p-3 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs sm:text-sm text-blue-800">
+              <div className="flex items-start gap-2 p-2 sm:p-3 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs sm:text-sm text-blue-800 leading-relaxed">
                 <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <p className="whitespace-pre-wrap">{config.tournee_info}</p>
+                <p className="whitespace-pre-wrap break-words">{config.tournee_info}</p>
               </div>
             )}
 
@@ -974,10 +974,10 @@ export default function TourneesPage() {
             </label>
             <textarea
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              rows={2}
+              rows={5}
               value={editInfo}
               onChange={e => setEditInfo(e.target.value)}
-              placeholder="Ex: Je passe en priorite sur Lyon centre le mardi matin..."
+              placeholder="Ex: Je passe en priorite sur Lyon centre le mardi matin...&#10;&#10;Utilisez la touche Entree pour faire des retours a la ligne."
             />
           </div>
 

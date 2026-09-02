@@ -2240,9 +2240,9 @@ export default function AdminPage() {
                 ) : (
                   <div>
                     {config?.tournee_info && (
-                      <div className="flex items-start gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs text-blue-800">
+                      <div className="flex items-start gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg mb-3 text-xs text-blue-800 leading-relaxed">
                         <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                        <p className="whitespace-pre-wrap">{config.tournee_info}</p>
+                        <p className="whitespace-pre-wrap break-words">{config.tournee_info}</p>
                       </div>
                     )}
                     {hasConfig ? (
