@@ -4,7 +4,7 @@ import {
   ListTodo, Plus, Edit2, Trash2, Save, X, RefreshCw, Filter,
   AlertTriangle, CheckCircle2, Clock, ChevronDown, ChevronRight,
   User, Building2, Calendar, Flag, Search, Loader2, Phone, ClipboardCheck,
-  PhoneOff, MessageCircle,
+  PhoneOff, MessageCircle, MapPin, UserCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -56,6 +56,8 @@ interface ClientOption {
   nom: string;
   telephone?: string;
   telephone_mobile?: string;
+  tournee?: string;
+  commercial_id?: string;
 }
 
 const emptyForm = {
@@ -112,7 +114,7 @@ export default function TasksPage() {
       if (tasksRes.ok) setTasks(await tasksRes.json());
       if (clientsRes.ok) {
         const all = await clientsRes.json();
-        setClients(all.map((c: any) => ({ id: c.id, nom: c.nom, telephone: c.telephone || '', telephone_mobile: c.telephone_mobile || '' })).sort((a: ClientOption, b: ClientOption) => a.nom.localeCompare(b.nom)));
+        setClients(all.map((c: any) => ({ id: c.id, nom: c.nom, telephone: c.telephone || '', telephone_mobile: c.telephone_mobile || '', tournee: c.tournee || '', commercial_id: c.commercial_id || '' })).sort((a: ClientOption, b: ClientOption) => a.nom.localeCompare(b.nom)));
       }
     } catch {
       toast.error('Erreur chargement');
@@ -205,6 +207,13 @@ export default function TasksPage() {
   const getClientPhone = (clientId: string | null) => {
     const c = getClientById(clientId);
     return c ? (c.telephone_mobile || c.telephone || '') : '';
+  };
+  const getClientTournee = (clientId: string | null) => getClientById(clientId)?.tournee || '';
+  const getClientOwnerName = (clientId: string | null) => {
+    const c = getClientById(clientId);
+    if (!c?.commercial_id) return '';
+    const com = state.commerciaux.find(cc => cc.id === c.commercial_id);
+    return com ? `${com.prenom} ${com.nom}` : '';
   };
 
   const openCrModal = (task: Task) => {
@@ -777,6 +786,16 @@ export default function TasksPage() {
                     {task.client_nom && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-full font-medium">
                         <Building2 className="w-2.5 h-2.5" /> {task.client_nom}
+                      </span>
+                    )}
+                    {task.client_id && getClientTournee(task.client_id) && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded-full font-medium">
+                        <MapPin className="w-2.5 h-2.5" /> {getClientTournee(task.client_id)}
+                      </span>
+                    )}
+                    {task.client_id && getClientOwnerName(task.client_id) && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded-full font-medium">
+                        <UserCircle className="w-2.5 h-2.5" /> Client de {getClientOwnerName(task.client_id)}
                       </span>
                     )}
                     {task.date_echeance && (

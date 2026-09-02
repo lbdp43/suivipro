@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical, Settings2, UserX, MessageSquarePlus, UserCheck, Bell,
+  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical, Settings2, UserX, MessageSquarePlus, UserCheck, Bell, ListTodo,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -79,10 +79,15 @@ export default function ClientsPlanningPage() {
   const [massActionDay, setMassActionDay] = useState<string | null>(null);
   const [massSelectedClients, setMassSelectedClients] = useState<Set<string>>(new Set());
   const [showMassActionModal, setShowMassActionModal] = useState(false);
-  const [massAction, setMassAction] = useState<'inactif' | 'note' | 'visite' | 'commercial' | null>(null);
+  const [massAction, setMassAction] = useState<'inactif' | 'note' | 'visite' | 'commercial' | 'tache' | null>(null);
   const [massNote, setMassNote] = useState('');
   const [massCommercialId, setMassCommercialId] = useState('');
   const [massSaving, setMassSaving] = useState(false);
+  const [massTaskType, setMassTaskType] = useState<'appel' | 'visite'>('appel');
+  const [massTaskTitle, setMassTaskTitle] = useState('');
+  const [massTaskDate, setMassTaskDate] = useState('');
+  const [massTaskAssigneeId, setMassTaskAssigneeId] = useState('');
+  const [massTaskPriority, setMassTaskPriority] = useState<'BASSE' | 'MOYENNE' | 'HAUTE'>('MOYENNE');
 
   // Results card state
   const [resultsPeriod, setResultsPeriod] = usePersistedState<'semaine' | 'mois' | 'trimestre' | 'tout'>('planning_results_period', 'semaine');
@@ -306,6 +311,11 @@ export default function ClientsPlanningPage() {
     setMassAction(null);
     setMassNote('');
     setMassCommercialId('');
+    setMassTaskType('appel');
+    setMassTaskTitle('');
+    setMassTaskDate('');
+    setMassTaskAssigneeId('');
+    setMassTaskPriority('MOYENNE');
     setShowMassActionModal(true);
   }, []);
 
@@ -364,6 +374,29 @@ export default function ClientsPlanningPage() {
         }
         const comm = getCommercial(massCommercialId);
         toast.success(`${clientIds.length} client${clientIds.length > 1 ? 's' : ''} reassigne${clientIds.length > 1 ? 's' : ''} a ${comm?.prenom || 'commercial'}`);
+      } else if (massAction === 'tache') {
+        if (!massTaskTitle.trim()) { toast.error('Le titre de la tache est obligatoire'); setMassSaving(false); return; }
+        const assigneeId = massTaskAssigneeId || userId;
+        const typeLabel = massTaskType === 'appel' ? 'Appel' : 'Visite';
+        for (const clientId of clientIds) {
+          const client = state.clients.find(c => c.id === clientId);
+          if (!client) continue;
+          const payload = {
+            id: generateId('task'),
+            titre: `${typeLabel} - ${client.nom} : ${massTaskTitle.trim()}`,
+            description: '',
+            statut: 'A_FAIRE' as const,
+            priorite: massTaskPriority,
+            date_echeance: massTaskDate || null,
+            commercial_id: assigneeId,
+            client_id: clientId,
+            date_creation: now,
+            completed_at: null,
+          };
+          await apiPost('/tasks-client', payload);
+          dispatchLocal({ type: 'ADD_TASK_CLIENT', payload });
+        }
+        toast.success(`${clientIds.length} tache(s) creee(s) et assignee(s)`);
       }
 
       setShowMassActionModal(false);
@@ -374,7 +407,7 @@ export default function ClientsPlanningPage() {
     } finally {
       setMassSaving(false);
     }
-  }, [massAction, massSelectedClients, massNote, massCommercialId, state.clients, state.currentUser, dispatchLocal, toast, getCommercial]);
+  }, [massAction, massSelectedClients, massNote, massCommercialId, massTaskTitle, massTaskType, massTaskDate, massTaskAssigneeId, massTaskPriority, state.clients, state.currentUser, dispatchLocal, toast, getCommercial]);
 
   const getRdvEntityName = (rdv: Appointment) => {
     if (rdv.client_id) {
@@ -1408,6 +1441,7 @@ export default function ClientsPlanningPage() {
                   { key: 'note' as const, icon: MessageSquarePlus, label: 'Ajouter une note', color: 'text-blue-600', bg: 'border-blue-200 hover:bg-blue-50', activeBg: 'border-blue-400 bg-blue-50 ring-2 ring-blue-200' },
                   { key: 'visite' as const, icon: CheckCircle2, label: 'Enregistrer visite', color: 'text-green-600', bg: 'border-green-200 hover:bg-green-50', activeBg: 'border-green-400 bg-green-50 ring-2 ring-green-200' },
                   { key: 'commercial' as const, icon: UserCheck, label: 'Changer commercial', color: 'text-purple-600', bg: 'border-purple-200 hover:bg-purple-50', activeBg: 'border-purple-400 bg-purple-50 ring-2 ring-purple-200' },
+                  { key: 'tache' as const, icon: ListTodo, label: 'Creer une tache (appels/visites)', color: 'text-indigo-600', bg: 'border-indigo-200 hover:bg-indigo-50', activeBg: 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200' },
                 ] as const).map(a => {
                   const Icon = a.icon;
                   const isActive = massAction === a.key;
@@ -1480,6 +1514,77 @@ export default function ClientsPlanningPage() {
                 </div>
               )}
 
+              {massAction === 'tache' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setMassTaskType('appel')}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${massTaskType === 'appel' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      >
+                        Appel
+                      </button>
+                      <button
+                        onClick={() => setMassTaskType('visite')}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${massTaskType === 'visite' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      >
+                        Visite
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Objet de la tache *</label>
+                    <input
+                      type="text"
+                      value={massTaskTitle}
+                      onChange={e => setMassTaskTitle(e.target.value)}
+                      placeholder="Ex: Appel de courtoisie, savoir si tout va bien..."
+                      className={`w-full text-sm border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 ${!massTaskTitle.trim() ? 'border-red-300' : 'border-gray-300'}`}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Assigner a</label>
+                      <select
+                        value={massTaskAssigneeId}
+                        onChange={e => setMassTaskAssigneeId(e.target.value)}
+                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300"
+                      >
+                        <option value="">Moi-meme</option>
+                        {state.commerciaux.map(c => (
+                          <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Echeance</label>
+                      <input
+                        type="date"
+                        value={massTaskDate}
+                        onChange={e => setMassTaskDate(e.target.value)}
+                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Priorite</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['BASSE', 'MOYENNE', 'HAUTE'] as const).map(p => (
+                        <button
+                          key={p}
+                          onClick={() => setMassTaskPriority(p)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors ${massTaskPriority === p ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                        >
+                          {p === 'BASSE' ? 'Basse' : p === 'MOYENNE' ? 'Moyenne' : 'Haute'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Selected clients preview */}
               {massAction && (
                 <div>
@@ -1511,9 +1616,9 @@ export default function ClientsPlanningPage() {
                   massAction === 'inactif' ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'
                 }`}
                 onClick={executeMassAction}
-                disabled={!massAction || massSaving || (massAction === 'note' && !massNote.trim()) || (massAction === 'commercial' && !massCommercialId)}
+                disabled={!massAction || massSaving || (massAction === 'note' && !massNote.trim()) || (massAction === 'commercial' && !massCommercialId) || (massAction === 'tache' && !massTaskTitle.trim())}
               >
-                {massSaving ? 'En cours...' : massAction === 'inactif' ? 'Confirmer la desactivation' : 'Valider'}
+                {massSaving ? 'En cours...' : massAction === 'inactif' ? 'Confirmer la desactivation' : massAction === 'tache' ? `Creer ${massSelectedClients.size} tache(s)` : 'Valider'}
               </button>
             </div>
           </div>
