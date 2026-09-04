@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
+import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
 import { generateId, exportProspectsCSV, geocodeBatch, toLocalDateStr } from '../utils/helpers';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 
@@ -30,7 +30,7 @@ export default function ImportPage() {
       const data = state.prospects.map(p => ({
         'Date de création': p.date_creation?.split('T')[0] || '',
         'Dénomination': p.nom_etablissement,
-        'Etat du contact/ Etapes': PIPELINE_LABELS[p.etape_pipeline] || p.etape_pipeline,
+        'Etat du contact/ Etapes': state.pipelineColumns.find(c => c.id === p.etape_pipeline)?.label || PIPELINE_LABELS[p.etape_pipeline] || p.etape_pipeline,
         'Type de prospect': ESTABLISHMENT_LABELS[p.type_etablissement] || p.type_etablissement,
         'Tournée / Secteur': p.secteur || '',
         'Nom': p.nom_contact?.split(' ').slice(1).join(' ') || p.nom_contact,
@@ -1465,8 +1465,9 @@ export default function ImportPage() {
                 <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
                   {crossMatches.map(m => {
                     const isSelected = crossSelected.has(m.prospect.id);
-                    const stageLabel = state.pipelineColumns.find(c => c.id === m.prospect.etape_pipeline)?.label
-                      || PIPELINE_LABELS[m.prospect.etape_pipeline] || m.prospect.etape_pipeline;
+                    const stageCol = state.pipelineColumns.find(c => c.id === m.prospect.etape_pipeline);
+                    const stageLabel = stageCol?.label || PIPELINE_LABELS[m.prospect.etape_pipeline] || m.prospect.etape_pipeline;
+                    const stageColor = stageCol?.color || PIPELINE_COLORS[m.prospect.etape_pipeline] || '#6b7280';
                     return (
                       <div
                         key={m.prospect.id}
@@ -1491,7 +1492,7 @@ export default function ImportPage() {
                           {m.prospect.telephone}
                         </div>
                         <div className="w-1/6 min-w-0">
-                          <span className="badge text-white text-[9px]" style={{ backgroundColor: PIPELINE_LABELS[m.prospect.etape_pipeline] ? '#6b7280' : '#6b7280' }}>
+                          <span className="badge text-white text-[9px]" style={{ backgroundColor: stageColor }}>
                             {stageLabel}
                           </span>
                         </div>

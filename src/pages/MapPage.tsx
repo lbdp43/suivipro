@@ -50,6 +50,16 @@ const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 
 export default function MapPage() {
   const { state, dispatch, dispatchLocal, getProspect, getCommercial } = useApp();
   const toast = useToast();
+
+  // Looks up label/color for a pipeline stage, preferring the dynamic
+  // (admin-editable) pipelineColumns list so custom stages work everywhere.
+  const getStageInfo = (stage: PipelineStage) => {
+    const col = state.pipelineColumns.find(c => c.id === stage);
+    return {
+      label: col?.label || PIPELINE_LABELS[stage] || stage,
+      color: col?.color || PIPELINE_COLORS[stage] || '#6b7280',
+    };
+  };
   const { startCall } = useCallModal();
   const [selectedTypes, setSelectedTypes] = usePersistedState<EstablishmentType[]>('map_types', []);
   const [selectedStages, setSelectedStages] = usePersistedState<PipelineStage[]>('map_stages', []);
@@ -441,13 +451,13 @@ export default function MapPage() {
         {/* Legende couleurs pipeline - cachee sur mobile */}
         <div className="hidden sm:flex items-center gap-2 flex-wrap">
           <span className="text-[10px] text-gray-400">Legende :</span>
-          {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
-            <span key={stage} className="flex items-center gap-1 text-[10px] text-gray-500">
+          {state.pipelineColumns.map(col => (
+            <span key={col.id} className="flex items-center gap-1 text-[10px] text-gray-500">
               <span
                 className="w-3 h-3 rounded-full inline-block border border-white shadow-sm"
-                style={{ backgroundColor: PIPELINE_COLORS[stage] }}
+                style={{ backgroundColor: col.color }}
               />
-              {PIPELINE_LABELS[stage]}
+              {col.label}
             </span>
           ))}
           {showClients && (
@@ -579,18 +589,18 @@ export default function MapPage() {
             <div>
               <p className="text-xs font-medium text-gray-500 mb-1.5">Etape pipeline</p>
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
+                {state.pipelineColumns.map(col => (
                   <button
-                    key={stage}
+                    key={col.id}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      selectedStages.includes(stage)
+                      selectedStages.includes(col.id)
                         ? 'text-white'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
-                    style={selectedStages.includes(stage) ? { backgroundColor: PIPELINE_COLORS[stage] } : {}}
-                    onClick={() => toggleStage(stage)}
+                    style={selectedStages.includes(col.id) ? { backgroundColor: col.color } : {}}
+                    onClick={() => toggleStage(col.id)}
                   >
-                    {PIPELINE_LABELS[stage]}
+                    {col.label}
                   </button>
                 ))}
               </div>
@@ -841,7 +851,7 @@ export default function MapPage() {
             );
           })}
           {showProspects && (maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)).map(prospect => {
-            const markerColor = showRdvPanel ? '#2563eb' : PIPELINE_COLORS[prospect.etape_pipeline];
+            const markerColor = showRdvPanel ? '#2563eb' : getStageInfo(prospect.etape_pipeline).color;
             return (
               <Marker
                 key={prospect.id}
@@ -866,9 +876,9 @@ export default function MapPage() {
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <span
                         className="badge text-white text-[10px]"
-                        style={{ backgroundColor: PIPELINE_COLORS[prospect.etape_pipeline] }}
+                        style={{ backgroundColor: getStageInfo(prospect.etape_pipeline).color }}
                       >
-                        {PIPELINE_LABELS[prospect.etape_pipeline]}
+                        {getStageInfo(prospect.etape_pipeline).label}
                       </span>
                       {prospect.tags.map(tagId => {
                         const tag = state.tags.find(t => t.id === tagId);

@@ -417,6 +417,16 @@ export default function ProspectsPage() {
     setter(next);
   };
 
+  // Looks up label/color for a pipeline stage, preferring the dynamic
+  // (admin-editable) pipelineColumns list so custom stages work everywhere.
+  const getStageInfo = (stage: PipelineStage) => {
+    const col = state.pipelineColumns.find(c => c.id === stage);
+    return {
+      label: col?.label || PIPELINE_LABELS[stage] || stage,
+      color: col?.color || PIPELINE_COLORS[stage] || '#6b7280',
+    };
+  };
+
   const prospectIdsWithRdv = useMemo(() => {
     const ids = new Set<string>();
     state.appointments.forEach(a => ids.add(a.prospect_id));
@@ -924,9 +934,9 @@ export default function ProspectsPage() {
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
                       className="text-[9px] text-white px-1.5 py-0.5 rounded-full font-medium"
-                      style={{ backgroundColor: PIPELINE_COLORS[p.etape_pipeline] }}
+                      style={{ backgroundColor: getStageInfo(p.etape_pipeline).color }}
                     >
-                      {PIPELINE_LABELS[p.etape_pipeline]}
+                      {getStageInfo(p.etape_pipeline).label}
                     </span>
                     <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
                       {p.score}pts
@@ -1069,14 +1079,14 @@ export default function ProspectsPage() {
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(stage => (
+                  {state.pipelineColumns.map(col => (
                     <button
-                      key={stage}
+                      key={col.id}
                       className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white transition-opacity hover:opacity-80"
-                      style={{ backgroundColor: PIPELINE_COLORS[stage] }}
-                      onClick={() => bulkChangeStage(stage)}
+                      style={{ backgroundColor: col.color }}
+                      onClick={() => bulkChangeStage(col.id)}
                     >
-                      {PIPELINE_LABELS[stage]}
+                      {col.label}
                     </button>
                   ))}
                 </div>
@@ -1225,8 +1235,8 @@ export default function ProspectsPage() {
               </div>
 
               <div className="flex items-center gap-2 mt-3">
-                <span className="badge text-white" style={{ backgroundColor: PIPELINE_COLORS[selectedProspect.etape_pipeline] }}>
-                  {PIPELINE_LABELS[selectedProspect.etape_pipeline]}
+                <span className="badge text-white" style={{ backgroundColor: getStageInfo(selectedProspect.etape_pipeline).color }}>
+                  {getStageInfo(selectedProspect.etape_pipeline).label}
                 </span>
                 <span className="badge bg-gray-100 text-gray-600">Score: {selectedProspect.score}</span>
                 {selectedProspect.tags.map(tagId => {
@@ -1772,8 +1782,8 @@ export default function ProspectsPage() {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Etape</label>
                   <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.etape_pipeline || 'nouveau'} onChange={e => setFormData(prev => ({ ...prev, etape_pipeline: e.target.value as PipelineStage }))}>
-                    {(Object.keys(PIPELINE_LABELS) as PipelineStage[]).map(s => (
-                      <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>
+                    {state.pipelineColumns.map(col => (
+                      <option key={col.id} value={col.id}>{col.label}</option>
                     ))}
                   </select>
                 </div>
