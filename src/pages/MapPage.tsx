@@ -1,15 +1,15 @@
-import { useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useState, useMemo, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
-  ChevronLeft, ChevronRight, Users, X, Check, Building2,
+  ChevronLeft, ChevronRight, Users, X, Check, Building2, Layers,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
 import { apiPut } from '../api/client';
-import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS } from '../types';
+import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS, CommercialZone, colorForCommercial } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
@@ -48,7 +48,7 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
 const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam', 0: 'Dim' };
 
 export default function MapPage() {
-  const { state, dispatch, dispatchLocal, getProspect } = useApp();
+  const { state, dispatch, dispatchLocal, getProspect, getCommercial } = useApp();
   const toast = useToast();
   const { startCall } = useCallModal();
   const [selectedTypes, setSelectedTypes] = usePersistedState<EstablishmentType[]>('map_types', []);
@@ -67,6 +67,18 @@ export default function MapPage() {
   const [showClients, setShowClients] = usePersistedState<boolean>('map_show_clients', false);
   const [showProspects, setShowProspects] = usePersistedState<boolean>('map_show_prospects', true);
   const [mapFilterCommercial, setMapFilterCommercial] = usePersistedState<string>('map_filter_commercial', '');
+  const [showZones, setShowZones] = usePersistedState<boolean>('map_show_zones', true);
+  const [zones, setZones] = useState<CommercialZone[]>([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('suivipro_token');
+    const zHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) zHeaders['Authorization'] = `Bearer ${token}`;
+    fetch('/api/commercial-zones', { headers: zHeaders })
+      .then(r => r.ok ? r.json() : [])
+      .then(setZones)
+      .catch(err => console.error('Erreur chargement zones:', err));
+  }, []);
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
   const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
@@ -315,6 +327,17 @@ export default function MapPage() {
                 {filteredClients.length}
               </span>
             )}
+          </button>
+          {/* Bouton Secteurs (zones dessinees) */}
+          <button
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
+              showZones ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+            }`}
+            onClick={() => setShowZones(!showZones)}
+            title="Afficher/masquer les secteurs dessines par les commerciaux"
+          >
+            <Layers className="w-4 h-4" />
+            <span className="hidden sm:inline">Secteurs</span>
           </button>
           {/* Bouton RDV */}
           <button
@@ -801,6 +824,22 @@ export default function MapPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          {showZones && zones.map(zone => {
+            const commercial = getCommercial(zone.commercial_id);
+            const color = colorForCommercial(zone.commercial_id);
+            return (
+              <Polygon
+                key={zone.id}
+                positions={zone.coordinates}
+                pathOptions={{ color, fillOpacity: 0.12, weight: 2 }}
+              >
+                <Tooltip sticky>
+                  {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'}
+                  {zone.nom ? ` — ${zone.nom}` : ''}
+                </Tooltip>
+              </Polygon>
+            );
+          })}
           {showProspects && (maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)).map(prospect => {
             const markerColor = showRdvPanel ? '#2563eb' : PIPELINE_COLORS[prospect.etape_pipeline];
             return (

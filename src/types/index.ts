@@ -538,6 +538,30 @@ export interface TaskClient {
   completed_at: string | null;
 }
 
+export interface CommercialZone {
+  id: string;
+  commercial_id: string;
+  nom: string;
+  couleur: string;
+  coordinates: [number, number][];
+  created_at: string;
+  updated_at: string;
+}
+
+export const ZONE_COLOR_PALETTE = [
+  '#6366f1', '#ef4444', '#22c55e', '#f59e0b', '#06b6d4',
+  '#a855f7', '#ec4899', '#84cc16', '#3b82f6', '#f97316',
+  '#14b8a6', '#8b5cf6',
+];
+
+export function colorForCommercial(commercialId: string): string {
+  let hash = 0;
+  for (let i = 0; i < commercialId.length; i++) {
+    hash = (hash * 31 + commercialId.charCodeAt(i)) >>> 0;
+  }
+  return ZONE_COLOR_PALETTE[hash % ZONE_COLOR_PALETTE.length];
+}
+
 export interface TourneeConfig {
   commercial_id: string;
   config: string; // JSON string of { "1": ["Zone A"], "2": ["Zone B"], ... }

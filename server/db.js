@@ -700,6 +700,23 @@ async function initDatabase(attempt = 1) {
       }
     } catch (err) { console.log('Pipeline datagouv migration:', err.message); }
 
+    // Migration: commercial_zones table (hand-drawn map zones per commercial)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS commercial_zones (
+          id TEXT PRIMARY KEY,
+          commercial_id TEXT NOT NULL,
+          nom TEXT DEFAULT '',
+          couleur TEXT DEFAULT '#6366f1',
+          coordinates TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+        )
+      `);
+      await client.query("CREATE INDEX IF NOT EXISTS idx_commercial_zones_commercial_id ON commercial_zones(commercial_id)");
+    } catch (err) { console.log('commercial_zones migration:', err.message); }
+
     // ============================================
     // Seed data (only if empty)
     // ============================================

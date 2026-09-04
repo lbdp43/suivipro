@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   MapPin, Save, Edit2, RefreshCw, ChevronDown, ChevronRight,
   User, Loader2, Info, Calendar, ArrowLeft, ArrowRight, ChevronLeft,
-  X, Plus, AlertTriangle, Users2, CheckSquare, Building2,
+  X, Plus, AlertTriangle, Users2, CheckSquare, Building2, Map as MapIcon,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Client } from '../types';
+import { Client, CommercialZone, colorForCommercial } from '../types';
 import { apiPut } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
+import ZoneDrawModal from '../components/ZoneDrawModal';
 
 interface TourneeConfig {
   commercial_id: string;
@@ -259,6 +260,8 @@ export default function TourneesPage() {
   const [expandedCommercials, setExpandedCommercials] = useState<Set<string>>(new Set());
   const [weekOffset, setWeekOffset] = useState(0);
   const [editProspectionZones, setEditProspectionZones] = useState<{ zone: string; slots: number }[]>([]);
+  const [zones, setZones] = useState<CommercialZone[]>([]);
+  const [drawingForCommercial, setDrawingForCommercial] = useState<CommercialInfo | null>(null);
 
   // Unique zones from clients + tournee configs
   const allZones = useMemo(() => {
@@ -309,7 +312,16 @@ export default function TourneesPage() {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  const loadZones = useCallback(async () => {
+    try {
+      const res = await fetch('/api/commercial-zones', { headers });
+      if (res.ok) setZones(await res.json());
+    } catch (err) {
+      console.error('Erreur chargement zones:', err);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); loadZones(); }, [loadData, loadZones]);
 
   const startEdit = () => {
     const myConfig = configs.find(c => c.commercial_id === currentUserId);
@@ -665,6 +677,29 @@ export default function TourneesPage() {
                 <p className="whitespace-pre-wrap break-words">{config.tournee_info}</p>
               </div>
             )}
+
+            {(() => {
+              const myZones = zones.filter(z => z.commercial_id === commercial.id);
+              const canEditZone = isAdmin || isMe;
+              return (
+                <div className="flex items-center justify-between gap-2 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg mb-3">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ background: colorForCommercial(commercial.id) }} />
+                    <span className="truncate">
+                      {myZones.length > 0 ? `${myZones.length} zone${myZones.length > 1 ? 's' : ''} dessinee${myZones.length > 1 ? 's' : ''} sur la carte` : 'Aucune zone dessinee sur la carte'}
+                    </span>
+                  </div>
+                  {canEditZone && (
+                    <button
+                      onClick={() => setDrawingForCommercial(commercial)}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1 flex-shrink-0"
+                    >
+                      <MapIcon className="w-3.5 h-3.5" /> {myZones.length > 0 ? 'Modifier' : 'Dessiner'} la zone
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {(() => {
               // Build prospection lookup: zone -> slots
@@ -1183,6 +1218,18 @@ export default function TourneesPage() {
             </div>
           )}
         </div>
+      )}
+
+      {drawingForCommercial && (
+        <ZoneDrawModal
+          commercialId={drawingForCommercial.id}
+          commercialName={`${drawingForCommercial.prenom} ${drawingForCommercial.nom}`}
+          color={colorForCommercial(drawingForCommercial.id)}
+          initialZones={zones.filter(z => z.commercial_id === drawingForCommercial.id)}
+          otherZones={zones.filter(z => z.commercial_id !== drawingForCommercial.id)}
+          onClose={() => { setDrawingForCommercial(null); loadZones(); }}
+          onChanged={loadZones}
+        />
       )}
     </div>
   );

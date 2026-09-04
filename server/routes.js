@@ -1607,6 +1607,58 @@ router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async 
 }));
 
 // ============================================
+// Commercial Zones (hand-drawn map territories)
+// ============================================
+
+router.get('/commercial-zones', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC');
+  res.json(result.rows.map(z => ({ ...z, coordinates: JSON.parse(z.coordinates) })));
+}));
+
+router.post('/commercial-zones', authMiddleware, asyncHandler(async (req, res) => {
+  const z = req.body;
+  if (!z.commercial_id) return validationError(res, ['commercial_id est requis']);
+  if (!Array.isArray(z.coordinates) || z.coordinates.length < 3) return validationError(res, ['coordinates doit contenir au moins 3 points']);
+  if (!isAdmin(req) && z.commercial_id !== req.user.id) {
+    return res.status(403).json({ error: 'Vous ne pouvez dessiner que votre propre zone' });
+  }
+  const now = new Date().toISOString();
+  const id = z.id || `zone-${crypto.randomUUID()}`;
+  await db.query(
+    `INSERT INTO commercial_zones (id, commercial_id, nom, couleur, coordinates, created_at, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [id, z.commercial_id, z.nom || '', z.couleur || '#6366f1', JSON.stringify(z.coordinates), now, now]
+  );
+  res.json({ id, commercial_id: z.commercial_id, nom: z.nom || '', couleur: z.couleur || '#6366f1', coordinates: z.coordinates, created_at: now, updated_at: now });
+}));
+
+router.put('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const z = req.body;
+  if (!Array.isArray(z.coordinates) || z.coordinates.length < 3) return validationError(res, ['coordinates doit contenir au moins 3 points']);
+  const existing = await db.query('SELECT commercial_id FROM commercial_zones WHERE id = $1', [req.params.id]);
+  if (existing.rows.length === 0) return res.status(404).json({ error: 'Zone introuvable' });
+  if (!isAdmin(req) && existing.rows[0].commercial_id !== req.user.id) {
+    return res.status(403).json({ error: 'Vous ne pouvez modifier que votre propre zone' });
+  }
+  const now = new Date().toISOString();
+  await db.query(
+    `UPDATE commercial_zones SET nom=$1, couleur=$2, coordinates=$3, updated_at=$4 WHERE id=$5`,
+    [z.nom || '', z.couleur || '#6366f1', JSON.stringify(z.coordinates), now, req.params.id]
+  );
+  res.json({ ok: true });
+}));
+
+router.delete('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const existing = await db.query('SELECT commercial_id FROM commercial_zones WHERE id = $1', [req.params.id]);
+  if (existing.rows.length === 0) return res.status(404).json({ error: 'Zone introuvable' });
+  if (!isAdmin(req) && existing.rows[0].commercial_id !== req.user.id) {
+    return res.status(403).json({ error: 'Vous ne pouvez supprimer que votre propre zone' });
+  }
+  await db.query('DELETE FROM commercial_zones WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ============================================
 // Visit Frequency Config (admin)
 // ============================================
 
