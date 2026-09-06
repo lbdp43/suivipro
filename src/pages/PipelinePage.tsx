@@ -6,7 +6,7 @@ import { useCallModal } from '../components/CallModal';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
-import { PIPELINE_LABELS, PIPELINE_COLORS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
+import { PIPELINE_LABELS, PIPELINE_COLORS, PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
@@ -488,10 +488,15 @@ export default function PipelinePage() {
               onDrop={e => handleDrop(e, col.id)}
             >
               {/* Column header */}
-              <div className="p-3 border-b border-gray-200 flex items-center gap-2">
-                <div className="pipeline-dot" style={{ backgroundColor: col.color }} />
-                <h3 className="font-semibold text-sm text-gray-900 flex-1">{col.label}</h3>
-                <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200">
+              <div className="p-3 border-b border-gray-200 flex items-start gap-2">
+                <div className="pipeline-dot mt-1" style={{ backgroundColor: col.color }} />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-sm text-gray-900 truncate">{col.label}</h3>
+                  {PIPELINE_DESCRIPTIONS[col.id] && (
+                    <p className="text-[10px] text-gray-400 leading-snug">({PIPELINE_DESCRIPTIONS[col.id]})</p>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200 flex-shrink-0">
                   {(prospectsByStage[col.id] || []).length}
                 </span>
               </div>

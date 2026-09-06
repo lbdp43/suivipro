@@ -88,6 +88,22 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   ne_pas_contacter: '#991b1b',
 };
 
+// Short explanation of how a prospect typically lands in each stage.
+// Only the original built-in stages have a known rule - custom
+// admin-created stages have no entry here (nothing to show).
+export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
+  nouveau_datagouv: 'importe automatiquement depuis data.gouv',
+  nouveau: 'cree manuellement, pas encore contacte',
+  a_contacter: 'en attente du premier appel/visite',
+  contacte: 'apres appel + rappel programme, ou email envoye',
+  proposition: 'RDV : commande plus tard / a relancer',
+  negociation: 'RDV : mail envoye, ou email envoye depuis la fiche',
+  gagne: 'RDV pris (planifie ou lors d\'un appel)',
+  client_gagne: 'RDV : Client, ou converti manuellement en client',
+  perdu: 'RDV ou appel : pas interesse',
+  ne_pas_contacter: 'appel : ne pas contacter, ou import liste noire',
+};
+
 export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoignable';
 
 export const CALL_RESULT_LABELS: Record<CallResult, string> = {

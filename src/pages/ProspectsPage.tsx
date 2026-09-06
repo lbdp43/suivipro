@@ -13,7 +13,7 @@ import { ocrProspect, convertProspectToClient, apiPost, apiPut, apiDelete, apiPa
 import { useToast } from '../components/Toast';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
-  ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS,
+  ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, PIPELINE_DESCRIPTIONS,
   APPOINTMENT_RESULT_LABELS, AppointmentResult, Appointment,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
@@ -717,7 +717,7 @@ export default function ProspectsPage() {
             <MultiSelectDropdown
               label="Etape"
               options={state.pipelineColumns.map(col => ({
-                value: col.id, label: col.label, color: col.color,
+                value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id],
               }))}
               selected={filterStages}
               onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}

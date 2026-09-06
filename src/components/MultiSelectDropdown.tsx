@@ -3,7 +3,7 @@ import { Filter, ChevronDown, Check } from 'lucide-react';
 
 interface MultiSelectDropdownProps {
   label: string;
-  options: { value: string; label: string; color?: string }[];
+  options: { value: string; label: string; color?: string; description?: string }[];
   selected: Set<string>;
   onToggle: (value: string) => void;
   color?: string;
@@ -86,7 +86,12 @@ export default function MultiSelectDropdown({ label, options, selected, onToggle
               {option.color && (
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: option.color }} />
               )}
-              <span className="truncate text-gray-700">{option.label}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-gray-700">{option.label}</span>
+                {option.description && (
+                  <span className="block truncate text-[10px] text-gray-400">({option.description})</span>
+                )}
+              </span>
             </button>
           ))}
         </div>
