@@ -556,8 +556,10 @@ export const COMMANDE_STATUT_LABELS: Record<CommandeStatut, string> = {
 export interface CommandeLigne {
   produit: string;
   quantite: number;
-  prix_unitaire: number;
+  prix_unitaire?: number;
   montant: number;
+  contenant?: string;
+  id_produit?: string;
 }
 
 export interface Commande {
@@ -574,6 +576,11 @@ export interface Commande {
   notes: string;
   source: string;
   date_creation: string;
+  // Champs enrichis depuis EasyBeer (optionnels)
+  paiement_etat?: string;
+  reste_a_payer?: number;
+  paiement_retard?: boolean;
+  commentaire?: string;
 }
 
 export type VisitStatus = 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF';

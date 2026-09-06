@@ -831,6 +831,19 @@ export default function ClientsPage() {
   const selectedInteractions = selectedClient ? getInteractionsForClient(selectedClient.id) : [];
   const selectedTasks = selectedClient ? getTasksForClient(selectedClient.id) : [];
   const selectedCommandes = selectedClient ? getCommandesForClient(selectedClient.id) : [];
+  const selectedTopProduits = (() => {
+    const agg: Record<string, number> = {};
+    for (const cmd of selectedCommandes) {
+      if (cmd.statut === 'annulee') continue;
+      for (const l of (cmd.lignes || [])) {
+        const key = (l.produit || '').trim();
+        if (!key) continue;
+        agg[key] = (agg[key] || 0) + (Number(l.quantite) || 0);
+      }
+    }
+    return Object.entries(agg).map(([produit, quantite]) => ({ produit, quantite }))
+      .sort((a, b) => b.quantite - a.quantite).slice(0, 5);
+  })();
 
   return (
     <div className="flex h-full">
@@ -1613,6 +1626,22 @@ export default function ClientsPage() {
           {selectedCommandes.length > 0 && (
           <div className="p-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Commandes ({selectedCommandes.length})</h3>
+
+            {/* Produits les plus commandes par ce client */}
+            {selectedTopProduits.length > 0 && (
+              <div className="mb-3 p-3 bg-brewery-50 rounded-lg border border-brewery-100">
+                <p className="text-[10px] uppercase tracking-wider text-brewery-700 font-semibold mb-1.5">Produits les plus commandes</p>
+                <div className="space-y-1">
+                  {selectedTopProduits.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate flex-1 text-gray-700">{i + 1}. {p.produit}</span>
+                      <span className="flex-shrink-0 ml-2 font-semibold text-brewery-700">{p.quantite}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               {selectedCommandes.slice(0, 10).map(cmd => (
                 <div key={cmd.id} className="p-2.5 bg-gray-50 rounded-lg">
@@ -1632,17 +1661,30 @@ export default function ClientsPage() {
                     <span>{cmd.date_commande ? formatDate(cmd.date_commande) : ''}</span>
                     {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
                   </div>
+                  {cmd.paiement_etat && (
+                    <div className="mt-1">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        cmd.paiement_retard ? 'bg-red-100 text-red-700' :
+                        cmd.paiement_etat === 'PAYEE' ? 'bg-green-100 text-green-700' :
+                        'bg-orange-100 text-orange-700'
+                      }`}>
+                        {cmd.paiement_etat === 'PAYEE' ? 'Payee' : cmd.paiement_retard ? 'Retard de paiement' : 'Non payee'}
+                        {cmd.reste_a_payer && cmd.reste_a_payer > 0 ? ` · reste ${cmd.reste_a_payer.toFixed(2)} €` : ''}
+                      </span>
+                    </div>
+                  )}
                   {cmd.lignes && cmd.lignes.length > 0 && (
                     <div className="mt-1.5 space-y-0.5">
-                      {cmd.lignes.slice(0, 5).map((l, i) => (
+                      {cmd.lignes.slice(0, 6).map((l, i) => (
                         <div key={i} className="flex justify-between text-[10px] text-gray-500">
-                          <span className="truncate flex-1">{l.produit}</span>
+                          <span className="truncate flex-1">{l.produit}{l.contenant ? ` · ${l.contenant}` : ''}</span>
                           <span className="flex-shrink-0 ml-2">x{l.quantite}</span>
                         </div>
                       ))}
-                      {cmd.lignes.length > 5 && <p className="text-[10px] text-gray-400">+{cmd.lignes.length - 5} autres</p>}
+                      {cmd.lignes.length > 6 && <p className="text-[10px] text-gray-400">+{cmd.lignes.length - 6} autres produits</p>}
                     </div>
                   )}
+                  {cmd.commentaire && <p className="text-[10px] text-gray-500 mt-1 italic">« {cmd.commentaire} »</p>}
                 </div>
               ))}
             </div>
