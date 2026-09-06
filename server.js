@@ -100,7 +100,11 @@ if (existsSync(DIST)) {
 app.use((err, req, res, _next) => {
   console.error('Unhandled route error:', err.stack || err.message);
   if (res.headersSent) return;
-  res.status(err.status || 500).json({ error: 'Erreur interne du serveur' });
+  // Le message (sans la pile) est renvoye : « z.toLowerCase is not a function » dit ou
+  // chercher, « Erreur interne du serveur » ne dit rien. Outil interne, utilisateurs
+  // authentifies : le gain de diagnostic vaut largement l'exposition d'un message.
+  const detail = err && err.message ? String(err.message).slice(0, 300) : '';
+  res.status(err.status || 500).json({ error: detail ? `Erreur interne du serveur : ${detail}` : 'Erreur interne du serveur' });
 });
 
 // Wait for database to be ready before starting server
