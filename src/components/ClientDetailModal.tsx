@@ -57,6 +57,21 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
     };
   }, [commandes]);
 
+  // Produits les plus commandes par ce client (agrege sur ses lignes de commande)
+  const topProduits = useMemo(() => {
+    const agg = new Map<string, number>();
+    for (const cmd of commandes) {
+      if (cmd.statut === 'annulee') continue;
+      for (const l of (cmd.lignes || [])) {
+        const key = (l.nom_produit || l.produit || '').trim();
+        if (!key) continue;
+        agg.set(key, (agg.get(key) || 0) + (Number(l.quantite) || 0));
+      }
+    }
+    return [...agg.entries()].map(([produit, quantite]) => ({ produit, quantite }))
+      .sort((a, b) => b.quantite - a.quantite).slice(0, 5);
+  }, [commandes]);
+
   // Interaction form
   const [showInteraction, setShowInteraction] = useState(false);
   const [interactionType, setInteractionType] = useState<InteractionType>('VISITE');
@@ -507,8 +522,24 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
           {commandes.length > 0 && (
             <div className="px-4 pt-2 pb-2 border-t border-gray-100">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Commandes ({commandes.length})</h3>
+
+              {/* Produits les plus commandes */}
+              {topProduits.length > 0 && (
+                <div className="mb-2.5 p-2.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">Produits les plus commandes</p>
+                  <div className="space-y-1">
+                    {topProduits.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="truncate flex-1 text-gray-700">{i + 1}. {p.produit}</span>
+                        <span className="flex-shrink-0 ml-2 font-semibold text-emerald-700">x{p.quantite}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
-                {commandes.slice(0, 5).map(cmd => (
+                {commandes.slice(0, 8).map(cmd => (
                   <div key={cmd.id} className="p-2.5 bg-gray-50 rounded-lg">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-medium text-gray-900">
@@ -526,8 +557,20 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
                       <span>{cmd.date_commande ? formatDate(cmd.date_commande) : ''}</span>
                       {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
                     </div>
+                    {cmd.lignes && cmd.lignes.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {cmd.lignes.slice(0, 6).map((l, i) => (
+                          <div key={i} className="flex justify-between text-[10px] text-gray-500">
+                            <span className="truncate flex-1">{l.nom_produit || l.produit}</span>
+                            <span className="flex-shrink-0 ml-2">x{l.quantite}</span>
+                          </div>
+                        ))}
+                        {cmd.lignes.length > 6 && <p className="text-[10px] text-gray-400">+{cmd.lignes.length - 6} autres produits</p>}
+                      </div>
+                    )}
                   </div>
                 ))}
+                {commandes.length > 8 && <p className="text-[10px] text-gray-400 text-center">+{commandes.length - 8} autres commandes</p>}
               </div>
             </div>
           )}
