@@ -121,7 +121,7 @@ export default function AdminPage() {
   const [ebConfig, setEbConfig] = useState({ username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
   const [ebAudit, setEbAudit] = useState<{ total: number; suspects: number; a_verifier: number; liens: any[] } | null>(null);
   const [ebAuditLoading, setEbAuditLoading] = useState(false);
-  const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; affichees?: number; par_score?: Record<string, number>; paires: any[] } | null>(null);
+  const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; affichees?: number; par_score?: Record<string, number>; identifiants_partages?: { emails: { valeur: string; clients: number }[]; telephones: { valeur: string; clients: number }[] }; paires: any[] } | null>(null);
   const [doublonsRecherche, setDoublonsRecherche] = useState('');
   const [doublonsFaibles, setDoublonsFaibles] = useState(false);
   const [doublonsLoading, setDoublonsLoading] = useState(false);
@@ -1580,6 +1580,22 @@ export default function AdminPage() {
                     <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{doublons.par_score?.nom_inclus} nom inclus</span>
                   )}
                 </div>
+                {((doublons.identifiants_partages?.emails.length || 0) + (doublons.identifiants_partages?.telephones.length || 0)) > 0 && (
+                  <div className="mb-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-900">
+                    <p className="font-medium mb-1">Contacts ignores comme preuve d'identite</p>
+                    <p className="text-blue-800 mb-1">
+                      Portes par 3 fiches ou plus, ce sont des contacts partages (boite mail de la brasserie,
+                      standard telephonique) : deux clients qui les partagent ne sont pas pour autant un doublon.
+                      Ils restent comparés sur leur nom.
+                    </p>
+                    <p className="text-blue-700">
+                      {[...(doublons.identifiants_partages?.emails || []), ...(doublons.identifiants_partages?.telephones || [])]
+                        .slice(0, 6)
+                        .map(x => `${x.valeur} (${x.clients} fiches)`)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
                   <input
                     type="text"
