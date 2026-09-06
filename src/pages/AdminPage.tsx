@@ -1775,6 +1775,9 @@ export default function AdminPage() {
                     <p>Commandes trouvees: <strong>{syncAllResult.total_orders_found || 0}</strong></p>
                     <p>Nouvelles importees: <strong>{syncAllResult.total_imported || 0}</strong></p>
                     <p>Deja existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
+                    {(syncAllResult.clients_importes_commande || 0) > 0 && (
+                      <p>Clients crees depuis leurs commandes: <strong>{syncAllResult.clients_importes_commande}</strong></p>
+                    )}
                     {(syncAllResult.total_echecs || 0) > 0 && (
                       <p>Non recuperees (API surchargee): <strong>{syncAllResult.total_echecs}</strong> — relancez la synchro pour les rattraper</p>
                     )}
