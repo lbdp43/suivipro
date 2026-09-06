@@ -1376,6 +1376,17 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   // qui déclenchaient le ban 10 req/s). Chaque commande porte son client.idClient :
   // le rattachement se fait par identifiant, jamais par nom.
   const idToLocal = new Map(allClientsToProcess.filter(c => c.clientId).map(c => [String(c.apiId), c]));
+
+  // Lien direct et fiable : les clients portent leur easybeer_id natif (pose par la sync
+  // clients). On s'en sert en priorite pour rattacher les commandes — sans dependre de la
+  // liste API ni du matching flou, qui laissaient des commandes en orphelines.
+  const liensDirects = await db.query(
+    "SELECT id, nom, easybeer_id FROM clients WHERE easybeer_id IS NOT NULL AND easybeer_id <> ''"
+  );
+  for (const row of liensDirects.rows) {
+    idToLocal.set(String(row.easybeer_id), { apiId: String(row.easybeer_id), clientId: row.id, clientNom: row.nom });
+  }
+  console.log(`[EasyBeer Bulk Sync] ${idToLocal.size} liens client disponibles (dont ${liensDirects.rows.length} par easybeer_id direct)`);
   const dateDebut = (req.body && req.body.dateDebut) || '2024-01-01';
   let toutesCommandes = [];
   try {
@@ -2156,13 +2167,20 @@ async function runClientSync() {
   let created = 0, updated = 0, skipped = 0, errors = 0;
   try {
     // Clients uniquement (jamais les prospects EasyBeer) : filtre inclureProspect=false.
+    // Pagination robuste : on ne se fie PAS au seul totalPages (avec un gros nombreParPage
+    // l'API en renvoie un incoherent, ce qui coupait la recuperation ~1186/3402 fiches).
+    // On pagine par lots de 200 et on s'arrete sur la premiere page incomplete.
     const clients = [];
-    for (let page = 1; page <= 40; page++) {
-      const res = await eb.listeClientsPage(auth.apiBase, auth.hdrs, { page, filtre: { inclureProspect: false } });
+    const parPage = 200;
+    let apiTotal = null;
+    for (let page = 1; page <= 100; page++) {
+      const res = await eb.listeClientsPage(auth.apiBase, auth.hdrs, { page, parPage, filtre: { inclureProspect: false } });
       const liste = (res && res.liste) || [];
+      if (page === 1 && res && res.totalElements != null) apiTotal = res.totalElements;
       clients.push(...liste);
-      if (!res || page >= (res.totalPages || 1)) break;
+      if (liste.length < parPage) break; // derniere page atteinte
     }
+    console.log(`[EasyBeer SyncClients] ${clients.length} fiches recuperees (totalElements annonce par l'API: ${apiTotal ?? '?'})`);
     for (const cli of clients) {
       try {
         const r = await upsertClientFromEasybeer(cli);
@@ -2170,7 +2188,8 @@ async function runClientSync() {
       } catch (e) { errors++; console.error('[EasyBeer SyncClients] client:', e.message); }
     }
     await db.query("UPDATE easybeer_sync_logs SET status='done', created=$2, updated=$3, skipped=$4, errors=$5, finished_at=$6, message=$7 WHERE id=$1",
-      [logId, created, updated, skipped, errors, new Date().toISOString(), `${created} crees, ${updated} maj, ${skipped} inchanges, ${errors} erreurs`]);
+      [logId, created, updated, skipped, errors, new Date().toISOString(),
+       `${clients.length} fiches API (annonce ${apiTotal ?? '?'}) - ${created} crees, ${updated} maj, ${skipped} inchanges, ${errors} erreurs`]);
     console.log(`[EasyBeer SyncClients] termine: ${created} crees, ${updated} maj, ${errors} erreurs`);
     return { ok: true, created, updated, skipped, errors };
   } catch (err) {
