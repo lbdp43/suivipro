@@ -1433,13 +1433,25 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
   console.log(`[EasyBeer Bulk Sync] ${toutesCommandes.length} commandes recuperees sur ${fenetres.length} fenetre(s) (${dateDebut} -> ${dateFin})`);
   totalFound = toutesCommandes.length;
 
+  // Progression toutes les 5 commandes : chaque commande nouvelle coute un appel detail,
+  // et l'API peut imposer des attentes de ~30 s. Un rafraichissement rare donnait
+  // l'impression que la synchro tournait dans le vide.
   let traitees = 0;
+  const debutBoucle = Date.now();
+  const messageProgression = () => {
+    const st = eb.statsEasybeer ? eb.statsEasybeer() : null;
+    const minutes = Math.round((Date.now() - debutBoucle) / 60000);
+    const attente = st && st.bans > 0
+      ? ` - API EasyBeer ralentie: ${st.bans} attente(s), ~${Math.round(st.attenteBanMs / 1000)}s perdues`
+      : '';
+    return `${traitees}/${totalFound} commandes traitees - ${totalImported} importees, ${totalSkipped} deja connues`
+      + `${attente} (depuis ${minutes} min)`;
+  };
   await onProgress(`0/${totalFound} commandes traitees`, { imported: 0, skipped: 0 });
   for (const cmd of toutesCommandes) {
     traitees++;
-    if (traitees % 25 === 0) {
-      await onProgress(`${traitees}/${totalFound} commandes traitees - ${totalImported} importees, ${totalSkipped} deja connues`,
-        { imported: totalImported, skipped: totalSkipped });
+    if (traitees % 5 === 0) {
+      await onProgress(messageProgression(), { imported: totalImported, skipped: totalSkipped });
     }
     const orderId = cmd.idCommande;
     if (!orderId) continue;
@@ -1506,9 +1518,14 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
 
   // Pas de renvoi de toutes les commandes ici : la charge utile (raw_data de chaque
   // commande) faisait plusieurs Mo et n'etait de toute facon pas utilisee par l'admin.
+  const statsApi = eb.statsEasybeer ? eb.statsEasybeer() : null;
+  if (statsApi && statsApi.bans > 0) {
+    debugInfo.push({ endpoint: 'regulation-api', bans: statsApi.bans, attente_s: Math.round(statsApi.attenteBanMs / 1000), cadence_ms: statsApi.intervalle });
+  }
   return {
     ok: true,
-    message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`,
+    message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`
+      + (statsApi && statsApi.bans > 0 ? ` (API EasyBeer ralentie: ${statsApi.bans} attente(s))` : ''),
     total_orders_found: totalFound,
     total_imported: totalImported,
     total_skipped: totalSkipped,
