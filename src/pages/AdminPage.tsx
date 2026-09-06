@@ -120,6 +120,8 @@ export default function AdminPage() {
   // EasyBeer state
   const [ebConfig, setEbConfig] = useState({ username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
   const [ebConfigLoaded, setEbConfigLoaded] = useState(false);
+  const [ebSyncLogs, setEbSyncLogs] = useState<Array<{ id: number; kind: string; status: string; created: number; updated: number; skipped: number; errors: number; message: string; started_at: string; finished_at: string }>>([]);
+  const [ebSyncing, setEbSyncing] = useState('');
   const [ebSaving, setEbSaving] = useState(false);
   const [ebTesting, setEbTesting] = useState(false);
   const [ebTestResult, setEbTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -372,12 +374,13 @@ export default function AdminPage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const [configRes, pendingRes, rulesRes, logsRes, orphanRes] = await Promise.all([
+      const [configRes, pendingRes, rulesRes, logsRes, orphanRes, syncRes] = await Promise.all([
         fetch('/api/easybeer/config', { headers }),
         fetch('/api/easybeer/pending-clients', { headers }),
         fetch('/api/assignment-rules', { headers }),
         fetch('/api/easybeer/webhook-logs', { headers }),
         fetch('/api/commandes/orphelines', { headers }),
+        fetch('/api/easybeer/sync-logs', { headers }),
       ]);
       if (configRes.ok) {
         const config = await configRes.json();
@@ -387,8 +390,31 @@ export default function AdminPage() {
       if (rulesRes.ok) setAssignmentRules(await rulesRes.json());
       if (logsRes.ok) setWebhookLogs(await logsRes.json());
       if (orphanRes.ok) setOrphanCommandes(await orphanRes.json());
+      if (syncRes.ok) setEbSyncLogs(await syncRes.json());
       setEbConfigLoaded(true);
     } catch { /* ignore */ }
+  };
+
+  const startEbSync = async (kind: 'clients' | 'commandes') => {
+    setEbSyncing(kind);
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const path = kind === 'clients' ? '/api/easybeer/sync-clients' : '/api/easybeer/sync-commandes-all';
+      const res = await fetch(path, { method: 'POST', headers });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) {
+        toast.success(data.message || 'Synchronisation lancee');
+        setTimeout(loadEasyBeerData, 1500);
+      } else {
+        toast.error(data.message || data.error || 'Echec du lancement');
+      }
+    } catch {
+      toast.error('Erreur reseau');
+    } finally {
+      setEbSyncing('');
+    }
   };
 
   const saveEbConfig = async () => {
@@ -1252,10 +1278,58 @@ export default function AdminPage() {
             <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
               <p className="font-medium text-gray-700 mb-1">URL du webhook a configurer dans EasyBeer :</p>
               <code className="bg-gray-200 px-2 py-1 rounded text-gray-800 break-all">
-                {window.location.origin}/api/webhook/easybeer/{ebConfig.webhook_secret || 'VOTRE_SECRET'}
+                {window.location.origin}/api/webhook/easybeer/{ebConfig.webhook_secret && ebConfig.webhook_secret !== '***' ? ebConfig.webhook_secret : 'VOTRE_SECRET'}
               </code>
-              <p className="mt-2 text-gray-500">EasyBeer envoie le secret dans l'URL. Le format supporte aussi le header <code className="bg-gray-200 px-1 rounded">X-Webhook-Secret</code>.</p>
+              <p className="mt-2 text-gray-500">Le secret est masque une fois enregistre. Un secret est desormais <strong>obligatoire</strong> : sans lui les webhooks sont refuses. Le format supporte aussi le header <code className="bg-gray-200 px-1 rounded">X-Webhook-Secret</code>.</p>
             </div>
+          </div>
+
+          {/* Synchronisation complete */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <RefreshCw className="w-4 h-4" /> Synchronisation EasyBeer
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Importe l'ensemble des <strong>clients</strong> EasyBeer (rattaches au bon commercial par leur identifiant natif), puis leurs <strong>commandes</strong>. Chaque commande cree automatiquement une visite avec son commentaire. Les operations tournent en arriere-plan.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                onClick={() => startEbSync('clients')}
+                disabled={!!ebSyncing}
+              >
+                {ebSyncing === 'clients' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Synchroniser les clients
+              </button>
+              <button
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                onClick={() => startEbSync('commandes')}
+                disabled={!!ebSyncing}
+              >
+                {ebSyncing === 'commandes' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Synchroniser les commandes
+              </button>
+              <button
+                className="px-3 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm flex items-center gap-2"
+                onClick={loadEasyBeerData}
+              >
+                <RefreshCw className="w-4 h-4" /> Rafraichir
+              </button>
+            </div>
+            {ebSyncLogs.length > 0 && (
+              <div className="mt-4 space-y-1">
+                <p className="text-xs font-medium text-gray-700">Dernieres synchronisations</p>
+                {ebSyncLogs.slice(0, 6).map(log => (
+                  <div key={log.id} className="flex items-center gap-2 text-xs p-2 bg-gray-50 rounded">
+                    <span className={`px-1.5 py-0.5 rounded font-medium ${log.status === 'done' ? 'bg-green-100 text-green-700' : log.status === 'running' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                      {log.kind}
+                    </span>
+                    <span className="text-gray-600 flex-1">{log.message || log.status}</span>
+                    <span className="text-gray-400">{log.started_at ? new Date(log.started_at).toLocaleString('fr-FR') : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Regles d'affectation */}

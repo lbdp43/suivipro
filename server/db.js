@@ -534,6 +534,38 @@ async function initDatabase(attempt = 1) {
       }
     } catch (err) { console.log('easybeer_commerciaux migration:', err.message); }
 
+    // Full client sync from EasyBeer may bring clients whose commercial is not (yet) mapped:
+    // allow a null commercial so nothing is lost (admin assigns later).
+    try { await client.query("ALTER TABLE clients ALTER COLUMN commercial_id DROP NOT NULL"); } catch { /* */ }
+
+    // Richer order fields captured from EasyBeer (payment state, order comment, visite guard).
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS paiement_etat TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS reste_a_payer DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS paiement_retard BOOLEAN DEFAULT FALSE"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS commentaire TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS commercial_easybeer_id TEXT DEFAULT ''"); } catch { /* */ }
+    // Guard so a given order creates the auto "visite" interaction only once.
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS visite_created BOOLEAN DEFAULT FALSE"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_commandes_easybeer_id ON commandes(easybeer_id) WHERE easybeer_id != ''"); } catch { /* */ }
+
+    // Log/lock table for the EasyBeer pull syncs (clients / commandes).
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS easybeer_sync_logs (
+          id SERIAL PRIMARY KEY,
+          kind TEXT NOT NULL DEFAULT 'clients',
+          status TEXT NOT NULL DEFAULT 'running',
+          created INTEGER DEFAULT 0,
+          updated INTEGER DEFAULT 0,
+          skipped INTEGER DEFAULT 0,
+          errors INTEGER DEFAULT 0,
+          message TEXT DEFAULT '',
+          started_at TEXT NOT NULL DEFAULT '',
+          finished_at TEXT DEFAULT ''
+        )
+      `);
+    } catch (err) { console.log('easybeer_sync_logs migration:', err.message); }
+
     // Add tournee_info and week_pattern to tournee_config
     try {
       await client.query("ALTER TABLE tournee_config ADD COLUMN IF NOT EXISTS tournee_info TEXT DEFAULT ''");

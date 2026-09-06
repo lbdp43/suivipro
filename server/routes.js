@@ -1834,6 +1834,314 @@ async function fetchFromEasyBeerWithRetry(apiBase, headers, id, maxRetries = 4) 
   return null;
 }
 
+// ============================================
+// EasyBeer full sync (clients + commandes) & auto-visite
+// ============================================
+
+// Returns { apiBase, headers, config } for the configured EasyBeer API, or null if not configured.
+async function easybeerAuth() {
+  const cfg = (await db.query('SELECT * FROM easybeer_config WHERE id = 1')).rows[0];
+  if (!cfg || !cfg.username || !cfg.api_url) return null;
+  const authHeader = 'Basic ' + Buffer.from(`${cfg.username}:${decrypt(cfg.password)}`).toString('base64');
+  const apiBase = (cfg.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
+  return { apiBase, headers: { 'Authorization': authHeader, 'Accept': 'application/json', 'Content-Type': 'application/json' }, config: cfg };
+}
+
+// Normalize the different order-line families of an EasyBeer order into a flat product list.
+function extractCommandeLignes(order) {
+  const out = [];
+  const push = (produit, contenant, quantite, montant, idProduit) => {
+    if (!produit && !contenant) return;
+    out.push({
+      produit: produit || contenant || '',
+      contenant: contenant || '',
+      quantite: parseFloat(quantite) || 0,
+      montant: parseFloat(montant) || 0,
+      id_produit: idProduit != null ? String(idProduit) : '',
+    });
+  };
+  for (const l of [...(order.elementsBouteilles || []), ...(order.elementsFuts || [])]) {
+    const prod = l.produit?.nomCommercial || l.produit?.nom || l.designation || l.libelle || '';
+    const cont = l.stockBouteille?.contenant?.libelleAvecContenance || l.stockBouteille?.contenant?.nom || l.designation || '';
+    push(prod, cont, l.quantite, l.prixTotalHT ?? l.total, l.produit?.idProduit ?? l.stockBouteille?.produit?.idProduit);
+  }
+  for (const l of (order.elementsAutres || [])) {
+    push(l.libelle || l.designation || l.nom || '', '', l.quantite, l.prixTotalHT ?? l.total ?? l.montant, l.idProduit);
+  }
+  for (const l of (order.elementsSaisieLibre || [])) {
+    push(l.libelle || l.designation || '', '', l.quantite, l.prixTotalHT ?? l.total ?? l.montant, null);
+  }
+  if (out.length === 0) {
+    const raw = order.lignes || order.details || order.articles || order.items || [];
+    if (Array.isArray(raw)) for (const l of raw) {
+      push(l.libelle || l.designation || l.nom || l.produit || '', '', l.quantite || l.qte || l.qty, l.montant || l.total || l.montantHT, l.idProduit);
+    }
+  }
+  return out;
+}
+
+// Extract the stored fields for a commande from an EasyBeer order object.
+function extractCommandeFields(order) {
+  const easybeerId = String(order.idCommande || order.id || order.idFacture || order.numero || '');
+  const numero = String(order.numero || order.reference || order.ref || easybeerId || '');
+  const toIso = (v) => (!v ? '' : (typeof v === 'number' ? new Date(v).toISOString() : String(v)));
+  const etatCode = (order.etat?.code || order.statut || order.status || '').toString().toLowerCase();
+  let statut = 'en_cours';
+  if (['livree', 'livré', 'delivered', 'facturee', 'facturée', 'invoiced', 'terminee'].some(s => etatCode.includes(s))) statut = 'livree';
+  else if (['annulee', 'annulée', 'cancelled', 'canceled'].some(s => etatCode.includes(s))) statut = 'annulee';
+  let commercialEb = '';
+  if (order.commercial && typeof order.commercial === 'object' && order.commercial.id != null) commercialEb = String(order.commercial.id);
+  return {
+    easybeer_id: easybeerId,
+    numero,
+    date_commande: toIso(order.dateCreation || order.date || order.dateCommande || order.datePiece),
+    date_livraison: toIso(order.dateLivraisonReelle || order.dateLivraison || order.dateExpedition),
+    statut,
+    montant_ht: parseFloat(order.totalHT ?? order.montantHT ?? order.montant_ht) || 0,
+    montant_ttc: parseFloat(order.totalTTC ?? order.montantTTC ?? order.total ?? order.netAPayer) || 0,
+    paiement_etat: order.paiementEtat?.code || '',
+    reste_a_payer: parseFloat(order.paiementEtat?.resteAPayer ?? order.resteAPayer) || 0,
+    paiement_retard: !!order.paiementRetard,
+    commentaire: order.commentaireClient || order.commentaire || order.note || order.notes || '',
+    commercial_easybeer_id: commercialEb,
+    lignes: extractCommandeLignes(order),
+  };
+}
+
+// Turn an imported order into a "visite" interaction on the client (idempotent per order).
+// Advances last_visit/next_visit only if the order is newer than the current last visit.
+// Never throws to its caller (order import must not fail because of this).
+async function createVisiteFromCommande(cmd) {
+  try {
+    if (!cmd || cmd.visite_created || !cmd.client_id) return;
+    const c = (await db.query('SELECT type_client, custom_recurrence, statut, commercial_id, last_visit FROM clients WHERE id = $1', [cmd.client_id])).rows[0];
+    if (!c) return;
+    let commercialId = c.commercial_id;
+    if (!commercialId && cmd.commercial_easybeer_id) commercialId = await resolveCommercialFromEasybeer(cmd.commercial_easybeer_id);
+    if (!commercialId) return; // interactions.commercial_id is NOT NULL
+    const now = new Date().toISOString();
+    const visitDate = cmd.date_commande || now;
+    const visitYmd = String(visitDate).split('T')[0];
+    const montant = cmd.montant_ttc ? ` - ${Number(cmd.montant_ttc).toFixed(2)}€ TTC` : '';
+    const base = `Commande #${cmd.numero}${montant}`;
+    const comment = cmd.commentaire ? `${base} — ${cmd.commentaire}` : base;
+    const interId = `int-${crypto.randomUUID()}`;
+
+    const dbClient = await db.connect();
+    try {
+      await dbClient.query('BEGIN');
+      await dbClient.query(
+        `INSERT INTO interactions (id, client_id, commercial_id, type, date, comment, date_creation)
+         VALUES ($1,$2,$3,'VISITE',$4,$5,$6)`,
+        [interId, cmd.client_id, commercialId, visitDate, comment, now]
+      );
+      // Only move the visit dates forward, never backward (matters for bulk backfill of old orders).
+      if (!c.last_visit || visitYmd >= String(c.last_visit)) {
+        let nextVisit = null;
+        if (c.statut === 'ACTIF') nextVisit = await calculateNextVisit(c.type_client, c.custom_recurrence, visitDate);
+        await dbClient.query('UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
+          [visitYmd, nextVisit, now, cmd.client_id]);
+      }
+      await dbClient.query('UPDATE commandes SET visite_created = TRUE WHERE id = $1', [cmd.id]);
+      await dbClient.query('COMMIT');
+    } catch (e) { await dbClient.query('ROLLBACK'); throw e; } finally { dbClient.release(); }
+  } catch (err) {
+    console.error('[EasyBeer] createVisiteFromCommande echoue:', err.message);
+  }
+}
+
+// Insert or update a commande for a client from an EasyBeer order object.
+async function upsertCommande(clientId, order, { createVisite = true } = {}) {
+  const f = extractCommandeFields(order);
+  if (!f.easybeer_id) return { created: false };
+  const existing = await db.query('SELECT id FROM commandes WHERE easybeer_id = $1 AND client_id = $2', [f.easybeer_id, clientId]);
+  if (existing.rows.length > 0) {
+    await db.query(
+      `UPDATE commandes SET numero=$2, date_commande=$3, date_livraison=$4, statut=$5, montant_ht=$6, montant_ttc=$7,
+         lignes=$8, paiement_etat=$9, reste_a_payer=$10, paiement_retard=$11, commentaire=$12, commercial_easybeer_id=$13 WHERE id=$1`,
+      [existing.rows[0].id, f.numero, f.date_commande, f.date_livraison, f.statut, f.montant_ht, f.montant_ttc,
+       JSON.stringify(f.lignes), f.paiement_etat, f.reste_a_payer, f.paiement_retard, f.commentaire, f.commercial_easybeer_id]
+    );
+    return { created: false, id: existing.rows[0].id };
+  }
+  const cmdId = `cmd-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO commandes (id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc,
+       lignes, notes, source, paiement_etat, reste_a_payer, paiement_retard, commentaire, commercial_easybeer_id, visite_created, date_creation)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'','easybeer',$11,$12,$13,$14,$15,FALSE,$16)`,
+    [cmdId, clientId, f.easybeer_id, f.numero, f.date_commande, f.date_livraison, f.statut, f.montant_ht, f.montant_ttc,
+     JSON.stringify(f.lignes), f.paiement_etat, f.reste_a_payer, f.paiement_retard, f.commentaire, f.commercial_easybeer_id, now]
+  );
+  if (createVisite) {
+    await createVisiteFromCommande({ id: cmdId, client_id: clientId, numero: f.numero, montant_ttc: f.montant_ttc,
+      commentaire: f.commentaire, date_commande: f.date_commande, commercial_easybeer_id: f.commercial_easybeer_id, visite_created: false });
+  }
+  return { created: true, id: cmdId };
+}
+
+// Insert or update one client from an EasyBeer client object. Returns 'created' | 'updated' | 'skipped'.
+async function upsertClientFromEasybeer(cli) {
+  const f = extractEbFieldsSync(cli);
+  if (!f.easybeer_id && !f.name) return 'skipped';
+  const now = new Date().toISOString();
+  const mappedCommercial = await resolveCommercialFromEasybeer(f.commercial_easybeer_id);
+  const clientType = mapEasyBeerTypeToClientType(f.type);
+
+  let existing = null;
+  if (f.easybeer_id) existing = (await db.query('SELECT * FROM clients WHERE easybeer_id = $1 LIMIT 1', [f.easybeer_id])).rows[0] || null;
+  if (!existing) existing = await findMatchingClient(f.name, f.email, f.phone, f.siret);
+
+  if (existing) {
+    await db.query(
+      `UPDATE clients SET
+         nom = COALESCE(NULLIF($2,''), nom),
+         ville = COALESCE(NULLIF($3,''), ville),
+         adresse = COALESCE(NULLIF($4,''), adresse),
+         code_postal = COALESCE(NULLIF($5,''), code_postal),
+         telephone = COALESCE(NULLIF($6,''), telephone),
+         telephone_mobile = COALESCE(NULLIF($7,''), telephone_mobile),
+         email = COALESCE(NULLIF($8,''), email),
+         contact = COALESCE(NULLIF($9,''), contact),
+         siret = COALESCE(NULLIF($10,''), siret),
+         tournee = COALESCE(NULLIF($11,''), tournee),
+         latitude = CASE WHEN $12::double precision != 0 THEN $12 ELSE latitude END,
+         longitude = CASE WHEN $13::double precision != 0 THEN $13 ELSE longitude END,
+         easybeer_id = COALESCE(NULLIF($14,''), easybeer_id),
+         easybeer_numero = COALESCE(NULLIF($15,''), easybeer_numero),
+         easybeer_commercial_id = COALESCE(NULLIF($16,''), easybeer_commercial_id),
+         easybeer_type_id = COALESCE(NULLIF($17,''), easybeer_type_id),
+         easybeer_tournee_id = COALESCE(NULLIF($18,''), easybeer_tournee_id),
+         commercial_id = CASE WHEN (commercial_id IS NULL OR commercial_id = '') AND $19 <> '' THEN $19 ELSE commercial_id END,
+         date_modification = $20
+       WHERE id = $1`,
+      [existing.id, f.name, f.city, f.address, f.postal_code, f.phone, f.phone_mobile, f.email, f.contact_name,
+       f.siret, f.tournee, f.latitude, f.longitude, f.easybeer_id, f.numero, f.commercial_easybeer_id, f.type_id, f.tournee_id,
+       mappedCommercial || '', now]
+    );
+    if (f.easybeer_id) {
+      try { await db.query("UPDATE easybeer_clients SET status='imported', imported_client_id=$1 WHERE easybeer_id=$2", [existing.id, f.easybeer_id]); } catch { /* staging row may not exist */ }
+    }
+    return 'updated';
+  }
+
+  const nextVisit = mappedCommercial ? await calculateNextVisit(clientType, null, null) : null;
+  const clientId = `cli-${crypto.randomUUID()}`;
+  await db.query(
+    `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
+       type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude,
+       easybeer_id, easybeer_numero, easybeer_commercial_id, easybeer_type_id, easybeer_tournee_id, date_creation, date_modification)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'ACTIF',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+    [clientId, f.name, f.city, f.address, f.postal_code, f.phone, f.phone_mobile, f.email, f.contact_name,
+     clientType, mappedCommercial || null, nextVisit, f.notes || '', f.siret, f.tournee, f.latitude, f.longitude,
+     f.easybeer_id, f.numero, f.commercial_easybeer_id, f.type_id, f.tournee_id, now, now]
+  );
+  if (f.easybeer_id) {
+    try { await db.query("UPDATE easybeer_clients SET status='imported', imported_client_id=$1 WHERE easybeer_id=$2", [clientId, f.easybeer_id]); } catch { /* */ }
+  }
+  return 'created';
+}
+
+// Fetch the list of EasyBeer orders for one EasyBeer client id (tries the known endpoints).
+async function fetchCommandesForEbClient(auth, ebClientId) {
+  const paths = [
+    `/parametres/client/${ebClientId}/commandes`,
+    `/param%C3%A8tres/client/${ebClientId}/commandes`,
+    `/commandes/client/${ebClientId}`,
+  ];
+  for (const p of paths) {
+    try {
+      const resp = await fetch(`${auth.apiBase}${p}`, { headers: auth.headers, signal: AbortSignal.timeout(15000) });
+      if (resp.ok) {
+        let data = await resp.json();
+        if (!Array.isArray(data)) data = data.liste || data.results || data.data || data.commandes || [];
+        if (Array.isArray(data)) return data;
+      }
+    } catch { /* next */ }
+  }
+  return [];
+}
+
+// Background job: pull all EasyBeer clients (paginated) and upsert them. Clients only, no prospects.
+let clientSyncRunning = false;
+async function runClientSync() {
+  if (clientSyncRunning) return { ok: false, message: 'Synchronisation deja en cours' };
+  const auth = await easybeerAuth();
+  if (!auth) return { ok: false, message: 'Configuration EasyBeer incomplete' };
+  clientSyncRunning = true;
+  const logId = (await db.query("INSERT INTO easybeer_sync_logs (kind,status,started_at) VALUES ('clients','running',$1) RETURNING id", [new Date().toISOString()])).rows[0].id;
+  let created = 0, updated = 0, skipped = 0, errors = 0;
+  try {
+    const perPage = 100;
+    let page = 0, totalPages = 1;
+    do {
+      let liste = [];
+      try {
+        const resp = await fetch(`${auth.apiBase}/parametres/client/liste`, {
+          method: 'POST', headers: auth.headers,
+          body: JSON.stringify({ colonneTri: 'libelle', mode: 'ASC', nombreParPage: perPage, numeroPage: page }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        liste = data.liste || data.results || data.content || [];
+        if (data.totalPages != null) totalPages = data.totalPages;
+        else totalPages = liste.length < perPage ? page + 1 : page + 2;
+      } catch (e) { errors++; console.error(`[EasyBeer SyncClients] page ${page}:`, e.message); break; }
+      for (const cli of liste) {
+        try {
+          const r = await upsertClientFromEasybeer(cli);
+          if (r === 'created') created++; else if (r === 'updated') updated++; else skipped++;
+        } catch (e) { errors++; console.error('[EasyBeer SyncClients] client:', e.message); }
+      }
+      page++;
+      await new Promise(r => setTimeout(r, 250));
+    } while (page < totalPages && page < 500); // hard cap: safety net if the API ignores pagination
+    await db.query("UPDATE easybeer_sync_logs SET status='done', created=$2, updated=$3, skipped=$4, errors=$5, finished_at=$6, message=$7 WHERE id=$1",
+      [logId, created, updated, skipped, errors, new Date().toISOString(), `${created} crees, ${updated} maj, ${skipped} inchanges, ${errors} erreurs`]);
+    console.log(`[EasyBeer SyncClients] termine: ${created} crees, ${updated} maj, ${errors} erreurs`);
+    return { ok: true, created, updated, skipped, errors };
+  } catch (err) {
+    await db.query("UPDATE easybeer_sync_logs SET status='error', message=$2, finished_at=$3 WHERE id=$1", [logId, err.message, new Date().toISOString()]);
+    return { ok: false, message: err.message };
+  } finally { clientSyncRunning = false; }
+}
+
+// Background job: for every linked client, pull its EasyBeer orders and upsert them (creating auto-visites).
+let commandesSyncRunning = false;
+async function runCommandesSyncAll() {
+  if (commandesSyncRunning) return { ok: false, message: 'Synchronisation deja en cours' };
+  const auth = await easybeerAuth();
+  if (!auth) return { ok: false, message: 'Configuration EasyBeer incomplete' };
+  commandesSyncRunning = true;
+  const logId = (await db.query("INSERT INTO easybeer_sync_logs (kind,status,started_at) VALUES ('commandes','running',$1) RETURNING id", [new Date().toISOString()])).rows[0].id;
+  let created = 0, updated = 0, errors = 0, done = 0;
+  try {
+    const clients = (await db.query("SELECT id, easybeer_id FROM clients WHERE easybeer_id <> '' ORDER BY id")).rows;
+    for (const c of clients) {
+      try {
+        const orders = await fetchCommandesForEbClient(auth, c.easybeer_id);
+        for (const order of orders) {
+          const r = await upsertCommande(c.id, order, { createVisite: true });
+          if (r.created) created++; else updated++;
+        }
+      } catch (e) { errors++; }
+      if (++done % 25 === 0) {
+        await db.query("UPDATE easybeer_sync_logs SET created=$2, updated=$3, errors=$4, message=$5 WHERE id=$1",
+          [logId, created, updated, errors, `${done}/${clients.length} clients traites`]);
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    await db.query("UPDATE easybeer_sync_logs SET status='done', created=$2, updated=$3, errors=$4, finished_at=$5, message=$6 WHERE id=$1",
+      [logId, created, updated, errors, new Date().toISOString(), `${created} commandes creees, ${updated} maj, ${errors} erreurs`]);
+    console.log(`[EasyBeer SyncCommandes] termine: ${created} creees, ${updated} maj, ${errors} erreurs`);
+    return { ok: true, created, updated, errors };
+  } catch (err) {
+    await db.query("UPDATE easybeer_sync_logs SET status='error', message=$2, finished_at=$3 WHERE id=$1", [logId, err.message, new Date().toISOString()]);
+    return { ok: false, message: err.message };
+  } finally { commandesSyncRunning = false; }
+}
+
 // Webhook endpoint (no auth, uses secret header)
 // EasyBeer webhook handler (shared by both routes)
 async function handleEasyBeerWebhook(req, res) {
@@ -2098,6 +2406,12 @@ async function handleEasyBeerWebhook(req, res) {
           ? lignes.map(l => `${l.produit} x${l.quantite}`).join(', ')
           : 'aucun detail produit';
         console.log(`[EasyBeer Webhook] Commande importee: #${numero} -> client ${clientId}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes (${lignesStr})`);
+
+        // Auto-create a "visite" interaction from this order, carrying its comment if any.
+        const orderComment = orderData.commentaireClient || orderData.commentaire || orderData.note || '';
+        const orderCommercialEb = (orderData.commercial && orderData.commercial.id != null) ? String(orderData.commercial.id) : '';
+        await createVisiteFromCommande({ id: cmdId, client_id: clientId, numero, montant_ttc: montantTtc,
+          commentaire: orderComment, date_commande: dateCmd, commercial_easybeer_id: orderCommercialEb, visite_created: false });
 
         // Create notification for the commercial
         try {
@@ -2382,6 +2696,53 @@ router.post('/easybeer/fix-client-types', authMiddleware, adminOnly, asyncHandle
 
   console.log(`[EasyBeer Fix Types] ${updated} clients mis a jour, ${skipped} inchanges`);
   res.json({ ok: true, updated, skipped, total: result.rows.length, details });
+}));
+
+// Full client pull sync (clients only, not prospects). Runs in background.
+router.post('/easybeer/sync-clients', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  if (clientSyncRunning) return res.json({ ok: false, message: 'Synchronisation clients deja en cours' });
+  runClientSync().catch((e) => console.error('[EasyBeer SyncClients] fatal:', e.message));
+  res.json({ ok: true, message: 'Synchronisation des clients lancee (suivi via les logs de sync)' });
+}));
+
+// Full commandes pull sync for all linked clients (creates auto-visites). Runs in background.
+router.post('/easybeer/sync-commandes-all', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  if (commandesSyncRunning) return res.json({ ok: false, message: 'Synchronisation commandes deja en cours' });
+  runCommandesSyncAll().catch((e) => console.error('[EasyBeer SyncCommandesAll] fatal:', e.message));
+  res.json({ ok: true, message: 'Synchronisation des commandes lancee (peut durer plusieurs minutes)' });
+}));
+
+// Recent sync runs (clients + commandes).
+router.get('/easybeer/sync-logs', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const r = await db.query('SELECT * FROM easybeer_sync_logs ORDER BY id DESC LIMIT 20');
+  res.json(r.rows);
+}));
+
+// Most-ordered products, aggregated from stored commandes. Scoped to the caller unless admin.
+router.get('/easybeer/top-produits', authMiddleware, asyncHandler(async (req, res) => {
+  const params = [];
+  let where = "WHERE cmd.statut <> 'annulee'";
+  if (!isAdmin(req)) { params.push(req.user.id); where += ` AND cl.commercial_id = $${params.length}`; }
+  else if (req.query.commercial_id) { params.push(String(req.query.commercial_id)); where += ` AND cl.commercial_id = $${params.length}`; }
+  if (req.query.since) { params.push(String(req.query.since)); where += ` AND cmd.date_commande >= $${params.length}`; }
+  const rows = (await db.query(`SELECT cmd.lignes FROM commandes cmd JOIN clients cl ON cl.id = cmd.client_id ${where}`, params)).rows;
+  const agg = new Map();
+  for (const row of rows) {
+    let lignes = [];
+    try { lignes = JSON.parse(row.lignes || '[]'); } catch { lignes = []; }
+    for (const l of lignes) {
+      const key = (l.produit || '').trim();
+      if (!key) continue;
+      const cur = agg.get(key) || { produit: key, quantite: 0, montant: 0, commandes: 0 };
+      cur.quantite += Number(l.quantite) || 0;
+      cur.montant += Number(l.montant) || 0;
+      cur.commandes += 1;
+      agg.set(key, cur);
+    }
+  }
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const top = [...agg.values()].sort((a, b) => b.quantite - a.quantite).slice(0, limit);
+  res.json(top);
 }));
 
 router.post('/easybeer/test-connection', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
