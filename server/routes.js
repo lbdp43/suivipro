@@ -2170,28 +2170,35 @@ async function notifyAdmins(type, title, message, data = {}) {
 // Returns { client, confidence: 'high'|'medium'|'low', matchType } or null
 async function findMatchingClient(name, email, phone, siret) {
   if (!name && !email && !phone && !siret) return null;
-  // SIRET is a strong identifier
+
+  // Un identifiant ne prouve une identite que s'il ne designe QU'UN seul client. Avec
+  // « LIMIT 1 », une boite mail de societe partagee par dizaines de fiches
+  // (labrasseriedesplantes@gmail.com par ex.) faisait matcher n'importe laquelle d'entre
+  // elles, au hasard de l'ordre renvoye par Postgres. On lit deux lignes : s'il y en a
+  // deux, la valeur n'est pas discriminante et on passe au critere suivant.
+  const unique = async (sql, params) => {
+    const r = await db.query(sql, params);
+    return r.rows.length === 1 ? r.rows[0] : null;
+  };
+
   if (siret && siret.length >= 9) {
-    const r = await db.query("SELECT * FROM clients WHERE siret = $1 LIMIT 1", [siret]);
-    if (r.rows.length > 0) return { client: r.rows[0], confidence: 'high', matchType: 'siret' };
+    const c = await unique('SELECT * FROM clients WHERE siret = $1 LIMIT 2', [siret]);
+    if (c) return { client: c, confidence: 'high', matchType: 'siret' };
   }
-  // Email match
   if (email) {
-    const r = await db.query('SELECT * FROM clients WHERE LOWER(email) = LOWER($1) LIMIT 1', [email]);
-    if (r.rows.length > 0) return { client: r.rows[0], confidence: 'high', matchType: 'email' };
+    const c = await unique('SELECT * FROM clients WHERE LOWER(email) = LOWER($1) LIMIT 2', [email]);
+    if (c) return { client: c, confidence: 'high', matchType: 'email' };
   }
-  // Phone match (strip formatting)
   if (phone) {
     const cleanPhone = phone.replace(/[\s\-\.]/g, '');
     if (cleanPhone.length >= 8) {
-      const r = await db.query("SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') = $1 OR REPLACE(REPLACE(REPLACE(telephone_mobile, ' ', ''), '-', ''), '.', '') = $1 LIMIT 1", [cleanPhone]);
-      if (r.rows.length > 0) return { client: r.rows[0], confidence: 'high', matchType: 'phone' };
+      const c = await unique("SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') = $1 OR REPLACE(REPLACE(REPLACE(telephone_mobile, ' ', ''), '-', ''), '.', '') = $1 LIMIT 2", [cleanPhone]);
+      if (c) return { client: c, confidence: 'high', matchType: 'phone' };
     }
   }
-  // Name match (exact, case-insensitive)
   if (name) {
-    const r = await db.query('SELECT * FROM clients WHERE LOWER(nom) = LOWER($1) LIMIT 1', [name]);
-    if (r.rows.length > 0) return { client: r.rows[0], confidence: 'medium', matchType: 'name_exact' };
+    const c = await unique('SELECT * FROM clients WHERE LOWER(nom) = LOWER($1) LIMIT 2', [name]);
+    if (c) return { client: c, confidence: 'medium', matchType: 'name_exact' };
   }
   // Fuzzy name: try without common suffixes/prefixes and trimmed
   if (name && name.length > 4) {
@@ -2200,8 +2207,8 @@ async function findMatchingClient(name, email, phone, siret) {
       .replace(/(sarl|sas|eurl|sa|srl| & cie)$/i, '')
       .trim();
     if (normalized.length > 3) {
-      const r = await db.query("SELECT * FROM clients WHERE LOWER(nom) LIKE $1 LIMIT 1", [`%${normalized}%`]);
-      if (r.rows.length > 0) return { client: r.rows[0], confidence: 'low', matchType: 'name_fuzzy' };
+      const c = await unique('SELECT * FROM clients WHERE LOWER(nom) LIKE $1 LIMIT 2', [`%${normalized}%`]);
+      if (c) return { client: c, confidence: 'low', matchType: 'name_fuzzy' };
     }
   }
   return null;
@@ -3813,9 +3820,12 @@ function preparerComparaison(c) {
 function comparerClients(a, b) {
   const p = (c) => (c._nom === undefined ? preparerComparaison(c) : c);
   a = p(a); b = p(b);
+  // _partage : identifiant porte par 3 fiches ou plus — boite mail de la societe,
+  // standard telephonique... Il ne dit plus « meme etablissement », donc on l'ignore
+  // ici comme preuve. Deux fiches qui le partagent restent comparees sur leur nom.
   if (a._siret && a._siret.length >= 9 && a._siret === b._siret) return { score: 100, motif: 'SIRET identique' };
-  if (a._email && a._email === b._email) return { score: 100, motif: 'Email identique' };
-  if (a._tel && a._tel.length >= 9 && a._tel === b._tel) return { score: 100, motif: 'Telephone identique' };
+  if (a._email && a._email === b._email && !a._emailPartage) return { score: 100, motif: 'Email identique' };
+  if (a._tel && a._tel.length >= 9 && a._tel === b._tel && !a._telPartage) return { score: 100, motif: 'Telephone identique' };
 
   const nA = a._nom, nB = b._nom;
   if (!nA || !nB || nA.length < 4 || nB.length < 4) return null;
@@ -3869,6 +3879,36 @@ router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (r
   });
 
   const prepares = clients.map(preparerComparaison);
+
+  // Un email ou un telephone porte par 3 fiches ou plus est un contact partage
+  // (boite mail de la brasserie, numero du siege...), pas un identifiant : il ne doit
+  // pas suffire a declarer un doublon. Deux fiches restent le seuil normal d'un vrai
+  // doublon, on ne coupe qu'au-dela.
+  const SEUIL_PARTAGE = 3;
+  const frequences = (valeurs) => {
+    const m = new Map();
+    for (const v of valeurs) if (v) m.set(v, (m.get(v) || 0) + 1);
+    return m;
+  };
+  const freqEmail = frequences(prepares.map(c => c._email));
+  const freqTel = frequences(prepares.map(c => c._tel));
+  // La forme normalisee sert de cle, mais on reaffiche la valeur telle qu'elle est
+  // saisie : « labrasseriedesplantesgmailcom » ne parle a personne.
+  const lisible = new Map();
+  for (const c of prepares) {
+    if (c._email && !lisible.has(c._email)) lisible.set(c._email, String(c.email || '').trim().toLowerCase());
+    if (c._tel && !lisible.has(c._tel)) lisible.set(c._tel, String(c.telephone || '').trim());
+  }
+  const partages = { emails: [], telephones: [] };
+  for (const c of prepares) {
+    c._emailPartage = !!c._email && (freqEmail.get(c._email) || 0) >= SEUIL_PARTAGE;
+    c._telPartage = !!c._tel && (freqTel.get(c._tel) || 0) >= SEUIL_PARTAGE;
+  }
+  for (const [valeur, n] of freqEmail) if (n >= SEUIL_PARTAGE) partages.emails.push({ valeur: lisible.get(valeur) || valeur, clients: n });
+  for (const [valeur, n] of freqTel) if (n >= SEUIL_PARTAGE) partages.telephones.push({ valeur: lisible.get(valeur) || valeur, clients: n });
+  partages.emails.sort((a, b) => b.clients - a.clients);
+  partages.telephones.sort((a, b) => b.clients - a.clients);
+
   const paires = [];
   for (let i = 0; i < prepares.length; i++) {
     for (let j = i + 1; j < prepares.length; j++) {
@@ -3894,6 +3934,8 @@ router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (r
     total_clients: clients.length,
     total_paires: paires.length,
     certains: paires.filter(p => p.score === 100).length,
+    // Contacts ignores comme preuve d'identite (portes par >= 3 fiches).
+    identifiants_partages: partages,
     // Repartition par niveau, pour que l'ecran puisse filtrer sans redemander la liste.
     par_score: {
       certains: paires.filter(p => p.score === 100).length,
