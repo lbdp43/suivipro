@@ -115,12 +115,29 @@ export default function CommercialClientsDashboard() {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
+  const [erreur, setErreur] = useState<string | null>(null);
   const loadData = useCallback(async () => {
     setLoading(true);
+    setErreur(null);
     try {
       const res = await fetch('/api/commercial/dashboard', { headers });
-      const result = await res.json();
-      setData(result);
+      const result = await res.json().catch(() => ({}));
+      // Une reponse d'erreur ({ error }) n'a pas la forme attendue : la stocker comme
+      // donnees faisait planter tout l'ecran sur data.today_clients.length.
+      if (!res.ok || !result || !Array.isArray(result.late_clients)) {
+        setErreur(result?.error || `Le serveur a repondu ${res.status}`);
+        setData(null);
+        return;
+      }
+      setData({
+        ...result,
+        today_clients: result.today_clients || [],
+        late_clients: result.late_clients || [],
+        pending_tasks: result.pending_tasks || [],
+        recent_interactions: result.recent_interactions || [],
+        rdv_sans_compte_rendu: result.rdv_sans_compte_rendu || [],
+        week_days: result.week_days || {},
+      });
 
       // Auto-expand today's day
       const today = new Date();
@@ -128,6 +145,7 @@ export default function CommercialClientsDashboard() {
       setExpandedDays(new Set([todayDay]));
     } catch (err) {
       console.error('Erreur chargement dashboard commercial:', err);
+      setErreur(err instanceof Error ? err.message : 'Erreur reseau');
     } finally {
       setLoading(false);
     }
@@ -153,7 +171,15 @@ export default function CommercialClientsDashboard() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    if (!erreur) return null;
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 flex items-center justify-between gap-3 flex-wrap">
+        <span>Impossible de charger la gestion clients : {erreur}</span>
+        <button onClick={loadData} className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">Reessayer</button>
+      </div>
+    );
+  }
 
   const todayStr = toLocalDateStr(new Date());
   const todayDayKey = String(new Date().getDay());
