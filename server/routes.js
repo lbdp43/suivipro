@@ -2097,6 +2097,21 @@ async function ensureSiteInternetGroup() {
   return SITE_INTERNET_CLIENT_ID;
 }
 
+// Client SuiviPro correspondant a un idClient Easybeer.
+// Priorite au lien natif porte par la fiche client (pose par la synchro clients) : la
+// table de staging easybeer_clients n'a de ligne que pour les fiches passees par un
+// webhook, donc elle rate la majorite des clients synchronises depuis l'API.
+async function clientLocalDepuisEasybeerId(ebClientId) {
+  if (!ebClientId) return null;
+  const direct = await db.query('SELECT id FROM clients WHERE easybeer_id = $1 LIMIT 1', [String(ebClientId)]);
+  if (direct.rows.length > 0) return direct.rows[0].id;
+  const staging = await db.query(
+    "SELECT imported_client_id FROM easybeer_clients WHERE easybeer_id = $1 AND status = 'imported' AND imported_client_id IS NOT NULL LIMIT 1",
+    [String(ebClientId)]
+  );
+  return staging.rows[0]?.imported_client_id || null;
+}
+
 // Une commande Easybeer vient-elle du site web ? (drapeaux posés par Easybeer)
 function estCommandeWeb(det) {
   return Boolean(det && (det.wooCommerce || det.shopify || det.prestashop || det.marketPlace));
@@ -2305,6 +2320,11 @@ async function runClientSync() {
 async function createVisiteFromCommandeRow(row) {
   try {
     if (!row || row.visite_created || !row.client_id) return false;
+    // Le groupe « Site internet » regroupe les ventes web : ce ne sont pas des visites.
+    if (row.client_id === SITE_INTERNET_CLIENT_ID) {
+      await db.query('UPDATE commandes SET visite_created = TRUE WHERE id = $1', [row.id]);
+      return false;
+    }
     const c = (await db.query('SELECT type_client, custom_recurrence, statut, commercial_id, last_visit FROM clients WHERE id = $1', [row.client_id])).rows[0];
     if (!c) return false;
     let commercialId = c.commercial_id;
@@ -2538,14 +2558,7 @@ async function handleEasyBeerWebhook(req, res) {
         // qui commande via le site reste chez son commercial).
         const commandeWeb = estCommandeWeb(orderData);
         if (commandeWeb) {
-          let lienExistant = null;
-          if (ebClientId) {
-            const r = await db.query(
-              "SELECT imported_client_id FROM easybeer_clients WHERE easybeer_id = $1 AND status = 'imported' AND imported_client_id IS NOT NULL",
-              [ebClientId]
-            );
-            lienExistant = r.rows[0]?.imported_client_id || null;
-          }
+          const lienExistant = await clientLocalDepuisEasybeerId(ebClientId);
           if (lienExistant) {
             clientId = lienExistant;
             console.log(`[EasyBeer Webhook] Commande web d'un client lie -> ${clientId}`);
@@ -2564,16 +2577,10 @@ async function handleEasyBeerWebhook(req, res) {
           }
         }
 
-        // 1. Try via easybeer_clients link
-        if (ebClientId) {
-          const ebMatch = await db.query(
-            "SELECT imported_client_id FROM easybeer_clients WHERE easybeer_id = $1 AND status = 'imported' AND imported_client_id IS NOT NULL",
-            [ebClientId]
-          );
-          if (ebMatch.rows.length > 0) {
-            clientId = ebMatch.rows[0].imported_client_id;
-            console.log(`[EasyBeer Webhook] Client trouve via easybeer_clients link: ${clientId}`);
-          }
+        // 1. Lien par identifiant EasyBeer natif (clients.easybeer_id), puis staging.
+        if (!clientId && ebClientId) {
+          clientId = await clientLocalDepuisEasybeerId(ebClientId);
+          if (clientId) console.log(`[EasyBeer Webhook] Client trouve par easybeer_id ${ebClientId}: ${clientId}`);
         }
 
         // 2. Rapprochement par identifiants forts UNIQUEMENT (siret/email/téléphone).
@@ -2708,11 +2715,26 @@ async function handleEasyBeerWebhook(req, res) {
            JSON.stringify(lignes), '', 'easybeer', cmdClientName, JSON.stringify(orderData), now]
         );
 
+        // Une commande = une visite (avec le commentaire de la commande), au fil de l'eau.
+        // Jusqu'ici seule la synchro en masse la creait : les commandes arrivees par
+        // webhook restaient sans visite jusqu'au prochain balayage.
+        const visiteCreee = await createVisiteFromCommandeRow({
+          id: cmdId,
+          client_id: clientId,
+          numero,
+          montant_ttc: montantTtc,
+          date_commande: dateCmd,
+          commentaire: '',
+          commercial_easybeer_id: '',
+          raw_data: JSON.stringify(orderData),
+          visite_created: false,
+        });
+
         const lignesStr = lignes.length > 0
           ? lignes.map(l => `${l.produit} x${l.quantite}`).join(', ')
           : 'aucun detail produit';
-        console.log(`[EasyBeer Webhook] Commande importee: #${numero} -> client ${clientId}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes (${lignesStr})`);
-        await updateWebhookResult(`OK: #${numero} -> client ${clientId}, ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits, fetched=${fetchedFrom || 'payload brut'}`);
+        console.log(`[EasyBeer Webhook] Commande importee: #${numero} -> client ${clientId}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes (${lignesStr})${visiteCreee ? ' + visite creee' : ''}`);
+        await updateWebhookResult(`OK: #${numero} -> client ${clientId}, ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits${visiteCreee ? ', visite creee' : ''}, fetched=${fetchedFrom || 'payload brut'}`);
 
         // Create notification for the commercial
         try {
