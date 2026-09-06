@@ -1234,6 +1234,26 @@ router.post('/easybeer/sync-commandes/:clientId', authMiddleware, asyncHandler(a
 // Bulk sync: fetch ALL orders from EasyBeer for all known clients
 // Uses working endpoints: historique-commande, commandes-en-cours, commande/detail
 // Pass { force: true } to delete existing EasyBeer commandes and re-import (useful for updating product names)
+// Easybeer refuse une periode > 1 an sur /commande/liste (HTTP 400 "La periode ne peut
+// pas etre superieure a 1 an"). On decoupe la plage demandee en fenetres consecutives
+// de 364 jours max (bornes incluses, format yyyy-MM-dd).
+function fenetresMax1An(debutStr, finStr) {
+  const JOUR = 86400000;
+  const fin = new Date(`${finStr}T00:00:00Z`);
+  let debut = new Date(`${debutStr}T00:00:00Z`);
+  if (isNaN(debut.getTime()) || isNaN(fin.getTime()) || debut > fin) {
+    return [{ debut: debutStr, fin: finStr }];
+  }
+  const fenetres = [];
+  while (debut <= fin) {
+    const borne = new Date(debut.getTime() + 364 * JOUR);
+    const finFenetre = borne < fin ? borne : fin;
+    fenetres.push({ debut: debut.toISOString().slice(0, 10), fin: finFenetre.toISOString().slice(0, 10) });
+    debut = new Date(finFenetre.getTime() + JOUR);
+  }
+  return fenetres;
+}
+
 router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (req, res) => {
   const { force } = req.body || {};
   if (force) {
@@ -1388,16 +1408,22 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   }
   console.log(`[EasyBeer Bulk Sync] ${idToLocal.size} liens client disponibles (dont ${liensDirects.rows.length} par easybeer_id direct)`);
   const dateDebut = (req.body && req.body.dateDebut) || '2024-01-01';
+  const dateFin = new Date().toISOString().slice(0, 10);
+  const fenetres = fenetresMax1An(dateDebut, dateFin);
   let toutesCommandes = [];
-  try {
-    toutesCommandes = await eb.listeCommandes(apiBase, hdrs, {
-      filtre: { dateDebutCreation: dateDebut, dateFinCreation: new Date().toISOString().slice(0, 10) },
-      maxPages: 60,
-    });
-    debugInfo.push({ endpoint: '/commande/liste/tous', count: toutesCommandes.length, depuis: dateDebut });
-  } catch (err) {
-    debugInfo.push({ endpoint: '/commande/liste/tous', error: err.message });
+  for (const fenetre of fenetres) {
+    try {
+      const lot = await eb.listeCommandes(apiBase, hdrs, {
+        filtre: { dateDebutCreation: fenetre.debut, dateFinCreation: fenetre.fin },
+        maxPages: 60,
+      });
+      toutesCommandes.push(...lot);
+      debugInfo.push({ endpoint: '/commande/liste/tous', periode: `${fenetre.debut} -> ${fenetre.fin}`, count: lot.length });
+    } catch (err) {
+      debugInfo.push({ endpoint: '/commande/liste/tous', periode: `${fenetre.debut} -> ${fenetre.fin}`, error: err.message });
+    }
   }
+  console.log(`[EasyBeer Bulk Sync] ${toutesCommandes.length} commandes recuperees sur ${fenetres.length} fenetre(s) (${dateDebut} -> ${dateFin})`);
   totalFound = toutesCommandes.length;
 
   for (const cmd of toutesCommandes) {
