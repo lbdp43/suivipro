@@ -5,7 +5,7 @@ import {
   Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
   Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
   Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
-  Users, CalendarPlus, StickyNote, LayoutList, CalendarDays, Map, ClipboardCheck,
+  Users, CalendarPlus, StickyNote, LayoutList, CalendarDays, Map, ClipboardCheck, Link2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -140,6 +140,8 @@ export default function ClientsPage() {
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [fusionOuverte, setFusionOuverte] = useState(false);
+  const [fusionEnCours, setFusionEnCours] = useState(false);
   const [bulkAction, setBulkAction] = useState<'none' | 'commercial' | 'tournee' | 'type' | 'statut' | 'next_visit' | 'recurrence' | 'visite' | 'retirer_recurrence' | 'supprimer_visites' | 'note' | 'tache'>('none');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkNextVisit, setBulkNextVisit] = useState('');
@@ -294,6 +296,7 @@ export default function ClientsPage() {
     setSelectedIds(new Set());
     setBulkAction('none');
     setBulkValue('');
+    setFusionOuverte(false);
   };
 
   const applyBulkAction = async () => {
@@ -466,6 +469,36 @@ export default function ClientsPage() {
     if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
     if (count > 0) toast.success(`${count} client(s) mis a jour`);
     exitSelectionMode();
+  };
+
+  // Fusion de deux fiches en double : tout l'historique du doublon part sur la fiche
+  // gardee (commandes, visites, taches, rendez-vous, lien EasyBeer), ses champs vides la
+  // completent, puis la fiche en trop est supprimee. Cote serveur c'est une transaction.
+  const fusionnerDeuxClients = async (garderId: string, supprimerId: string) => {
+    const garder = state.clients.find(c => c.id === garderId);
+    const supprimer = state.clients.find(c => c.id === supprimerId);
+    if (!garder || !supprimer) return;
+    const nbCommandes = getCommandesForClient(supprimerId).length;
+    const nbInteractions = getInteractionsForClient(supprimerId).length;
+    const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
+      + `${nbCommandes} commande(s) et ${nbInteractions} visite(s)/appel(s) de « ${supprimer.nom} » `
+      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimee.\n\nCette action est definitive.`;
+    if (!confirm(message)) return;
+    setFusionEnCours(true);
+    try {
+      const res = await apiPost('/clients/fusionner', { garder_id: garderId, supprimer_id: supprimerId }) as { ok?: boolean; message?: string };
+      if (res && res.ok) {
+        dispatchLocal({ type: 'DELETE_CLIENT', payload: supprimerId });
+        toast.success(res.message || 'Clients fusionnes');
+        setFusionOuverte(false);
+        exitSelectionMode();
+      } else {
+        toast.error('Echec de la fusion');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Echec de la fusion');
+    }
+    setFusionEnCours(false);
   };
 
   const bulkDelete = async () => {
@@ -1373,12 +1406,60 @@ export default function ClientsPage() {
                 {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'tache' ? `Creer ${selectedIds.size} tache(s)` : bulkAction === 'note' ? `${bulkNoteMode === 'append' ? 'Ajouter' : 'Remplacer'} (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
               </button>
             )}
-            <button
-              onClick={bulkDelete}
-              className="px-3 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg ml-auto"
-            >
-              <Trash2 className="w-3 h-3 inline mr-1" />Supprimer
-            </button>
+            <div className="flex items-center gap-2 ml-auto">
+              {isAdmin && (
+                <button
+                  onClick={() => setFusionOuverte(v => !v)}
+                  disabled={selectedIds.size !== 2}
+                  title={selectedIds.size === 2 ? 'Fusionner les deux fiches selectionnees' : 'Selectionnez exactement 2 clients pour les fusionner'}
+                  className="px-3 py-1 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg disabled:opacity-40"
+                >
+                  <Link2 className="w-3 h-3 inline mr-1" />Fusionner
+                </button>
+              )}
+              <button
+                onClick={bulkDelete}
+                className="px-3 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg"
+              >
+                <Trash2 className="w-3 h-3 inline mr-1" />Supprimer
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Choix de la fiche a conserver */}
+        {selectionMode && fusionOuverte && selectedIds.size === 2 && (
+          <div className="px-4 py-3 bg-brewery-50 border-b border-brewery-200">
+            <p className="text-xs font-semibold text-brewery-800 mb-2">
+              Quelle fiche garder ? L'autre y sera fusionnee puis supprimee.
+            </p>
+            <div className="grid md:grid-cols-2 gap-2">
+              {Array.from(selectedIds).map(id => {
+                const c = state.clients.find(x => x.id === id);
+                const autre = Array.from(selectedIds).find(x => x !== id);
+                if (!c || !autre) return null;
+                const nbCmd = getCommandesForClient(id).length;
+                const nbInter = getInteractionsForClient(id).length;
+                const commercial = getCommercial(c.commercial_id || '');
+                return (
+                  <div key={id} className="p-2 rounded-lg bg-white border border-gray-200 text-xs">
+                    <p className="font-medium text-gray-900">{c.nom}</p>
+                    <p className="text-gray-500">
+                      {[c.ville, c.code_postal].filter(Boolean).join(' ') || 'Sans ville'}
+                      {commercial ? ` · ${commercial.prenom}` : ' · sans commercial'}
+                    </p>
+                    <p className="text-gray-500">{nbCmd} commande(s) · {nbInter} visite(s)/appel(s)</p>
+                    <button
+                      className="mt-2 w-full px-2 py-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 disabled:opacity-50"
+                      disabled={fusionEnCours}
+                      onClick={() => fusionnerDeuxClients(id, autre)}
+                    >
+                      {fusionEnCours ? 'Fusion…' : 'Garder cette fiche'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
         <datalist id="bulk-tournee-list">
