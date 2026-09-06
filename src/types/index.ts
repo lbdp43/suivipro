@@ -598,6 +598,10 @@ export interface CommandeLigne {
   quantite: number;
   prix_unitaire: number;
   montant: number;
+  nom_produit?: string;
+  format?: string;
+  tva?: number;
+  reference?: string;
 }
 
 export interface Commande {

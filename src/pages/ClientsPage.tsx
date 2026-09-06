@@ -917,6 +917,19 @@ export default function ClientsPage() {
   const selectedInteractions = selectedClient ? getInteractionsForClient(selectedClient.id) : [];
   const selectedTasks = selectedClient ? getTasksForClient(selectedClient.id) : [];
   const selectedCommandes = selectedClient ? getCommandesForClient(selectedClient.id) : [];
+  const selectedTopProduits = (() => {
+    const agg: Record<string, number> = {};
+    for (const cmd of selectedCommandes) {
+      if (cmd.statut === 'annulee') continue;
+      for (const l of (cmd.lignes || [])) {
+        const key = (l.nom_produit || l.produit || '').trim();
+        if (!key) continue;
+        agg[key] = (agg[key] || 0) + (Number(l.quantite) || 0);
+      }
+    }
+    return Object.entries(agg).map(([produit, quantite]) => ({ produit, quantite }))
+      .sort((a, b) => b.quantite - a.quantite).slice(0, 5);
+  })();
 
   return (
     <div className="flex h-full">
@@ -1761,6 +1774,19 @@ export default function ClientsPage() {
           {selectedCommandes.length > 0 && (
           <div className="p-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Commandes ({selectedCommandes.length})</h3>
+            {selectedTopProduits.length > 0 && (
+              <div className="mb-3 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">Produits les plus commandes</p>
+                <div className="space-y-1">
+                  {selectedTopProduits.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate flex-1 text-gray-700">{i + 1}. {p.produit}</span>
+                      <span className="flex-shrink-0 ml-2 font-semibold text-emerald-700">x{p.quantite}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               {selectedCommandes.slice(0, 10).map(cmd => (
                 <div key={cmd.id} className="p-2.5 bg-gray-50 rounded-lg">

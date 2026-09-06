@@ -485,6 +485,80 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS tournee TEXT DEFAULT ''"); } catch { /* */ }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
+
+    // ============================================
+    // EasyBeer: rattachement par idCommercial natif + sync clients + commande->visite
+    // ============================================
+    // Native EasyBeer identifiers on the staging table
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS numero TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS commercial_easybeer_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS type_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS tournee_id TEXT DEFAULT ''"); } catch { /* */ }
+    // Native EasyBeer join keys on the real clients table
+    try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS easybeer_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS easybeer_numero TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS easybeer_commercial_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS easybeer_type_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS easybeer_tournee_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("CREATE INDEX IF NOT EXISTS idx_clients_easybeer_id ON clients(easybeer_id) WHERE easybeer_id != ''"); } catch { /* */ }
+    // Full client sync may bring clients whose commercial is not mapped yet -> allow null.
+    try { await client.query("ALTER TABLE clients ALTER COLUMN commercial_id DROP NOT NULL"); } catch { /* */ }
+    // Richer commande fields + auto-visite guard
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS paiement_etat TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS reste_a_payer DOUBLE PRECISION DEFAULT 0"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS paiement_retard BOOLEAN DEFAULT FALSE"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS commentaire TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS commercial_easybeer_id TEXT DEFAULT ''"); } catch { /* */ }
+    try { await client.query("ALTER TABLE commandes ADD COLUMN IF NOT EXISTS visite_created BOOLEAN DEFAULT FALSE"); } catch { /* */ }
+
+    // Mapping SuiviPro commercial <-> EasyBeer idCommercial natif (cle fiable, les emails different)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS easybeer_commerciaux (
+          suivipro_commercial_id TEXT PRIMARY KEY,
+          easybeer_id TEXT UNIQUE NOT NULL,
+          denomination TEXT DEFAULT '',
+          actif BOOLEAN DEFAULT TRUE,
+          updated_at TEXT NOT NULL DEFAULT '',
+          FOREIGN KEY (suivipro_commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+        )
+      `);
+      const nowTs = new Date().toISOString();
+      const ebMapping = [
+        ['Guillaume', '4468', 'Guillaume Porret'],
+        ['Louis', '31537', 'Louis Pacalon'],
+        ['Lucas', '31536', 'Lucas Vacher'],
+        ['Alban', '27060', 'Alban Lillio'],
+        ['Loic', '31535', 'Loic Adier'],
+        ['Etienne', '9495', 'Etienne DARINOT'],
+      ];
+      for (const [prenom, ebId, denom] of ebMapping) {
+        await client.query(
+          `INSERT INTO easybeer_commerciaux (suivipro_commercial_id, easybeer_id, denomination, updated_at)
+           SELECT id, $2, $3, $4 FROM commerciaux WHERE prenom = $1
+           ON CONFLICT DO NOTHING`,
+          [prenom, ebId, denom, nowTs]
+        );
+      }
+    } catch (err) { console.log('easybeer_commerciaux migration:', err.message); }
+
+    // Log/lock table for EasyBeer pull syncs
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS easybeer_sync_logs (
+          id SERIAL PRIMARY KEY,
+          kind TEXT NOT NULL DEFAULT 'clients',
+          status TEXT NOT NULL DEFAULT 'running',
+          created INTEGER DEFAULT 0,
+          updated INTEGER DEFAULT 0,
+          skipped INTEGER DEFAULT 0,
+          errors INTEGER DEFAULT 0,
+          message TEXT DEFAULT '',
+          started_at TEXT NOT NULL DEFAULT '',
+          finished_at TEXT DEFAULT ''
+        )
+      `);
+    } catch (err) { console.log('easybeer_sync_logs migration:', err.message); }
     try { await client.query("ALTER TABLE easybeer_clients ADD COLUMN IF NOT EXISTS commercial_name TEXT DEFAULT ''"); } catch { /* */ }
 
     // Add processing_result to webhooks

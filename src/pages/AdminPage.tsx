@@ -141,6 +141,9 @@ export default function AdminPage() {
   const [syncAllResult, setSyncAllResult] = useState<any>(null);
   const [exploringApi, setExploringApi] = useState(false);
   const [exploreResult, setExploreResult] = useState<any>(null);
+  const [syncingClients, setSyncingClients] = useState(false);
+  const [genVisites, setGenVisites] = useState(false);
+  const [ebSyncLogs, setEbSyncLogs] = useState<Array<{ id: number; kind: string; status: string; created: number; updated: number; skipped: number; errors: number; message: string; started_at: string }>>([]);
 
   // Tournee config state
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }>>({});
@@ -516,6 +519,39 @@ export default function AdminPage() {
       }
     } catch { toast.error('Erreur de synchronisation des commandes'); }
     setSyncingAllCommandes(false);
+  };
+
+  const ebHeaders = () => {
+    const token = localStorage.getItem('suivipro_token');
+    return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } as Record<string, string>;
+  };
+  const loadEbSyncLogs = async () => {
+    try {
+      const res = await fetch('/api/easybeer/sync-logs', { headers: ebHeaders() });
+      if (res.ok) setEbSyncLogs(await res.json());
+    } catch { /* ignore */ }
+  };
+  const syncClients = async () => {
+    setSyncingClients(true);
+    try {
+      const res = await fetch('/api/easybeer/sync-clients', { method: 'POST', headers: ebHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) {
+        toast.success(data.message || 'Synchronisation des clients lancee');
+        setTimeout(loadEbSyncLogs, 1500);
+      } else { toast.error(data.message || data.error || 'Echec du lancement'); }
+    } catch { toast.error('Erreur reseau'); }
+    setSyncingClients(false);
+  };
+  const genererVisites = async () => {
+    setGenVisites(true);
+    try {
+      const res = await fetch('/api/easybeer/generer-visites', { method: 'POST', headers: ebHeaders(), body: JSON.stringify({ sinceDays: 365 }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites creees depuis les commandes`);
+      else toast.error(data.message || 'Echec');
+    } catch { toast.error('Erreur reseau'); }
+    setGenVisites(false);
   };
 
   const exploreEasyBeerApi = async (round = 2) => {
@@ -1580,6 +1616,54 @@ export default function AdminPage() {
                     >
                       <X className="w-4 h-4 text-red-500" />
                     </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Synchronisation des clients EasyBeer */}
+          <div className="bg-white rounded-xl border border-emerald-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-emerald-800 flex items-center gap-2">
+                <RefreshCw className="w-4 h-4" /> Synchroniser les clients EasyBeer
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${syncingClients ? 'bg-emerald-400 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                  onClick={syncClients}
+                  disabled={syncingClients}
+                >
+                  <RefreshCw className={`w-4 h-4 ${syncingClients ? 'animate-spin' : ''}`} />
+                  {syncingClients ? 'Lancement...' : 'Synchroniser les clients'}
+                </button>
+                <button
+                  className="px-3 py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                  onClick={loadEbSyncLogs}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Logs
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Importe tous les clients EasyBeer (rattaches au bon commercial par leur identifiant natif). Lance ensuite « Synchroniser les commandes » : chaque commande cree une visite avec son commentaire.
+            </p>
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                className={`px-3 py-1.5 text-xs font-medium text-white rounded-lg ${genVisites ? 'bg-purple-300 cursor-wait' : 'bg-purple-500 hover:bg-purple-600'}`}
+                onClick={genererVisites}
+                disabled={genVisites}
+              >
+                {genVisites ? 'Generation...' : 'Generer les visites depuis les commandes'}
+              </button>
+            </div>
+            {ebSyncLogs.length > 0 && (
+              <div className="space-y-1">
+                {ebSyncLogs.slice(0, 6).map(log => (
+                  <div key={log.id} className="flex items-center gap-2 text-xs p-2 bg-gray-50 rounded">
+                    <span className={`px-1.5 py-0.5 rounded font-medium ${log.status === 'done' ? 'bg-green-100 text-green-700' : log.status === 'running' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{log.kind}</span>
+                    <span className="text-gray-600 flex-1">{log.message || log.status}</span>
+                    <span className="text-gray-400">{log.started_at ? new Date(log.started_at).toLocaleString('fr-FR') : ''}</span>
                   </div>
                 ))}
               </div>
