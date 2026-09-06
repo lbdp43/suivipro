@@ -1254,8 +1254,15 @@ function fenetresMax1An(debutStr, finStr) {
   return fenetres;
 }
 
-router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (req, res) => {
-  const { force } = req.body || {};
+// La synchro complete peut durer plusieurs minutes : des milliers de commandes, chacune
+// detaillee via l'API EasyBeer bridee (~3 req/s). Une reponse HTTP ne peut pas attendre
+// aussi longtemps — la requete etait coupee en route et l'admin affichait « Erreur de
+// synchronisation des commandes » alors que l'import tournait toujours. Le travail se fait
+// donc en arriere-plan (runCommandesSync) et l'ecran admin suit l'avancement par polling.
+let commandesSyncRunning = false;
+let derniereSyncCommandes = null;
+
+async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam } = {}, onProgress = async () => {}) {
   if (force) {
     const deleted = await db.query("DELETE FROM commandes WHERE source = 'easybeer'");
     console.log(`[EasyBeer Bulk Sync] Force mode: deleted ${deleted.rowCount} existing commandes`);
@@ -1264,7 +1271,7 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
   const config = configResult.rows[0];
   if (!config?.username || !config?.api_url) {
-    return res.json({ ok: false, message: 'Configuration EasyBeer incomplete' });
+    return { ok: false, message: 'Configuration EasyBeer incomplete' };
   }
 
   const decryptedPassword = decrypt(config.password);
@@ -1373,9 +1380,9 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   });
 
   if (matchedClients.length === 0 && unmatchedApiClients.length === 0) {
-    return res.json({ ok: false, message: apiClients.length === 0
+    return { ok: false, message: apiClients.length === 0
       ? 'API client/liste indisponible et aucun client lie dans la base. Importez d\'abord des clients via les webhooks ou manuellement.'
-      : 'Aucun client a synchroniser', debug: debugInfo, apiBase });
+      : 'Aucun client a synchroniser', debug: debugInfo, apiBase };
   }
 
   // Step 3: For each matched client, fetch commandes-en-cours + historique-commande using REAL API ID
@@ -1407,7 +1414,7 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     idToLocal.set(String(row.easybeer_id), { apiId: String(row.easybeer_id), clientId: row.id, clientNom: row.nom });
   }
   console.log(`[EasyBeer Bulk Sync] ${idToLocal.size} liens client disponibles (dont ${liensDirects.rows.length} par easybeer_id direct)`);
-  const dateDebut = (req.body && req.body.dateDebut) || '2024-01-01';
+  const dateDebut = dateDebutParam || '2024-01-01';
   const dateFin = new Date().toISOString().slice(0, 10);
   const fenetres = fenetresMax1An(dateDebut, dateFin);
   let toutesCommandes = [];
@@ -1426,7 +1433,14 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   console.log(`[EasyBeer Bulk Sync] ${toutesCommandes.length} commandes recuperees sur ${fenetres.length} fenetre(s) (${dateDebut} -> ${dateFin})`);
   totalFound = toutesCommandes.length;
 
+  let traitees = 0;
+  await onProgress(`0/${totalFound} commandes traitees`, { imported: 0, skipped: 0 });
   for (const cmd of toutesCommandes) {
+    traitees++;
+    if (traitees % 25 === 0) {
+      await onProgress(`${traitees}/${totalFound} commandes traitees - ${totalImported} importees, ${totalSkipped} deja connues`,
+        { imported: totalImported, skipped: totalSkipped });
+    }
     const orderId = cmd.idCommande;
     if (!orderId) continue;
     const ebCliId = cmd.client && cmd.client.idClient ? String(cmd.client.idClient) : '';
@@ -1490,8 +1504,9 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   // Genere les "visites" a partir des commandes importees (arriere-plan, idempotent).
   createVisitesFromCommandes({ sinceDays: 365 }).catch((e) => console.error('[EasyBeer Visites] fatal:', e.message));
 
-  const allCommandes = await db.query("SELECT * FROM commandes WHERE source = 'easybeer' ORDER BY date_commande DESC");
-  res.json({
+  // Pas de renvoi de toutes les commandes ici : la charge utile (raw_data de chaque
+  // commande) faisait plusieurs Mo et n'etait de toute facon pas utilisee par l'admin.
+  return {
     ok: true,
     message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`,
     total_orders_found: totalFound,
@@ -1503,8 +1518,69 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
     clients_unmatched: unmatchedApiClients.length,
     details: statsArray,
     debug: debugInfo,
-    commandes: allCommandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
-  });
+  };
+}
+
+// Enveloppe de fond : verrou anti-doublon, journal de sync et suivi de progression.
+async function runCommandesSync(options = {}) {
+  if (commandesSyncRunning) return { ok: false, running: true, message: 'Synchronisation des commandes deja en cours' };
+  commandesSyncRunning = true;
+  derniereSyncCommandes = null;
+  const debut = new Date().toISOString();
+  const logId = (await db.query(
+    "INSERT INTO easybeer_sync_logs (kind,status,started_at,message) VALUES ('commandes','running',$1,$2) RETURNING id",
+    [debut, 'Demarrage...']
+  )).rows[0].id;
+  const onProgress = async (message, stats = {}) => {
+    try {
+      await db.query("UPDATE easybeer_sync_logs SET message=$2, created=$3, skipped=$4 WHERE id=$1",
+        [logId, message, stats.imported || 0, stats.skipped || 0]);
+    } catch { /* le suivi ne doit jamais casser la sync */ }
+  };
+  try {
+    const resultat = await executerSyncCommandes(options, onProgress);
+    derniereSyncCommandes = { ...resultat, finished_at: new Date().toISOString() };
+    await db.query(
+      "UPDATE easybeer_sync_logs SET status=$2, created=$3, skipped=$4, errors=$5, message=$6, finished_at=$7 WHERE id=$1",
+      [logId, resultat.ok ? 'done' : 'error', resultat.total_imported || 0, resultat.total_skipped || 0,
+       (resultat.debug || []).filter(d => d && d.error).length, resultat.message, new Date().toISOString()]
+    );
+    return resultat;
+  } catch (err) {
+    console.error('[EasyBeer Bulk Sync] fatal:', err.message);
+    derniereSyncCommandes = { ok: false, message: err.message, finished_at: new Date().toISOString() };
+    await db.query("UPDATE easybeer_sync_logs SET status='error', message=$2, finished_at=$3 WHERE id=$1",
+      [logId, err.message, new Date().toISOString()]).catch(() => {});
+    return { ok: false, message: err.message };
+  } finally {
+    commandesSyncRunning = false;
+  }
+}
+
+// Lance la synchro complete des commandes (arriere-plan). Reponse immediate : l'admin
+// suit l'etat via GET /easybeer/sync-commandes-status.
+router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (req, res) => {
+  if (commandesSyncRunning) {
+    return res.json({ ok: true, running: true, message: 'Synchronisation des commandes deja en cours' });
+  }
+  const { force, dateDebut } = req.body || {};
+  runCommandesSync({ force: !!force, dateDebut }).catch((e) => console.error('[EasyBeer Bulk Sync] fatal:', e.message));
+  res.json({ ok: true, running: true, message: 'Synchronisation des commandes lancee (elle continue meme si vous quittez cette page)' });
+}));
+
+// Etat de la synchro des commandes : en cours + dernier resultat complet.
+router.get('/easybeer/sync-commandes-status', authMiddleware, asyncHandler(async (req, res) => {
+  const log = await db.query("SELECT * FROM easybeer_sync_logs WHERE kind = 'commandes' ORDER BY id DESC LIMIT 1");
+  let ligne = log.rows[0] || null;
+  // Un redemarrage du serveur (deploiement) tue une sync en cours : la ligne resterait
+  // « running » indefiniment. On la marque interrompue des qu'on constate l'incoherence.
+  if (ligne && ligne.status === 'running' && !commandesSyncRunning) {
+    const message = `${ligne.message || ''} (interrompue par un redemarrage du serveur)`.trim();
+    await db.query("UPDATE easybeer_sync_logs SET status='error', message=$2, finished_at=$3 WHERE id=$1",
+      [ligne.id, message, new Date().toISOString()]).catch(() => {});
+    ligne = { ...ligne, status: 'error', message };
+  }
+  res.json({ ok: true, running: commandesSyncRunning, log: ligne, resultat: derniereSyncCommandes });
 }));
 
 // ============================================

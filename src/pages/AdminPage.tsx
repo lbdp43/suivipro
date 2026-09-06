@@ -139,6 +139,8 @@ export default function AdminPage() {
   const [assignCmdClientSearch, setAssignCmdClientSearch] = useState('');
   const [syncingAllCommandes, setSyncingAllCommandes] = useState(false);
   const [syncAllResult, setSyncAllResult] = useState<any>(null);
+  const [syncCommandesProgress, setSyncCommandesProgress] = useState('');
+  const commandesPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [exploringApi, setExploringApi] = useState(false);
   const [exploreResult, setExploreResult] = useState<any>(null);
   const [syncingClients, setSyncingClients] = useState(false);
@@ -497,9 +499,67 @@ export default function AdminPage() {
     } catch { toast.error('Erreur de synchronisation'); }
   };
 
+  // La synchro tourne cote serveur en arriere-plan (plusieurs minutes possibles) : on la
+  // lance puis on interroge son etat, au lieu d'attendre une reponse HTTP qui finissait
+  // par etre coupee et affichait une fausse erreur.
+  const pollCommandesStatus = useCallback(() => {
+    if (commandesPollRef.current) clearInterval(commandesPollRef.current);
+    const tick = async () => {
+      try {
+        const token = localStorage.getItem('suivipro_token');
+        const res = await fetch('/api/easybeer/sync-commandes-status', {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.running) {
+          setSyncingAllCommandes(true);
+          setSyncCommandesProgress(data.log?.message || 'Synchronisation en cours...');
+          return;
+        }
+        if (commandesPollRef.current) { clearInterval(commandesPollRef.current); commandesPollRef.current = null; }
+        setSyncingAllCommandes(false);
+        setSyncCommandesProgress('');
+        if (data.resultat) {
+          setSyncAllResult(data.resultat);
+          if (data.resultat.ok && (data.resultat.total_imported || 0) > 0) {
+            toast.success(`${data.resultat.total_imported} commandes importees pour ${data.resultat.details?.length || 0} clients`);
+          } else if (data.resultat.ok) {
+            toast.success(data.resultat.message || 'Aucune nouvelle commande');
+          } else {
+            toast.error(data.resultat.message || 'Erreur de synchronisation');
+          }
+        }
+        loadEbSyncLogs();
+        loadEasyBeerData(); // Refresh orphan list
+      } catch { /* on retentera au prochain tick */ }
+    };
+    commandesPollRef.current = setInterval(tick, 4000);
+    tick();
+  }, []);
+
+  useEffect(() => () => { if (commandesPollRef.current) clearInterval(commandesPollRef.current); }, []);
+
+  // Au retour sur l'onglet EasyBeer, on reprend le suivi si une synchro tourne encore.
+  useEffect(() => {
+    if (activeTab !== 'easybeer' || commandesPollRef.current) return;
+    (async () => {
+      try {
+        const token = localStorage.getItem('suivipro_token');
+        const res = await fetch('/api/easybeer/sync-commandes-status', {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.running) pollCommandesStatus();
+      } catch { /* ignore */ }
+    })();
+  }, [activeTab, pollCommandesStatus]);
+
   const syncAllCommandes = async (force = false) => {
     setSyncingAllCommandes(true);
     setSyncAllResult(null);
+    setSyncCommandesProgress('Demarrage...');
     try {
       const token = localStorage.getItem('suivipro_token');
       const res = await fetch('/api/easybeer/sync-all-commandes', {
@@ -507,18 +567,20 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ force }),
       });
-      const data = await res.json();
-      setSyncAllResult(data);
-      if (data.ok && data.total_imported > 0) {
-        toast.success(`${data.total_imported} commandes importees pour ${data.details?.length || 0} clients`);
-        loadEasyBeerData(); // Refresh orphan list
-      } else if (data.ok && data.total_imported === 0) {
-        toast.success(data.message || 'Aucune nouvelle commande');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) {
+        toast.success(data.message || 'Synchronisation des commandes lancee');
+        pollCommandesStatus();
       } else {
-        toast.error(data.message || 'Erreur');
+        toast.error(data.message || 'Erreur au lancement de la synchronisation');
+        setSyncingAllCommandes(false);
+        setSyncCommandesProgress('');
       }
-    } catch { toast.error('Erreur de synchronisation des commandes'); }
-    setSyncingAllCommandes(false);
+    } catch {
+      toast.error('Erreur au lancement de la synchronisation des commandes');
+      setSyncingAllCommandes(false);
+      setSyncCommandesProgress('');
+    }
   };
 
   const ebHeaders = () => {
@@ -1683,7 +1745,7 @@ export default function AdminPage() {
                   disabled={syncingAllCommandes}
                 >
                   <RefreshCw className={`w-4 h-4 ${syncingAllCommandes ? 'animate-spin' : ''}`} />
-                  {syncingAllCommandes ? 'Sync...' : 'Synchroniser'}
+                  {syncingAllCommandes ? 'Sync en cours...' : 'Synchroniser'}
                 </button>
                 <button
                   className={`px-3 py-2 text-xs font-medium text-white rounded-lg ${syncingAllCommandes ? 'bg-orange-300 cursor-wait' : 'bg-orange-500 hover:bg-orange-600'}`}
@@ -1697,6 +1759,13 @@ export default function AdminPage() {
             <p className="text-xs text-gray-500 mb-3">
               Recupere la liste des clients depuis l'API EasyBeer, les matche par SIRET/nom/email, puis recupere toutes leurs commandes (en cours + livrees).
             </p>
+            {syncingAllCommandes && (
+              <div className="p-3 rounded-lg text-sm bg-blue-50 text-blue-800">
+                <p className="font-medium">Synchronisation des commandes en cours...</p>
+                <p className="text-xs mt-1">{syncCommandesProgress || 'Recuperation des commandes EasyBeer'}</p>
+                <p className="text-xs mt-1 opacity-75">Elle continue cote serveur meme si vous quittez cette page.</p>
+              </div>
+            )}
             {syncAllResult && (
               <div className={`p-3 rounded-lg text-sm ${syncAllResult.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
                 <p className="font-medium">{syncAllResult.message}</p>
