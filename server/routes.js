@@ -3894,7 +3894,17 @@ router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (r
     total_clients: clients.length,
     total_paires: paires.length,
     certains: paires.filter(p => p.score === 100).length,
-    paires: paires.slice(0, 300),
+    // Repartition par niveau, pour que l'ecran puisse filtrer sans redemander la liste.
+    par_score: {
+      certains: paires.filter(p => p.score === 100).length,
+      nom_identique: paires.filter(p => p.score === 80).length,
+      nom_inclus: paires.filter(p => p.score === 60).length,
+      mots_communs: paires.filter(p => p.score === 40).length,
+    },
+    // Plafond large : avec 300, des paires « nom identique » passaient a la trappe des
+    // que les rapprochements plus surs etaient nombreux.
+    affichees: Math.min(paires.length, 2000),
+    paires: paires.slice(0, 2000),
   });
 }));
 
