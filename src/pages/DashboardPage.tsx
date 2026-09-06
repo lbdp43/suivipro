@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users, Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
@@ -111,6 +111,29 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
   }
 }
 
+// Charge les compteurs d'activite de l'equipe pour une periode et les range par
+// commercial_id. Renvoie la fonction d'annulation attendue par useEffect.
+function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) => void) {
+  const range = getPeriodRange(periode);
+  const debut = toLocalDateStr(range.start);
+  const fin = toLocalDateStr(range.end);
+  let annule = false;
+  (async () => {
+    try {
+      const token = localStorage.getItem('suivipro_token');
+      const res = await fetch(`/api/prospection/activite?debut=${debut}&fin=${fin}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok || annule) return;
+      const data = await res.json();
+      const parId: Record<string, any> = {};
+      for (const a of (data.activites || [])) parId[a.commercial_id] = a;
+      poser(parId);
+    } catch { /* on retombe sur les donnees locales */ }
+  })();
+  return () => { annule = true; };
+}
+
 export default function DashboardPage() {
   const { state } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
@@ -126,6 +149,11 @@ export default function DashboardPage() {
   const [prospectionOuverte, setProspectionOuverte] = useState(() => {
     try { return localStorage.getItem('suivipro_dashboard_prospection') === 'ouvert'; } catch { return false; }
   });
+  // Activite de prospection de toute l'equipe. /state etant cloisonne, ces compteurs
+  // viennent d'un endpoint dedie qui ne renvoie que de l'activite (ni client, ni CA).
+  // Le classement et le tableau de performance ont chacun leur periode : deux jeux.
+  const [activitesEquipe, setActivitesEquipe] = useState<Record<string, any>>({});
+  const [activitesClassement, setActivitesClassement] = useState<Record<string, any>>({});
   const basculerProspection = () => {
     setProspectionOuverte(v => {
       try { localStorage.setItem('suivipro_dashboard_prospection', v ? 'ferme' : 'ouvert'); } catch { /* stockage indisponible */ }
@@ -343,12 +371,20 @@ export default function DashboardPage() {
         } catch { return false; }
       });
 
+      // Agregats serveur prioritaires (voir chargerActivites) : sans eux, un commercial
+      // verrait des zeros pour tous ses collegues.
+      const equipe = activitesClassement[user.id];
+      const nbCalls = equipe ? equipe.appels : periodCalls.length;
+      const nbRdv = equipe ? equipe.rdv_tenus : periodRdv.length;
+      const nbVisites = equipe ? equipe.visites : periodVisites.length;
+      const nbProspectsCrees = equipe ? equipe.prospects_crees : periodProspectsCreated.length;
+
       // For prospection role: score = calls + prospects created
       // For commercial/admin: score = rdv + visites + calls
       const isProspection = user.role === 'prospection';
       const score = isProspection
-        ? periodCalls.length + periodProspectsCreated.length
-        : periodRdv.length + periodVisites.length + periodCalls.length;
+        ? nbCalls + nbProspectsCrees
+        : nbRdv + nbVisites + nbCalls;
 
       // CA: sum commandes of this user's clients in the period
       const userClients = state.clients.filter(c => c.commercial_id === user.id);
@@ -367,10 +403,10 @@ export default function DashboardPage() {
 
       return {
         user,
-        periodCalls: periodCalls.length,
-        periodRdv: periodRdv.length,
-        periodVisites: periodVisites.length,
-        periodProspectsCreated: periodProspectsCreated.length,
+        periodCalls: nbCalls,
+        periodRdv: nbRdv,
+        periodVisites: nbVisites,
+        periodProspectsCreated: nbProspectsCrees,
         totalProspects: userProspects.length,
         score,
         periodCA,
@@ -378,7 +414,10 @@ export default function DashboardPage() {
         clientsLate,
       };
     }).sort((a, b) => b.score - a.score);
-  }, [allUsers, state, rankingPeriod]);
+  }, [allUsers, state, rankingPeriod, activitesClassement]);
+
+  useEffect(() => chargerActivites(perfPeriod, setActivitesEquipe), [perfPeriod]);
+  useEffect(() => chargerActivites(rankingPeriod, setActivitesClassement), [rankingPeriod]);
 
   // Performance table user activities (based on selected period)
   const perfUserActivities = useMemo(() => {
@@ -425,28 +464,34 @@ export default function DashboardPage() {
         ? Math.round((activeClients.filter(c => c.next_visit! >= today).length / activeClients.length) * 100)
         : -1; // -1 means no data
 
+      // Agregats serveur prioritaires : sans eux, un commercial ne verrait que ses
+      // propres chiffres et des zeros pour ses collegues.
+      const equipe = activitesEquipe[user.id];
+      const nbAppels = equipe ? equipe.appels : periodCalls.length;
       const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
-      const progress = objective > 0 ? Math.round((periodCalls.length / objective) * 100) : 0;
+      const progress = objective > 0 ? Math.round((nbAppels / objective) * 100) : 0;
 
       return {
         user,
-        todayCalls: todayCalls.length,
-        periodCalls: periodCalls.length,
-        periodRdv: periodRdv.length,
-        periodRdvTaken: periodRdvTaken.length,
-        periodVisites: periodVisites.length,
+        todayCalls: equipe ? equipe.appels_aujourdhui : todayCalls.length,
+        periodCalls: nbAppels,
+        periodRdv: equipe ? equipe.rdv_tenus : periodRdv.length,
+        periodRdvTaken: equipe ? equipe.rdv_pris : periodRdvTaken.length,
+        periodVisites: equipe ? equipe.visites : periodVisites.length,
         periodCA,
         coverageRate,
-        responseRate: periodResponseRate,
-        avgDuration: periodAvgDuration,
-        totalProspects: userProspects.length,
+        responseRate: equipe
+          ? (equipe.appels > 0 ? Math.round((equipe.appels_repondus / equipe.appels) * 100) : 0)
+          : periodResponseRate,
+        avgDuration: equipe ? equipe.duree_moyenne : periodAvgDuration,
+        totalProspects: equipe ? equipe.prospects_crees : userProspects.length,
         activeProspects: userProspects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length,
-        wonProspects,
+        wonProspects: equipe ? equipe.prospects_gagnes : wonProspects,
         objective,
         progress,
       };
     }).sort((a, b) => b.periodCalls - a.periodCalls);
-  }, [allUsers, state, perfPeriod]);
+  }, [allUsers, state, perfPeriod, activitesEquipe]);
 
   // Comparison period data
   const compareUserActivities = useMemo(() => {
@@ -1312,8 +1357,8 @@ export default function DashboardPage() {
                               <span className="text-[10px] text-indigo-600 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {ua.periodVisites} visites</span>
                             </>
                           )}
-                          {ua.periodCA > 0 && <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><Euro className="w-3 h-3" /> {ua.periodCA.toFixed(0)} EUR</span>}
-                          {(ua.clientsOnTime + ua.clientsLate) > 0 && (
+                          {isAdmin && ua.periodCA > 0 && <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><Euro className="w-3 h-3" /> {ua.periodCA.toFixed(0)} EUR</span>}
+                          {isAdmin && (ua.clientsOnTime + ua.clientsLate) > 0 && (
                             <span className={`text-[10px] flex items-center gap-0.5 ${ua.clientsLate > 0 ? 'text-red-600' : 'text-green-600'}`}>
                               <UserCheck className="w-3 h-3" /> {ua.clientsOnTime}/{ua.clientsOnTime + ua.clientsLate} visites OK
                             </span>
@@ -1333,8 +1378,9 @@ export default function DashboardPage() {
           </div>
           </div>
 
-          {/* Performance detaillee : tableau nominatif de toute l'equipe, admin uniquement */}
-          {isAdmin && (
+          {/* Performance detaillee. Visible de tous : ce sont des compteurs d'activite de
+              prospection, servis par /prospection/activite. Les colonnes CA et couverture
+              portent sur les clients : elles restent reservees aux admins. */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
@@ -1370,8 +1416,8 @@ export default function DashboardPage() {
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Rep.</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Duree</span><span className="sm:hidden">Dur.</span></th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Visites</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-500">CA</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-500">Couv.</th>
+                    {isAdmin && <th className="text-center py-3 px-2 font-medium text-gray-500">CA</th>}
+                    {isAdmin && <th className="text-center py-3 px-2 font-medium text-gray-500">Couv.</th>}
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Prospects</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Gagnes</th>
                   </tr>
@@ -1415,23 +1461,26 @@ export default function DashboardPage() {
                         </td>
                         <td className="text-center py-3 px-2 text-gray-600 text-xs">{formatDuration(ua.avgDuration)}</td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodVisites > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>{ua.periodVisites}</span></td>
+                        {isAdmin && (
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodCA > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>{ua.periodCA > 0 ? `${ua.periodCA.toFixed(0)}` : '—'}</span></td>
+                        )}
+                        {isAdmin && (
                         <td className="text-center py-3 px-2">
                           {ua.coverageRate >= 0 ? (
                             <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.coverageRate >= 80 ? 'bg-green-100 text-green-700' : ua.coverageRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.coverageRate}%</span>
                           ) : <span className="text-gray-400">—</span>}
                         </td>
+                        )}
                         <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-[10px] text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.wonProspects > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.wonProspects}{diffBadge(ua.wonProspects, cmp?.wonProspects)}</span></td>
                       </tr>
                     );
                   })}
-                  {perfUserActivities.length === 0 && <tr><td colSpan={14} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
+                  {perfUserActivities.length === 0 && <tr><td colSpan={isAdmin ? 14 : 12} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
-          )}
 
           {/* Historique mensuel */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
