@@ -12,14 +12,27 @@
 //    elementsSaisieLibre (PAS « lignes »), etat = OBJET {code, libelle}, totalHT/totalTTC.
 //  - Détail client  : GET /parametres/client/detail/{idClient}.
 
-const INTERVALLE_MS = 300;
+// Rythme adaptatif : on part a 300 ms entre deux appels, mais Easybeer bannit parfois
+// plus tot que la limite annoncee (10 req/s). Chaque ban coute ~30 s d'attente : plutot
+// que de les subir en boucle, on ralentit la cadence apres chaque ban et on la relache
+// doucement quand ca repasse. Les compteurs sont exposes pour l'affichage de progression.
+const INTERVALLE_MIN = 300;
+const INTERVALLE_MAX = 2000;
+let intervalle = INTERVALLE_MIN;
+let bans = 0;
+let attenteBanMs = 0;
 let chaine = Promise.resolve();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/** Compteurs de regulation (bans subis, temps d'attente cumule, cadence courante). */
+export function statsEasybeer() {
+  return { bans, attenteBanMs, intervalle };
+}
 
 /** Appel régulé + retry après ban. headers doit contenir Authorization (Basic). */
 export function ebFetch(apiBase, headers, path, { method = 'GET', query = null, body = null, timeout = 20000 } = {}) {
   const p = chaine.then(() => ebFetchBrut(apiBase, headers, path, { method, query, body, timeout }));
-  chaine = p.then(() => sleep(INTERVALLE_MS), () => sleep(INTERVALLE_MS));
+  chaine = p.then(() => sleep(intervalle), () => sleep(intervalle));
   return p;
 }
 
@@ -39,15 +52,30 @@ async function ebFetchBrut(apiBase, headers, path, opts, tentative = 0) {
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON */ }
   if (!res.ok) {
     const msg = (json && (json.message || json.error)) || text.slice(0, 200);
+    // Easybeer signale la surcharge de deux facons : un message « try again in N
+    // seconds » (avec le delai) OU un simple HTTP 429 « Too many requests » (sans
+    // delai). Ne traiter que le premier cas laissait tomber la requete sur le second :
+    // la commande n'etait jamais rechargee et disparaissait de l'import.
     const ban = /try again in (\d+) seconds?/i.exec(msg);
-    if (ban && tentative < 2) {
-      await sleep((Number(ban[1]) + 2) * 1000);
+    const surcharge = ban || res.status === 429;
+    if (surcharge && tentative < 4) {
+      const retryAfter = Number(res.headers.get('retry-after')) || 0;
+      const attente = ban ? (Number(ban[1]) + 2) * 1000
+        : retryAfter > 0 ? (retryAfter + 2) * 1000
+        : [5000, 15000, 30000, 60000][tentative];
+      bans++;
+      attenteBanMs += attente;
+      intervalle = Math.min(INTERVALLE_MAX, intervalle + 200);
+      console.log(`[Easybeer] surcharge (${ban ? `ban ${Number(ban[1])}s` : `HTTP ${res.status}`}) sur ${path} — attente ${Math.round(attente / 1000)}s, cadence portee a ${intervalle} ms`);
+      await sleep(attente);
       return ebFetchBrut(apiBase, headers, path, opts, tentative + 1);
     }
     const err = new Error(`Easybeer ${opts.method} ${path} → HTTP ${res.status} : ${msg}`);
     err.status = res.status;
     throw err;
   }
+  // Appel passe : on relache progressivement la cadence vers la valeur nominale.
+  if (intervalle > INTERVALLE_MIN) intervalle = Math.max(INTERVALLE_MIN, intervalle - 10);
   return json;
 }
 
