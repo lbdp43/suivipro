@@ -121,7 +121,9 @@ export default function AdminPage() {
   const [ebConfig, setEbConfig] = useState({ username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
   const [ebAudit, setEbAudit] = useState<{ total: number; suspects: number; a_verifier: number; liens: any[] } | null>(null);
   const [ebAuditLoading, setEbAuditLoading] = useState(false);
-  const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; paires: any[] } | null>(null);
+  const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; affichees?: number; par_score?: Record<string, number>; paires: any[] } | null>(null);
+  const [doublonsRecherche, setDoublonsRecherche] = useState('');
+  const [doublonsFaibles, setDoublonsFaibles] = useState(false);
   const [doublonsLoading, setDoublonsLoading] = useState(false);
   const [fusionEnCours, setFusionEnCours] = useState<string | null>(null);
   const [ebRelierChoix, setEbRelierChoix] = useState<Record<string, string>>({});
@@ -1571,12 +1573,40 @@ export default function AdminPage() {
                   {doublons.certains > 0 && (
                     <span className="px-2 py-1 rounded bg-red-100 text-red-700">{doublons.certains} certaine(s)</span>
                   )}
+                  {(doublons.par_score?.nom_identique || 0) > 0 && (
+                    <span className="px-2 py-1 rounded bg-amber-100 text-amber-700">{doublons.par_score?.nom_identique} nom identique</span>
+                  )}
+                  {(doublons.par_score?.nom_inclus || 0) > 0 && (
+                    <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{doublons.par_score?.nom_inclus} nom inclus</span>
+                  )}
                 </div>
-                {doublons.paires.length === 0 ? (
-                  <p className="text-sm text-green-700">Aucun doublon detecte ✓</p>
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  <input
+                    type="text"
+                    className="flex-1 min-w-[12rem] px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                    placeholder="Chercher un client dans la liste…"
+                    value={doublonsRecherche}
+                    onChange={e => setDoublonsRecherche(e.target.value)}
+                  />
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <input type="checkbox" checked={doublonsFaibles} onChange={e => setDoublonsFaibles(e.target.checked)} />
+                    Afficher aussi les rapprochements faibles ({doublons.par_score?.mots_communs || 0})
+                  </label>
+                </div>
+                {(() => {
+                  const q = doublonsRecherche.trim().toLowerCase();
+                  const visibles = doublons.paires.filter((p: any) =>
+                    (doublonsFaibles || p.score > 40) &&
+                    (!q || p.clients.some((c: any) => (c.nom || '').toLowerCase().includes(q) || (c.ville || '').toLowerCase().includes(q)))
+                  );
+                  return visibles.length === 0 ? (
+                  <p className="text-sm text-gray-600">
+                    {doublons.paires.length === 0 ? 'Aucun doublon detecte ✓' : 'Aucune paire ne correspond a ce filtre.'}
+                  </p>
                 ) : (
                   <div className="space-y-3 max-h-[32rem] overflow-y-auto">
-                    {doublons.paires.map((paire: any, i: number) => (
+                    <p className="text-xs text-gray-500">{visibles.length} paire(s) affichee(s)</p>
+                    {visibles.map((paire: any, i: number) => (
                       <div key={`${paire.clients[0].id}-${paire.clients[1].id}-${i}`}
                         className={`p-3 rounded-lg border ${paire.score === 100 ? 'border-red-200 bg-red-50' : paire.score >= 80 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
                         <p className="text-xs font-medium text-gray-600 mb-2">{paire.motif}</p>
@@ -1615,7 +1645,7 @@ export default function AdminPage() {
                       </div>
                     ))}
                   </div>
-                )}
+                ); })()}
               </div>
             )}
           </div>
