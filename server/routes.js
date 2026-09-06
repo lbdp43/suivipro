@@ -1522,10 +1522,15 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
   if (statsApi && statsApi.bans > 0) {
     debugInfo.push({ endpoint: 'regulation-api', bans: statsApi.bans, attente_s: Math.round(statsApi.attenteBanMs / 1000), cadence_ms: statsApi.intervalle });
   }
+  // Commandes dont le detail n'a pas pu etre recupere : elles ne sont pas en base, donc
+  // une relance de la synchro les reprendra. On le dit explicitement.
+  const totalEchecs = debugInfo.filter(d => d && d.error && String(d.endpoint || '').startsWith('commande/detail/')).length;
   return {
     ok: true,
     message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`
+      + (totalEchecs > 0 ? ` — ${totalEchecs} non recuperees (relancez la synchro)` : '')
       + (statsApi && statsApi.bans > 0 ? ` (API EasyBeer ralentie: ${statsApi.bans} attente(s))` : ''),
+    total_echecs: totalEchecs,
     total_orders_found: totalFound,
     total_imported: totalImported,
     total_skipped: totalSkipped,

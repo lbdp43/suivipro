@@ -52,13 +52,21 @@ async function ebFetchBrut(apiBase, headers, path, opts, tentative = 0) {
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON */ }
   if (!res.ok) {
     const msg = (json && (json.message || json.error)) || text.slice(0, 200);
+    // Easybeer signale la surcharge de deux facons : un message « try again in N
+    // seconds » (avec le delai) OU un simple HTTP 429 « Too many requests » (sans
+    // delai). Ne traiter que le premier cas laissait tomber la requete sur le second :
+    // la commande n'etait jamais rechargee et disparaissait de l'import.
     const ban = /try again in (\d+) seconds?/i.exec(msg);
-    if (ban && tentative < 4) {
-      const attente = (Number(ban[1]) + 2) * 1000;
+    const surcharge = ban || res.status === 429;
+    if (surcharge && tentative < 4) {
+      const retryAfter = Number(res.headers.get('retry-after')) || 0;
+      const attente = ban ? (Number(ban[1]) + 2) * 1000
+        : retryAfter > 0 ? (retryAfter + 2) * 1000
+        : [5000, 15000, 30000, 60000][tentative];
       bans++;
       attenteBanMs += attente;
       intervalle = Math.min(INTERVALLE_MAX, intervalle + 200);
-      console.log(`[Easybeer] ban ${Number(ban[1])}s sur ${path} — cadence portee a ${intervalle} ms`);
+      console.log(`[Easybeer] surcharge (${ban ? `ban ${Number(ban[1])}s` : `HTTP ${res.status}`}) sur ${path} — attente ${Math.round(attente / 1000)}s, cadence portee a ${intervalle} ms`);
       await sleep(attente);
       return ebFetchBrut(apiBase, headers, path, opts, tentative + 1);
     }
