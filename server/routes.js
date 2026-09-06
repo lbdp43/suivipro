@@ -205,22 +205,38 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
-  // All users see all data
+  // Cloisonnement par commercial : chacun ne recoit que son portefeuille (ses clients et
+  // tout ce qui s'y rattache, ses prospects, son activite). Un admin recoit l'ensemble.
+  // Le filtre est fait ICI et non dans les ecrans : c'est la seule facon qu'il s'applique
+  // partout, y compris aux pages qu'on ne touche pas — retards de visite compris.
+  // Restent communs a tous : l'equipe, les tags, les modeles d'email, les colonnes de
+  // pipeline, les documents et les tournees (parametrage partage, aucune donnee client).
+  const admin = req.user.role === 'admin';
+  const moi = req.user.id;
+  const filtreCommercial = admin ? '' : ' WHERE commercial_id = $1';
+  const params = admin ? [] : [moi];
+  const clientsMoi = 'SELECT id FROM clients WHERE commercial_id = $1';
+
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
-    db.query('SELECT * FROM prospects'),
-    db.query('SELECT * FROM calls'),
-    db.query('SELECT * FROM appointments'),
-    db.query('SELECT * FROM reminders'),
+    db.query(`SELECT * FROM prospects${filtreCommercial}`, params),
+    db.query(`SELECT * FROM calls${filtreCommercial}`, params),
+    // Un prospecteur ne tient pas les rendez-vous qu'il prend : il doit voir les deux.
+    db.query(admin ? 'SELECT * FROM appointments' : 'SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1', params),
+    db.query(`SELECT * FROM reminders${filtreCommercial}`, params),
     db.query('SELECT * FROM commerciaux'),
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
     db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
-    db.query('SELECT * FROM clients ORDER BY date_modification DESC'),
-    db.query('SELECT * FROM interactions ORDER BY date DESC'),
-    db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
+    db.query(admin ? 'SELECT * FROM clients ORDER BY date_modification DESC'
+      : 'SELECT * FROM clients WHERE commercial_id = $1 ORDER BY date_modification DESC', params),
+    db.query(admin ? 'SELECT * FROM interactions ORDER BY date DESC'
+      : `SELECT * FROM interactions WHERE client_id IN (${clientsMoi}) ORDER BY date DESC`, params),
+    db.query(admin ? 'SELECT * FROM tasks_client ORDER BY date_echeance ASC'
+      : 'SELECT * FROM tasks_client WHERE commercial_id = $1 OR created_by = $1 ORDER BY date_echeance ASC', params),
     db.query('SELECT * FROM tournee_config'),
-    db.query('SELECT * FROM commandes ORDER BY date_commande DESC'),
+    db.query(admin ? 'SELECT * FROM commandes ORDER BY date_commande DESC'
+      : `SELECT * FROM commandes WHERE client_id IN (${clientsMoi}) ORDER BY date_commande DESC`, params),
   ]);
 
   res.json({

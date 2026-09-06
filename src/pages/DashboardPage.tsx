@@ -121,6 +121,17 @@ export default function DashboardPage() {
   const [comparePeriod, setComparePeriod] = useState<TimePeriod | ''>('');
   const [pipelineFilterUser, setPipelineFilterUser] = useState<string>('');
   const isAdmin = state.currentUser?.role === 'admin';
+  // La section Prospection represente plus de la moitie de la page : on la replie par
+  // defaut et on retient le choix, pour que le haut du dashboard reste lisible.
+  const [prospectionOuverte, setProspectionOuverte] = useState(() => {
+    try { return localStorage.getItem('suivipro_dashboard_prospection') === 'ouvert'; } catch { return false; }
+  });
+  const basculerProspection = () => {
+    setProspectionOuverte(v => {
+      try { localStorage.setItem('suivipro_dashboard_prospection', v ? 'ferme' : 'ouvert'); } catch { /* stockage indisponible */ }
+      return !v;
+    });
+  };
 
   const selectedMonth = subMonths(new Date(), -monthOffset);
   const monthStart = startOfMonth(selectedMonth);
@@ -132,37 +143,88 @@ export default function DashboardPage() {
 
   const activeColumns = state.pipelineColumns;
 
+  // Perimetre de lecture. /state renvoie toutes les donnees de la brasserie : le filtrage
+  // se fait donc ici. Un commercial ne voit que ses clients, ses prospects et son
+  // activite ; l'admin voit l'ensemble. On distingue les RDV a tenir (commercial_id) des
+  // RDV pris en prospection (prospecteur_id) : ce ne sont pas les memes personnes.
+  const perimetre = useMemo(() => {
+    const moi = state.currentUser?.id || '';
+    if (isAdmin) {
+      return {
+        clients: state.clients,
+        commandes: state.commandes,
+        prospects: state.prospects,
+        calls: state.calls,
+        appointments: state.appointments,
+        rdvPris: state.appointments,
+      };
+    }
+    const clients = state.clients.filter(c => c.commercial_id === moi);
+    const idsClients = new Set(clients.map(c => c.id));
+    return {
+      clients,
+      commandes: state.commandes.filter(c => c.client_id && idsClients.has(c.client_id)),
+      prospects: state.prospects.filter(p => p.commercial_id === moi),
+      calls: state.calls.filter(c => c.commercial_id === moi),
+      appointments: state.appointments.filter(a => a.commercial_id === moi),
+      rdvPris: state.appointments.filter(a => a.prospecteur_id === moi),
+    };
+  }, [isAdmin, state.currentUser, state.clients, state.commandes, state.prospects, state.calls, state.appointments]);
+
+  // Une commande annulee n'est pas du chiffre d'affaires : elle etait pourtant comptee.
+  const commandesCA = useMemo(
+    () => perimetre.commandes.filter(c => c.statut !== 'annulee'),
+    [perimetre.commandes]
+  );
+
+  // Index commandes par client : evite de reparcourir toutes les commandes pour chaque
+  // client (~875 000 iterations a chaque rafraichissement de l'etat).
+  const commandesParClient = useMemo(() => {
+    const parClient = new Map<string, typeof commandesCA>();
+    for (const cmd of commandesCA) {
+      if (!cmd.client_id) continue;
+      const liste = parClient.get(cmd.client_id);
+      if (liste) liste.push(cmd); else parClient.set(cmd.client_id, [cmd]);
+    }
+    return parClient;
+  }, [commandesCA]);
+
   const stats = useMemo(() => {
-    const callsToday = getCallsToday(state.calls);
-    const callsWeek = getCallsThisWeek(state.calls);
-    const callsMonth = getCallsThisMonth(state.calls);
-    const rdvWeek = getAppointmentsThisWeek(state.appointments);
-    const rdvMonth = getAppointmentsThisMonth(state.appointments);
-    const responseRate = getResponseRate(state.calls);
-    const avgDuration = getAverageCallDuration(state.calls);
+    const callsToday = getCallsToday(perimetre.calls);
+    const callsWeek = getCallsThisWeek(perimetre.calls);
+    const callsMonth = getCallsThisMonth(perimetre.calls);
+    // RDV a tenir (on est le commercial du rendez-vous).
+    const rdvWeek = getAppointmentsThisWeek(perimetre.appointments);
+    // RDV pris en prospection : compte a la date de prise, pas a la date du rendez-vous.
+    const now = new Date();
+    const rdvPrisMois = getAppointmentsByCreatedAt(perimetre.rdvPris, startOfMonth(now), endOfMonth(now));
+    const rdvPrisSemaine = getAppointmentsByCreatedAt(perimetre.rdvPris, startOfWeek(now, { weekStartsOn: 1 }), endOfWeek(now, { weekStartsOn: 1 }));
+    const responseRate = getResponseRate(perimetre.calls);
+    const avgDuration = getAverageCallDuration(perimetre.calls);
 
     const prospectsByStage = activeColumns.map(col => ({
       stage: col.id,
       label: col.label,
       color: col.color,
-      count: state.prospects.filter(p => p.etape_pipeline === col.id).length,
+      count: perimetre.prospects.filter(p => p.etape_pipeline === col.id).length,
     }));
 
-    const activeProspects = state.prospects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length;
+    const activeProspects = perimetre.prospects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length;
 
     return {
       callsToday: callsToday.length,
       callsWeek: callsWeek.length,
       callsMonth: callsMonth.length,
       rdvWeek: rdvWeek.length,
-      rdvMonth: rdvMonth.length,
+      rdvPrisMois: rdvPrisMois.length,
+      rdvPrisSemaine: rdvPrisSemaine.length,
       responseRate,
       avgDuration,
       prospectsByStage,
-      totalProspects: state.prospects.length,
+      totalProspects: perimetre.prospects.length,
       activeProspects,
     };
-  }, [state, activeColumns]);
+  }, [perimetre, activeColumns]);
 
   // Monthly history data for the selected month
   const monthlyHistory = useMemo(() => {
@@ -443,22 +505,67 @@ export default function DashboardPage() {
   }, [state.appointments, crFilterUser]);
 
   // === CA (Chiffre d'affaires) ===
+  const dansLeMois = (dateStr: string, reference: Date) => {
+    try { return isWithinInterval(parseISO(dateStr), { start: startOfMonth(reference), end: endOfMonth(reference) }); } catch { return false; }
+  };
+
   const caStats = useMemo(() => {
     const now = new Date();
-    const monthCommandes = state.commandes.filter(c => {
-      try { return isWithinInterval(parseISO(c.date_commande), { start: startOfMonth(now), end: endOfMonth(now) }); } catch { return false; }
-    });
-    const lastMonthCommandes = state.commandes.filter(c => isLastMonth(c.date_commande));
-    const caMonth = monthCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
-    const caLastMonth = lastMonthCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
-    const nbCommandesMonth = monthCommandes.length;
-    return { caMonth, caLastMonth, nbCommandesMonth };
-  }, [state.commandes]);
+    const mois = commandesCA.filter(c => dansLeMois(c.date_commande, now));
+    const moisPrecedent = commandesCA.filter(c => dansLeMois(c.date_commande, subMonths(now, 1)));
+    const somme = (liste: typeof commandesCA, champ: 'montant_ht' | 'montant_ttc') =>
+      liste.reduce((total, c) => total + (c[champ] || 0), 0);
+
+    const caHt = somme(mois, 'montant_ht');
+    const caTtc = somme(mois, 'montant_ttc');
+    const caHtPrecedent = somme(moisPrecedent, 'montant_ht');
+    // Pas d'evolution affichable si le mois precedent est vide : « +100 % » ne veut rien dire.
+    const evolution = caHtPrecedent > 0 ? Math.round(((caHt - caHtPrecedent) / caHtPrecedent) * 100) : null;
+    const panierMoyen = mois.length > 0 ? caHt / mois.length : 0;
+    const annuleesMois = perimetre.commandes.filter(c => c.statut === 'annulee' && dansLeMois(c.date_commande, now)).length;
+
+    return { caHt, caTtc, caHtPrecedent, evolution, panierMoyen, nbCommandes: mois.length, annuleesMois };
+  }, [commandesCA, perimetre.commandes]);
+
+  // === CA des 6 derniers mois ===
+  const caHistorique = useMemo(() => {
+    const mois = [];
+    for (let i = 5; i >= 0; i--) {
+      const reference = subMonths(new Date(), i);
+      const lot = commandesCA.filter(c => dansLeMois(c.date_commande, reference));
+      mois.push({
+        label: format(reference, 'MMM yy', { locale: fr }),
+        ht: lot.reduce((total, c) => total + (c.montant_ht || 0), 0),
+        nb: lot.length,
+      });
+    }
+    return mois;
+  }, [commandesCA]);
+
+  // === Produits les plus commandes (90 derniers jours) ===
+  const topProduits = useMemo(() => {
+    const depuis = new Date(Date.now() - 90 * 86400000);
+    const parProduit = new Map<string, { nom: string; quantite: number; ca: number }>();
+    for (const cmd of commandesCA) {
+      let d: Date;
+      try { d = parseISO(cmd.date_commande); } catch { continue; }
+      if (!d || d < depuis) continue;
+      for (const ligne of (cmd.lignes || [])) {
+        const nom = (ligne.nom_produit || ligne.produit || '').trim();
+        if (!nom) continue;
+        const cumul = parProduit.get(nom) || { nom, quantite: 0, ca: 0 };
+        cumul.quantite += Number(ligne.quantite) || 0;
+        cumul.ca += Number(ligne.montant) || 0;
+        parProduit.set(nom, cumul);
+      }
+    }
+    return [...parProduit.values()].sort((a, b) => b.quantite - a.quantite).slice(0, 6);
+  }, [commandesCA]);
 
   // === Sante des visites ===
   const visitHealth = useMemo(() => {
     const today = toLocalDateStr(new Date());
-    const activeClients = state.clients.filter(c => c.statut === 'ACTIF');
+    const activeClients = perimetre.clients.filter(c => c.statut === 'ACTIF');
     const weekEnd = toLocalDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
 
     const lateClients = activeClients.filter(c => c.next_visit && c.next_visit < today);
@@ -476,7 +583,7 @@ export default function DashboardPage() {
       : 0;
 
     return { lateCount: lateClients.length, todayCount: todayClients.length, weekCount: weekClients.length, coverageRate, avgDelay, totalActive: activeClients.length };
-  }, [state.clients]);
+  }, [perimetre.clients]);
 
   // === Entonnoir de conversion ===
   const funnelData = useMemo(() => {
@@ -487,14 +594,14 @@ export default function DashboardPage() {
     const lastMonthEnd = endOfMonth(subMonths(now, 1));
 
     const filteredProspects = pipelineFilterUser
-      ? state.prospects.filter(p => p.commercial_id === pipelineFilterUser)
-      : state.prospects;
+      ? perimetre.prospects.filter(p => p.commercial_id === pipelineFilterUser)
+      : perimetre.prospects;
     const filteredCalls = pipelineFilterUser
-      ? state.calls.filter(c => c.commercial_id === pipelineFilterUser)
-      : state.calls;
+      ? perimetre.calls.filter(c => c.commercial_id === pipelineFilterUser)
+      : perimetre.calls;
     const filteredAppointments = pipelineFilterUser
-      ? state.appointments.filter(a => a.commercial_id === pipelineFilterUser)
-      : state.appointments;
+      ? perimetre.appointments.filter(a => a.commercial_id === pipelineFilterUser)
+      : perimetre.appointments;
 
     const convertedThisMonth = filteredProspects.filter(p => {
       if (p.etape_pipeline !== 'client_gagne') return false;
@@ -517,14 +624,14 @@ export default function DashboardPage() {
     });
 
     return { convertedThisMonth, convertedLastMonth, stagnantCount: stagnant.length, totalActive: activeProspects.length };
-  }, [state.prospects, state.calls, state.appointments, pipelineFilterUser]);
+  }, [perimetre, pipelineFilterUser]);
 
   // === Top clients par CA ===
   const topClientsData = useMemo(() => {
-    const clientCA = state.clients.map(c => {
-      const commandes = state.commandes.filter(cmd => cmd.client_id === c.id);
-      const totalCA = commandes.reduce((sum, cmd) => sum + (cmd.montant_ttc || 0), 0);
-      const lastOrder = commandes.sort((a, b) => b.date_commande.localeCompare(a.date_commande))[0];
+    const clientCA = perimetre.clients.map(c => {
+      const commandes = commandesParClient.get(c.id) || [];
+      const totalCA = commandes.reduce((sum, cmd) => sum + (cmd.montant_ht || 0), 0);
+      const lastOrder = [...commandes].sort((a, b) => b.date_commande.localeCompare(a.date_commande))[0];
       return { client: c, totalCA, orderCount: commandes.length, lastOrderDate: lastOrder?.date_commande || '' };
     });
 
@@ -552,23 +659,30 @@ export default function DashboardPage() {
     });
 
     // 5 dernieres commandes
-    const recentOrders = [...state.commandes]
+    const recentOrders = [...commandesCA]
       .sort((a, b) => b.date_commande.localeCompare(a.date_commande))
       .slice(0, 5)
       .map(cmd => {
-        const client = state.clients.find(c => c.id === cmd.client_id);
+        const client = perimetre.clients.find(c => c.id === cmd.client_id);
         return { ...cmd, clientName: client?.nom || (cmd as any).client_name || 'Inconnu' };
       });
 
     return { top10, caByType, inactiveOrdering, caByCommercial, recentOrders };
-  }, [state.clients, state.commandes]);
+  }, [perimetre.clients, commandesCA, commandesParClient]);
 
   // === Alertes ===
   const alerts = useMemo(() => {
-    const orphanCommandes = state.commandes.filter(c => !c.client_id).length;
-    const overdueTasks = (state as any).tasksClient?.filter((t: any) => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < toLocalDateStr(new Date())).length || 0;
+    // Les commandes orphelines sont un probleme d'administration : seuls les admins,
+    // qui peuvent les rattacher, ont a les voir.
+    const orphanCommandes = isAdmin ? state.commandes.filter(c => !c.client_id).length : 0;
+    const moi = state.currentUser?.id || '';
+    const taches = ((state as any).tasksClient || []) as any[];
+    const overdueTasks = taches.filter((t) =>
+      t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < toLocalDateStr(new Date())
+      && (isAdmin || t.commercial_id === moi)
+    ).length;
     return { lateVisits: visitHealth.lateCount, stagnantProspects: funnelData.stagnantCount, orphanCommandes, overdueTasks };
-  }, [visitHealth, funnelData, state]);
+  }, [visitHealth, funnelData, state, isAdmin]);
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {
@@ -636,6 +750,17 @@ export default function DashboardPage() {
     }],
   };
 
+  // Evolution du CA sur 6 mois (barres)
+  const caHistoriqueChartData = {
+    labels: caHistorique.map(m => m.label),
+    datasets: [{
+      label: 'CA HT',
+      data: caHistorique.map(m => Math.round(m.ht)),
+      backgroundColor: '#10b981',
+      borderRadius: 6,
+    }],
+  };
+
   // CA par type de client (donut)
   const caByTypeEntries = Object.entries(topClientsData.caByType).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const caByTypeChartData = {
@@ -696,10 +821,21 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-emerald-200 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-emerald-100 p-1.5 rounded-lg"><Euro className="w-3.5 h-3.5 text-emerald-600" /></div>
-            <p className="text-[10px] text-gray-500">CA ce mois</p>
+            <p className="text-[10px] text-gray-500">CA ce mois (HT)</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{caStats.caMonth.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
-          <p className="text-[10px] text-gray-400">{caStats.nbCommandesMonth} cmd / Mois prec. {caStats.caLastMonth.toFixed(0)} EUR</p>
+          <div className="flex items-baseline gap-1.5 flex-wrap">
+            <p className="text-2xl font-bold text-gray-900">{caStats.caHt.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
+            {caStats.evolution !== null && (
+              <span className={`text-[11px] font-semibold ${caStats.evolution >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {caStats.evolution >= 0 ? '+' : ''}{caStats.evolution}%
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-400">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
+          <p className="text-[10px] text-gray-400">
+            Mois prec. {caStats.caHtPrecedent.toFixed(0)} EUR HT
+            {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulee(s) exclue(s)`}
+          </p>
         </div>
         <div className="bg-white rounded-xl border border-indigo-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -720,10 +856,10 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-blue-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-blue-100 p-1.5 rounded-lg"><Calendar className="w-3.5 h-3.5 text-blue-600" /></div>
-            <p className="text-[10px] text-gray-500">RDV</p>
+            <p className="text-[10px] text-gray-500">RDV pris ce mois</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{stats.rdvMonth}</p>
-          <p className="text-[10px] text-gray-400">{stats.rdvWeek} cette semaine</p>
+          <p className="text-2xl font-bold text-gray-900">{stats.rdvPrisMois}</p>
+          <p className="text-[10px] text-gray-400">{stats.rdvPrisSemaine} cette semaine · {stats.rdvWeek} a tenir</p>
         </div>
         <div className="bg-white rounded-xl border border-amber-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -733,13 +869,13 @@ export default function DashboardPage() {
           <p className="text-2xl font-bold text-gray-900">{stats.responseRate}%</p>
           <p className="text-[10px] text-gray-400">Duree moy. {formatDuration(stats.avgDuration)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4">
+        <div className="bg-white rounded-xl border border-teal-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
-            <div className="bg-gray-100 p-1.5 rounded-lg"><Users className="w-3.5 h-3.5 text-gray-600" /></div>
-            <p className="text-[10px] text-gray-500">Equipe</p>
+            <div className="bg-teal-100 p-1.5 rounded-lg"><ShoppingCart className="w-3.5 h-3.5 text-teal-600" /></div>
+            <p className="text-[10px] text-gray-500">Panier moyen</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{allUsers.length}</p>
-          <p className="text-[10px] text-gray-400">membres actifs</p>
+          <p className="text-2xl font-bold text-gray-900">{caStats.panierMoyen.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
+          <p className="text-[10px] text-gray-400">HT, sur {caStats.nbCommandes} commande(s) du mois</p>
         </div>
       </div>
 
@@ -783,6 +919,62 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-gray-700">{visitHealth.avgDelay > 0 ? `${visitHealth.avgDelay}j` : '0j'}</p>
             <p className="text-[10px] text-gray-600 mt-0.5">Retard moyen</p>
           </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* EVOLUTION DU CA + PRODUITS                                */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-emerald-500" />
+            Evolution du CA (6 mois, HT)
+          </h3>
+          <div className="h-52 sm:h-64">
+            {caHistorique.some(m => m.ht > 0) ? (
+              <Bar data={caHistoriqueChartData} options={{
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => {
+                        const m = caHistorique[ctx.dataIndex];
+                        return `${Math.round(m.ht)} EUR HT — ${m.nb} commande(s)`;
+                      },
+                    },
+                  },
+                },
+              }} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucune commande sur la periode</div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+          <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
+            <ShoppingCart className="w-4 h-4 text-teal-500" />
+            Produits les plus commandes (90 jours)
+          </h3>
+          {topProduits.length > 0 ? (
+            <div className="space-y-2">
+              {topProduits.map((prod, i) => (
+                <div key={prod.nom} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-teal-100 text-teal-700' : 'bg-gray-200 text-gray-600'}`}>{i + 1}</span>
+                  <p className="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">{prod.nom}</p>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-teal-700">{prod.quantite}</p>
+                    <p className="text-[10px] text-gray-500">{prod.ca.toFixed(0)} EUR</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-6">Aucune ligne produit sur les 90 derniers jours</p>
+          )}
         </div>
       </div>
 
@@ -831,7 +1023,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
             <Euro className="w-4 h-4 text-emerald-500" />
-            CA par type de client
+            CA par type de client (HT)
           </h3>
           <div className="h-52 sm:h-64 flex items-center justify-center">
             {caByTypeEntries.length > 0 ? (
@@ -854,7 +1046,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
             <Star className="w-4 h-4 text-amber-400" />
-            Top 10 clients par CA
+            Top 10 clients par CA (HT)
           </h3>
           {topClientsData.top10.length > 0 ? (
             <div className="space-y-2">
@@ -879,7 +1071,7 @@ export default function DashboardPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
               <BarChart3 className="w-4 h-4 text-indigo-500" />
-              CA par commercial
+              CA par commercial (HT)
             </h3>
             <div className="h-52 sm:h-64">
               {allUsers.length > 0 ? (
@@ -947,12 +1139,19 @@ export default function DashboardPage() {
       {/* PROSPECTION - Charts, Pipeline, Performance               */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div>
-        <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2 mb-3">
+        <button
+          onClick={basculerProspection}
+          className="w-full flex items-center gap-2 mb-3 text-left group"
+        >
           <Target className="w-4.5 h-4.5 text-green-600" />
-          Prospection
-        </h2>
+          <h2 className="text-base font-semibold text-gray-800">Prospection</h2>
+          <span className="text-xs text-gray-500">
+            {stats.callsWeek} appel(s) cette semaine · {stats.rdvPrisMois} RDV pris ce mois · {stats.activeProspects} prospects actifs
+          </span>
+          <ChevronRight className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${prospectionOuverte ? 'rotate-90' : ''}`} />
+        </button>
 
-        <div className="space-y-4 sm:space-y-6">
+        <div className={`space-y-4 sm:space-y-6 ${prospectionOuverte ? '' : 'hidden'}`}>
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Pipeline distribution */}
@@ -972,7 +1171,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Activity by user (ALL users) */}
+            {/* Activite par membre : chiffres de toute l'equipe, donc admin uniquement */}
+            {isAdmin && (
             <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
               <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Activite par membre</h3>
               <div className="h-52 sm:h-64">
@@ -991,6 +1191,7 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+            )}
           </div>
 
           {/* Pipeline breakdown - only active columns */}
@@ -1132,7 +1333,8 @@ export default function DashboardPage() {
           </div>
           </div>
 
-          {/* Performance detaillee */}
+          {/* Performance detaillee : tableau nominatif de toute l'equipe, admin uniquement */}
+          {isAdmin && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2">
@@ -1229,6 +1431,7 @@ export default function DashboardPage() {
               </table>
             </div>
           </div>
+          )}
 
           {/* Historique mensuel */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
