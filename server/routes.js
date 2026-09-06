@@ -85,6 +85,40 @@ function isAdmin(req) {
 // Wrap async route handlers to catch unhandled errors
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Constant-time comparison for secrets (avoids timing oracle)
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a ?? ''), 'utf8');
+  const bb = Buffer.from(String(b ?? ''), 'utf8');
+  if (ba.length !== bb.length) return false;
+  try { return crypto.timingSafeEqual(ba, bb); } catch { return false; }
+}
+
+// Ownership guard: only the owning commercial (or an admin) may mutate a resource.
+// `table` and `columns` are literals controlled by our code (never user input).
+// For non-admins it also strips commercial_id from the body so a resource cannot be reassigned.
+function requireOwnership(table, columns = ['commercial_id']) {
+  return asyncHandler(async (req, res, next) => {
+    if (isAdmin(req)) return next();
+    const r = await db.query(`SELECT ${columns.join(', ')} FROM ${table} WHERE id = $1`, [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Ressource introuvable' });
+    const owns = columns.some((col) => r.rows[0][col] && r.rows[0][col] === req.user.id);
+    if (!owns) return res.status(403).json({ error: 'Acces refuse : cette ressource ne vous appartient pas' });
+    if (req.body && typeof req.body === 'object') delete req.body.commercial_id;
+    next();
+  });
+}
+
+// Resolve a SuiviPro commercial id from an EasyBeer native commercial id (idCommercial).
+// Relies on the easybeer_commerciaux mapping table (seeded in db.js).
+async function resolveCommercialFromEasybeer(easybeerCommercialId) {
+  if (!easybeerCommercialId) return null;
+  const r = await db.query(
+    'SELECT suivipro_commercial_id FROM easybeer_commerciaux WHERE easybeer_id = $1 AND actif = TRUE',
+    [String(easybeerCommercialId)]
+  );
+  return r.rows.length > 0 ? r.rows[0].suivipro_commercial_id : null;
+}
+
 // ============================================
 // Input validation helpers
 // ============================================
@@ -371,7 +405,7 @@ router.post('/calls', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/calls/:id', authMiddleware, requireOwnership('calls'), asyncHandler(async (req, res) => {
   const c = req.body;
   const errors = validateCall(c);
   if (errors.length > 0) return validationError(res, errors);
@@ -383,7 +417,7 @@ router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.delete('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/calls/:id', authMiddleware, requireOwnership('calls'), asyncHandler(async (req, res) => {
   await db.query('DELETE FROM calls WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -420,7 +454,7 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/appointments/:id', authMiddleware, requireOwnership('appointments', ['commercial_id', 'prospecteur_id']), asyncHandler(async (req, res) => {
   const a = req.body;
   const errors = validateAppointment(a);
   if (errors.length > 0) return validationError(res, errors);
@@ -437,7 +471,7 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true });
 }));
 
-router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/appointments/:id', authMiddleware, requireOwnership('appointments', ['commercial_id', 'prospecteur_id']), asyncHandler(async (req, res) => {
   await db.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -464,7 +498,7 @@ router.post('/reminders', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.put('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/reminders/:id', authMiddleware, requireOwnership('reminders'), asyncHandler(async (req, res) => {
   const r = req.body;
   const errors = validateReminder(r);
   if (errors.length > 0) return validationError(res, errors);
@@ -476,7 +510,7 @@ router.put('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.delete('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/reminders/:id', authMiddleware, requireOwnership('reminders'), asyncHandler(async (req, res) => {
   await db.query('DELETE FROM reminders WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -920,7 +954,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
   res.json(created.rows[0]);
 }));
 
-router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/clients/:id', authMiddleware, requireOwnership('clients'), asyncHandler(async (req, res) => {
   const c = req.body;
   // Only validate required fields for updates (don't block updates due to legacy data)
   if (!c.nom || typeof c.nom !== 'string' || c.nom.trim().length === 0) {
@@ -942,7 +976,7 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.delete('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/clients/:id', authMiddleware, requireOwnership('clients'), asyncHandler(async (req, res) => {
   await db.query('DELETE FROM clients WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -1002,7 +1036,7 @@ router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-router.delete('/interactions/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/interactions/:id', authMiddleware, requireOwnership('interactions'), asyncHandler(async (req, res) => {
   // Get the interaction before deleting to know which client to update
   const interaction = await db.query('SELECT client_id FROM interactions WHERE id = $1', [req.params.id]);
 
@@ -1320,7 +1354,7 @@ router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
   res.json(result.rows[0] || { ok: true });
 }));
 
-router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/tasks-client/:id', authMiddleware, requireOwnership('tasks_client'), asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.titre) return validationError(res, ['titre est requis']);
 
@@ -1369,7 +1403,7 @@ router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) =>
   res.json(result.rows[0] || { ok: true });
 }));
 
-router.delete('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/tasks-client/:id', authMiddleware, requireOwnership('tasks_client'), asyncHandler(async (req, res) => {
   await db.query('DELETE FROM tasks_client WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -1392,6 +1426,9 @@ router.get('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (
 }));
 
 router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (req, res) => {
+  if (!isAdmin(req) && req.params.commercialId !== req.user.id) {
+    return res.status(403).json({ error: 'Acces refuse : tournee d\'un autre commercial' });
+  }
   const { config, notes, tournee_info, week_pattern } = req.body;
   const now = new Date().toISOString();
   await db.query(
@@ -1412,7 +1449,7 @@ router.get('/visit-frequency-config', authMiddleware, asyncHandler(async (req, r
   res.json(result.rows);
 }));
 
-router.put('/visit-frequency-config', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/visit-frequency-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { frequencies, apply_to_existing } = req.body;
   const now = new Date().toISOString();
   for (const [type, days] of Object.entries(frequencies)) {
@@ -1629,7 +1666,23 @@ function extractEbFieldsSync(data) {
   }
   // ========== TYPE ==========
   let typeStr = data.type || '';
-  if (typeof typeStr === 'object' && typeStr) typeStr = typeStr.libelle || typeStr.code || '';
+  let typeId = '';
+  if (typeof data.type === 'object' && data.type) {
+    typeStr = data.type.libelle || data.type.code || '';
+    typeId = data.type.idClientType != null ? String(data.type.idClientType) : '';
+  }
+  // ========== IDENTIFIANTS NATIFS EASYBEER (cles de jointure fiables) ==========
+  const easybeerId = String(data.idClient || data.id || '');
+  const numero = data.numero || data.numeroClient || '';
+  let commercialEasybeerId = '';
+  if (data.commercial && typeof data.commercial === 'object') {
+    commercialEasybeerId = data.commercial.id != null ? String(data.commercial.id)
+      : (data.commercial.idUtilisateur != null ? String(data.commercial.idUtilisateur) : '');
+  }
+  let tourneeId = '';
+  if (data.tournee && typeof data.tournee === 'object' && data.tournee.idClientTournee != null) {
+    tourneeId = String(data.tournee.idClientTournee);
+  }
 
   return {
     name: data.nom || data.libelle || data.raisonSociale || data.name || '',
@@ -1647,6 +1700,12 @@ function extractEbFieldsSync(data) {
     tournee,
     latitude,
     longitude,
+    // Identifiants natifs EasyBeer
+    easybeer_id: easybeerId,
+    numero,
+    commercial_easybeer_id: commercialEasybeerId,
+    type_id: typeId,
+    tournee_id: tourneeId,
   };
 }
 
@@ -1780,11 +1839,16 @@ async function fetchFromEasyBeerWithRetry(apiBase, headers, id, maxRetries = 4) 
 async function handleEasyBeerWebhook(req, res) {
   const webhookSecret = req.params.secret || req.headers['x-webhook-secret'];
 
-  // Check secret from config
+  // Check secret from config. The secret is MANDATORY: an unconfigured webhook is refused
+  // rather than left open to the internet. Comparison is constant-time.
   const configResult = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
   const config = configResult.rows[0];
-  if (config?.webhook_secret && webhookSecret !== config.webhook_secret) {
-    console.log('[EasyBeer Webhook] Secret invalide recu:', webhookSecret?.substring(0, 8) + '...');
+  if (!config?.webhook_secret) {
+    console.error('[EasyBeer Webhook] Refuse : aucun webhook_secret configure (configurez-le dans Admin > EasyBeer)');
+    return res.status(503).json({ error: 'Webhook non configure' });
+  }
+  if (!safeEqual(webhookSecret, config.webhook_secret)) {
+    console.log('[EasyBeer Webhook] Secret invalide recu');
     return res.status(403).json({ error: 'Invalid webhook secret' });
   }
 
@@ -2129,13 +2193,21 @@ async function handleEasyBeerWebhook(req, res) {
               tournee = COALESCE(NULLIF($14, ''), tournee),
               latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
               longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
+              numero = COALESCE(NULLIF($19, ''), numero),
+              commercial_easybeer_id = COALESCE(NULLIF($20, ''), commercial_easybeer_id),
+              type_id = COALESCE(NULLIF($21, ''), type_id),
+              tournee_id = COALESCE(NULLIF($22, ''), tournee_id),
               raw_data = $17, updated_at = $18
             WHERE easybeer_id = $1`,
             [id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
              f.city, f.address, f.postal_code, f.notes, f.commercial_email,
-             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow]
+             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow,
+             f.numero, f.commercial_easybeer_id, f.type_id, f.tournee_id]
           );
           console.log(`[EasyBeer Webhook] Enrichi: ${f.name}, GPS=${f.latitude},${f.longitude}, tournee=${f.tournee}, mobile=${f.phone_mobile}`);
+
+          // Resolve the SuiviPro commercial from the native EasyBeer commercial id (robust key).
+          const mappedCommercial = await resolveCommercialFromEasybeer(f.commercial_easybeer_id);
 
           // Check if this EasyBeer client matches an existing client (imported from Excel)
           const existingClient = await findMatchingClient(f.name, f.email, f.phone, f.siret);
@@ -2143,6 +2215,20 @@ async function handleEasyBeerWebhook(req, res) {
           if (existingClient) {
             // Link EasyBeer entry to existing client - no duplicate creation
             await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [existingClient.id, id]);
+
+            // Store the native EasyBeer identifiers on the client (join keys), and fill the
+            // commercial only if it is not already set (never silently move a portfolio).
+            await db.query(
+              `UPDATE clients SET
+                 easybeer_id = $2,
+                 easybeer_numero = COALESCE(NULLIF($3, ''), easybeer_numero),
+                 easybeer_commercial_id = COALESCE(NULLIF($4, ''), easybeer_commercial_id),
+                 easybeer_type_id = COALESCE(NULLIF($5, ''), easybeer_type_id),
+                 easybeer_tournee_id = COALESCE(NULLIF($6, ''), easybeer_tournee_id),
+                 commercial_id = CASE WHEN (commercial_id IS NULL OR commercial_id = '') AND $7 <> '' THEN $7 ELSE commercial_id END
+               WHERE id = $1`,
+              [existingClient.id, id, f.numero, f.commercial_easybeer_id, f.type_id, f.tournee_id, mappedCommercial || '']
+            );
 
             // Enrich existing client with EasyBeer data (fill in missing fields)
             await db.query(
@@ -2165,30 +2251,39 @@ async function handleEasyBeerWebhook(req, res) {
             }
 
             console.log(`[EasyBeer Webhook] Client existant lie: ${f.name} (${existingClient.id}) <- easybeer_id=${id}`);
-          } else if (f.commercial_email) {
-            // No existing client found - auto-import if assignment rule exists
-            const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [f.commercial_email.toLowerCase()]);
-            if (ruleResult.rows.length > 0) {
-              const rule = ruleResult.rows[0];
+          } else if (mappedCommercial || f.commercial_email) {
+            // No existing client found - auto-import. Attribution priority:
+            //   1. matching prospect's commercial   2. native EasyBeer commercial mapping   3. legacy email rule.
+            let ruleCommercial = null;
+            if (f.commercial_email) {
+              const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE email = $1', [f.commercial_email.toLowerCase()]);
+              if (ruleResult.rows.length > 0) ruleCommercial = ruleResult.rows[0].commercial_id;
+            }
+            const prospect = await findMatchingProspect(f.name, f.email, f.phone);
+            const assignedCommercial = prospect?.commercial_id || mappedCommercial || ruleCommercial;
+
+            if (assignedCommercial) {
               const clientType = mapEasyBeerTypeToClientType(f.type);
               const nextVisit = await calculateNextVisit(clientType, null, null);
               const clientId = `cli-${crypto.randomUUID()}`;
 
-              const prospect = await findMatchingProspect(f.name, f.email, f.phone);
-
-              console.log(`[EasyBeer Webhook] Auto-import: type EasyBeer="${f.type}" -> type SuiviPro="${clientType}"`);
+              console.log(`[EasyBeer Webhook] Auto-import: type EasyBeer="${f.type}" -> "${clientType}", commercial=${assignedCommercial}`);
 
               await db.query(
                 `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
-                 type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, prospect_id, date_creation, date_modification)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+                 type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, prospect_id,
+                 easybeer_id, easybeer_numero, easybeer_commercial_id, easybeer_type_id, easybeer_tournee_id,
+                 date_creation, date_modification)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
                 [clientId, f.name, f.city, f.address, f.postal_code,
                  f.phone, f.phone_mobile, f.email, f.contact_name, clientType, 'ACTIF',
-                 prospect?.commercial_id || rule.commercial_id, nextVisit || null,
+                 assignedCommercial, nextVisit || null,
                  [prospect?.notes, f.notes].filter(Boolean).join('\n') || '',
                  f.siret, prospect?.tournee || f.tournee,
                  f.latitude || prospect?.latitude || 0, f.longitude || prospect?.longitude || 0,
-                 prospect?.id || null, clientNow, clientNow]
+                 prospect?.id || null,
+                 id, f.numero, f.commercial_easybeer_id, f.type_id, f.tournee_id,
+                 clientNow, clientNow]
               );
               await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE easybeer_id = $2", [clientId, id]);
 
@@ -2196,13 +2291,15 @@ async function handleEasyBeerWebhook(req, res) {
                 await linkClientToProspect(clientId, prospect, clientNow);
               }
 
-              console.log(`[EasyBeer Webhook] Nouveau client cree: ${f.name} -> commercial ${prospect?.commercial_id || rule.commercial_id}`);
+              console.log(`[EasyBeer Webhook] Nouveau client cree: ${f.name} -> commercial ${assignedCommercial}`);
+            } else {
+              console.log(`[EasyBeer Webhook] ${f.name}: aucun commercial resolu (mapping/prospect/regle) - non importe`);
             }
           } else {
-            // No existing client, no commercial_email -> try matching anyway without rule
+            // No existing client, no commercial resolvable -> just log for admin follow-up
             const prospect = await findMatchingProspect(f.name, f.email, f.phone);
             if (prospect) {
-              console.log(`[EasyBeer Webhook] Prospect trouve pour ${f.name} mais pas de client existant ni de regle d'attribution`);
+              console.log(`[EasyBeer Webhook] Prospect trouve pour ${f.name} mais pas de client existant ni de commercial resolu`);
             }
           }
         } else {
@@ -2222,16 +2319,17 @@ router.post('/webhook/easybeer', handleEasyBeerWebhook);
 router.post('/webhook/easybeer/:secret', handleEasyBeerWebhook);
 
 // EasyBeer config
-router.get('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/easybeer/config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM easybeer_config WHERE id = 1');
   if (result.rows.length === 0) {
     return res.json({ id: 1, username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
   }
   const config = result.rows[0];
-  res.json({ ...config, password: config.password ? '***' : '' });
+  // Never expose the API password or the webhook secret in clear text.
+  res.json({ ...config, password: config.password ? '***' : '', webhook_secret: config.webhook_secret ? '***' : '' });
 }));
 
-router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/easybeer/config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { username, password, api_url, webhook_secret } = req.body;
   const now = new Date().toISOString();
   // If password is '***', keep the existing password
@@ -2242,11 +2340,17 @@ router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) =>
   } else if (finalPassword) {
     finalPassword = encrypt(finalPassword);
   }
+  // Preserve the existing webhook secret when the client sends back the masked value.
+  let finalSecret = webhook_secret || '';
+  if (webhook_secret === '***') {
+    const existing = await db.query('SELECT webhook_secret FROM easybeer_config WHERE id = 1');
+    finalSecret = existing.rows.length > 0 ? existing.rows[0].webhook_secret : '';
+  }
   await db.query(
     `INSERT INTO easybeer_config (id, username, password, api_url, webhook_secret, updated_at)
     VALUES (1, $1, $2, $3, $4, $5)
     ON CONFLICT (id) DO UPDATE SET username=$1, password=$2, api_url=$3, webhook_secret=$4, updated_at=$5`,
-    [username || '', finalPassword, api_url || 'https://api.easybeer.fr', webhook_secret || '', now]
+    [username || '', finalPassword, api_url || 'https://api.easybeer.fr', finalSecret, now]
   );
   res.json({ ok: true });
 }));
@@ -2280,7 +2384,7 @@ router.post('/easybeer/fix-client-types', authMiddleware, adminOnly, asyncHandle
   res.json({ ok: true, updated, skipped, total: result.rows.length, details });
 }));
 
-router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/easybeer/test-connection', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   let { username, password, api_url } = req.body;
   // If password is masked, retrieve the real one from DB
   if (password === '***') {
@@ -2328,18 +2432,18 @@ router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req
 }));
 
 // Webhook logs
-router.get('/easybeer/webhook-logs', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/easybeer/webhook-logs', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 20');
   res.json(result.rows);
 }));
 
 // Pending clients from EasyBeer
-router.get('/easybeer/pending-clients', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/easybeer/pending-clients', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const result = await db.query("SELECT * FROM easybeer_clients WHERE status = 'pending' ORDER BY synced_at DESC");
   res.json(result.rows);
 }));
 
-router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/easybeer/pending-clients/:id/import', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const ebClient = await db.query('SELECT * FROM easybeer_clients WHERE id = $1', [req.params.id]);
   if (ebClient.rows.length === 0) return res.status(404).json({ error: 'Client EasyBeer non trouve' });
 
@@ -2411,13 +2515,13 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   res.json({ ok: true, client_id: clientId, linked_prospect: prospect?.id || null });
 }));
 
-router.delete('/easybeer/pending-clients/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/easybeer/pending-clients/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query("UPDATE easybeer_clients SET status = 'dismissed' WHERE id = $1", [req.params.id]);
   res.json({ ok: true });
 }));
 
 // Re-sync a pending client from EasyBeer API
-router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/easybeer/pending-clients/:id/sync', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const ebClient = await db.query('SELECT * FROM easybeer_clients WHERE id = $1', [req.params.id]);
   if (ebClient.rows.length === 0) return res.status(404).json({ error: 'Client non trouve' });
   const eb = ebClient.rows[0];
@@ -2537,7 +2641,7 @@ router.delete('/assignment-rules/:id', authMiddleware, asyncHandler(async (req, 
 }));
 
 // Webhooks history
-router.get('/webhooks', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/webhooks', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 50');
   res.json(result.rows);
 }));
@@ -2685,6 +2789,7 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
 // ============================================
 
 router.get('/notifications/:userId', authMiddleware, asyncHandler(async (req, res) => {
+  if (!isAdmin(req) && req.params.userId !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
   const result = await db.query(
     'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
     [req.params.userId]
@@ -2693,6 +2798,7 @@ router.get('/notifications/:userId', authMiddleware, asyncHandler(async (req, re
 }));
 
 router.get('/notifications/:userId/unread-count', authMiddleware, asyncHandler(async (req, res) => {
+  if (!isAdmin(req) && req.params.userId !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
   const result = await db.query(
     'SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND read = false',
     [req.params.userId]
@@ -2701,11 +2807,17 @@ router.get('/notifications/:userId/unread-count', authMiddleware, asyncHandler(a
 }));
 
 router.put('/notifications/:notificationId/read', authMiddleware, asyncHandler(async (req, res) => {
-  await db.query('UPDATE notifications SET read = true WHERE id = $1', [req.params.notificationId]);
+  // A user may only mark their own notifications as read (admins may mark any).
+  if (isAdmin(req)) {
+    await db.query('UPDATE notifications SET read = true WHERE id = $1', [req.params.notificationId]);
+  } else {
+    await db.query('UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2', [req.params.notificationId, req.user.id]);
+  }
   res.json({ ok: true });
 }));
 
 router.put('/notifications/:userId/read-all', authMiddleware, asyncHandler(async (req, res) => {
+  if (!isAdmin(req) && req.params.userId !== req.user.id) return res.status(403).json({ error: 'Acces refuse' });
   await db.query('UPDATE notifications SET read = true WHERE user_id = $1', [req.params.userId]);
   res.json({ ok: true });
 }));
@@ -2725,7 +2837,7 @@ async function createNotification(userId, type, title, message, data = {}) {
 // Admin Stats (per-commercial analytics)
 // ============================================
 
-router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/admin/stats', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const now = new Date();
   const today = toLocalDateStr(now);
 
@@ -2861,7 +2973,7 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
 // Activity Feed (recent activity across all commercials)
 // ============================================
 
-router.get('/admin/activity-feed', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/admin/activity-feed', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { month, commercial_id, type } = req.query;
   const now = new Date();
   let startDate, endDate;
@@ -2967,7 +3079,7 @@ router.get('/admin/activity-feed', authMiddleware, asyncHandler(async (req, res)
 // 6-Week Planning
 // ============================================
 
-router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/admin/planning', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { commercial_id } = req.query;
   const now = new Date();
 
