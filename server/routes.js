@@ -1437,6 +1437,8 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
   // et l'API peut imposer des attentes de ~30 s. Un rafraichissement rare donnait
   // l'impression que la synchro tournait dans le vide.
   let traitees = 0;
+  let clientsImportes = 0;
+  const cacheImportClients = new Map();
   const debutBoucle = Date.now();
   const messageProgression = () => {
     const st = eb.statsEasybeer ? eb.statsEasybeer() : null;
@@ -1463,6 +1465,14 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
     if (!clientId && estCommandeWeb(cmd)) {
       clientId = await ensureSiteInternetGroup();
       clientNom = clientNom || 'Site internet';
+    }
+    // Client inconnu : on importe sa fiche EasyBeer plutot que de laisser une orpheline.
+    if (!clientId && ebCliId) {
+      clientId = await importerClientDepuisCommande(apiBase, hdrs, ebCliId, cacheImportClients);
+      if (clientId) {
+        idToLocal.set(ebCliId, { apiId: ebCliId, clientId, clientNom });
+        clientsImportes++;
+      }
     }
 
     // Anti-doublon global par easybeer_id ; au passage, on raccroche les orphelines
@@ -1528,9 +1538,11 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
   return {
     ok: true,
     message: `${totalImported} commandes importees pour ${Object.keys(clientStats).length} clients`
+      + (clientsImportes > 0 ? ` — ${clientsImportes} client(s) cree(s) depuis leurs commandes` : '')
       + (totalEchecs > 0 ? ` — ${totalEchecs} non recuperees (relancez la synchro)` : '')
       + (statsApi && statsApi.bans > 0 ? ` (API EasyBeer ralentie: ${statsApi.bans} attente(s))` : ''),
     total_echecs: totalEchecs,
+    clients_importes_commande: clientsImportes,
     total_orders_found: totalFound,
     total_imported: totalImported,
     total_skipped: totalSkipped,
@@ -2232,9 +2244,11 @@ async function easybeerAuthHeaders() {
 
 // Insert/update one client from an EasyBeer client object. Returns 'created' | 'updated' | 'skipped'.
 // Clients only (never prospects). Attribution by native idCommercial, else keeps existing.
-async function upsertClientFromEasybeer(cli) {
+// forceClient : importer la fiche meme si EasyBeer la classe en prospect. Reserve aux
+// fiches qui ont reellement passe commande — une fiche qui achete est un client de fait.
+async function upsertClientFromEasybeer(cli, { forceClient = false } = {}) {
   // Clients uniquement : ignorer toute fiche marquee PROSPECT cote EasyBeer (etat.code).
-  if (String(cli?.etat?.code || '').toUpperCase() === 'PROSPECT') return 'skipped';
+  if (!forceClient && String(cli?.etat?.code || '').toUpperCase() === 'PROSPECT') return 'skipped';
   const f = extractEbFieldsSync(cli);
   if (!f.easybeer_id && !f.name) return 'skipped';
   const now = new Date().toISOString();
@@ -2243,7 +2257,20 @@ async function upsertClientFromEasybeer(cli) {
 
   let existing = null;
   if (f.easybeer_id) existing = (await db.query('SELECT * FROM clients WHERE easybeer_id = $1 LIMIT 1', [f.easybeer_id])).rows[0] || null;
-  if (!existing) existing = await findMatchingClient(f.name, f.email, f.phone, f.siret);
+  if (!existing) {
+    // findMatchingClient renvoie { client, confidence, matchType } : il faut en extraire
+    // la fiche. Sans ca l'UPDATE partait sur un id undefined et ne touchait aucune ligne
+    // — le client etait annonce « mis a jour » sans jamais recevoir son easybeer_id.
+    const m = await findMatchingClient(f.name, f.email, f.phone, f.siret);
+    // On ne fusionne que sur un identifiant fort (siret/email/telephone) ou un nom
+    // strictement identique. Un rapprochement flou cree une nouvelle fiche : un doublon
+    // se voit et se corrige, une fusion erronee melange silencieusement deux etablissements.
+    // Et jamais sur une fiche deja rattachee a un AUTRE client EasyBeer : deux fiches
+    // homonymes se voleraient leur lien a chaque synchro.
+    const dejaLie = m && m.client.easybeer_id && String(m.client.easybeer_id) !== String(f.easybeer_id);
+    if (m && !dejaLie && (m.confidence === 'high' || m.confidence === 'medium')) existing = m.client;
+    else if (m) console.log(`[EasyBeer SyncClients] "${f.name}" ~ "${m.client.nom}" (${m.matchType}, ${m.confidence}${dejaLie ? ', deja lie a une autre fiche EasyBeer' : ''}) : pas de fusion, nouvelle fiche creee`);
+  }
 
   if (existing) {
     await db.query(
@@ -2293,6 +2320,30 @@ async function upsertClientFromEasybeer(cli) {
     try { await db.query("UPDATE easybeer_clients SET status='imported', imported_client_id=$1 WHERE easybeer_id=$2", [clientId, f.easybeer_id]); } catch { /* */ }
   }
   return 'created';
+}
+
+// Importe a la demande la fiche EasyBeer d'une commande dont le client est inconnu.
+// EasyBeer garde certaines fiches cote « prospect » alors qu'elles commandent vraiment
+// (numero CL, SIRET, commercial affecte) : la liste clients ne les renvoie pas et leurs
+// commandes finissaient en orphelines. Une fiche qui achete est un client de fait.
+// Renvoie l'id du client SuiviPro, ou null si la fiche est introuvable.
+async function importerClientDepuisCommande(apiBase, hdrs, ebClientId, cache = null) {
+  if (!ebClientId) return null;
+  const cle = String(ebClientId);
+  if (cache && cache.has(cle)) return cache.get(cle);
+  let local = null;
+  try {
+    const det = await eb.detailClient(apiBase, hdrs, cle);
+    if (det) {
+      await upsertClientFromEasybeer(det, { forceClient: true });
+      local = await clientLocalDepuisEasybeerId(cle);
+      if (local) console.log(`[EasyBeer] Client ${det.nom || cle} (eb ${cle}) importe suite a une commande -> ${local}`);
+    }
+  } catch (err) {
+    console.error(`[EasyBeer] Import client ${cle} depuis commande echoue: ${err.message}`);
+  }
+  if (cache) cache.set(cle, local);
+  return local;
 }
 
 // Background job: pull all EasyBeer clients (verified endpoint) and upsert them. Clients only.
@@ -2662,6 +2713,14 @@ async function handleEasyBeerWebhook(req, res) {
           } catch (err) {
             console.log(`[EasyBeer Webhook] Fetch client ${ebClientId} echoue: ${err.message}`);
           }
+        }
+
+        // 4. Toujours rien : la fiche EasyBeer commande mais n'existe pas chez nous
+        // (fiche restee cote « prospect » dans EasyBeer). On l'importe comme client
+        // plutot que de laisser la commande en orpheline.
+        if (!clientId && ebClientId) {
+          clientId = await importerClientDepuisCommande(apiBase, headers, ebClientId);
+          if (clientId) console.log(`[EasyBeer Webhook] Client ${ebClientId} importe depuis sa commande -> ${clientId}`);
         }
 
         // Store client name from order for orphan display
