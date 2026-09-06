@@ -4862,6 +4862,31 @@ router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
 // Visites Clients - weekly visit planning based on tournées
 // ============================================
 
+// Zones de tournee : la config melange des jours (tableaux de chaines) et une cle
+// « prospection » (tableau d'objets { zone, slots }). Comparer une zone en supposant
+// une chaine faisait tomber les ecrans commerciaux des qu'un client avait une visite
+// prevue dans la semaine avec une tournee absente des jours configures :
+// « z.toLowerCase is not a function ».
+function nomZone(z) {
+  if (typeof z === 'string') return z;
+  if (z && typeof z === 'object' && typeof z.zone === 'string') return z.zone;
+  return '';
+}
+function memeZone(a, b) {
+  const x = nomZone(a).trim().toLowerCase();
+  const y = nomZone(b).trim().toLowerCase();
+  return x !== '' && x === y;
+}
+// Config de tournee lue en base : texte JSON, jamais garanti valide.
+function lireConfigTournee(texte) {
+  try {
+    const c = JSON.parse(texte || '{}');
+    return c && typeof c === 'object' && !Array.isArray(c) ? c : {};
+  } catch {
+    return {};
+  }
+}
+
 router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) => {
   const weekOffset = parseInt(req.query.week_offset) || 0;
   // Allow viewing another commercial's visites (for admins/prospection)
@@ -4894,7 +4919,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     for (const com of allCommerciaux.rows) {
       const comClients = allClients.rows.filter(c => c.commercial_id === com.id);
       const tcRow = allConfigs.rows.find(tc => tc.commercial_id === com.id);
-      const config = tcRow ? JSON.parse(tcRow.config || '{}') : {};
+      const config = tcRow ? lireConfigTournee(tcRow.config) : {};
       const wp = tcRow?.week_pattern || 'every';
       const active = wp === 'every' || (wp === 'even' && isEvenWeek) || (wp === 'odd' && !isEvenWeek);
 
@@ -4922,7 +4947,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
           if (tourneeClients.find(tc2 => tc2.id === c.id)) return false;
           if (c.tournee) {
             for (const [, zones] of Object.entries(config)) {
-              if (Array.isArray(zones) && zones.some(z => z.toLowerCase() === c.tournee.toLowerCase())) {
+              if (Array.isArray(zones) && zones.some(z => memeZone(z, c.tournee))) {
                 return false;
               }
             }
@@ -4974,7 +4999,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
     [targetId]
   );
   const tc = tourneeConfig.rows[0] || null;
-  const config = tc ? JSON.parse(tc.config || '{}') : {};
+  const config = tc ? lireConfigTournee(tc.config) : {};
   const weekPattern = tc?.week_pattern || 'every';
 
   const isTourneeActive = weekPattern === 'every' ||
@@ -5007,7 +5032,7 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
       // If client has a zone that exists in ANY day of the week config, skip — they'll be shown on that day
       if (c.tournee) {
         for (const [, zones] of Object.entries(config)) {
-          if (Array.isArray(zones) && zones.some(z => z.toLowerCase() === c.tournee.toLowerCase())) {
+          if (Array.isArray(zones) && zones.some(z => memeZone(z, c.tournee))) {
             return false; // Zone is configured, client will appear on the correct day
           }
         }
@@ -5072,7 +5097,7 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     [userId]
   );
   const config = tourneeConfig.rows.length > 0
-    ? JSON.parse(tourneeConfig.rows[0].config || '{}')
+    ? lireConfigTournee(tourneeConfig.rows[0].config)
     : {};
   const tourneeNotes = tourneeConfig.rows.length > 0 ? tourneeConfig.rows[0].notes : '';
 
@@ -5092,7 +5117,7 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
       if (c.next_visit === dateStr) {
         if (c.tournee) {
           for (const [, zones] of Object.entries(config)) {
-            if (Array.isArray(zones) && zones.some(z => z.toLowerCase() === c.tournee.toLowerCase())) {
+            if (Array.isArray(zones) && zones.some(z => memeZone(z, c.tournee))) {
               return false; // Zone is configured, client will appear on the correct day
             }
           }
