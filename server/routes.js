@@ -215,7 +215,11 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   const moi = req.user.id;
   const filtreCommercial = admin ? '' : ' WHERE commercial_id = $1';
   const params = admin ? [] : [moi];
-  const clientsMoi = 'SELECT id FROM clients WHERE commercial_id = $1';
+  // Les fiches sans commercial restent visibles de tous : sinon personne ne peut plus les
+  // reprendre, et elles disparaissent du radar. Chacun voit donc son portefeuille + les
+  // fiches libres, et peut s'affecter celles-ci.
+  const SANS_COMMERCIAL = "(commercial_id IS NULL OR commercial_id = '')";
+  const clientsVisibles = `SELECT id FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL}`;
 
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
     db.query(`SELECT * FROM prospects${filtreCommercial}`, params),
@@ -229,14 +233,14 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
     db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
     db.query(admin ? 'SELECT * FROM clients ORDER BY date_modification DESC'
-      : 'SELECT * FROM clients WHERE commercial_id = $1 ORDER BY date_modification DESC', params),
+      : `SELECT * FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL} ORDER BY date_modification DESC`, params),
     db.query(admin ? 'SELECT * FROM interactions ORDER BY date DESC'
-      : `SELECT * FROM interactions WHERE client_id IN (${clientsMoi}) ORDER BY date DESC`, params),
+      : `SELECT * FROM interactions WHERE client_id IN (${clientsVisibles}) ORDER BY date DESC`, params),
     db.query(admin ? 'SELECT * FROM tasks_client ORDER BY date_echeance ASC'
       : 'SELECT * FROM tasks_client WHERE commercial_id = $1 OR created_by = $1 ORDER BY date_echeance ASC', params),
     db.query('SELECT * FROM tournee_config'),
     db.query(admin ? 'SELECT * FROM commandes ORDER BY date_commande DESC'
-      : `SELECT * FROM commandes WHERE client_id IN (${clientsMoi}) ORDER BY date_commande DESC`, params),
+      : `SELECT * FROM commandes WHERE client_id IN (${clientsVisibles}) ORDER BY date_commande DESC`, params),
   ]);
 
   res.json({
@@ -944,6 +948,22 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
     return validationError(res, ['nom est requis']);
   }
 
+  const actuel = (await db.query('SELECT commercial_id FROM clients WHERE id = $1', [req.params.id])).rows[0];
+  if (!actuel) return res.status(404).json({ error: 'Client introuvable' });
+
+  // Un commercial ne modifie que son portefeuille ou une fiche libre (qu'il peut donc
+  // s'affecter). Le portefeuille d'un collegue reste intouchable.
+  const proprietaire = actuel.commercial_id || '';
+  if (req.user.role !== 'admin' && proprietaire && proprietaire !== req.user.id) {
+    return res.status(403).json({ error: 'Ce client est suivi par un autre commercial' });
+  }
+
+  // commercial_id absent du corps -> on garde celui en place. Sans ce garde-fou, une
+  // simple modification de fiche transferait silencieusement le client a celui qui edite.
+  const commercialFinal = c.commercial_id !== undefined
+    ? (c.commercial_id || null)
+    : (actuel.commercial_id || null);
+
   const now = new Date().toISOString();
   await db.query(
     `UPDATE clients SET nom=$1, ville=$2, adresse=$3, code_postal=$4, telephone=$5, telephone_mobile=$6,
@@ -952,7 +972,7 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
      date_modification=$20 WHERE id=$21`,
     [c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
      c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
-     c.statut || 'ACTIF', c.commercial_id || req.user.id, c.next_visit || null, c.last_visit || null,
+     c.statut || 'ACTIF', commercialFinal, c.next_visit || null, c.last_visit || null,
      c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
      c.siret || '', c.tournee || '', c.date_modification || now, req.params.id]
   );
@@ -1631,6 +1651,90 @@ router.get('/easybeer/sync-commandes-status', authMiddleware, asyncHandler(async
     ligne = { ...ligne, status: 'error', message };
   }
   res.json({ ok: true, running: commandesSyncRunning, log: ligne, resultat: derniereSyncCommandes });
+}));
+
+// ============================================
+// Activite de prospection par membre (agregats)
+// ============================================
+
+// Compteurs d'activite de prospection de TOUTE l'equipe, pour le tableau du dashboard.
+// Volontairement limite a l'activite (appels, RDV pris, visites, prospects) : aucune
+// donnee client, aucun chiffre d'affaires. C'est ce qui permet de garder ce tableau
+// visible de tous alors que /state est cloisonne par commercial.
+router.get('/prospection/activite', authMiddleware, asyncHandler(async (req, res) => {
+  const debut = String(req.query.debut || '').slice(0, 10);
+  const fin = String(req.query.fin || '').slice(0, 10);
+  if (!debut || !fin) return validationError(res, ['debut et fin sont requis (AAAA-MM-JJ)']);
+  const aujourdhui = toLocalDateStr(new Date());
+
+  // Les colonnes de date sont du texte ISO : on compare sur les 10 premiers caracteres
+  // pour accepter aussi bien « 2026-09-06 » que « 2026-09-06T14:12:00.000Z ».
+  const [appels, rdvTenus, rdvPris, visites, prospects] = await Promise.all([
+    db.query(
+      `SELECT commercial_id,
+              COUNT(*) FILTER (WHERE LEFT(date,10) BETWEEN $1 AND $2) AS periode,
+              COUNT(*) FILTER (WHERE LEFT(date,10) BETWEEN $1 AND $2 AND resultat = 'repondu') AS repondus,
+              COUNT(*) FILTER (WHERE LEFT(date,10) = $3) AS aujourdhui,
+              COALESCE(AVG(duree) FILTER (WHERE LEFT(date,10) BETWEEN $1 AND $2 AND duree > 0), 0) AS duree_moyenne
+       FROM calls GROUP BY commercial_id`,
+      [debut, fin, aujourdhui]
+    ),
+    db.query(
+      `SELECT commercial_id, COUNT(*) AS n FROM appointments
+       WHERE LEFT(date,10) BETWEEN $1 AND $2 GROUP BY commercial_id`,
+      [debut, fin]
+    ),
+    // RDV pris : on compte a la date de prise, et au nom de celui qui l'a pris.
+    db.query(
+      `SELECT prospecteur_id AS commercial_id, COUNT(*) AS n FROM appointments
+       WHERE prospecteur_id IS NOT NULL AND prospecteur_id <> ''
+         AND LEFT(COALESCE(NULLIF(created_at,''), date),10) BETWEEN $1 AND $2
+       GROUP BY prospecteur_id`,
+      [debut, fin]
+    ),
+    db.query(
+      `SELECT commercial_id, COUNT(*) AS n FROM interactions
+       WHERE type = 'VISITE' AND LEFT(date,10) BETWEEN $1 AND $2 GROUP BY commercial_id`,
+      [debut, fin]
+    ),
+    db.query(
+      `SELECT commercial_id,
+              COUNT(*) FILTER (WHERE LEFT(date_creation,10) BETWEEN $1 AND $2) AS crees,
+              COUNT(*) FILTER (WHERE etape_pipeline = 'client_gagne') AS gagnes
+       FROM prospects GROUP BY commercial_id`,
+      [debut, fin]
+    ),
+  ]);
+
+  const parCommercial = {};
+  const ligne = (id) => {
+    if (!id) return null;
+    if (!parCommercial[id]) {
+      parCommercial[id] = {
+        commercial_id: id, appels: 0, appels_aujourdhui: 0, appels_repondus: 0,
+        duree_moyenne: 0, rdv_tenus: 0, rdv_pris: 0, visites: 0, prospects_crees: 0, prospects_gagnes: 0,
+      };
+    }
+    return parCommercial[id];
+  };
+
+  for (const r of appels.rows) {
+    const l = ligne(r.commercial_id); if (!l) continue;
+    l.appels = Number(r.periode) || 0;
+    l.appels_repondus = Number(r.repondus) || 0;
+    l.appels_aujourdhui = Number(r.aujourdhui) || 0;
+    l.duree_moyenne = Math.round(Number(r.duree_moyenne) || 0);
+  }
+  for (const r of rdvTenus.rows) { const l = ligne(r.commercial_id); if (l) l.rdv_tenus = Number(r.n) || 0; }
+  for (const r of rdvPris.rows) { const l = ligne(r.commercial_id); if (l) l.rdv_pris = Number(r.n) || 0; }
+  for (const r of visites.rows) { const l = ligne(r.commercial_id); if (l) l.visites = Number(r.n) || 0; }
+  for (const r of prospects.rows) {
+    const l = ligne(r.commercial_id); if (!l) continue;
+    l.prospects_crees = Number(r.crees) || 0;
+    l.prospects_gagnes = Number(r.gagnes) || 0;
+  }
+
+  res.json({ debut, fin, activites: Object.values(parCommercial) });
 }));
 
 // ============================================

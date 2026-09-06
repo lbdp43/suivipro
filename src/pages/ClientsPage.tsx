@@ -85,6 +85,7 @@ export default function ClientsPage() {
 
   const [filterNoTournee, setFilterNoTournee] = usePersistedState('clients_no_tournee', false);
   const [filterNoType, setFilterNoType] = usePersistedState('clients_no_type', false);
+  const [filterNoCommercial, setFilterNoCommercial] = usePersistedState('clients_no_commercial', false);
 
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -444,9 +445,16 @@ export default function ClientsPage() {
       return;
     }
 
+    let ignoresAutreCommercial = 0;
     for (const id of selectedIds) {
       const client = state.clients.find(c => c.id === id);
       if (!client) continue;
+      // Hors admin, on ne s'affecte que des fiches libres : le portefeuille d'un collegue
+      // ne se reprend pas d'un clic (le serveur refuse de toute facon).
+      if (bulkAction === 'commercial' && !isAdmin && client.commercial_id) {
+        ignoresAutreCommercial++;
+        continue;
+      }
       let updated: Client = { ...client, date_modification: now };
       if (bulkAction === 'commercial') updated.commercial_id = bulkValue;
       if (bulkAction === 'tournee') updated.tournee = bulkValue;
@@ -467,6 +475,7 @@ export default function ClientsPage() {
       }
     }
     if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
+    if (ignoresAutreCommercial > 0) toast.error(`${ignoresAutreCommercial} client(s) ignore(s) : deja suivis par un autre commercial`);
     if (count > 0) toast.success(`${count} client(s) mis a jour`);
     exitSelectionMode();
   };
@@ -897,6 +906,10 @@ export default function ClientsPage() {
     if (filterCommercials.size > 0) {
       list = list.filter(c => filterCommercials.has(c.commercial_id));
     }
+    if (filterNoCommercial) {
+      list = list.filter(c => !c.commercial_id);
+    }
+
     if (filterNoTournee) {
       list = list.filter(c => !c.tournee || c.tournee.trim() === '');
     } else if (filterTournees.size > 0) {
@@ -914,7 +927,7 @@ export default function ClientsPage() {
     }
 
     return list;
-  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser, filterNoTournee, filterNoType, getPersonalVisitStatus]);
+  }, [state.clients, searchTerm, filterTypes, filterStatus, filterVisit, filterCommercials, filterTournees, sortDate, isAdmin, state.currentUser, filterNoTournee, filterNoType, filterNoCommercial, getPersonalVisitStatus]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -1174,6 +1187,16 @@ export default function ClientsPage() {
             >
               Sans type
             </button>
+            {/* Fiches libres : visibles de tous, chacun peut se les affecter. */}
+            <button
+              onClick={() => { setFilterNoCommercial(!filterNoCommercial); setFilterCommercials(new Set()); setCurrentPage(0); }}
+              title="Clients qui ne sont suivis par personne — selectionnez-les pour vous les affecter"
+              className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                filterNoCommercial ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200'
+              }`}
+            >
+              Sans commercial ({state.clients.filter(c => !c.commercial_id).length})
+            </button>
             {Object.entries(CLIENT_TYPE_FAMILIES).map(([key, fam]) => (
               <button
                 key={key}
@@ -1237,7 +1260,7 @@ export default function ClientsPage() {
               <option value="visite">Enregistrer une visite</option>
               <option value="tache">Creer une tache (appels/visites)</option>
               <option value="note">Ajouter / modifier une note</option>
-              {isAdmin && <option value="commercial">Changer le commercial</option>}
+              <option value="commercial">{isAdmin ? 'Changer le commercial' : 'Affecter un commercial (fiches libres)'}</option>
               <option value="tournee">Changer la tournée</option>
               <option value="type">Changer le type</option>
               <option value="statut">Changer le statut</option>
