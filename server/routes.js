@@ -2083,6 +2083,8 @@ async function easybeerAuthHeaders() {
 // Insert/update one client from an EasyBeer client object. Returns 'created' | 'updated' | 'skipped'.
 // Clients only (never prospects). Attribution by native idCommercial, else keeps existing.
 async function upsertClientFromEasybeer(cli) {
+  // Clients uniquement : ignorer toute fiche marquee PROSPECT cote EasyBeer (etat.code).
+  if (String(cli?.etat?.code || '').toUpperCase() === 'PROSPECT') return 'skipped';
   const f = extractEbFieldsSync(cli);
   if (!f.easybeer_id && !f.name) return 'skipped';
   const now = new Date().toISOString();
@@ -2153,7 +2155,14 @@ async function runClientSync() {
   const logId = (await db.query("INSERT INTO easybeer_sync_logs (kind,status,started_at) VALUES ('clients','running',$1) RETURNING id", [new Date().toISOString()])).rows[0].id;
   let created = 0, updated = 0, skipped = 0, errors = 0;
   try {
-    const clients = await eb.listeClients(auth.apiBase, auth.hdrs, { maxPages: 40 });
+    // Clients uniquement (jamais les prospects EasyBeer) : filtre inclureProspect=false.
+    const clients = [];
+    for (let page = 1; page <= 40; page++) {
+      const res = await eb.listeClientsPage(auth.apiBase, auth.hdrs, { page, filtre: { inclureProspect: false } });
+      const liste = (res && res.liste) || [];
+      clients.push(...liste);
+      if (!res || page >= (res.totalPages || 1)) break;
+    }
     for (const cli of clients) {
       try {
         const r = await upsertClientFromEasybeer(cli);
