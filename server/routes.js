@@ -3707,6 +3707,222 @@ router.post('/easybeer/liens/:easybeerId/relier', authMiddleware, asyncHandler(a
   res.json({ ok: true, commandes_rattachees: rattachees });
 }));
 
+// ============================================
+// Doublons clients : detection et fusion
+// ============================================
+
+// Normalisation « raison sociale » : sans accents, sans forme juridique, sans article
+// de tete, sans ponctuation. « L'Atelier du Coin SARL » et « atelier du coin » se
+// ramenent a la meme chaine.
+function normaliserNomClient(nom) {
+  return String(nom || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    // Ponctuation d'abord : « l'atelier » devient « l atelier », donc l'article de tete
+    // se retire ensuite comme un mot ordinaire.
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(sarl|sas|sasu|eurl|eirl|sa|snc|scop|sci|ets|etablissements)\b/g, ' ')
+    .replace(/^\s*(l|le|la|les|au|aux|chez|the)\s+/, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function motsSignificatifs(nom) {
+  return normaliserNomClient(nom).split(' ').filter(m => m.length > 2);
+}
+
+function normaliserIdentifiant(v) {
+  return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Compare deux fiches et renvoie { score, motif } ou null si elles n'ont rien a voir.
+// score : 100 = certain (identifiant legal ou de contact partage), 80 = nom identique,
+// 60 = un nom contient l'autre, 40 = memes mots significatifs.
+// Formes normalisees calculees une fois par client : sans ce pre-calcul, comparer
+// ~1250 clients (780 000 paires) referait autant de normalisations.
+function preparerComparaison(c) {
+  return {
+    ...c,
+    _nom: normaliserNomClient(c.nom),
+    _mots: motsSignificatifs(c.nom),
+    _siret: normaliserIdentifiant(c.siret),
+    _email: normaliserIdentifiant(c.email),
+    _tel: normaliserIdentifiant(c.telephone),
+  };
+}
+
+function comparerClients(a, b) {
+  const p = (c) => (c._nom === undefined ? preparerComparaison(c) : c);
+  a = p(a); b = p(b);
+  if (a._siret && a._siret.length >= 9 && a._siret === b._siret) return { score: 100, motif: 'SIRET identique' };
+  if (a._email && a._email === b._email) return { score: 100, motif: 'Email identique' };
+  if (a._tel && a._tel.length >= 9 && a._tel === b._tel) return { score: 100, motif: 'Telephone identique' };
+
+  const nA = a._nom, nB = b._nom;
+  if (!nA || !nB || nA.length < 4 || nB.length < 4) return null;
+  if (nA === nB) return { score: 80, motif: 'Nom identique' };
+  if (nA.includes(nB) || nB.includes(nA)) return { score: 60, motif: 'Un nom contient l\'autre' };
+
+  const mA = a._mots, mB = b._mots;
+  if (mA.length === 0 || mB.length === 0) return null;
+  const communs = mA.filter(m => mB.includes(m));
+  // Un seul mot commun ne prouve rien (« Bar A » / « Bar B ») : il en faut au moins deux.
+  if (communs.length < 2) return null;
+  // Il faut que les mots communs couvrent l'essentiel des DEUX noms, sinon « Bar de la
+  // Poste » et « Bar du Marche » se retrouveraient apparies par le seul mot « bar ».
+  const couverture = Math.min(communs.length / mA.length, communs.length / mB.length);
+  if (couverture >= 0.75) return { score: 40, motif: `Mots communs : ${communs.join(', ')}` };
+  return null;
+}
+
+// Paires de clients susceptibles d'etre le meme etablissement.
+router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const clients = (await db.query(
+    `SELECT c.id, c.nom, c.ville, c.code_postal, c.email, c.telephone, c.siret, c.easybeer_id,
+            c.commercial_id, c.statut, c.type_client, c.date_creation,
+            com.prenom AS commercial_prenom, com.nom AS commercial_nom,
+            (SELECT COUNT(*) FROM commandes cm WHERE cm.client_id = c.id) AS nb_commandes,
+            (SELECT COUNT(*) FROM interactions i WHERE i.client_id = c.id) AS nb_interactions,
+            (SELECT COALESCE(SUM(cm.montant_ttc), 0) FROM commandes cm WHERE cm.client_id = c.id) AS ca_ttc
+     FROM clients c
+     LEFT JOIN commerciaux com ON com.id = c.commercial_id
+     WHERE c.id <> $1
+     ORDER BY c.nom`,
+    [SITE_INTERNET_CLIENT_ID]
+  )).rows;
+
+  const fiche = (c) => ({
+    id: c.id,
+    nom: c.nom,
+    ville: c.ville || '',
+    code_postal: c.code_postal || '',
+    email: c.email || '',
+    telephone: c.telephone || '',
+    siret: c.siret || '',
+    easybeer_id: c.easybeer_id || '',
+    statut: c.statut,
+    type_client: c.type_client,
+    date_creation: c.date_creation,
+    commercial: [c.commercial_prenom, c.commercial_nom].filter(Boolean).join(' '),
+    nb_commandes: Number(c.nb_commandes) || 0,
+    nb_interactions: Number(c.nb_interactions) || 0,
+    ca_ttc: Math.round((Number(c.ca_ttc) || 0) * 100) / 100,
+  });
+
+  const prepares = clients.map(preparerComparaison);
+  const paires = [];
+  for (let i = 0; i < prepares.length; i++) {
+    for (let j = i + 1; j < prepares.length; j++) {
+      const r = comparerClients(prepares[i], prepares[j]);
+      if (!r) continue;
+      // Fiche a garder par defaut : celle qui porte le plus d'historique, puis la plus ancienne.
+      const [a, b] = [fiche(clients[i]), fiche(clients[j])];
+      const poids = (f) => f.nb_commandes * 10 + f.nb_interactions;
+      const garder = poids(a) === poids(b)
+        ? (String(a.date_creation || '') <= String(b.date_creation || '') ? a : b)
+        : (poids(a) > poids(b) ? a : b);
+      paires.push({
+        score: r.score,
+        motif: r.motif,
+        suggestion_garder: garder.id,
+        clients: [a, b],
+      });
+    }
+  }
+  paires.sort((x, y) => y.score - x.score || x.clients[0].nom.localeCompare(y.clients[0].nom));
+
+  res.json({
+    total_clients: clients.length,
+    total_paires: paires.length,
+    certains: paires.filter(p => p.score === 100).length,
+    paires: paires.slice(0, 300),
+  });
+}));
+
+// Fusionne deux clients : tout l'historique du doublon part sur la fiche gardee, les
+// champs vides de celle-ci sont completes, puis le doublon est supprime.
+router.post('/clients/fusionner', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { garder_id, supprimer_id } = req.body || {};
+  if (!garder_id || !supprimer_id) return validationError(res, ['garder_id et supprimer_id sont requis']);
+  if (garder_id === supprimer_id) return validationError(res, ['Les deux identifiants sont identiques']);
+  if (garder_id === SITE_INTERNET_CLIENT_ID || supprimer_id === SITE_INTERNET_CLIENT_ID) {
+    return validationError(res, ['Le groupe « Site internet » ne peut pas etre fusionne']);
+  }
+
+  const garder = (await db.query('SELECT * FROM clients WHERE id = $1', [garder_id])).rows[0];
+  const doublon = (await db.query('SELECT * FROM clients WHERE id = $1', [supprimer_id])).rows[0];
+  if (!garder || !doublon) return res.status(404).json({ error: 'Client introuvable' });
+
+  // Toutes les tables qui referencent un client, decouvertes dans le schema : pas de
+  // liste en dur qui se perimerait a la prochaine migration.
+  const refs = (await db.query(
+    `SELECT table_name, column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name <> 'clients'
+       AND column_name IN ('client_id', 'imported_client_id')`
+  )).rows;
+
+  const dbClient = await db.connect();
+  let deplacees = 0;
+  const detailDeplacements = [];
+  try {
+    await dbClient.query('BEGIN');
+    for (const ref of refs) {
+      const r = await dbClient.query(
+        `UPDATE "${ref.table_name}" SET "${ref.column_name}" = $1 WHERE "${ref.column_name}" = $2`,
+        [garder_id, supprimer_id]
+      );
+      if (r.rowCount > 0) {
+        deplacees += r.rowCount;
+        detailDeplacements.push(`${ref.table_name}: ${r.rowCount}`);
+      }
+    }
+
+    // Champs vides de la fiche gardee completes par ceux du doublon (jamais l'inverse).
+    await dbClient.query(
+      `UPDATE clients SET
+         email = COALESCE(NULLIF(email,''), $2),
+         telephone = COALESCE(NULLIF(telephone,''), $3),
+         telephone_mobile = COALESCE(NULLIF(telephone_mobile,''), $4),
+         adresse = COALESCE(NULLIF(adresse,''), $5),
+         ville = COALESCE(NULLIF(ville,''), $6),
+         code_postal = COALESCE(NULLIF(code_postal,''), $7),
+         siret = COALESCE(NULLIF(siret,''), $8),
+         contact = COALESCE(NULLIF(contact,''), $9),
+         tournee = COALESCE(NULLIF(tournee,''), $10),
+         easybeer_id = COALESCE(NULLIF(easybeer_id,''), $11),
+         easybeer_numero = COALESCE(NULLIF(easybeer_numero,''), $12),
+         commercial_id = COALESCE(commercial_id, $13),
+         prospect_id = COALESCE(prospect_id, $19),
+         latitude = CASE WHEN latitude IS NULL OR latitude = 0 THEN $14 ELSE latitude END,
+         longitude = CASE WHEN longitude IS NULL OR longitude = 0 THEN $15 ELSE longitude END,
+         last_visit = NULLIF(GREATEST(COALESCE(last_visit,''), COALESCE($16,'')), ''),
+         notes = CASE WHEN COALESCE(NULLIF($17,''), '') = '' THEN notes
+                      ELSE TRIM(BOTH E'\\n' FROM COALESCE(notes,'') || E'\\n' || $17) END,
+         date_modification = $18
+       WHERE id = $1`,
+      [garder_id, doublon.email, doublon.telephone, doublon.telephone_mobile, doublon.adresse,
+       doublon.ville, doublon.code_postal, doublon.siret, doublon.contact, doublon.tournee,
+       doublon.easybeer_id, doublon.easybeer_numero, doublon.commercial_id,
+       doublon.latitude, doublon.longitude, doublon.last_visit, doublon.notes,
+       new Date().toISOString(), doublon.prospect_id]
+    );
+
+    await dbClient.query('DELETE FROM clients WHERE id = $1', [supprimer_id]);
+    await dbClient.query('COMMIT');
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    throw err;
+  } finally {
+    dbClient.release();
+  }
+
+  const resume = `"${doublon.nom}" fusionne dans "${garder.nom}" (${deplacees} element(s) deplace(s)${detailDeplacements.length ? ' — ' + detailDeplacements.join(', ') : ''})`;
+  console.log(`[Doublons] ${resume}`);
+  logActivity(req.user.id, 'client_fusionne', resume, 'client', garder_id);
+
+  res.json({ ok: true, message: resume, elements_deplaces: deplacees, detail: detailDeplacements });
+}));
+
 router.get('/easybeer/pending-clients', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query("SELECT * FROM easybeer_clients WHERE status = 'pending' ORDER BY synced_at DESC"); // les statuts 'site_internet' sont volontairement exclus
   res.json(result.rows);

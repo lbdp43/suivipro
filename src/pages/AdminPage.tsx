@@ -121,6 +121,9 @@ export default function AdminPage() {
   const [ebConfig, setEbConfig] = useState({ username: '', password: '', api_url: 'https://api.easybeer.fr', webhook_secret: '' });
   const [ebAudit, setEbAudit] = useState<{ total: number; suspects: number; a_verifier: number; liens: any[] } | null>(null);
   const [ebAuditLoading, setEbAuditLoading] = useState(false);
+  const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; paires: any[] } | null>(null);
+  const [doublonsLoading, setDoublonsLoading] = useState(false);
+  const [fusionEnCours, setFusionEnCours] = useState<string | null>(null);
   const [ebRelierChoix, setEbRelierChoix] = useState<Record<string, string>>({});
   const [ebConfigLoaded, setEbConfigLoaded] = useState(false);
   const [ebSaving, setEbSaving] = useState(false);
@@ -386,6 +389,45 @@ export default function AdminPage() {
       if (res.ok) setEbAudit(await res.json());
     } catch { /* silencieux */ }
     setEbAuditLoading(false);
+  };
+
+  const chargerDoublons = async () => {
+    setDoublonsLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
+      const res = await fetch('/api/clients/doublons', { headers });
+      if (res.ok) setDoublons(await res.json());
+      else toast.error('Erreur lors de la detection des doublons');
+    } catch { toast.error('Erreur reseau'); }
+    setDoublonsLoading(false);
+  };
+
+  const fusionnerClients = async (garder: any, supprimer: any) => {
+    const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
+      + `${supprimer.nb_commandes} commande(s), ${supprimer.nb_interactions} interaction(s) et l'historique de « ${supprimer.nom} » `
+      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimee.\n\nCette action est definitive.`;
+    if (!confirm(message)) return;
+    setFusionEnCours(`${garder.id}|${supprimer.id}`);
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}`, 'Content-Type': 'application/json' };
+      const res = await fetch('/api/clients/fusionner', {
+        method: 'POST', headers,
+        body: JSON.stringify({ garder_id: garder.id, supprimer_id: supprimer.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        toast.success(data.message || 'Clients fusionnes');
+        // On retire de la liste toutes les paires qui referencent la fiche supprimee.
+        setDoublons(prev => prev ? {
+          ...prev,
+          paires: prev.paires.filter((p: any) => !p.clients.some((c: any) => c.id === supprimer.id)),
+        } : prev);
+        // La liste clients de l'app se rafraichit toute seule (polling 30 s).
+      } else {
+        toast.error(data.error || data.message || 'Echec de la fusion');
+      }
+    } catch { toast.error('Erreur reseau'); }
+    setFusionEnCours(null);
   };
 
   const delierLienEasybeer = async (easybeerId: string, nom: string) => {
@@ -1497,6 +1539,83 @@ export default function AdminPage() {
                     <p className="text-sm text-green-700">Tous les liens sont cohérents ✓</p>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Doublons de clients */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <Users className="w-4 h-4" /> Doublons de clients
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Repere les fiches qui designent probablement le meme etablissement (SIRET, email ou telephone
+              partage, nom identique ou tres proche). La fusion transfere commandes, visites et rendez-vous
+              sur la fiche gardee, complete ses champs vides, puis supprime le doublon.
+            </p>
+            <button
+              className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 mb-3"
+              onClick={chargerDoublons}
+              disabled={doublonsLoading}
+            >
+              {doublonsLoading ? 'Analyse…' : doublons ? 'Relancer la detection' : 'Detecter les doublons'}
+            </button>
+
+            {doublons && (
+              <div>
+                <div className="flex gap-3 mb-3 text-sm flex-wrap">
+                  <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{doublons.total_clients} client(s) analyses</span>
+                  <span className={`px-2 py-1 rounded ${doublons.total_paires ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                    {doublons.total_paires} paire(s) suspecte(s)
+                  </span>
+                  {doublons.certains > 0 && (
+                    <span className="px-2 py-1 rounded bg-red-100 text-red-700">{doublons.certains} certaine(s)</span>
+                  )}
+                </div>
+                {doublons.paires.length === 0 ? (
+                  <p className="text-sm text-green-700">Aucun doublon detecte ✓</p>
+                ) : (
+                  <div className="space-y-3 max-h-[32rem] overflow-y-auto">
+                    {doublons.paires.map((paire: any, i: number) => (
+                      <div key={`${paire.clients[0].id}-${paire.clients[1].id}-${i}`}
+                        className={`p-3 rounded-lg border ${paire.score === 100 ? 'border-red-200 bg-red-50' : paire.score >= 80 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <p className="text-xs font-medium text-gray-600 mb-2">{paire.motif}</p>
+                        <div className="grid md:grid-cols-2 gap-2">
+                          {paire.clients.map((c: any) => {
+                            const autre = paire.clients.find((x: any) => x.id !== c.id);
+                            const suggere = paire.suggestion_garder === c.id;
+                            return (
+                              <div key={c.id} className={`p-2 rounded-lg bg-white border text-xs ${suggere ? 'border-brewery-300' : 'border-gray-200'}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="font-medium text-gray-900">{c.nom}</span>
+                                  {suggere && <span className="px-1.5 py-0.5 rounded bg-brewery-100 text-brewery-700 whitespace-nowrap">suggere</span>}
+                                </div>
+                                <p className="text-gray-500 mt-1">
+                                  {[c.ville, c.code_postal].filter(Boolean).join(' ') || 'Sans ville'}
+                                  {c.commercial ? ` · ${c.commercial}` : ' · sans commercial'}
+                                </p>
+                                <p className="text-gray-500">
+                                  {c.nb_commandes} commande(s) · {c.ca_ttc.toFixed(2)}€ TTC · {c.nb_interactions} interaction(s)
+                                </p>
+                                <p className="text-gray-400">
+                                  {c.easybeer_id ? `EasyBeer #${c.easybeer_id}` : 'sans lien EasyBeer'}
+                                  {c.siret ? ` · SIRET ${c.siret}` : ''}
+                                </p>
+                                <button
+                                  className="mt-2 w-full px-2 py-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 disabled:opacity-50"
+                                  disabled={fusionEnCours !== null}
+                                  onClick={() => fusionnerClients(c, autre)}
+                                >
+                                  {fusionEnCours === `${c.id}|${autre.id}` ? 'Fusion…' : 'Garder cette fiche'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
