@@ -1376,6 +1376,17 @@ router.post('/easybeer/sync-all-commandes', authMiddleware, asyncHandler(async (
   // qui déclenchaient le ban 10 req/s). Chaque commande porte son client.idClient :
   // le rattachement se fait par identifiant, jamais par nom.
   const idToLocal = new Map(allClientsToProcess.filter(c => c.clientId).map(c => [String(c.apiId), c]));
+
+  // Lien direct et fiable : les clients portent leur easybeer_id natif (pose par la sync
+  // clients). On s'en sert en priorite pour rattacher les commandes — sans dependre de la
+  // liste API ni du matching flou, qui laissaient des commandes en orphelines.
+  const liensDirects = await db.query(
+    "SELECT id, nom, easybeer_id FROM clients WHERE easybeer_id IS NOT NULL AND easybeer_id <> ''"
+  );
+  for (const row of liensDirects.rows) {
+    idToLocal.set(String(row.easybeer_id), { apiId: String(row.easybeer_id), clientId: row.id, clientNom: row.nom });
+  }
+  console.log(`[EasyBeer Bulk Sync] ${idToLocal.size} liens client disponibles (dont ${liensDirects.rows.length} par easybeer_id direct)`);
   const dateDebut = (req.body && req.body.dateDebut) || '2024-01-01';
   let toutesCommandes = [];
   try {
