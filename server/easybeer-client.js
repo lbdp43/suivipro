@@ -87,12 +87,15 @@ export function listeCommandesPage(apiBase, headers, { etat = 'tous', filtre = {
 }
 
 /** Toutes les commandes d'un filtre (pagination suivie, borne de sécurité). */
-export async function listeCommandes(apiBase, headers, { etat = 'tous', filtre = {}, maxPages = 25 } = {}) {
+export async function listeCommandes(apiBase, headers, { etat = 'tous', filtre = {}, parPage = 200, maxPages = 25 } = {}) {
   const toutes = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await listeCommandesPage(apiBase, headers, { etat, filtre, page });
-    toutes.push(...((res && res.liste) || []));
-    if (!res || page >= (res.totalPages || 1)) break;
+    const res = await listeCommandesPage(apiBase, headers, { etat, filtre, page, parPage });
+    const liste = (res && res.liste) || [];
+    toutes.push(...liste);
+    // totalPages est parfois sous-evalue par l'API (constate sur /parametres/client/liste,
+    // ou il coupait la recuperation) : on s'arrete sur la premiere page incomplete.
+    if (liste.length < parPage) break;
   }
   return toutes;
 }
@@ -108,13 +111,13 @@ export function listeClientsPage(apiBase, headers, { page = 1, parPage = 500, fi
 }
 
 /** Tous les clients Easybeer ({ idClient, nom, … }). */
-export async function listeClients(apiBase, headers, { maxPages = 20 } = {}) {
+export async function listeClients(apiBase, headers, { parPage = 500, maxPages = 20 } = {}) {
   const tous = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await listeClientsPage(apiBase, headers, { page });
+    const res = await listeClientsPage(apiBase, headers, { page, parPage });
     const liste = (res && res.liste) || [];
     tous.push(...liste);
-    if (!res || page >= (res.totalPages || 1)) break;
+    if (liste.length < parPage) break; // meme raison : totalPages n'est pas fiable
   }
   return tous;
 }
