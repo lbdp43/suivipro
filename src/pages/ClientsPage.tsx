@@ -9,13 +9,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
+import ChampsRdv, { type ValeurRdv } from '../components/ChampsRdv';
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType, ClientStatus, Client, InteractionType,
   INTERACTION_TYPE_LABELS, TaskClient, 
 } from '../types';
-import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
-import { getGoogleCalendarEvents, apiGet, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
+import { generateId, formatDate, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
@@ -129,7 +130,6 @@ export default function ClientsPage() {
   const [rdvLieu, setRdvLieu] = useState('');
   const [rdvCommercialId, setRdvCommercialId] = useState('');
   const [rdvNotes, setRdvNotes] = useState('');
-  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [showRdvConfirmation, setShowRdvConfirmation] = useState(false);
   const [createdRdvId, setCreatedRdvId] = useState('');
 
@@ -208,34 +208,14 @@ export default function ClientsPage() {
     }
   }, [interactionClient, interactionType]);
 
-  // Google Calendar conflict detection for RDV
-  useEffect(() => {
-    if (interactionType !== 'RDV_PLANIFIE' || !rdvCommercialId || !interactionDate) {
-      setGoogleEvents([]);
-      return;
-    }
-    const dayStart = new Date(interactionDate + 'T00:00:00').toISOString();
-    const dayEnd = new Date(interactionDate + 'T23:59:59').toISOString();
-    getGoogleCalendarEvents(rdvCommercialId, dayStart, dayEnd)
-      .then(res => setGoogleEvents(res.connected ? res.events : []))
-      .catch(() => setGoogleEvents([]));
-  }, [interactionType, rdvCommercialId, interactionDate]);
-
-  // Internal RDV conflicts
-  const rdvConflicts = interactionType === 'RDV_PLANIFIE' && rdvCommercialId && interactionDate && rdvHeureDebut && rdvHeureFin
-    ? detectConflicts(state.appointments, rdvCommercialId, interactionDate, rdvHeureDebut, rdvHeureFin)
-    : [];
-
-  // Google Calendar conflicts for the chosen time slot
-  const googleConflicts = interactionType === 'RDV_PLANIFIE' && interactionDate && rdvHeureDebut && rdvHeureFin
-    ? googleEvents.filter(evt => {
-        if (evt.allDay) return true;
-        const evtStart = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
-        const evtEnd = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
-        if (!evtStart || !evtEnd) return false;
-        return rdvHeureDebut < evtEnd && evtStart < rdvHeureFin;
-      })
-    : [];
+  const patchRdv = (v: Partial<ValeurRdv>) => {
+    if (v.commercial_id !== undefined) setRdvCommercialId(v.commercial_id);
+    if (v.date !== undefined) setInteractionDate(v.date);
+    if (v.heure_debut !== undefined) setRdvHeureDebut(v.heure_debut);
+    if (v.heure_fin !== undefined) setRdvHeureFin(v.heure_fin);
+    if (v.lieu !== undefined) setRdvLieu(v.lieu);
+    if (v.notes !== undefined) setRdvNotes(v.notes);
+  };
 
   const getEffectiveFrequency = (typeClient: string, customRecurrence: number | null): number | null => {
     if (customRecurrence !== null && customRecurrence !== undefined) return customRecurrence || null; // 0 means no recurrence
@@ -2371,105 +2351,10 @@ export default function ClientsPage() {
                         </label>
                       </div>
 
-                      {/* Commercial assigne */}
-                      <div>
-                        <label className="block text-[10px] text-purple-600 mb-0.5 flex items-center gap-1">
-                          <Users className="w-3 h-3" /> Commercial assigné au RDV
-                        </label>
-                        <select
-                          className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
-                          value={rdvCommercialId}
-                          onChange={e => setRdvCommercialId(e.target.value)}
-                        >
-                          {state.commerciaux.map(c => (
-                            <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Date + heures */}
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="block text-[10px] text-purple-600 mb-0.5">Date *</label>
-                          <input
-                            type="date"
-                            className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
-                            value={interactionDate}
-                            onChange={e => setInteractionDate(e.target.value)}
-                          />
-                        </div>
-                        <div className="w-20">
-                          <label className="block text-[10px] text-purple-600 mb-0.5">Debut</label>
-                          <input
-                            type="time"
-                            className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
-                            value={rdvHeureDebut}
-                            onChange={e => setRdvHeureDebut(e.target.value)}
-                          />
-                        </div>
-                        <div className="w-20">
-                          <label className="block text-[10px] text-purple-600 mb-0.5">Fin</label>
-                          <input
-                            type="time"
-                            className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
-                            value={rdvHeureFin}
-                            onChange={e => setRdvHeureFin(e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Internal RDV conflicts */}
-                      {rdvConflicts.length > 0 && (
-                        <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
-                          </p>
-                          {rdvConflicts.map(c => {
-                            const cp = c.prospect_id ? state.prospects.find(p => p.id === c.prospect_id) : null;
-                            const cc = c.client_id ? state.clients.find(cl => cl.id === c.client_id) : null;
-                            return (
-                              <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
-                                {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
-                              </p>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Google Calendar conflicts */}
-                      {googleConflicts.length > 0 && (
-                        <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                          <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — événement(s) Google Agenda sur ce creneau
-                          </p>
-                          {googleConflicts.map(evt => {
-                            const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
-                            const end = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
-                            return (
-                              <p key={evt.id} className="text-[10px] text-amber-600 mt-0.5">
-                                {evt.allDay ? 'Journee entiere' : `${start}-${end}`} : {evt.summary}
-                              </p>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Lieu */}
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white"
-                        placeholder="Lieu du RDV..."
-                        value={rdvLieu}
-                        onChange={e => setRdvLieu(e.target.value)}
-                      />
-
-                      {/* Notes RDV */}
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white"
-                        placeholder="Notes du RDV (optionnel)..."
-                        value={rdvNotes}
-                        onChange={e => setRdvNotes(e.target.value)}
+                      <ChampsRdv
+                        teinte="purple"
+                        valeur={{ commercial_id: rdvCommercialId, date: interactionDate, heure_debut: rdvHeureDebut, heure_fin: rdvHeureFin, lieu: rdvLieu, notes: rdvNotes }}
+                        onChange={patchRdv}
                       />
                     </div>
                   )}

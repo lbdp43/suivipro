@@ -21,7 +21,6 @@ import { Doughnut, Bar } from 'react-chartjs-2';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import AdminClientsDashboard from '../components/AdminClientsDashboard';
-import CommercialClientsDashboard from '../components/CommercialClientsDashboard';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -873,13 +872,16 @@ export default function DashboardPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* GESTION CLIENTS - Stats & Planning (API-driven)           */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div>
-        <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2 mb-3">
-          <Briefcase className="w-4.5 h-4.5 text-indigo-500" />
-          Gestion Clients
-        </h2>
-        {isAdmin ? <AdminClientsDashboard /> : <CommercialClientsDashboard />}
-      </div>
+      {/* Pour un commercial, sa journée et ses retards sont sur l'accueil : ici, la vue d'équipe de l'admin seulement. */}
+      {isAdmin && (
+        <div>
+          <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2 mb-3">
+            <Briefcase className="w-4.5 h-4.5 text-indigo-500" />
+            Gestion Clients
+          </h2>
+          <AdminClientsDashboard />
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* SANTE DES VISITES                                         */}

@@ -4,17 +4,18 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
-  StickyNote, X, FileText, Bell, Users2, Navigation, Mail,
+  StickyNote, X, FileText, Users2, Navigation, Mail,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
+import CompteRenduModal from '../components/CompteRenduModal';
 import {
   Appointment, Client, Interaction, InteractionType,
   APPOINTMENT_RESULT_LABELS, INTERACTION_TYPE_LABELS,
-  AppointmentResult, CLIENT_TYPE_LABELS, PipelineStage,
+   CLIENT_TYPE_LABELS,
 } from '../types';
 import { generateId, detectConflicts } from '../utils/helpers';
-import { apiPost, apiPut, apiPatch } from '../api/client';
+import { apiPost, apiPut } from '../api/client';
 import { rdvSansCompteRendu } from '../../shared/regles';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
@@ -83,7 +84,6 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
     return `${d.getFullYear()}-01-01`;
   });
   const [periodeEnd, setPeriodeEnd] = useState(todayStr);
-  const [crForms, setCrForms] = useState<Record<string, { compte_rendu: AppointmentResult; notes: string }>>({});
   const [visitRdvDate, setVisitRdvDate] = useState<Record<string, string>>({});
   const [visitRdvHeureDebut, setVisitRdvHeureDebut] = useState<Record<string, string>>({});
   const [visitRdvHeureFin, setVisitRdvHeureFin] = useState<Record<string, string>>({});
@@ -101,14 +101,10 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   const [rdvModalClient, setRdvModalClient] = useState<Client | null>(null); // Planifier RDV modal
   const [rdvModalComment, setRdvModalComment] = useState('');
   const [rdvModalCommercialId, setRdvModalCommercialId] = useState('');
-  const [, setCrModalNotes] = useState('');
   const [visitModalComment, setVisitModalComment] = useState('');
   const [visitModalNotes, setVisitModalNotes] = useState('');
 
   // Reminder state for CR modal
-  const [showRappelSection, setShowRappelSection] = useState(false);
-  const [rappelDate, setRappelDate] = useState('');
-  const [rappelMessage, setRappelMessage] = useState('');
 
   // Quick note
   const [noteClientId, setNoteClientId] = useState<string | null>(null);
@@ -364,16 +360,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   };
 
   // Open CR modal for an RDV
-  const openCrModal = (rdv: Appointment) => {
-    setCrModalRdv(rdv);
-    if (!crForms[rdv.id]) {
-      setCrForms(prev => ({ ...prev, [rdv.id]: { compte_rendu: (rdv.compte_rendu || '') as AppointmentResult, notes: rdv.notes_compte_rendu || '' } }));
-    }
-    setCrModalNotes(rdv.notes_compte_rendu || '');
-    setShowRappelSection(false);
-    setRappelDate('');
-    setRappelMessage('');
-  };
+  const openCrModal = (rdv: Appointment) => setCrModalRdv(rdv);
 
   // Open visit modal
   const openVisitModal = (client: Client, type: InteractionType = 'VISITE') => {
@@ -473,67 +460,6 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   };
 
   // Save CR from modal
-  const saveCrModal = async () => {
-    if (!crModalRdv) return;
-    const form = crForms[crModalRdv.id];
-    if (!form?.compte_rendu) { toast.error('Sélectionnez un résultat'); return; }
-    if (!form.notes?.trim()) { toast.error('Les notes sont obligatoires'); return; }
-    setSaving(crModalRdv.id);
-    try {
-      const updated = { ...crModalRdv, statut: 'termine' as const, compte_rendu: form.compte_rendu, notes_compte_rendu: form.notes };
-      await apiPut(`/appointments/${crModalRdv.id}`, updated);
-      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
-
-      // Update prospect pipeline stage based on result (same logic as ProspectsPage)
-      const prospect = state.prospects.find((p: any) => p.id === crModalRdv.prospect_id);
-      if (prospect) {
-        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
-        let newStage: PipelineStage | null = null;
-        if (form.compte_rendu === 'client') {
-          newStage = 'client_gagne';
-        } else if (form.compte_rendu === 'pas_interesse') {
-          newStage = 'perdu';
-        } else if (form.compte_rendu === 'mail_envoye') {
-          if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
-        } else if (form.compte_rendu === 'commande_plus_tard' || form.compte_rendu === 'a_relancer') {
-          if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
-        }
-        if (newStage) {
-          try {
-            await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
-            dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
-          } catch (err) {
-            toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
-          }
-        }
-      }
-
-      // Create reminder if rappel section is filled
-      if (showRappelSection && rappelDate) {
-        const autoMessage = rappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[form.compte_rendu] || 'RDV termine'}`;
-        const reminderPayload = {
-          id: generateId('rem'),
-          prospect_id: crModalRdv.prospect_id,
-          commercial_id: crModalRdv.commercial_id,
-          date: rappelDate,
-          heure: '09:00',
-          message: autoMessage,
-          statut: 'actif' as const,
-        };
-        try {
-          await apiPost('/reminders', reminderPayload);
-          dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
-        } catch (err) {
-          toast.error(`Erreur creation rappel: ${(err as Error).message}`);
-        }
-      }
-
-      toast.success('Compte rendu enregistré');
-      setCrModalRdv(null);
-    } catch { toast.error('Erreur lors de la sauvegarde'); }
-    finally { setSaving(null); }
-  };
-
   // RDV card - compact fiche with action buttons
   const renderRdvCard = (rdv: Appointment) => {
     const hasCR = !!rdv.compte_rendu;
@@ -1140,94 +1066,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         </div>
       )}
       {/* Compte-rendu RDV modal */}
-      {crModalRdv && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setCrModalRdv(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <div>
-                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
-                  Compte-rendu du RDV
-                </h3>
-                <p className="text-sm text-gray-500 mt-0.5">{getEntityName(crModalRdv)} - {crModalRdv.date}</p>
-              </div>
-              <button onClick={() => setCrModalRdv(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Resultat */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Résultat du rendez-vous</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
-                    const sel = crForms[crModalRdv.id]?.compte_rendu === key;
-                    const icons: Record<string, string> = {
-                      client: 'text-green-600', mail_envoye: 'text-blue-600',
-                      commande_plus_tard: 'text-yellow-600', a_relancer: 'text-orange-600',
-                      pas_interesse: 'text-red-600',
-                    };
-                    return (
-                      <button key={key}
-                        onClick={() => setCrForms(prev => ({ ...prev, [crModalRdv.id]: { ...prev[crModalRdv.id], compte_rendu: key as AppointmentResult } }))}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-all ${sel ? 'border-indigo-300 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-200' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                      >
-                        <span className={icons[key] || ''}>{key === 'client' ? '👥' : key === 'mail_envoye' ? '📧' : key === 'commande_plus_tard' ? '🛒' : key === 'a_relancer' ? '🔄' : '🚫'}</span>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Notes du compte-rendu *</label>
-                <textarea
-                  value={crForms[crModalRdv.id]?.notes || ''}
-                  onChange={e => setCrForms(prev => ({ ...prev, [crModalRdv.id]: { ...prev[crModalRdv.id], notes: e.target.value } }))}
-                  placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
-                  className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-24 focus:ring-2 focus:ring-indigo-300 ${!crForms[crModalRdv.id]?.notes?.trim() ? 'border-red-300' : 'border-gray-300'}`}
-                  autoFocus
-                />
-                {!crForms[crModalRdv.id]?.notes?.trim() && (
-                  <p className="text-xs text-red-500 mt-1">Les notes sont obligatoires pour valider le compte-rendu</p>
-                )}
-              </div>
-
-              {/* Programmer un rappel */}
-              <button
-                onClick={() => setShowRappelSection(!showRappelSection)}
-                className="w-full py-2.5 border-2 border-dashed border-yellow-300 rounded-lg text-sm font-medium text-yellow-600 hover:bg-yellow-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Bell className="w-4 h-4" /> Programmer un rappel
-              </button>
-              {showRappelSection && (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg space-y-2">
-                  <div>
-                    <label className="text-xs font-medium text-yellow-700 block mb-0.5">Date du rappel</label>
-                    <input type="date" value={rappelDate} onChange={e => setRappelDate(e.target.value)}
-                      className="w-full text-sm border border-yellow-200 rounded-lg px-2 py-1.5" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-yellow-700 block mb-0.5">Message</label>
-                    <input type="text" value={rappelMessage} onChange={e => setRappelMessage(e.target.value)}
-                      placeholder="Rappel pour..." className="w-full text-sm border border-yellow-200 rounded-lg px-2 py-1.5" />
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
-              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setCrModalRdv(null)}>Annuler</button>
-              <button
-                className="px-5 py-2.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50 font-medium"
-                onClick={saveCrModal}
-                disabled={saving === crModalRdv.id || !crForms[crModalRdv.id]?.compte_rendu || !crForms[crModalRdv.id]?.notes?.trim()}
-              >
-                <ClipboardCheck className="w-4 h-4" /> {saving === crModalRdv.id ? 'Enregistrement...' : 'Valider le compte-rendu'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CompteRenduModal rdv={crModalRdv} onClose={() => setCrModalRdv(null)} />
 
       {/* Marquer visite/Appel modal */}
       {visitModalClient && (
