@@ -22,11 +22,13 @@ import {
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { scoreDepuisTags, baremeActif } from '../../shared/score';
+import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function ProspectsPage() {
   const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
   const toast = useToast();
-  const { startCall } = useCallModal();
+  const { startCall, startSession } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -341,7 +343,7 @@ export default function ProspectsPage() {
         const newTags = allHaveTag
           ? prospect.tags.filter(t => t !== tagId)
           : prospect.tags.includes(tagId) ? prospect.tags : [...prospect.tags, tagId];
-        const payload = { ...prospect, tags: newTags, date_modification: now };
+        const payload = { ...prospect, tags: newTags, score: scoreDepuisTags(newTags, state.tags, prospect.score), date_modification: now };
         try {
           await apiPut(`/prospects/${id}`, payload);
           dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
@@ -892,6 +894,15 @@ export default function ProspectsPage() {
             <span className="text-[10px] text-brewery-600 ml-auto">
               {selectedIds.size} selectionne(s)
             </span>
+            {selectedIds.size > 0 && (
+              <button
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-[10px] font-semibold hover:bg-brewery-700"
+                onClick={() => startSession(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
+                title="Appeler les prospects sélectionnés l'un après l'autre"
+              >
+                <Phone className="w-3 h-3" /> Session d'appels ({selectedIds.size})
+              </button>
+            )}
             <button
               className="p-1 text-gray-400 hover:text-gray-600"
               onClick={exitSelectionMode}
@@ -1259,7 +1270,12 @@ export default function ProspectsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="w-4 h-4 text-gray-400" />
-                  <a href={`mailto:${selectedProspect.email}`} className="text-brewery-600 hover:underline">
+                  <a
+                    href={`mailto:${selectedProspect.email}`}
+                    className="text-brewery-600 hover:underline"
+                    title="Ouvre votre messagerie ; le mail est compté comme envoyé"
+                    onClick={() => { marquerMailEnvoye(state, dispatchLocal, selectedProspect, '').catch(() => toast.error('Mail non tracé dans l\'historique')); }}
+                  >
                     {selectedProspect.email}
                   </a>
                 </div>
@@ -1968,7 +1984,13 @@ export default function ProspectsPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
-                <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
+                {baremeActif(state.tags) ? (
+                  <p className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· calculé d'après les tags</span>
+                  </p>
+                ) : (
+                  <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
+                )}
               </div>
 
             </div>

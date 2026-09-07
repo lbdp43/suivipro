@@ -4,6 +4,7 @@ import { useApp } from '../store/AppContext';
 import { Prospect, Client, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';
 import { generateId, toLocalDateStr } from '../utils/helpers';
+import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 interface ProspectProps {
   prospect: Prospect;
@@ -30,7 +31,7 @@ export default function EmailTemplateModal(props: Props) {
   const contactName = prospect ? prospect.nom_contact : client?.contact || '';
   const entityEmail = prospect?.email || client?.email || '';
 
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dispatchLocal } = useApp();
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
@@ -119,6 +120,8 @@ export default function EmailTemplateModal(props: Props) {
       if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
         dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
       }
+      // Le clic vaut envoi : tag « Mail envoyé » + trace dans l'historique.
+      marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => { /* tracé au mieux */ });
     }
 
     // Create a reminder for 7-day follow-up

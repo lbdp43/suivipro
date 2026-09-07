@@ -104,14 +104,17 @@ export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
   ne_pas_contacter: 'appel : ne pas contacter, ou import liste noire',
 };
 
-export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoignable';
+export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoignable' | 'email_envoye';
 
 export const CALL_RESULT_LABELS: Record<CallResult, string> = {
   repondu: 'Repondu',
   pas_de_reponse: 'Pas de reponse',
   messagerie: 'Messagerie',
   injoignable: 'Injoignable',
+  email_envoye: 'Email envoyé',
 };
+/** Résultats qu'on peut choisir à la main pour un appel (« Email envoyé » est posé automatiquement). */
+export const RESULTATS_APPEL_SAISISSABLES: CallResult[] = ['repondu', 'pas_de_reponse', 'messagerie', 'injoignable'];
 
 export type AppointmentStatus = 'planifie' | 'confirme' | 'termine' | 'annule';
 
@@ -412,6 +415,8 @@ export interface Tag {
   id: string;
   nom: string;
   couleur: string;
+  /** Points apportés au score du prospect (Administration → Tags). 0 = sans effet. */
+  points?: number;
 }
 
 export interface EmailTemplate {

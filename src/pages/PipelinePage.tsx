@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
   const { state, dispatch, dispatchLocal } = useApp();
-  const { startCall } = useCallModal();
+  const { startCall, startSession } = useCallModal();
   const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -499,6 +499,15 @@ export default function PipelinePage() {
                 <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200 flex-shrink-0">
                   {(prospectsByStage[col.id] || []).length}
                 </span>
+                {(prospectsByStage[col.id] || []).some(p => p.telephone) && (
+                  <button
+                    className="p-1 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 flex-shrink-0"
+                    onClick={() => startSession((prospectsByStage[col.id] || []).map(p => p.id))}
+                    title={`Session d'appels : appeler les ${(prospectsByStage[col.id] || []).length} prospects de « ${col.label} » l'un après l'autre`}
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* Cards */}

@@ -5,12 +5,12 @@ import {
   Phone, PhoneCall, PhoneOff, Search,
   MessageSquare, PhoneMissed, CheckCircle,
   Edit2, X, Save, Trash2, Filter,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Mail,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPut, apiDelete } from '../api/client';
-import { Call, CallResult, CALL_RESULT_LABELS } from '../types';
+import { Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } from '../types';
 import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 
 export default function CallsPage() {
@@ -57,6 +57,7 @@ export default function CallsPage() {
     repondu: CheckCircle,
     pas_de_reponse: PhoneMissed,
     messagerie: MessageSquare,
+    email_envoye: Mail,
     injoignable: PhoneOff,
   };
 
@@ -64,6 +65,7 @@ export default function CallsPage() {
     repondu: 'text-green-600 bg-green-50',
     pas_de_reponse: 'text-red-600 bg-red-50',
     messagerie: 'text-amber-600 bg-amber-50',
+    email_envoye: 'text-blue-600 bg-blue-50',
     injoignable: 'text-gray-600 bg-gray-100',
   };
 
@@ -306,7 +308,7 @@ export default function CallsPage() {
                   value={editForm.resultat}
                   onChange={e => setEditForm(prev => ({ ...prev, resultat: e.target.value as CallResult }))}
                 >
-                  {(Object.keys(CALL_RESULT_LABELS) as CallResult[]).map(r => (
+                  {RESULTATS_APPEL_SAISISSABLES.map(r => (
                     <option key={r} value={r}>{CALL_RESULT_LABELS[r]}</option>
                   ))}
                 </select>

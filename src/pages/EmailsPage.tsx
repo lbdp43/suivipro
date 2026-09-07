@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { EmailTemplate, Prospect } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
+import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function EmailsPage() {
   const { state, dispatch, dispatchLocal } = useApp();
@@ -94,6 +95,9 @@ export default function EmailsPage() {
         dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'contacte' } });
       } catch { /* secondary */ }
     }
+
+    // Le clic vaut envoi : tag « Mail envoyé » + trace dans l'historique du prospect.
+    marquerMailEnvoye(state, dispatchLocal, prospect, preview.sujet).catch(() => toast.error('Mail non tracé dans l\'historique'));
 
     // Open mailto link
     const mailto = `mailto:${prospect.email}?subject=${encodeURIComponent(preview.sujet)}&body=${encodeURIComponent(preview.corps)}`;

@@ -108,7 +108,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   // Tag state
   const [showTagForm, setShowTagForm] = useState(false);
   const [editingTag, setEditingTag] = useState<TagType | null>(null);
-  const [tagForm, setTagForm] = useState({ nom: '', couleur: '#22c55e' });
+  const [tagForm, setTagForm] = useState<{ nom: string; couleur: string; points: number }>({ nom: '', couleur: '#22c55e', points: 0 });
 
   // Objectives state
   const [editingObjectives, setEditingObjectives] = useState<string | null>(null);
@@ -854,13 +854,13 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   // ============================================
 
   const openNewTag = () => {
-    setTagForm({ nom: '', couleur: '#22c55e' });
+    setTagForm({ nom: '', couleur: '#22c55e', points: 0 });
     setEditingTag(null);
     setShowTagForm(true);
   };
 
   const openEditTag = (tag: TagType) => {
-    setTagForm({ nom: tag.nom, couleur: tag.couleur });
+    setTagForm({ nom: tag.nom, couleur: tag.couleur, points: tag.points || 0 });
     setEditingTag(tag);
     setShowTagForm(true);
   };
@@ -1285,6 +1285,9 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                       <p className="font-medium text-sm text-gray-900">{tag.nom}</p>
                       <p className="text-xs text-gray-500">{prospectCount} prospect(s) - {convertedCount} converti(s)</p>
                     </div>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${(tag.points || 0) > 0 ? 'bg-green-100 text-green-700' : (tag.points || 0) < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`} title="Points apportés au score">
+                      {(tag.points || 0) > 0 ? '+' : ''}{tag.points || 0} pts
+                    </span>
                     <div className="flex gap-2">
                       <button className="p-1.5 rounded bg-gray-100 hover:bg-gray-200" onClick={() => openEditTag(tag)}>
                         <Edit2 className="w-3.5 h-3.5 text-gray-600" />
@@ -1325,11 +1328,16 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                       ))}
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Points pour le score</label>
+                    <input type="number" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={tagForm.points} onChange={e => setTagForm(prev => ({ ...prev, points: parseInt(e.target.value) || 0 }))} />
+                    <p className="text-[11px] text-gray-400 mt-1">Le score d'un prospect est la somme des points de ses tags, de 0 à 100. Tant qu'aucun tag n'a de points, le score reste saisi à la main.</p>
+                  </div>
                   <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <span className="badge text-white text-xs" style={{ backgroundColor: tagForm.couleur }}>
-                      {tagForm.nom || 'Apercu'}
+                      {tagForm.nom || 'Aperçu'}
                     </span>
-                    <span className="text-xs text-gray-500">Apercu du tag</span>
+                    <span className="text-xs text-gray-500">Aperçu du tag</span>
                   </div>
                 </div>
                 <div className="p-5 border-t border-gray-200 flex justify-end gap-3">

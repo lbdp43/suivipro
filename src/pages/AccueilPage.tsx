@@ -10,6 +10,8 @@ import { formatDate } from '../utils/helpers';
 import { dateLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import BlocErreur from '../components/BlocErreur';
+import BilanDuSoir from '../components/BilanDuSoir';
+import { useCallModal } from '../components/CallModal';
 
 // ============================================================================
 // Accueil « Ma journée » : une porte d'entrée par rôle. Pas d'itinéraire, pas de graphiques :
@@ -296,6 +298,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
 // ============================================================================
 function AccueilProspection({ moi }: { moi: Commercial }) {
   const { state, getProspect, getCommercial } = useApp();
+  const { startSession } = useCallModal();
   const now = new Date();
   const today = dateLocale(now);
 
@@ -340,6 +343,9 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
         <BlocErreur titre="À appeler ensuite">
           <Carte titre="À appeler ensuite" icone={Phone} lien="/prospects" compte={aAppeler.length} vide="Rien dans la file : ajoutez des prospects « à contacter »."
             enfants={<div className="space-y-0.5 max-h-80 overflow-y-auto">
+              <button onClick={() => startSession(aAppeler.map(p => p.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700">
+                <Phone className="w-3.5 h-3.5" /> Lancer la session d'appels ({aAppeler.length})
+              </button>
               {aAppeler.map(p => (
                 <div key={p.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
                   <Link to={`/prospects?id=${p.id}`} className="flex-1 min-w-0">
@@ -375,6 +381,8 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
             </div>} />
         </BlocErreur>
       </div>
+
+      <BlocErreur titre="Bilan du soir"><BilanDuSoir moi={moi} /></BlocErreur>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import * as eb from './easybeer-client.js';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import * as regles from '../shared/regles.js';
+import { scoreDepuisTags, baremeActif } from '../shared/score.js';
 
 
 const router = Router();
@@ -266,10 +267,11 @@ router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
   // Force commercial_id to current user if not admin
   const commercialId = isAdmin(req) ? (p.commercial_id || req.user.id) : req.user.id;
 
+  const scoreCreation = await scoreProspect(p.tags, p.score || 50);
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
+    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, scoreCreation]
   );
   await logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
   res.json({ ok: true });
@@ -280,9 +282,10 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateProspect(p);
   if (errors.length > 0) return validationError(res, errors);
 
+  const scoreMaj = await scoreProspect(p.tags, p.score || 50);
   await db.query(
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
-    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id]
   );
   await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
   res.json({ ok: true });
@@ -499,22 +502,48 @@ router.get('/tags', authMiddleware, asyncHandler(async (req, res) => {
   res.json(result.rows);
 }));
 
+// Score par tags : quand le barème change, on recalcule le score de tous les prospects.
+async function recalculerScores() {
+  const tags = (await db.query('SELECT id, points FROM tags')).rows;
+  if (!baremeActif(tags)) return 0;
+  const prospects = (await db.query('SELECT id, tags, score FROM prospects')).rows;
+  let modifies = 0;
+  for (const p of prospects) {
+    const liste = parseProspect(p).tags;
+    const score = scoreDepuisTags(liste, tags, p.score);
+    if (score !== p.score) {
+      await db.query('UPDATE prospects SET score = $1 WHERE id = $2', [score, p.id]);
+      modifies++;
+    }
+  }
+  return modifies;
+}
+
+/** Score d'un prospect d'après ses tags si le barème est actif, sinon celui fourni. */
+async function scoreProspect(tagsDuProspect, scoreFourni) {
+  const tags = (await db.query('SELECT id, points FROM tags')).rows;
+  return scoreDepuisTags(tagsDuProspect || [], tags, Number(scoreFourni) || 50);
+}
+
 router.post('/tags', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
-  await db.query('INSERT INTO tags (id, nom, couleur) VALUES ($1,$2,$3)', [t.id, t.nom, t.couleur]);
-  res.json({ ok: true });
+  await db.query('INSERT INTO tags (id, nom, couleur, points) VALUES ($1,$2,$3,$4)', [t.id, t.nom, t.couleur, Number(t.points) || 0]);
+  const scores_recalcules = await recalculerScores();
+  res.json({ ok: true, scores_recalcules });
 }));
 
 router.put('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
-  await db.query('UPDATE tags SET nom=$1, couleur=$2 WHERE id=$3', [t.nom, t.couleur, req.params.id]);
-  res.json({ ok: true });
+  await db.query('UPDATE tags SET nom=$1, couleur=$2, points=$3 WHERE id=$4', [t.nom, t.couleur, Number(t.points) || 0, req.params.id]);
+  const scores_recalcules = await recalculerScores();
+  res.json({ ok: true, scores_recalcules });
 }));
 
 router.delete('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM tags WHERE id = $1', [req.params.id]);
+  await recalculerScores();
   res.json({ ok: true });
 }));
 
