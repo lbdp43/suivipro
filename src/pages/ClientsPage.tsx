@@ -15,7 +15,7 @@ import {
   INTERACTION_TYPE_LABELS, TaskClient, 
 } from '../types';
 import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
-import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
+import { getGoogleCalendarEvents, apiGet, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
@@ -178,12 +178,8 @@ export default function ClientsPage() {
 
   // Load frequency config from DB
   useEffect(() => {
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/visit-frequency-config', { headers })
-      .then(r => r.ok ? r.json() : [])
-      .then((rows: { type_client: string; frequency_days: number }[]) => {
+    apiGet<{ type_client: string; frequency_days: number }[]>('/visit-frequency-config')
+      .then(rows => {
         const config: Record<string, number | null> = {};
         rows.forEach(r => { config[r.type_client] = r.frequency_days; });
         setFrequencyConfig(config);
@@ -191,23 +187,15 @@ export default function ClientsPage() {
       .catch(err => console.error('Failed to load frequency config:', err));
   }, []);
 
-  // Load tournee configs
+  // Les tournées sont déjà dans l'état commun : rien à re-télécharger.
   useEffect(() => {
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/tournee-config', { headers })
-      .then(r => r.ok ? r.json() : [])
-      .then((rows: any[]) => {
-        const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
-        rows.forEach(r => {
-          const cfg = typeof r.config === 'string' ? JSON.parse(r.config) : r.config;
-          map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
-        });
-        setTourneeConfigs(map);
-      })
-      .catch(err => console.error('Failed to load tournée configs:', err));
-  }, []);
+    const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
+    (state.tourneeConfigs || []).forEach((r: any) => {
+      const cfg = typeof r.config === 'string' ? JSON.parse(r.config || '{}') : (r.config || {});
+      map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
+    });
+    setTourneeConfigs(map);
+  }, [state.tourneeConfigs]);
 
   // Initialize RDV fields when modal opens
   useEffect(() => {

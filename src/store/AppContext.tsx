@@ -93,10 +93,27 @@ type Action =
   | { type: 'SET_COMMANDES'; payload: Commande[] }
   | { type: 'IMPORT_CLIENTS'; payload: Client[] };
 
+// Après un rechargement, chaque collection restée identique garde sa référence : les écrans
+// qui mémorisent leurs calculs (useMemo sur state.clients, state.prospects…) ne refont que
+// ce qui a vraiment bougé, au lieu de tout recalculer toutes les 30 secondes.
+function fusionnerCollections(avant: AppState, apres: AppState): AppState {
+  const resultat = { ...apres } as Record<string, unknown>;
+  for (const cle of Object.keys(apres) as (keyof AppState)[]) {
+    const a = avant[cle]; const b = apres[cle];
+    if (a === b || a == null || b == null) continue;
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length === b.length && JSON.stringify(a) === JSON.stringify(b)) resultat[cle] = a;
+    } else if (typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b)) {
+      resultat[cle] = a;
+    }
+  }
+  return resultat as unknown as AppState;
+}
+
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_STATE':
-      return {
+    case 'SET_STATE': {
+      const suivant: AppState = {
         ...action.payload,
         prospects: (action.payload.prospects || []).map(p => ({
           ...p,
@@ -104,6 +121,8 @@ function reducer(state: AppState, action: Action): AppState {
         })),
         sessionsAppel: action.payload.sessionsAppel || [],
       };
+      return fusionnerCollections(state, suivant);
+    }
     case 'SET_SESSION_APPEL':
       return { ...state, sessionsAppel: [...state.sessionsAppel.filter(s => s.id !== action.payload.id), action.payload] };
     case 'RETIRER_SESSION_APPEL':
@@ -345,7 +364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const user = await apiLogin(email, password);
       currentUserRef.current = user;
       // Load full state from API
-      const data = await loadFullState();
+      const data = await loadFullState(true);
       rawDispatch({
         type: 'SET_STATE',
         payload: {
@@ -381,7 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const user = await getMe();
         currentUserRef.current = user;
-        const data = await loadFullState();
+        const data = await loadFullState(true);
         rawDispatch({
           type: 'SET_STATE',
           payload: {
@@ -410,14 +429,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Date.now() < pollPausedUntilRef.current) return;
       try {
         const data = await loadFullState();
-        rawDispatch({
-          type: 'SET_STATE',
-          payload: {
-            ...data,
-            currentUser: currentUserRef.current,
-            pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
-          },
-        });
+        // Rien n'a changé (304) : on ne touche pas à l'état, aucun écran ne se redessine.
+        if (data) {
+          rawDispatch({
+            type: 'SET_STATE',
+            payload: {
+              ...data,
+              currentUser: currentUserRef.current,
+              pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
+            },
+          });
+        }
         consecutiveErrors = 0;
       } catch (err) {
         consecutiveErrors++;

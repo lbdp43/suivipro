@@ -12,7 +12,7 @@ import { ListChecks, ExternalLink } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { dateLocale } from '../../shared/regles';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { ocrProspect, convertProspectToClient, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import { ocrProspect, convertProspectToClient, apiGet, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { useToast } from '../components/Toast';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
@@ -128,9 +128,7 @@ export default function ProspectsPage() {
   // Entity types visible in pipeline (loaded from DB)
   const [pipelineEntityTypes, setPipelineEntityTypes] = useState<Set<string>>(new Set(['prospect']));
   useEffect(() => {
-    const token = localStorage.getItem('suivipro_token');
-    fetch('/api/entity-types', { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
-      .then(r => { if (!r.ok) throw new Error('Not ok'); return r.json(); })
+    apiGet('/entity-types')
       .then(data => {
         if (!Array.isArray(data)) return;
         const visible = new Set<string>(data.filter((et: any) => et.show_in_pipeline).map((et: any) => et.id as string));

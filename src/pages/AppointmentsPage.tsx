@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation, Phone,
   AlertTriangle, Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
@@ -108,9 +108,14 @@ export default function AppointmentsPage() {
     return list.sort((a, b) => a.date.localeCompare(b.date));
   }, [state.appointments, filterStatus, filterCommercial, filterProspecteur, filterCompteRendu]);
 
-  // Fetch Google Calendar events for current week range
+  // Événements Google de la semaine affichée. Le serveur n'interroge que les agendas
+  // connectés ; ici on garde 5 minutes chaque semaine déjà lue, pour que revenir en arrière
+  // ne redemande rien à Google.
+  const cacheGoogle = useRef<Map<number, { quand: number; data: Record<string, { events: GoogleCalendarEvent[]; calendar_email?: string }> }>>(new Map());
   const fetchGoogleEvents = useCallback(async () => {
     if (!showGoogleEvents) return;
+    const enCache = cacheGoogle.current.get(weekOffset);
+    if (enCache && Date.now() - enCache.quand < 5 * 60 * 1000) { setGoogleEventsMap(enCache.data); return; }
     try {
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -122,6 +127,7 @@ export default function AppointmentsPage() {
       sunday.setHours(23, 59, 59, 999);
 
       const data = await getAllGoogleCalendarEvents(monday.toISOString(), sunday.toISOString());
+      cacheGoogle.current.set(weekOffset, { quand: Date.now(), data });
       setGoogleEventsMap(data);
     } catch {
       // silently fail

@@ -6,6 +6,7 @@ import {
   CheckCheck, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { apiPut } from '../api/client';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
@@ -85,6 +86,7 @@ export default function Layout() {
       // Une seule requête : la liste, et le compteur de non lues dans l'en-tête X-Non-Lues.
       const notifRes = await fetch(`/api/notifications/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
       if (notifRes.ok) {
+        // Lecture brute et non apiGet : il faut l'en-tête de la réponse, pas seulement son corps.
         setNotifications(await notifRes.json());
         setUnreadCount(parseInt(notifRes.headers.get('X-Non-Lues') || '0', 10) || 0);
       }
@@ -134,14 +136,14 @@ export default function Layout() {
 
   const markAsRead = async (notifId: string) => {
     if (!token) return;
-    await fetch(`/api/notifications/${notifId}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } });
+    await apiPut(`/notifications/${notifId}/read`, {});
     setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
   const markAllRead = async () => {
     if (!userId || !token) return;
-    await fetch(`/api/notifications/${userId}/read-all`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } });
+    await apiPut(`/notifications/${userId}/read-all`, {});
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadCount(0);
   };

@@ -76,8 +76,32 @@ export async function getMe() {
 // Full state load
 // ============================================
 
-export async function loadFullState() {
-  return request('/state');
+// Empreinte (ETag) du dernier état reçu : le serveur répond « 304 » sans corps quand rien
+// n'a changé, et l'écran garde ce qu'il a. `forcer` ignore l'empreinte (connexion, reprise).
+let empreinteEtat: string | null = null;
+
+export async function loadFullState(forcer = false): Promise<any | null> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  if (!forcer && empreinteEtat) headers['If-None-Match'] = empreinteEtat;
+  const res = await fetch(`${API_BASE}/state`, { headers, cache: 'no-store' });
+  if (res.status === 304) return null;
+  if (res.status === 401) {
+    setToken(null);
+    window.location.reload();
+    throw new Error('Session expiree');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Erreur ${res.status}`);
+  }
+  empreinteEtat = res.headers.get('ETag');
+  return res.json();
+}
+
+/** Lecture simple : en-tête d'authentification, erreur lisible, JSON déjà décodé. */
+export function apiGet<T = any>(path: string): Promise<T> {
+  return withRetry(() => request(path)) as Promise<T>;
 }
 
 // ============================================

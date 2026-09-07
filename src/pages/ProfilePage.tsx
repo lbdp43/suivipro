@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { User, Shield, Phone, Mail, Key, Eye, EyeOff, Save, Check, ArrowLeft } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { apiPut } from '../api/client';
 import { Link } from 'react-router-dom';
 
 export default function ProfilePage() {
@@ -55,15 +56,10 @@ export default function ProfilePage() {
 
     setSaving(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/commerciaux/${user.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(updated),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Erreur lors de la sauvegarde');
+      try {
+        await apiPut(`/commerciaux/${user.id}`, updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde');
         return;
       }
 
