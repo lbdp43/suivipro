@@ -343,10 +343,14 @@ router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) 
   const texte = String(req.body.texte || '').trim().slice(0, 4000);
   if (!texte) return validationError(res, ['Collez le message WhatsApp ou le lien Google Maps']);
   const { fiche, sources } = await ficheDepuisPartage(texte);
-  if (!fiche.nom_etablissement) {
-    return res.status(422).json({ error: "Impossible de trouver le nom de l'établissement. Écrivez-le sur la première ligne, au-dessus du lien, puis réessayez." });
+  // Lien seul et fiche Google illisible : on crée quand même, avec le lien, et la personne renomme.
+  const sansNom = !fiche.nom_etablissement;
+  if (sansNom) {
+    if (!fiche.source_url) return res.status(422).json({ error: "Rien à lire : collez le lien Google de l'établissement, ou son nom sur la première ligne." });
+    fiche.nom_etablissement = 'Établissement partagé (à renommer)';
+    sources.push('nom : inconnu, à renommer');
   }
-  const doublons = await doublonsDeFiche(fiche);
+  const doublons = sansNom ? [] : await doublonsDeFiche(fiche);
   if (doublons.length > 0 && !req.body.forcer) return res.json({ ok: false, doublons, fiche, sources });
 
   const now = new Date().toISOString();

@@ -54,6 +54,7 @@ export default function PartagePage() {
 
   const cree = reponse?.ok ? reponse.prospect : undefined;
   const manquants = cree ? [
+    cree.nom_etablissement.startsWith('Établissement partagé') && 'le nom (la fiche Google n\'a pas pu être lue, ouvrez le lien)',
     !cree.telephone && 'le téléphone',
     !cree.nom_contact && 'le nom du contact',
     cree.type_etablissement === 'autre' && 'le type d\'établissement',

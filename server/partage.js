@@ -10,7 +10,9 @@
 // Rien n'est bloquant : sans réseau, la fiche est créée avec ce que le texte donne, et le
 // prospecteur complète le reste (c'est le sens de l'étape « Partagé »).
 
-const HOTES_MAPS = /(^|\.)(google\.[a-z.]+|goo\.gl|maps\.app\.goo\.gl|g\.co|g\.page)$/i;
+// google.fr, google.com/maps, maps.app.goo.gl, goo.gl, g.co, g.page, et share.google (bouton
+// « Partager » de l'application Google et de la recherche Google).
+const HOTES_MAPS = /(^|\.)(google\.[a-z.]+|share\.google|goo\.gl|g\.co|g\.page)$/i;
 
 export function extraireLien(texte) {
   const m = String(texte || '').match(/https?:\/\/[^\s<>"')\]]+/i);
@@ -38,6 +40,7 @@ export function analyserLienMaps(url) {
   if (place) r.nom = decoderSegment(place[1]);
   const search = chemin.match(/\/maps\/search\/([^/@]+)/);
   if (!r.nom && search) r.nom = decoderSegment(search[1]);
+  // Recherche Google (fiche d'établissement partagée depuis l'application Google) : ?q=Nom
   const q = u.searchParams.get('q') || u.searchParams.get('query') || '';
   const coordQ = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (coordQ) { r.latitude = Number(coordQ[1]); r.longitude = Number(coordQ[2]); }
@@ -69,9 +72,24 @@ function decoderHtml(s) {
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
 }
 
-/** Ce que la page Google Maps d'un lieu dit de lui (balises Open Graph). */
+function texteSansBalises(s) {
+  return decoderHtml(String(s || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+/** Valeur d'un bloc « data-attrid » de la fiche d'établissement d'une page de recherche Google. */
+function attributFiche(html, attrid) {
+  const i = String(html).indexOf(`data-attrid="${attrid}"`);
+  if (i < 0) return '';
+  const bloc = String(html).slice(i, i + 1500);
+  const fin = bloc.search(/data-attrid="(?!${attrid})/);
+  const texte = texteSansBalises(fin > 0 ? bloc.slice(0, fin) : bloc);
+  // « Adresse : 12 Rue X » → on retire le libellé.
+  return texte.replace(/^[^:]{0,30}:\s*/, '').trim();
+}
+
+/** Ce que la page Google d'un lieu dit de lui : Open Graph (Maps) ou fiche d'établissement (recherche Google). */
 export function analyserPageMaps(html) {
-  const r = { nom: '', adresse: '', categorie: '' };
+  const r = { nom: '', adresse: '', categorie: '', telephone: '' };
   if (!html) return r;
   const metas = attributsMeta(html);
   const contenu = (cle) => {
@@ -92,7 +110,15 @@ export function analyserPageMaps(html) {
   }
   if (!r.nom) {
     const t = String(html).match(/<title>([^<]*)<\/title>/i);
-    if (t) r.nom = decoderHtml(t[1]).replace(/\s*-\s*Google Maps\s*$/i, '').trim();
+    if (t) r.nom = decoderHtml(t[1]).replace(/\s*-\s*(Google Maps|Google Search|Recherche Google)\s*$/i, '').trim();
+  }
+  // Fiche d'établissement de la recherche Google : adresse, téléphone, « Restaurant à Le Puy-en-Velay ».
+  if (!r.adresse) r.adresse = attributFiche(html, 'kc:/location/location:address');
+  const tel = attributFiche(html, 'kc:/collection/knowledge_panels/has_phone:phone');
+  if (tel) r.telephone = tel.replace(/[^\d+ .-]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!r.categorie) {
+    const sousTitre = attributFiche(html, 'subtitle');
+    if (sousTitre) r.categorie = sousTitre.split(/\s+(?:à|a|in|dans)\s+/i)[0].trim();
   }
   return r;
 }
@@ -264,6 +290,7 @@ export async function ficheDepuisPartage(texte, { fetchFn = globalThis.fetch } =
     if (nomPage) { fiche.nom_etablissement = nomPage; sources.push('nom : fiche Google'); }
     else if (lien.nom && (!fiche.nom_etablissement || fiche.nom_etablissement.length < 3)) { fiche.nom_etablissement = lien.nom; sources.push('nom : lien'); }
     if (page.adresse) { adresseBrute = page.adresse; sources.push('adresse : fiche Google'); }
+    if (page.telephone && !fiche.telephone) { fiche.telephone = page.telephone; sources.push('téléphone : fiche Google'); }
     if (lien.latitude) { fiche.latitude = lien.latitude; fiche.longitude = lien.longitude; sources.push('position : lien'); }
     if (page.categorie) fiche.categorie_google = page.categorie;
   } else if (t.lien) {

@@ -1299,7 +1299,7 @@ export default function ProspectsPage() {
               {selectedProspect.etape_pipeline === 'partage' && (
                 <div className="mt-3 p-2.5 rounded-lg bg-purple-50 border border-purple-200 text-xs text-purple-900">
                   <span className="font-semibold">Fiche partagée, à compléter :</span>{' '}
-                  {[!selectedProspect.telephone && 'téléphone', !selectedProspect.nom_contact && 'contact', selectedProspect.type_etablissement === 'autre' && 'type', !selectedProspect.ville && 'commune'].filter(Boolean).join(', ') || 'tout y est'}
+                  {[selectedProspect.nom_etablissement.startsWith('Établissement partagé') && 'nom', !selectedProspect.telephone && 'téléphone', !selectedProspect.nom_contact && 'contact', selectedProspect.type_etablissement === 'autre' && 'type', !selectedProspect.ville && 'commune'].filter(Boolean).join(', ') || 'tout y est'}
                   . Une fois complétée, passez-la en « À contacter ».
                 </div>
               )}
