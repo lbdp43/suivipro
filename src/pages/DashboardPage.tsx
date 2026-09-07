@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Users, Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
+  Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
   UserCheck, Star, ClipboardCheck, Briefcase, Target, Building2, MapPin, ArrowRightLeft,
   AlertTriangle, ShoppingCart, TrendingUp, Euro,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { APPOINTMENT_RESULT_LABELS, CLIENT_TYPE_LABELS, CLIENT_VISIT_FREQUENCIES, ClientType } from '../types';
+import { APPOINTMENT_RESULT_LABELS, CLIENT_TYPE_LABELS, ClientType } from '../types';
 import {
   getCallsToday, getCallsThisWeek, getCallsThisMonth,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
   getResponseRate, getAverageCallDuration,
-  formatDuration, formatDate, isLastMonth, toLocalDateStr,
+  formatDuration, formatDate, toLocalDateStr,
 } from '../utils/helpers';
 import { estEnRetard, joursDeRetard } from '../../shared/regles';
 import { objectifAppels } from '../utils/objectifs';
@@ -302,58 +302,6 @@ export default function DashboardPage() {
   }, [state.calls, state.appointments, state.prospects, monthStart, monthEnd, selectedMonth]);
 
   // Per-user activity stats (ALL users)
-  const userActivities = useMemo(() => {
-    return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
-      const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
-
-      // RDV taken as prospector (prospecteur_id)
-      const rdvTakenAsProspector = state.appointments.filter(a => a.prospecteur_id === user.id);
-
-      const weekCalls = getCallsThisWeek(userCalls);
-      const monthCalls = getCallsThisMonth(userCalls);
-      const todayCalls = getCallsToday(userCalls);
-      const weekRdv = getAppointmentsThisWeek(userAppointments);
-      const monthRdv = getAppointmentsThisMonth(userAppointments);
-      const now = new Date();
-      const monthRdvTaken = getAppointmentsByCreatedAt(rdvTakenAsProspector, startOfMonth(now), endOfMonth(now));
-      const responseRate = getResponseRate(userCalls);
-      const avgDuration = getAverageCallDuration(userCalls);
-      const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
-
-      // Prospects created this month by this user
-      const mStart = startOfMonth(now);
-      const mEnd = endOfMonth(now);
-      const monthProspectsCreated = userProspects.filter(p => {
-        try {
-          const d = parseISO(p.date_creation);
-          return isWithinInterval(d, { start: mStart, end: mEnd });
-        } catch { return false; }
-      }).length;
-
-      const objective = objectifAppels(user, 'semaine');
-      const progress = objective > 0 ? Math.round((weekCalls.length / objective) * 100) : 0;
-
-      return {
-        user,
-        todayCalls: todayCalls.length,
-        weekCalls: weekCalls.length,
-        monthCalls: monthCalls.length,
-        weekRdv: weekRdv.length,
-        monthRdv: monthRdv.length,
-        monthRdvTaken: monthRdvTaken.length,
-        monthProspectsCreated,
-        responseRate,
-        avgDuration,
-        totalProspects: userProspects.length,
-        activeProspects: userProspects.filter(p => !['client_gagne', 'perdu', 'ne_pas_contacter'].includes(p.etape_pipeline)).length,
-        wonProspects,
-        objective,
-        progress,
-      };
-    }).sort((a, b) => b.weekCalls - a.weekCalls); // Sort by most active
-  }, [allUsers, state.calls, state.appointments, state.prospects]);
 
   // Ranked user activities for "Classement" section (based on selected period)
   const rankedActivities = useMemo(() => {

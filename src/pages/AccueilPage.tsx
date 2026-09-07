@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
-  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock,
+  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2,
 } from 'lucide-react';
+import { sessionDuJour } from '../utils/sessionAppel';
+import { apiDelete } from '../api/client';
+import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
 import { formatDate } from '../utils/helpers';
@@ -311,10 +314,20 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
 // Utilisés par l'accueil « prospection » et, en plus de ses blocs, par un commercial qui fait
 // aussi de la prospection.
 function BlocsProspection({ moi }: { moi: Commercial }) {
-  const { state, getProspect, getCommercial } = useApp();
+  const { state, getProspect, getCommercial, dispatchLocal } = useApp();
   const { startSession } = useCallModal();
+  const toast = useToast();
   const now = new Date();
   const today = dateLocale(now);
+  // « Ma session d'appel du jour » : choisie dans Prospects ou Pipeline ; les appelés viennent des appels du jour.
+  const maSession = useMemo(() => sessionDuJour(state, moi.id, now), [state, moi.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const viderLaSession = async () => {
+    if (!confirm('Vider votre session d\'appel du jour ?')) return;
+    try {
+      await apiDelete(`/sessions-appel/jour?jour=${maSession.jour}`);
+      dispatchLocal({ type: 'RETIRER_SESSION_APPEL', payload: { commercial_id: moi.id, jour: maSession.jour } });
+    } catch { toast.error('Impossible de vider la session'); }
+  };
 
   const rappels = useMemo(() => state.reminders
     .filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today)
@@ -335,6 +348,37 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
 
   return (
     <>
+      {maSession.session && maSession.prospects.length > 0 && (
+        <BlocErreur titre="Ma session d'appel du jour">
+          <div className="bg-white rounded-xl border border-purple-200 p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+                <ListChecks className="w-4 h-4 text-purple-600" /> Ma session d'appel du jour
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">{maSession.prospects.length - maSession.restants.length} / {maSession.prospects.length} appelés</span>
+              </h3>
+              <button onClick={viderLaSession} className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1" title="Vider la session du jour"><Trash2 className="w-3.5 h-3.5" /> Vider</button>
+            </div>
+            <div className="h-1.5 rounded-full bg-gray-100 mb-3 overflow-hidden">
+              <div className="h-full bg-purple-500 progress-bar" style={{ width: `${Math.round(100 * (maSession.prospects.length - maSession.restants.length) / maSession.prospects.length)}%` }} />
+            </div>
+            {maSession.restants.length > 0 ? (
+              <button onClick={() => startSession(maSession.restants.map(p => p.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700">
+                <Phone className="w-4 h-4" /> {maSession.restants.length === maSession.prospects.length ? 'Commencer' : 'Reprendre'} la session ({maSession.restants.length} restant{maSession.restants.length > 1 ? 's' : ''})
+              </button>
+            ) : (
+              <p className="text-sm text-green-700 flex items-center gap-1.5 mb-2"><CheckCircle2 className="w-4 h-4" /> Session terminée, tout le monde a été appelé.</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 max-h-56 overflow-y-auto">
+              {maSession.prospects.map(p => { const fait = maSession.appeles.has(p.id); return (
+                <div key={p.id} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
+                  {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
+                  <Link to={`/prospects?id=${p.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{p.nom_etablissement}</Link>
+                  <span className="text-[11px] text-gray-400 truncate max-w-[40%]">{p.ville}</span>
+                </div>); })}
+            </div>
+          </div>
+        </BlocErreur>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Rappels">
           <Carte titre="À rappeler aujourd'hui" icone={Bell} lien="/rappels" compte={rappels.length} vide="Aucun rappel en attente." teinte={rappels.length ? 'amber' : 'gray'}
@@ -356,6 +400,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
               <button onClick={() => startSession(aAppeler.map(p => p.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700">
                 <Phone className="w-3.5 h-3.5" /> Lancer la session d'appels ({aAppeler.length})
               </button>
+              {!maSession.session && <p className="text-[11px] text-gray-400 mb-2">Suggestions par score. Pour choisir vous-même : cochez des prospects dans <Link to="/prospects" className="underline">Prospects</Link> ou <Link to="/pipeline" className="underline">Pipeline</Link>, puis « Ma session du jour ».</p>}
               {aAppeler.map(p => (
                 <div key={p.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
                   <Link to={`/prospects?id=${p.id}`} className="flex-1 min-w-0">

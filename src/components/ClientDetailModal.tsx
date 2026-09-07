@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   X, Phone, Mail, MapPin, User, Edit2, Calendar,
-  CheckCircle2, PhoneCall, Navigation, Clock, AlertTriangle,
+  CheckCircle2, PhoneCall, Navigation, 
   ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';

@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
-  ChevronLeft, ChevronRight, Users, X, Check, Building2, Layers,
+  ChevronLeft, ChevronRight, Users, Check, Building2, Layers,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -48,7 +48,7 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
 const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam', 0: 'Dim' };
 
 export default function MapPage() {
-  const { state, dispatch, dispatchLocal, getProspect, getCommercial } = useApp();
+  const { state, dispatchLocal, getProspect, getCommercial } = useApp();
   const toast = useToast();
 
   // Looks up label/color for a pipeline stage, preferring the dynamic
@@ -121,9 +121,6 @@ export default function MapPage() {
   }, [weekRdvs]);
 
   // Extract unique sectors with prospect counts
-  const allSecteurs = useMemo(() => {
-    return [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
-  }, [state.prospects]);
 
   // Extract available regions (only those with actual prospects)
   const availableRegions = useMemo(() => {

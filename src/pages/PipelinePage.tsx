@@ -1,12 +1,14 @@
-import { useState, useMemo, useRef, useEffect, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Filter, Check, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
+import { useState, useMemo, DragEvent } from 'react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks } from 'lucide-react';
+import { sessionDuJour } from '../utils/sessionAppel';
+import { dateLocale } from '../../shared/regles';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
-import { PIPELINE_LABELS, PIPELINE_COLORS, PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
+import { PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
@@ -32,6 +34,31 @@ export default function PipelinePage() {
   const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
   const [filterAvecRdv, setFilterAvecRdv] = useState(false);
   const [filterCommercial, setFilterCommercial] = useState<string>('');
+  // Sélection multiple : on coche des cartes, puis « Ma session du jour » ou « Appeler maintenant ».
+  const [selection, setSelection] = useState(false);
+  const [coches, setCoches] = useState<Set<string>>(new Set());
+  const [sessionEnCours, setSessionEnCours] = useState(false);
+  const maSession = sessionDuJour(state, state.currentUser?.id);
+
+  const cocher = (id: string) => {
+    setCoches(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  };
+  const quitterSelection = () => { setSelection(false); setCoches(new Set()); };
+  const ajouterALaSessionDuJour = async () => {
+    const ids = [...coches];
+    if (ids.length === 0) return;
+    setSessionEnCours(true);
+    try {
+      const r = await apiPut('/sessions-appel/jour', { jour: dateLocale(new Date()), prospect_ids: ids, mode: 'ajouter' }) as { session: import('../types').SessionAppel; ajoutes: number; sans_telephone: number };
+      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
+      toast.success(`${r.ajoutes} prospect(s) ajouté(s) : votre session du jour compte ${r.session.prospect_ids.length} appel(s)${r.sans_telephone ? ` · ${r.sans_telephone} sans téléphone ignoré(s)` : ''}`);
+      quitterSelection();
+    } catch {
+      toast.error('Impossible d\'enregistrer la session du jour');
+    } finally {
+      setSessionEnCours(false);
+    }
+  };
 
   const prospectIdsWithRdv = useMemo(() => {
     const ids = new Set<string>();
@@ -320,6 +347,13 @@ export default function PipelinePage() {
             </button>
           )}
         </div>
+        <button
+          className={`p-1.5 sm:px-2 sm:py-1.5 rounded-lg flex items-center gap-1 text-[10px] sm:text-xs font-medium flex-shrink-0 ${selection ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          onClick={() => selection ? quitterSelection() : setSelection(true)}
+          title={selection ? 'Quitter la sélection' : 'Sélectionner plusieurs prospects (session d\'appel)'}
+        >
+          <CheckSquare className="w-4 h-4" /><span className="hidden sm:inline">{selection ? 'Terminer' : 'Sélectionner'}</span>
+        </button>
         <select
           className="text-[10px] sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
           value={maxPerColumn}
@@ -475,6 +509,33 @@ export default function PipelinePage() {
       )}
 
       {/* Kanban board */}
+      {selection && (
+        <div className="px-3 sm:px-4 py-2 bg-brewery-50 border-b border-brewery-200 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-brewery-800 font-medium">{coches.size} sélectionné(s)</span>
+          <span className="text-[11px] text-brewery-600 hidden sm:inline">· cochez les cartes, dans une ou plusieurs colonnes</span>
+          <div className="flex-1" />
+          {coches.size > 0 && (
+            <>
+              <button
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50"
+                onClick={ajouterALaSessionDuJour}
+                disabled={sessionEnCours}
+                title="Garder ces prospects comme ma session d'appel d'aujourd'hui (à reprendre depuis l'accueil)"
+              >
+                <ListChecks className="w-3.5 h-3.5" /> Ma session du jour{maSession.session ? ` (+${coches.size})` : ''}
+              </button>
+              <button
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700"
+                onClick={() => { startSession([...coches]); quitterSelection(); }}
+                title="Appeler ces prospects l'un après l'autre, tout de suite"
+              >
+                <Phone className="w-3.5 h-3.5" /> Appeler maintenant
+              </button>
+            </>
+          )}
+          <button className="p-1 text-gray-400 hover:text-gray-600" onClick={quitterSelection} title="Quitter la sélection"><X className="w-4 h-4" /></button>
+        </div>
+      )}
       <div className="flex-1 overflow-x-auto p-2 sm:p-4">
         <div className="flex gap-2 sm:gap-4 h-full min-w-max">
           {columns.map(col => (
@@ -518,15 +579,18 @@ export default function PipelinePage() {
                 ).map(prospect => (
                   <div
                     key={prospect.id}
-                    draggable
+                    draggable={!selection}
                     onDragStart={e => handleDragStart(e, prospect.id)}
                     onDragEnd={handleDragEnd}
-                    className={`kanban-card bg-white rounded-lg border border-gray-200 p-3 cursor-grab activé:cursor-grabbing ${
+                    onClick={selection ? () => cocher(prospect.id) : undefined}
+                    className={`kanban-card bg-white rounded-lg border p-3 ${selection ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'} ${
                       draggedId === prospect.id ? 'dragging' : ''
-                    }`}
+                    } ${selection && coches.has(prospect.id) ? 'border-brewery-500 ring-2 ring-brewery-200' : 'border-gray-200'}`}
                   >
                     <div className="flex items-start gap-2">
-                      <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
+                      {selection
+                        ? (coches.has(prospect.id) ? <CheckSquare className="w-4 h-4 text-brewery-600 mt-0.5 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />)
+                        : <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-sm text-gray-900 truncate">
                           {prospect.nom_etablissement}

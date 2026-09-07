@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { Calendar, MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, Prospect, Commercial, Client, EVENT_TYPE_LABELS } from '../types';
-import { formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
+import { MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
+import { Appointment, AppointmentStatus, Prospect, Commercial, Client, EVENT_TYPE_LABELS } from '../types';
+import { downloadICS, toLocalDateStr } from '../utils/helpers';
 
 interface Props {
   appointments: Appointment[];

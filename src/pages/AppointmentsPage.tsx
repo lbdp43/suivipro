@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation, Phone,
-  AlertTriangle, Users, Filter, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
+  AlertTriangle, Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
   ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -1012,9 +1012,6 @@ export default function AppointmentsPage() {
                             const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                             const prospecteur = rdv.prospecteur_id ? state.commerciaux.find(c => c.id === rdv.prospecteur_id) : null;
                             const planParticipants = (rdv.participants || []).map(id => state.commerciaux.find(c => c.id === id)).filter(Boolean);
-                            const statusColor = rdvIsEvent
-                              ? `border-l-${rdv.event_type === 'reunion' ? 'purple' : rdv.event_type === 'boutique' ? 'amber' : rdv.event_type === 'depot' ? 'orange' : rdv.event_type === 'marche' ? 'green' : 'gray'}-500 bg-${rdv.event_type === 'reunion' ? 'purple' : rdv.event_type === 'boutique' ? 'amber' : rdv.event_type === 'depot' ? 'orange' : rdv.event_type === 'marche' ? 'green' : 'gray'}-50/30`
-                              : rdv.statut === 'confirme' ? 'border-l-green-500 bg-green-50/50' : rdv.statut === 'termine' ? 'border-l-gray-400 bg-gray-50' : 'border-l-blue-500 bg-blue-50/30';
                             const planName = rdvIsEvent ? (rdv.titre || EVENT_TYPE_LABELS[rdv.event_type!]) : (rdvCl?.nom || prospect?.nom_etablissement || 'Inconnu');
 
                             return (

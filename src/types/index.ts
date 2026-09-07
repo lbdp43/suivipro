@@ -51,6 +51,7 @@ export const ESTABLISHMENT_ICONS: Record<EstablishmentType, string> = {
 };
 
 export type PipelineStage =
+  | 'partage'
   | 'nouveau_datagouv'
   | 'nouveau'
   | 'a_contacter'
@@ -63,6 +64,7 @@ export type PipelineStage =
   | 'ne_pas_contacter';
 
 export const PIPELINE_LABELS: Record<PipelineStage, string> = {
+  partage: 'Nouveau partagé',
   nouveau_datagouv: 'Importé Datagouv',
   nouveau: 'Nouveau',
   a_contacter: 'À contacter',
@@ -76,6 +78,7 @@ export const PIPELINE_LABELS: Record<PipelineStage, string> = {
 };
 
 export const PIPELINE_COLORS: Record<PipelineStage, string> = {
+  partage: '#a855f7',
   nouveau_datagouv: '#0ea5e9',
   nouveau: '#6b7280',
   a_contacter: '#3b82f6',
@@ -92,6 +95,7 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
 // Only the original built-in stages have a known rule - custom
 // admin-created stages have no entry here (nothing to show).
 export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
+  partage: 'fiche Google partagée depuis le téléphone, à compléter',
   nouveau_datagouv: 'importé automatiquement depuis data.gouv',
   nouveau: 'créé manuellement, pas encore contacte',
   a_contacter: 'en attente du premier appel/visite',
@@ -334,6 +338,8 @@ export interface Prospect {
   commercial_id: string;
   siret?: string;
   entity_type?: string;
+  /** Lien de la fiche Google Maps d'où vient le prospect (étape « Partagé »). */
+  source_url?: string;
   notes: string;
   date_creation: string;
   date_modification: string;
@@ -662,6 +668,16 @@ export interface Document {
   date_creation: string;
 }
 
+/** « Ma session d'appel du jour » : la liste qu'une personne s'est choisie pour un jour. */
+export interface SessionAppel {
+  id: string;
+  commercial_id: string;
+  jour: string;
+  prospect_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 // ============================================
 // App State
 // ============================================
@@ -682,4 +698,5 @@ export interface AppState {
   tasksClient: TaskClient[];
   tourneeConfigs: TourneeConfig[];
   commandes: Commande[];
+  sessionsAppel: SessionAppel[];
 }

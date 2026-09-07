@@ -3,11 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
+  CheckSquare, Square, XCircle, Settings, Check, Bell, UserCheck, User,
   Camera, Loader2, Building2, ClipboardCheck, ShoppingCart, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
+import { ListChecks, ExternalLink } from 'lucide-react';
+import { sessionDuJour } from '../utils/sessionAppel';
+import { dateLocale } from '../../shared/regles';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { ocrProspect, convertProspectToClient, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { useToast } from '../components/Toast';
@@ -26,9 +29,28 @@ import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function ProspectsPage() {
-  const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { state, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
   const toast = useToast();
   const { startCall, startSession } = useCallModal();
+  const [sessionEnCours, setSessionEnCours] = useState(false);
+
+  /** Les prospects cochés deviennent (ou rejoignent) « ma session d'appel du jour ». */
+  const ajouterALaSessionDuJour = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setSessionEnCours(true);
+    try {
+      const r = await apiPut('/sessions-appel/jour', { jour: dateLocale(new Date()), prospect_ids: ids, mode: 'ajouter' }) as { session: import('../types').SessionAppel; ajoutes: number; sans_telephone: number };
+      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
+      const total = r.session.prospect_ids.length;
+      toast.success(`${r.ajoutes} prospect(s) ajouté(s) : votre session du jour compte ${total} appel(s)${r.sans_telephone ? ` · ${r.sans_telephone} sans téléphone ignoré(s)` : ''}`);
+      exitSelectionMode();
+    } catch {
+      toast.error('Impossible d\'enregistrer la session du jour');
+    } finally {
+      setSessionEnCours(false);
+    }
+  };
+  const maSession = sessionDuJour(state, state.currentUser?.id);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -895,13 +917,23 @@ export default function ProspectsPage() {
               {selectedIds.size} selectionne(s)
             </span>
             {selectedIds.size > 0 && (
-              <button
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-[10px] font-semibold hover:bg-brewery-700"
-                onClick={() => startSession(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
-                title="Appeler les prospects sélectionnés l'un après l'autre"
-              >
-                <Phone className="w-3 h-3" /> Session d'appels ({selectedIds.size})
-              </button>
+              <>
+                <button
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-600 text-white text-[10px] font-semibold hover:bg-purple-700 disabled:opacity-50"
+                  onClick={() => ajouterALaSessionDuJour(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
+                  disabled={sessionEnCours}
+                  title="Garder ces prospects comme ma session d'appel d'aujourd'hui (à reprendre depuis l'accueil)"
+                >
+                  <ListChecks className="w-3 h-3" /> Ma session du jour{maSession.session ? ` (+${selectedIds.size})` : ` (${selectedIds.size})`}
+                </button>
+                <button
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-[10px] font-semibold hover:bg-brewery-700"
+                  onClick={() => startSession(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
+                  title="Appeler les prospects sélectionnés l'un après l'autre, tout de suite"
+                >
+                  <Phone className="w-3 h-3" /> Appeler maintenant ({selectedIds.size})
+                </button>
+              </>
             )}
             <button
               className="p-1 text-gray-400 hover:text-gray-600"
@@ -1258,7 +1290,19 @@ export default function ProspectsPage() {
                     </span>
                   ) : null;
                 })}
+                {selectedProspect.source_url && (
+                  <a href={selectedProspect.source_url} target="_blank" rel="noopener noreferrer" className="badge bg-blue-50 text-blue-700 hover:bg-blue-100 inline-flex items-center gap-1" title="Ouvrir la fiche Google Maps d'origine">
+                    <ExternalLink className="w-3 h-3" /> Fiche Google Maps
+                  </a>
+                )}
               </div>
+              {selectedProspect.etape_pipeline === 'partage' && (
+                <div className="mt-3 p-2.5 rounded-lg bg-purple-50 border border-purple-200 text-xs text-purple-900">
+                  <span className="font-semibold">Fiche partagée, à compléter :</span>{' '}
+                  {[selectedProspect.nom_etablissement.startsWith('Établissement partagé') && 'nom', !selectedProspect.telephone && 'téléphone', !selectedProspect.nom_contact && 'contact', selectedProspect.type_etablissement === 'autre' && 'type', !selectedProspect.ville && 'commune'].filter(Boolean).join(', ') || 'tout y est'}
+                  . Une fois complétée, passez-la en « À contacter ».
+                </div>
+              )}
 
               {/* Contact info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
@@ -1986,7 +2030,7 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 {baremeActif(state.tags) ? (
                   <p className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· calculé d'après les tags</span>
+                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· 50 + points des tags</span>
                   </p>
                 ) : (
                   <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />

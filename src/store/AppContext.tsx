@@ -1,16 +1,18 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo, useRef } from 'react';
 import {
-  AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
+  AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
   Client, Interaction, TaskClient, TourneeConfig, Commande,
 } from '../types';
-import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
+import { faitDeLaProspection } from '../utils/roles';
+import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
 
 // Périmètre d'affichage des clients. « moi » = mes clients + les fiches libres ; « equipe » =
 // toute l'équipe (remplacement d'un collègue). Appliqué ICI, une seule fois, il vaut pour
-// toutes les pages : accueil, retards, liste, semaine… Défaut : un commercial voit ses
-// clients, un admin ou un prospecteur voit l'équipe. Le choix est gardé pour la session.
+// toutes les pages : accueil, retards, liste, semaine… Défaut : chacun voit ses clients
+// (commercial comme admin) ; qui fait de la prospection voit l'équipe. Le choix est gardé
+// pour la session.
 export type Perimetre = 'moi' | 'equipe';
 const CLE_PERIMETRE = 'suivipro_perimetre';
 function lirePerimetreChoisi(): Perimetre | null {
@@ -19,8 +21,8 @@ function lirePerimetreChoisi(): Perimetre | null {
     return v === 'moi' || v === 'equipe' ? v : null;
   } catch { return null; }
 }
-export function perimetreParDefaut(role: string | undefined): Perimetre {
-  return role === 'commercial' ? 'moi' : 'equipe';
+export function perimetreParDefaut(personne: Pick<Commercial, 'role' | 'prospection'> | null | undefined): Perimetre {
+  return faitDeLaProspection(personne) ? 'equipe' : 'moi';
 }
 function sansCommercial(c: Client): boolean {
   return !c.commercial_id;
@@ -47,6 +49,8 @@ export function appliquerPerimetre(state: AppState, perimetre: Perimetre): AppSt
 
 type Action =
   | { type: 'SET_STATE'; payload: AppState }
+  | { type: 'SET_SESSION_APPEL'; payload: SessionAppel }
+  | { type: 'RETIRER_SESSION_APPEL'; payload: { commercial_id: string; jour: string } }
   | { type: 'ADD_PROSPECT'; payload: Prospect }
   | { type: 'UPDATE_PROSPECT'; payload: Prospect }
   | { type: 'DELETE_PROSPECT'; payload: string }
@@ -98,7 +102,12 @@ function reducer(state: AppState, action: Action): AppState {
           ...p,
           tags: Array.isArray(p.tags) ? p.tags : [],
         })),
+        sessionsAppel: action.payload.sessionsAppel || [],
       };
+    case 'SET_SESSION_APPEL':
+      return { ...state, sessionsAppel: [...state.sessionsAppel.filter(s => s.id !== action.payload.id), action.payload] };
+    case 'RETIRER_SESSION_APPEL':
+      return { ...state, sessionsAppel: state.sessionsAppel.filter(s => !(s.commercial_id === action.payload.commercial_id && s.jour === action.payload.jour)) };
     case 'ADD_PROSPECT':
       return { ...state, prospects: [...state.prospects, { ...action.payload, tags: Array.isArray(action.payload.tags) ? action.payload.tags : [] }] };
     case 'UPDATE_PROSPECT':
@@ -236,7 +245,7 @@ function reducer(state: AppState, action: Action): AppState {
 // ============================================
 
 const defaultPipelineColumns: PipelineColumn[] = ([
-  'nouveau_datagouv', 'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
+  'partage', 'nouveau_datagouv', 'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
 ] as PipelineStage[]).map(key => ({
   id: key,
   label: PIPELINE_LABELS[key],
@@ -297,13 +306,14 @@ const emptyState: AppState = {
   tasksClient: [],
   tourneeConfigs: [],
   commandes: [],
+  sessionsAppel: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [stateComplet, rawDispatch] = useReducer(reducer, emptyState);
   const [loading, setLoading] = useState(true);
   const [perimetreChoisi, setPerimetreChoisi] = useState<Perimetre | null>(lirePerimetreChoisi);
-  const perimetre: Perimetre = perimetreChoisi ?? perimetreParDefaut(stateComplet.currentUser?.role);
+  const perimetre: Perimetre = perimetreChoisi ?? perimetreParDefaut(stateComplet.currentUser);
   const setPerimetre = useCallback((p: Perimetre) => {
     setPerimetreChoisi(p);
     try { sessionStorage.setItem(CLE_PERIMETRE, p); } catch { /* navigation privée */ }

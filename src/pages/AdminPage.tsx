@@ -100,7 +100,7 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
 // section="easybeer" : la page EasyBeer (menu Administration → EasyBeer), avec ses trois
 // onglets — Connexion, Synchronisation, Contrôle. Sans section : l'administration classique.
 export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
-  const { state, stateComplet, dispatch, dispatchLocal } = useApp();
+  const { state, stateComplet, dispatchLocal } = useApp();
   const toast = useToast();
   const pageEasybeer = section === 'easybeer';
   const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>(pageEasybeer ? 'easybeer' : 'team');
@@ -205,7 +205,6 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const [ebTesting, setEbTesting] = useState(false);
   const [ebTestResult, setEbTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [ebPending, setEbPending] = useState<any[]>([]);
-  const [ebLoadingPending, setEbLoadingPending] = useState(false);
   const [assignmentRules, setAssignmentRules] = useState<{ id: string; email: string; commercial_id: string }[]>([]);
   const [newRuleEmail, setNewRuleEmail] = useState('');
   const [newRuleCommercial, setNewRuleCommercial] = useState('');
@@ -457,10 +456,6 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     }
   };
 
-  const updateDayTournees = (day: string, value: string) => {
-    const tournees = value.split(',').map(s => s.trim()).filter(Boolean);
-    setTourneeEditConfig(prev => ({ ...prev, [day]: tournees }));
-  };
 
   const addZoneToDay = (day: string, zone: string) => {
     const trimmed = zone.trim();
@@ -1121,14 +1116,8 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     });
   }, [state]);
 
-  const progressColor = (pct: number) =>
-    pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-500';
 
-  const progressLabel = (pct: number) =>
-    pct >= 100 ? 'Atteint' : pct >= 70 ? 'En cours' : 'En retard';
 
-  const progressDot = (pct: number) =>
-    pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
@@ -1528,7 +1517,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Points pour le score</label>
                     <input type="number" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={tagForm.points} onChange={e => setTagForm(prev => ({ ...prev, points: parseInt(e.target.value) || 0 }))} />
-                    <p className="text-[11px] text-gray-400 mt-1">Le score d'un prospect est la somme des points de ses tags, de 0 à 100. Tant qu'aucun tag n'a de points, le score reste saisi à la main.</p>
+                    <p className="text-[11px] text-gray-400 mt-1">Score d'un prospect = 50 + les points de ses tags (positifs ou négatifs), borné de 0 à 100. Un prospect sans tag vaut 50. Tant qu'aucun tag n'a de points, le score reste saisi à la main.</p>
                   </div>
                   <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <span className="badge text-white text-xs" style={{ backgroundColor: tagForm.couleur }}>

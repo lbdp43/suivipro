@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './store/AppContext';
 import { Beer } from 'lucide-react';
 import Layout from './components/Layout';
+import { peutVoirLesStatistiques } from './components/menu';
 import LoginPage from './pages/LoginPage';
 
 // Lazy-loaded pages
@@ -11,6 +12,7 @@ const AccueilPage = lazy(() => import('./pages/AccueilPage'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const PipelinePage = lazy(() => import('./pages/PipelinePage'));
 const ProspectsPage = lazy(() => import('./pages/ProspectsPage'));
+const PartagePage = lazy(() => import('./pages/PartagePage'));
 const CallsPage = lazy(() => import('./pages/CallsPage'));
 const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'));
 const EmailsPage = lazy(() => import('./pages/EmailsPage'));
@@ -43,6 +45,15 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Statistiques : commerciaux et admins seulement. Un prospecteur qui tape l'adresse revient à l'accueil.
+function RouteStatistiques({ children }: { children: React.ReactNode }) {
+  const { state } = useApp();
+  if (!peutVoirLesStatistiques(state.currentUser?.role)) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   const { state, loading } = useApp();
 
@@ -69,10 +80,11 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<AccueilPage />} />
-          <Route path="/statistiques" element={<DashboardPage />} />
+          <Route path="/statistiques" element={<RouteStatistiques><DashboardPage /></RouteStatistiques>} />
           <Route path="/carte" element={<MapPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/prospects" element={<ProspectsPage />} />
+          <Route path="/partage" element={<PartagePage />} />
           <Route path="/appels" element={<CallsPage />} />
           <Route path="/rdv" element={<AppointmentsPage />} />
           <Route path="/rappels" element={<RappelsTachesPage />} />

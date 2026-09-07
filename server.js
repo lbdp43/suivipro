@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import cron from 'node-cron';
 import { dbReady } from './server/db.js';
-import apiRoutes, { runZoneSync, syncNocturneEasybeer } from './server/routes.js';
+import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux } from './server/routes.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +41,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
+  exposedHeaders: ['X-Non-Lues'],
 }));
 
 // Rate limiting global — PAR UTILISATEUR, sur l'API seulement.
@@ -104,6 +105,10 @@ if (existsSync(DIST)) {
     maxAge: '1y',
     immutable: true,
     index: false, // Don't auto-serve index.html for /
+    // Le service worker et le manifeste changent sans changer de nom : jamais mis en cache un an.
+    setHeaders: (res, chemin) => {
+      if (/\/(sw\.js|manifest\.webmanifest)$/.test(chemin)) res.setHeader('Cache-Control', 'no-cache');
+    },
   }));
 
   // SPA fallback: all non-API routes serve index.html
@@ -136,6 +141,12 @@ dbReady.then(() => {
   });
 
   // CRON: Sync zone INSEE every Monday at 6:00 UTC
+  // Purge des journaux tous les jours à 3 h 10 (notifications lues > 90 j, activité > 180 j,
+  // 200 derniers journaux de synchronisation).
+  cron.schedule('10 3 * * *', async () => {
+    try { await purgerJournaux(); } catch (e) { console.error('[CRON] Purge échec:', e.message); }
+  }, { timezone: 'Europe/Paris' });
+
   cron.schedule('0 6 * * 1', async () => {
     console.log('[CRON] Lancement sync zone hebdomadaire (lundi 6h UTC)...');
     try {
