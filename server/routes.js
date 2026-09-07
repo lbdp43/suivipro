@@ -367,7 +367,7 @@ router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) 
   );
   await logActivity(req.user.id, 'creation_prospect', `${fiche.nom_etablissement} (fiche partagée)`, 'prospect', id);
   const cree = await db.query('SELECT * FROM prospects WHERE id = $1', [id]);
-  res.json({ ok: true, prospect: parseProspect(cree.rows[0]), sources, doublons });
+  res.json({ ok: true, prospect: parseProspect(cree.rows[0]), sources, doublons, provenance: fiche.provenance });
 }));
 
 // ============================================

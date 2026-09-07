@@ -17,6 +17,7 @@ interface Reponse {
   doublons: Doublon[];
   fiche: { nom_etablissement: string };
   sources: string[];
+  provenance?: 'maps' | 'recherche' | 'autre';
 }
 
 export default function PartagePage() {
@@ -66,7 +67,7 @@ export default function PartagePage() {
     <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Share2 className="w-5 h-5 text-brewery-600" /> Fiche partagée</h1>
-        <p className="text-sm text-gray-500 mt-1">Une fiche Google partagée depuis le téléphone devient un prospect dans l'étape <span className="font-medium text-purple-700">« Nouveau partagé »</span>, à compléter.</p>
+        <p className="text-sm text-gray-500 mt-1">Une fiche partagée depuis <span className="font-medium">Google Maps</span> devient un prospect dans l'étape <span className="font-medium text-purple-700">« Nouveau partagé »</span>, avec son nom, sa position et son adresse. Reste à ajouter le téléphone et le contact.</p>
       </div>
 
       {!partage && (
@@ -74,8 +75,9 @@ export default function PartagePage() {
           <p className="font-medium text-gray-900 flex items-center gap-2"><Smartphone className="w-4 h-4 text-brewery-600" /> Comment partager une fiche</p>
           <ol className="list-decimal pl-5 space-y-1">
             <li>Sur Android, installez SuiviPro une fois : menu du navigateur → « Ajouter à l'écran d'accueil ».</li>
-            <li>Dans Google Maps ou sur la fiche Google d'un établissement, touchez « Partager » puis choisissez SuiviPro.</li>
-            <li>La fiche est créée dans « Nouveau partagé » ; il ne reste qu'à la compléter.</li>
+            <li>Dans l'application <span className="font-medium">Google Maps</span>, ouvrez l'établissement, touchez « Partager » puis choisissez SuiviPro.</li>
+            <li>La fiche est créée dans « Nouveau partagé » avec le nom, la position et l'adresse ; il reste le téléphone et le contact.</li>
+            <li>Partagez bien depuis Google Maps, pas depuis la recherche Google : celle-ci ne donne que le nom.</li>
           </ol>
           <p className="text-xs text-gray-500">Sur iPhone, le partage vers une application web n'existe pas : envoyez la fiche sur WhatsApp à quelqu'un sur Android, ou créez le prospect dans Prospects.</p>
           <Link to="/pipeline" className="inline-block text-brewery-700 hover:underline">{enAttente > 0 ? `${enAttente} fiche(s) attendent dans « Nouveau partagé »` : 'Ouvrir le pipeline'}</Link>
@@ -128,6 +130,9 @@ export default function PartagePage() {
             )}
           </div>
           {manquants.length > 0 && <p className="text-xs text-amber-700">Il manque {manquants.join(', ')}.</p>}
+          {reponse?.provenance === 'recherche' && !cree.ville && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">Partagé depuis la recherche Google : seul le nom a pu être lu. Pour avoir la position et l'adresse, partagez la fiche depuis l'application Google Maps.</p>
+          )}
           <div className="flex flex-wrap gap-2">
             <Link to={`/prospects?id=${cree.id}`} className="px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700">Compléter la fiche</Link>
             <Link to="/pipeline" className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Voir le pipeline</Link>

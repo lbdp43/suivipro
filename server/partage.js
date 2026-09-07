@@ -31,10 +31,18 @@ function decoderSegment(s) {
 
 /** Ce que l'adresse d'un lien Google Maps contient à elle seule. */
 export function analyserLienMaps(url) {
-  const r = { nom: '', latitude: 0, longitude: 0 };
+  const r = { nom: '', latitude: 0, longitude: 0, provenance: 'autre' };
   let u;
   try { u = new URL(url); } catch { return r; }
+  // Page de blocage (« trafic exceptionnel ») ou de consentement : la vraie adresse est dans « continue ».
+  // Leur propre « q » est un jeton illisible, jamais un nom.
+  if (/^\/sorry\b/.test(u.pathname) || /^consent\.google\./.test(u.hostname)) {
+    const suite = u.searchParams.get('continue');
+    return suite ? analyserLienMaps(suite) : r;
+  }
   const chemin = u.pathname;
+  if (/^\/maps\b/.test(chemin) || /^maps\./.test(u.hostname)) r.provenance = 'maps';
+  else if (/^\/search\b/.test(chemin)) r.provenance = 'recherche';
   // /maps/place/<nom>/@lat,lng,17z/data=!…!3d<lat>!4d<lng>
   const place = chemin.match(/\/maps\/place\/([^/@]+)/);
   if (place) r.nom = decoderSegment(place[1]);
@@ -193,38 +201,43 @@ async function avecDelai(promesse, ms) {
   try { return await Promise.race([promesse, garde]); } finally { clearTimeout(t); }
 }
 
-/** Suit les redirections d'un lien (court ou non) et lit la page. Jamais bloquant : null si le réseau manque. */
+function urlSure(u, base) { try { return new URL(u, base).href; } catch { return ''; } }
+function estBloque(url) {
+  try { const u = new URL(url); return /^\/sorry\b/.test(u.pathname) || /^consent\.google\./.test(u.hostname); } catch { return false; }
+}
+function porteLaPosition(url) {
+  return /\/maps\/place\//.test(url) || /!3d-?\d/.test(url) || /@-?\d+\.\d+,-?\d+\.\d+/.test(url);
+}
+
+/**
+ * Suit les redirections d'un lien, une à une, sans lire le corps des pages : c'est l'adresse
+ * finale qui porte le nom et la position (/maps/place/Nom/@lat,lng…). Google bloque la lecture
+ * de ses pages depuis un serveur (« trafic exceptionnel »), on ne l'essaie donc pas ; sa page
+ * de blocage ou de consentement met la vraie adresse dans « continue », on la reprend.
+ * Jamais bloquant : null si le réseau manque.
+ */
 export async function resoudreLien(url, fetchFn = globalThis.fetch) {
   if (!url || !fetchFn) return null;
+  let courante = url;
+  let html = '';
   try {
-    const controller = new AbortController();
-    const rep = await avecDelai(fetchFn(url, { headers: ENTETES, redirect: 'follow', signal: controller.signal }), 8000);
-    let urlFinale = rep.url || url;
-    // Page de consentement européenne : le vrai lien est dans « continue ».
-    try {
-      const uf = new URL(urlFinale);
-      if (/consent\.google\./.test(uf.hostname)) urlFinale = uf.searchParams.get('continue') || urlFinale;
-    } catch { /* on garde l'adresse telle quelle */ }
-    let html = '';
-    if (rep.ok) {
-      const lecteur = rep.body?.getReader ? rep.body.getReader() : null;
-      if (lecteur) {
-        // On ne lit que le début : les balises og: sont dans l'en-tête de la page.
-        const morceaux = []; let taille = 0;
-        while (taille < 400000) {
-          const { value, done } = await avecDelai(lecteur.read(), 4000);
-          if (done) break;
-          morceaux.push(value); taille += value.length;
-        }
-        try { await lecteur.cancel(); } catch { /* flux déjà fermé */ }
-        html = Buffer.concat(morceaux.map(m => Buffer.from(m))).toString('utf8');
-      } else {
-        html = await avecDelai(rep.text(), 4000);
+    for (let etape = 0; etape < 8; etape++) {
+      if (estBloque(courante)) {
+        const suite = new URL(courante).searchParams.get('continue');
+        if (suite) courante = suite;
+        break;
       }
+      if (porteLaPosition(courante)) break;
+      const rep = await avecDelai(fetchFn(courante, { headers: ENTETES, redirect: 'manual' }), 8000);
+      const suivante = rep.status >= 300 && rep.status < 400 ? urlSure(rep.headers?.get?.('location') || '', courante) : '';
+      if (suivante) { courante = suivante; continue; }
+      // Page finale : on ne lit que hors Google (Google ne répond jamais à un serveur).
+      if (rep.ok && !estLienGoogle(courante)) html = await avecDelai(rep.text(), 4000);
+      break;
     }
-    return { urlFinale, html };
+    return { urlFinale: courante, html };
   } catch {
-    return null;
+    return { urlFinale: courante, html: '' };
   }
 }
 
@@ -274,21 +287,23 @@ export async function ficheDepuisPartage(texte, { fetchFn = globalThis.fetch } =
   const fiche = {
     nom_etablissement: t.nom, adresse: '', code_postal: '', ville: '', departement: '',
     latitude: 0, longitude: 0, telephone: t.telephone, type_etablissement: 'autre',
-    source_url: t.lien, categorie_google: '',
+    source_url: t.lien, categorie_google: '', provenance: 'autre',
   };
   const sources = [];
   if (t.nom) sources.push('nom : message');
 
   let adresseBrute = t.adresse;
   if (t.lien && estLienGoogle(t.lien)) {
+    // On garde le lien tel que partagé : c'est lui qui s'ouvre bien depuis un téléphone,
+    // l'adresse résolue est pleine de jetons de session que Google refuse ailleurs.
     const res = await resoudreLien(t.lien, fetchFn);
     const urlFinale = res?.urlFinale || t.lien;
-    fiche.source_url = urlFinale.length < 2000 ? urlFinale : t.lien;
     const page = analyserPageMaps(res?.html);
     const lien = analyserLienMaps(urlFinale);
+    fiche.provenance = lien.provenance;
     const nomPage = page.nom && !/^google maps$/i.test(page.nom) ? page.nom : '';
-    if (nomPage) { fiche.nom_etablissement = nomPage; sources.push('nom : fiche Google'); }
-    else if (lien.nom && (!fiche.nom_etablissement || fiche.nom_etablissement.length < 3)) { fiche.nom_etablissement = lien.nom; sources.push('nom : lien'); }
+    if (lien.nom) { fiche.nom_etablissement = lien.nom; sources.length = 0; sources.push('nom : lien'); }
+    else if (nomPage) { fiche.nom_etablissement = nomPage; sources.push('nom : fiche Google'); }
     if (page.adresse) { adresseBrute = page.adresse; sources.push('adresse : fiche Google'); }
     if (page.telephone && !fiche.telephone) { fiche.telephone = page.telephone; sources.push('téléphone : fiche Google'); }
     if (lien.latitude) { fiche.latitude = lien.latitude; fiche.longitude = lien.longitude; sources.push('position : lien'); }
