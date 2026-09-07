@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler, authMiddleware } from '../lib/auth.js';
-import { toLocalDateStr } from '../lib/dates.js';
+import { dateLocale } from '../../shared/regles.js';
 import { validationError } from '../lib/validation.js';
 
 const router = Router();
@@ -15,7 +15,7 @@ router.get('/prospection/activite', authMiddleware, asyncHandler(async (req, res
   const debut = String(req.query.debut || '').slice(0, 10);
   const fin = String(req.query.fin || '').slice(0, 10);
   if (!debut || !fin) return validationError(res, ['debut et fin sont requis (AAAA-MM-JJ)']);
-  const aujourdhui = toLocalDateStr(new Date());
+  const aujourdhui = dateLocale(new Date());
 
   // Les colonnes de date sont du texte ISO : on compare sur les 10 premiers caracteres
   // pour accepter aussi bien « 2026-09-06 » que « 2026-09-06T14:12:00.000Z ».

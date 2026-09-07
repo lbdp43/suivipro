@@ -12,6 +12,8 @@
 
 // google.fr, google.com/maps, maps.app.goo.gl, goo.gl, g.co, g.page, et share.google (bouton
 // « Partager » de l'application Google et de la recherche Google).
+import { sansAccents } from '../shared/normalisation.js';
+
 const HOTES_MAPS = /(^|\.)(google\.[a-z.]+|share\.google|goo\.gl|g\.co|g\.page)$/i;
 
 export function extraireLien(texte) {
@@ -148,7 +150,7 @@ export function decouperAdresse(adresse) {
   return r;
 }
 
-const sansAccents = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 
 /** Catégorie Google (ou nom) → type d'établissement de SuiviPro. */
 export function devinerType(...textes) {

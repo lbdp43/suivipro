@@ -4,9 +4,10 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { ficheDepuisPartage } from '../partage.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
-import { toLocalDateStr } from '../lib/dates.js';
+import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
-import { normaliserNomClient } from '../lib/normalisation.js';
+import { sansAccents } from '../../shared/normalisation.js';
+import { preparerFiche, comparerFiches } from '../../shared/rapprochement.js';
 import { parseProspect, parseSessionAppel } from '../lib/parse.js';
 import { scoreProspect } from '../lib/scores.js';
 import { validateProspect, validationError } from '../lib/validation.js';
@@ -58,25 +59,20 @@ router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) =>
 // Corps : { texte, forcer }. `texte` est le message WhatsApp tel quel (nom, adresse, lien)
 // ou le lien seul. Sans `forcer`, un doublon probable bloque la création et est renvoyé
 // pour que la personne choisisse : ouvrir l'existant, ou créer quand même.
-function chiffresTel(t) { return String(t || '').replace(/\D/g, '').slice(-9); }
-
+// Fiches existantes qui ressemblent à la fiche partagée : même règle que partout
+// (rapprochement partagé), avec une tolérance sur « un nom contient l'autre » dans la même commune.
 async function doublonsDeFiche(fiche) {
-  const nom = normaliserNomClient(fiche.nom_etablissement);
-  const tel = chiffresTel(fiche.telephone);
-  const ville = normaliserNomClient(fiche.ville);
+  const partagee = preparerFiche({ nom: fiche.nom_etablissement, telephone: fiche.telephone, ville: fiche.ville });
   const [p, c] = await Promise.all([
     db.query('SELECT id, nom_etablissement AS nom, ville, telephone, etape_pipeline FROM prospects'),
     db.query('SELECT id, nom, ville, telephone FROM clients'),
   ]);
   const ressemble = (r) => {
-    const n = normaliserNomClient(r.nom);
-    if (!n) return false;
-    if (nom && n === nom) return true;
-    if (tel && chiffresTel(r.telephone) === tel) return true;
-    if (nom.length < 6) return false;
-    const v = normaliserNomClient(r.ville);
-    const memeVille = !ville || !v || v === ville;
-    return memeVille && (n.includes(nom) || nom.includes(n));
+    const cmp = comparerFiches(partagee, r);
+    if (!cmp) return false;
+    if (cmp.score >= 80) return true;
+    if (cmp.score === 60) { const v = sansAccents(r.ville); return !partagee._ville || !v || v === partagee._ville; }
+    return false;
   };
   const out = [];
   for (const r of p.rows) if (ressemble(r)) out.push({ genre: 'prospect', id: r.id, nom: r.nom, ville: r.ville || '', etape: r.etape_pipeline });
@@ -102,7 +98,7 @@ router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) 
   const id = `prospect-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   const auteur = await db.query('SELECT prenom, nom FROM commerciaux WHERE id = $1', [req.user.id]);
   const qui = auteur.rows[0] ? `${auteur.rows[0].prenom} ${auteur.rows[0].nom}`.trim() : req.user.id;
-  const notes = [`Fiche partagée par ${qui} le ${toLocalDateStr(new Date())}.`, fiche.categorie_google ? `Catégorie Google : ${fiche.categorie_google}.` : '']
+  const notes = [`Fiche partagée par ${qui} le ${dateLocale(new Date())}.`, fiche.categorie_google ? `Catégorie Google : ${fiche.categorie_google}.` : '']
     .filter(Boolean).join('\n');
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, source_url)
@@ -117,7 +113,7 @@ router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) 
 
 // La liste que chacun se choisit dans Prospects ou dans le Pipeline. Le jour vient de
 // l'écran (heure de Paris) ; les prospects appelés se déduisent des appels du jour.
-function jourValide(j) { return /^\d{4}-\d{2}-\d{2}$/.test(String(j || '')) ? j : toLocalDateStr(new Date()); }
+function jourValide(j) { return /^\d{4}-\d{2}-\d{2}$/.test(String(j || '')) ? j : dateLocale(new Date()); }
 
 router.put('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res) => {
   const jour = jourValide(req.body.jour);

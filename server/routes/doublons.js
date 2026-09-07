@@ -9,62 +9,11 @@ import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js
 import { SITE_INTERNET_CLIENT_ID, extractEbFieldsSync, findMatchingClient, findMatchingProspect, linkClientToProspect } from '../lib/easybeer-sync.js';
 import { geocodeServer } from '../lib/geo.js';
 import { logActivity } from '../lib/journal.js';
-import { normaliserNomClient } from '../lib/normalisation.js';
+import { preparerFiche, comparerFiches } from '../../shared/rapprochement.js';
 import { validationError } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
 
 const router = Router();
-
-function motsSignificatifs(nom) {
-  return normaliserNomClient(nom).split(' ').filter(m => m.length > 2);
-}
-
-function normaliserIdentifiant(v) {
-  return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-// Compare deux fiches et renvoie { score, motif } ou null si elles n'ont rien a voir.
-// score : 100 = certain (identifiant legal ou de contact partage), 80 = nom identique,
-// 60 = un nom contient l'autre, 40 = memes mots significatifs.
-// Formes normalisees calculees une fois par client : sans ce pre-calcul, comparer
-// ~1250 clients (780 000 paires) referait autant de normalisations.
-function preparerComparaison(c) {
-  return {
-    ...c,
-    _nom: normaliserNomClient(c.nom),
-    _mots: motsSignificatifs(c.nom),
-    _siret: normaliserIdentifiant(c.siret),
-    _email: normaliserIdentifiant(c.email),
-    _tel: normaliserIdentifiant(c.telephone),
-  };
-}
-
-function comparerClients(a, b) {
-  const p = (c) => (c._nom === undefined ? preparerComparaison(c) : c);
-  a = p(a); b = p(b);
-  // _partage : identifiant porte par 3 fiches ou plus — boite mail de la societe,
-  // standard telephonique... Il ne dit plus « meme etablissement », donc on l'ignore
-  // ici comme preuve. Deux fiches qui le partagent restent comparees sur leur nom.
-  if (a._siret && a._siret.length >= 9 && a._siret === b._siret) return { score: 100, motif: 'SIRET identique' };
-  if (a._email && a._email === b._email && !a._emailPartage) return { score: 100, motif: 'Email identique' };
-  if (a._tel && a._tel.length >= 9 && a._tel === b._tel && !a._telPartage) return { score: 100, motif: 'Telephone identique' };
-
-  const nA = a._nom, nB = b._nom;
-  if (!nA || !nB || nA.length < 4 || nB.length < 4) return null;
-  if (nA === nB) return { score: 80, motif: 'Nom identique' };
-  if (nA.includes(nB) || nB.includes(nA)) return { score: 60, motif: 'Un nom contient l\'autre' };
-
-  const mA = a._mots, mB = b._mots;
-  if (mA.length === 0 || mB.length === 0) return null;
-  const communs = mA.filter(m => mB.includes(m));
-  // Un seul mot commun ne prouve rien (« Bar A » / « Bar B ») : il en faut au moins deux.
-  if (communs.length < 2) return null;
-  // Il faut que les mots communs couvrent l'essentiel des DEUX noms, sinon « Bar de la
-  // Poste » et « Bar du Marche » se retrouveraient apparies par le seul mot « bar ».
-  const couverture = Math.min(communs.length / mA.length, communs.length / mB.length);
-  if (couverture >= 0.75) return { score: 40, motif: `Mots communs : ${communs.join(', ')}` };
-  return null;
-}
 
 // Paires de clients susceptibles d'etre le meme etablissement.
 // Doublons entre PROSPECTS et CLIENTS : un prospect qu'on continue d'appeler alors qu'il
@@ -90,8 +39,8 @@ router.get('/prospects/doublons-clients', authMiddleware, adminOnly, asyncHandle
     [SITE_INTERNET_CLIENT_ID]
   )).rows;
 
-  const prepP = prospects.map(preparerComparaison);
-  const prepC = clients.map(preparerComparaison);
+  const prepP = prospects.map(preparerFiche);
+  const prepC = clients.map(preparerFiche);
   const SEUIL_PARTAGE = 3;
   const freq = (vals) => { const m = new Map(); for (const v of vals) if (v) m.set(v, (m.get(v) || 0) + 1); return m; };
   const tous = [...prepP, ...prepC];
@@ -104,7 +53,7 @@ router.get('/prospects/doublons-clients', authMiddleware, adminOnly, asyncHandle
   const paires = [];
   for (let i = 0; i < prepP.length; i++) {
     for (let j = 0; j < prepC.length; j++) {
-      const r = comparerClients(prepP[i], prepC[j]);
+      const r = comparerFiches(prepP[i], prepC[j]);
       if (!r) continue;
       const p = prospects[i], c = clients[j];
       paires.push({
@@ -151,7 +100,7 @@ router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (r
     ca_ttc: Math.round((Number(c.ca_ttc) || 0) * 100) / 100,
   });
 
-  const prepares = clients.map(preparerComparaison);
+  const prepares = clients.map(preparerFiche);
 
   // Un email ou un telephone porte par 3 fiches ou plus est un contact partage
   // (boite mail de la brasserie, numero du siege...), pas un identifiant : il ne doit
@@ -185,7 +134,7 @@ router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (r
   const paires = [];
   for (let i = 0; i < prepares.length; i++) {
     for (let j = i + 1; j < prepares.length; j++) {
-      const r = comparerClients(prepares[i], prepares[j]);
+      const r = comparerFiches(prepares[i], prepares[j]);
       if (!r) continue;
       // Fiche a garder par defaut : celle qui porte le plus d'historique, puis la plus ancienne.
       const [a, b] = [fiche(clients[i]), fiche(clients[j])];

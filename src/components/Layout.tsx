@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Map, 
@@ -10,7 +11,6 @@ import { apiPut } from '../api/client';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
-import { toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
 
 
@@ -63,7 +63,7 @@ export default function Layout() {
   const notifRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const { state, logout, perimetre, setPerimetre } = useApp();
-  const today = toLocalDateStr(new Date());
+  const today = dateLocale(new Date());
   // Badge = rappels en retard filtrés par utilisateur
   // Les prospecteurs partagent leurs rappels entre eux
   const currentUserId = state.currentUser?.id;

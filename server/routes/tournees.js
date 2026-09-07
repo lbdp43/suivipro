@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import db from '../db.js';
+import { sansAccents } from '../../shared/normalisation.js';
 import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { lireConfigTournee, nomZone } from '../lib/geo.js';
 import { logActivity } from '../lib/journal.js';
@@ -38,9 +39,6 @@ router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async 
   res.json({ ok: true });
 }));
 
-function normaliserNomSecteur(v) {
-  return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
 
 function pointDansPolygone(lat, lng, polygone) {
   // Ray casting ; polygone = [[lat, lng], ...]
@@ -63,16 +61,16 @@ async function analyserSecteurs() {
   ]);
   const nomCommercial = new Map(commerciaux.rows.map(c => [c.id, `${c.prenom} ${c.nom}`.trim()]));
   const clientsParNom = new Map(), prospectsParNom = new Map(), parVille = new Map();
-  for (const c of clients.rows) { const k = normaliserNomSecteur(c.tournee); if (k) clientsParNom.set(k, (clientsParNom.get(k) || 0) + 1); }
-  for (const p of prospects.rows) { const k = normaliserNomSecteur(p.secteur); if (k) prospectsParNom.set(k, (prospectsParNom.get(k) || 0) + 1); }
+  for (const c of clients.rows) { const k = sansAccents(c.tournee); if (k) clientsParNom.set(k, (clientsParNom.get(k) || 0) + 1); }
+  for (const p of prospects.rows) { const k = sansAccents(p.secteur); if (k) prospectsParNom.set(k, (prospectsParNom.get(k) || 0) + 1); }
   // Prudence : un secteur qui porte le nom d'une ville où se trouvent des fiches (champ
   // ville) n'est pas considéré vide, même si personne n'y est « attitré » par le champ.
-  for (const c of clients.rows) { const k = normaliserNomSecteur(c.ville); if (k) parVille.set(k, (parVille.get(k) || 0) + 1); }
-  for (const p of prospects.rows) { const k = normaliserNomSecteur(p.ville); if (k) parVille.set(k, (parVille.get(k) || 0) + 1); }
+  for (const c of clients.rows) { const k = sansAccents(c.ville); if (k) parVille.set(k, (parVille.get(k) || 0) + 1); }
+  for (const p of prospects.rows) { const k = sansAccents(p.ville); if (k) parVille.set(k, (parVille.get(k) || 0) + 1); }
 
   const secteurs = new Map(); // clé normalisée -> fiche
   const fiche = (nom) => {
-    const k = normaliserNomSecteur(nom);
+    const k = sansAccents(nom);
     if (!secteurs.has(k)) secteurs.set(k, { cle: k, nom: String(nom).trim(), clients: clientsParNom.get(k) || 0, prospects: prospectsParNom.get(k) || 0, meme_ville: parVille.get(k) || 0, dans_polygone: 0, configs: [], zones: [] });
     return secteurs.get(k);
   };
@@ -111,7 +109,7 @@ router.get('/tournees/vides', authMiddleware, adminOnly, asyncHandler(async (req
 }));
 
 router.post('/tournees/vides/supprimer', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  const demandes = new Set((Array.isArray(req.body?.cles) ? req.body.cles : []).map(normaliserNomSecteur).filter(Boolean));
+  const demandes = new Set((Array.isArray(req.body?.cles) ? req.body.cles : []).map(sansAccents).filter(Boolean));
   if (demandes.size === 0) return res.status(400).json({ error: 'Aucun secteur demandé' });
   // Recompte au moment de supprimer : on ne supprime que ce qui est ENCORE vide.
   const analyse = await analyserSecteurs();
@@ -128,7 +126,7 @@ router.post('/tournees/vides/supprimer', authMiddleware, adminOnly, asyncHandler
       let change = false;
       for (const [jour, liste] of Object.entries(cfg)) {
         if (!Array.isArray(liste)) continue;
-        const filtre = liste.filter(z => !cles.has(normaliserNomSecteur(nomZone(z))));
+        const filtre = liste.filter(z => !cles.has(sansAccents(nomZone(z))));
         if (filtre.length !== liste.length) { cfg[jour] = filtre; change = true; }
         if (jour !== 'prospection' && filtre.length === 0) delete cfg[jour];
       }
@@ -159,11 +157,11 @@ router.post('/tournees/vides/supprimer', authMiddleware, adminOnly, asyncHandler
 // zones dessinées gardent leur tracé, seul leur nom change.
 router.post('/tournees/fusionner', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const cible = String(req.body?.cible || '').trim();
-  const sources = new Set((Array.isArray(req.body?.sources) ? req.body.sources : []).map(normaliserNomSecteur).filter(Boolean));
+  const sources = new Set((Array.isArray(req.body?.sources) ? req.body.sources : []).map(sansAccents).filter(Boolean));
   if (!cible) return res.status(400).json({ error: 'Nom du secteur cible requis' });
-  sources.delete(normaliserNomSecteur(cible));
+  sources.delete(sansAccents(cible));
   if (sources.size === 0) return res.status(400).json({ error: 'Aucun secteur source (différent de la cible)' });
-  const estSource = (v) => sources.has(normaliserNomSecteur(v));
+  const estSource = (v) => sources.has(sansAccents(v));
 
   const client = await db.connect();
   const bilan = { clients: 0, prospects: 0, configs: 0, zones: 0 };
@@ -184,7 +182,7 @@ router.post('/tournees/fusionner', authMiddleware, adminOnly, asyncHandler(async
         for (const z of liste) {
           const nom = nomZone(z);
           const remplace = estSource(nom) ? cible : nom;
-          const k = normaliserNomSecteur(remplace);
+          const k = sansAccents(remplace);
           if (vus.has(k)) { change = true; continue; } // doublon dans la même journée après fusion
           vus.add(k);
           if (remplace !== nom) { change = true; neuf.push(typeof z === 'string' ? cible : { ...z, zone: cible }); }

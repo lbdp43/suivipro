@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo, useRef } from 'react';
+import { dateLocale } from '../../shared/regles';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
@@ -6,7 +7,6 @@ import {
 } from '../types';
 import { faitDeLaProspection } from '../utils/roles';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
-import { toLocalDateStr } from '../utils/helpers';
 
 // Périmètre d'affichage des clients. « moi » = mes clients + les fiches libres ; « equipe » =
 // toute l'équipe (remplacement d'un collègue). Appliqué ICI, une seule fois, il vaut pour
@@ -226,7 +226,7 @@ function reducer(state: AppState, action: Action): AppState {
           if (c.statut === 'ACTIF' && freq) {
             const d = new Date(visitDate);
             d.setDate(d.getDate() + freq);
-            nextVisit = toLocalDateStr(d);
+            nextVisit = dateLocale(d);
           }
           return { ...c, last_visit: visitDate, next_visit: nextVisit, date_modification: new Date().toISOString() };
         }

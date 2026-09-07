@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { dateLocale, statutVisite, joursDeRetard } from '../../shared/regles';
 import {
   X, Phone, Mail, MapPin, User, Edit2, Calendar, ChevronLeft,
   CheckCircle2, PhoneCall, Navigation, ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2,
@@ -6,9 +7,8 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
 import { Client, CLIENT_TYPE_LABELS, CLIENT_VISIT_FREQUENCIES, ClientStatus, InteractionType, INTERACTION_TYPE_LABELS, TaskClient } from '../types';
-import { generateId, formatDate, toLocalDateStr } from '../utils/helpers';
+import { generateId, formatDate } from '../utils/helpers';
 import { decrocheDuClient } from '../utils/commandes';
-import { statutVisite, joursDeRetard } from '../../shared/regles';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
@@ -94,7 +94,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
   const lancerInteraction = (type: InteractionType) => {
     if (onInteraction) { onInteraction(client, type); return; }
     setInteractionEnLigne(type);
-    setInteractionDate(type === 'RDV_PLANIFIE' ? toLocalDateStr(new Date()) : '');
+    setInteractionDate(type === 'RDV_PLANIFIE' ? dateLocale(new Date()) : '');
   };
 
   const enregistrerInteraction = async () => {
@@ -301,7 +301,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
                     {task.statut === 'TERMINEE' ? <Check className="w-4 h-4 text-green-500" /> : <div className="w-4 h-4 border-2 border-gray-300 rounded" />}
                   </button>
                   <span className={`flex-1 truncate ${task.statut === 'TERMINEE' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.titre}</span>
-                  {task.date_echeance && <span className={`text-[10px] flex-shrink-0 ${task.date_echeance < toLocalDateStr(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>{formatDate(task.date_echeance)}</span>}
+                  {task.date_echeance && <span className={`text-[10px] flex-shrink-0 ${task.date_echeance < dateLocale(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>{formatDate(task.date_echeance)}</span>}
                   <button onClick={() => supprimerTache(task.id)} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50"><X className="w-3 h-3 text-gray-400 hover:text-red-500" /></button>
                 </div>
               ))}

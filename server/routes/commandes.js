@@ -3,6 +3,8 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import * as eb from '../easybeer-client.js';
 import db from '../db.js';
+import { dateLocale } from '../../shared/regles.js';
+import { normaliserIdentifiant, chiffresTelephone } from '../../shared/normalisation.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { asyncHandler, authMiddleware } from '../lib/auth.js';
 import { createVisitesFromCommandes, ensureSiteInternetGroup, estCommandeWeb, importerClientDepuisCommande } from '../lib/easybeer-sync.js';
@@ -216,7 +218,7 @@ function fenetresMax1An(debutStr, finStr) {
   while (debut <= fin) {
     const borne = new Date(debut.getTime() + 364 * JOUR);
     const finFenetre = borne < fin ? borne : fin;
-    fenetres.push({ debut: debut.toISOString().slice(0, 10), fin: finFenetre.toISOString().slice(0, 10) });
+    fenetres.push({ debut: dateLocale(debut), fin: dateLocale(finFenetre) });
     debut = new Date(finFenetre.getTime() + JOUR);
   }
   return fenetres;
@@ -279,7 +281,7 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
      LEFT JOIN easybeer_clients ec ON ec.imported_client_id = c.id`
   );
 
-  function normalize(s) { return (s || '').toLowerCase().trim().replace(/[^a-z0-9]/g, ''); }
+  const normalize = normaliserIdentifiant;
 
   // Build matched list: { apiId (numeric), localClientId, clientNom }
   const matchedClients = [];
@@ -293,7 +295,7 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
 
       const apiNom = apiClient.nom || apiClient.libelle || apiClient.raisonSociale || '';
       const apiEmail = apiClient.email || apiClient.emailPrincipal || apiClient.mail || '';
-      const apiTel = normalize(apiClient.telephone || apiClient.tel || apiClient.phone || '');
+      const apiTel = chiffresTelephone(apiClient.telephone || apiClient.tel || apiClient.phone || '');
       const apiSiret = normalize(apiClient.siret || apiClient.siren || '');
       const apiNomNorm = normalize(apiNom);
 
@@ -303,7 +305,7 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
         if (local.stored_eb_id && String(local.stored_eb_id) === String(apiId)) { bestMatch = local; break; }
         if (apiSiret && apiSiret.length >= 9 && normalize(local.siret).includes(apiSiret)) { bestMatch = local; break; }
         if (apiEmail && local.email && normalize(apiEmail) === normalize(local.email)) { bestMatch = local; break; }
-        if (apiTel && apiTel.length >= 8 && (normalize(local.telephone).includes(apiTel) || normalize(local.telephone_mobile).includes(apiTel))) { bestMatch = local; break; }
+        if (apiTel && apiTel.length >= 8 && (chiffresTelephone(local.telephone).includes(apiTel) || chiffresTelephone(local.telephone_mobile).includes(apiTel))) { bestMatch = local; break; }
         // Nom Easybeer déjà vu via webhook pour CE client local : même entité, sûr.
         if (apiNomNorm && local.eb_name && normalize(local.eb_name) === apiNomNorm) { bestMatch = local; break; }
         // ⚠️ plus AUCUN rapprochement flou par nom : c'était la source des mauvaises
@@ -384,7 +386,7 @@ async function executerSyncCommandes({ force = false, dateDebut: dateDebutParam 
   }
   console.log(`[EasyBeer Bulk Sync] ${idToLocal.size} liens client disponibles (dont ${liensDirects.rows.length} par easybeer_id direct)`);
   const dateDebut = dateDebutParam || '2024-01-01';
-  const dateFin = new Date().toISOString().slice(0, 10);
+  const dateFin = dateLocale();
   const fenetres = fenetresMax1An(dateDebut, dateFin);
   let toutesCommandes = [];
   for (const fenetre of fenetres) {

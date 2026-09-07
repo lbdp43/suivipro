@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
@@ -9,7 +10,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 import { Reminder, ReminderStatus } from '../types';
-import { generateId, formatDate, isToday, toLocalDateStr } from '../utils/helpers';
+import { generateId, formatDate, isToday } from '../utils/helpers';
 
 // embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
 // idsVisibles : auteurs à afficher (null = tout le monde).
@@ -48,8 +49,8 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
   }, [state.reminders, filterCommercial, idsVisibles]);
 
   const todayReminders = reminders.filter(r => r.statut === 'actif' && isToday(r.date));
-  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= toLocalDateStr(new Date()));
-  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < toLocalDateStr(new Date()));
+  const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= dateLocale(new Date()));
+  const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < dateLocale(new Date()));
   const completedReminders = reminders.filter(r => r.statut === 'termine');
 
   const saveReminder = async () => {
@@ -92,7 +93,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 2);
     setSnoozeTarget(rem);
-    setSnoozeDate(toLocalDateStr(tomorrow));
+    setSnoozeDate(dateLocale(tomorrow));
     setSnoozeNote('');
   };
 
@@ -127,7 +128,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
   const setSnoozeQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setSnoozeDate(toLocalDateStr(date));
+    setSnoozeDate(dateLocale(date));
   };
 
   const deleteReminder = async (id: string) => {
@@ -180,13 +181,13 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
   const setQuickDate = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    setFormData(prev => ({ ...prev, date: toLocalDateStr(date) }));
+    setFormData(prev => ({ ...prev, date: dateLocale(date) }));
   };
 
   const renderReminder = (rem: Reminder, showActions = true) => {
     const prospect = getProspect(rem.prospect_id);
     const commercial = state.commerciaux.find(c => c.id === rem.commercial_id);
-    const isOverdue = rem.statut === 'actif' && rem.date < toLocalDateStr(new Date());
+    const isOverdue = rem.statut === 'actif' && rem.date < dateLocale(new Date());
     const isTodayRem = isToday(rem.date);
     return (
       <div
@@ -412,7 +413,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                   {snoozeQuickOptions.map(opt => {
                     const d = new Date();
                     d.setDate(d.getDate() + opt.days);
-                    const dateStr = toLocalDateStr(d);
+                    const dateStr = dateLocale(d);
                     return (
                       <button
                         key={opt.days}
@@ -438,7 +439,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   value={snoozeDate}
                   onChange={e => setSnoozeDate(e.target.value)}
-                  min={toLocalDateStr(new Date())}
+                  min={dateLocale(new Date())}
                 />
               </div>
 

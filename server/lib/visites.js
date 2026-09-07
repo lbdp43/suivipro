@@ -1,6 +1,6 @@
 // Helpers partagés (visites) — déplacés tels quels depuis routes.js.
 import db from '../db.js';
-import { toLocalDateStr } from './dates.js';
+import { dateLocale } from '../../shared/regles.js';
 
 export const CLIENT_VISIT_FREQUENCIES = {
   BAR_RESTAURANT_GENERAL: 15,
@@ -39,5 +39,5 @@ export async function calculateNextVisit(typeClient, customRecurrence, lastVisit
   if (!frequency) return null;
   const base = lastVisitStr ? new Date(lastVisitStr) : new Date();
   base.setDate(base.getDate() + frequency);
-  return toLocalDateStr(base);
+  return dateLocale(base);
 }

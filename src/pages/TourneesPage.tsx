@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { dateLocale, semaineIso } from '../../shared/regles';
+import { lireConfigTournee } from '../../shared/tournee';
 import {
   MapPin, Save, Edit2, RefreshCw, ChevronDown, ChevronRight,
   User, Loader2, Info, Calendar, ArrowLeft, ArrowRight, ChevronLeft,
@@ -8,8 +10,6 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Client, CommercialZone, colorForCommercial } from '../types';
 import { apiPut, apiGet, apiPost } from '../api/client';
-import { toLocalDateStr } from '../utils/helpers';
-import { semaineIso } from '../../shared/regles';
 import ZoneDrawModal from '../components/ZoneDrawModal';
 
 interface TourneeConfig {
@@ -270,13 +270,13 @@ export default function TourneesPage() {
     state.clients.forEach(c => { if (c.tournee) set.add(c.tournee); });
     // Include zones from all tournee configs
     configs.forEach(tc => {
-      const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+      const cfg = lireConfigTournee(tc.config);
       if (cfg) Object.values(cfg).forEach((zones: any) => {
         if (Array.isArray(zones)) zones.forEach((z: string) => { if (z && typeof z === 'string') set.add(z); });
       });
     });
     state.tourneeConfigs?.forEach((tc: any) => {
-      const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+      const cfg = lireConfigTournee(tc.config);
       if (cfg) Object.values(cfg).forEach((zones: any) => {
         if (Array.isArray(zones)) zones.forEach((z: string) => { if (z && typeof z === 'string') set.add(z); });
       });
@@ -293,7 +293,7 @@ export default function TourneesPage() {
       const rows = await apiGet<any[]>('/tournee-config');
       const parsed = rows.map((r: any) => ({
         ...r,
-        config: typeof r.config === 'string' ? JSON.parse(r.config) : r.config,
+        config: lireConfigTournee(r.config),
       }));
       setConfigs(parsed);
       setExpandedCommercials(new Set());
@@ -395,7 +395,7 @@ export default function TourneesPage() {
       const offset = dayKey === '0' ? 6 : parseInt(dayKey) - 1;
       const d = new Date(targetMonday);
       d.setDate(targetMonday.getDate() + offset);
-      dates[dayKey] = toLocalDateStr(d);
+      dates[dayKey] = dateLocale(d);
     });
     return dates;
   }, [targetMonday.getTime()]);

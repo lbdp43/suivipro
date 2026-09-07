@@ -3,12 +3,13 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import * as eb from '../easybeer-client.js';
 import db from '../db.js';
+import { sansAccents, normaliserNomEtablissement } from '../../shared/normalisation.js';
 import { calculateNextVisit } from './visites.js';
 
 // Map EasyBeer client type (free text) to SuiviPro ClientType enum
 export function mapEasyBeerTypeToClientType(ebType) {
   if (!ebType) return 'BAR_RESTAURANT_GENERAL';
-  const t = ebType.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const t = sansAccents(ebType);
 
   // Cave / Epicerie / Caviste
   if (t.includes('cave') || t.includes('epicerie') || t.includes('caviste') || t.includes('fromager'))
@@ -291,10 +292,7 @@ export async function findMatchingClient(name, email, phone, siret) {
   }
   // Fuzzy name: try without common suffixes/prefixes and trimmed
   if (name && name.length > 4) {
-    const normalized = name.trim().toLowerCase()
-      .replace(/^(le |la |l'|les |au |aux |chez )/i, '')
-      .replace(/(sarl|sas|eurl|sa|srl| & cie)$/i, '')
-      .trim();
+    const normalized = normaliserNomEtablissement(name);
     if (normalized.length > 3) {
       const c = await unique('SELECT * FROM clients WHERE LOWER(nom) LIKE $1 LIMIT 2', [`%${normalized}%`]);
       if (c) return { client: c, confidence: 'low', matchType: 'name_fuzzy' };

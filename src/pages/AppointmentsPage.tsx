@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { dateLocale, rdvSansCompteRendu } from '../../shared/regles';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Navigation, Phone,
    Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
@@ -9,8 +10,7 @@ import { useToast } from '../components/Toast';
 import CompteRenduModal from '../components/CompteRenduModal';
 import { useConflitsRdv, ConflitsRdv } from '../components/ChampsRdv';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
-import { generateId, formatDate, downloadICS, downloadICSBatch, toLocalDateStr } from '../utils/helpers';
-import { rdvSansCompteRendu } from '../../shared/regles';
+import { generateId, formatDate, downloadICS, downloadICSBatch } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
@@ -136,8 +136,8 @@ export default function AppointmentsPage() {
     return () => window.removeEventListener('message', handler);
   }, [fetchGoogleEvents]);
 
-  const upcoming = appointments.filter(a => a.date >= toLocalDateStr(new Date()) && a.statut !== 'annule' && a.statut !== 'termine');
-  const past = appointments.filter(a => a.date < toLocalDateStr(new Date()) || a.statut === 'termine' || a.statut === 'annule');
+  const upcoming = appointments.filter(a => a.date >= dateLocale(new Date()) && a.statut !== 'annule' && a.statut !== 'termine');
+  const past = appointments.filter(a => a.date < dateLocale(new Date()) || a.statut === 'termine' || a.statut === 'annule');
 
   // Conflits du formulaire : rendez-vous internes du commercial et agenda Google.
   const { conflits: formConflicts, conflitsGoogle: formGoogleConflicts } = useConflitsRdv(showForm, formData.commercial_id, formData.date, formData.heure_debut, formData.heure_fin, editing?.id);
@@ -219,7 +219,7 @@ export default function AppointmentsPage() {
           while (current <= endDate) {
             const dayOfWeek = current.getDay();
             if (formData.recurrence_days.includes(dayOfWeek)) {
-              const dateStr = toLocalDateStr(current);
+              const dateStr = dateLocale(current);
               const payload = {
                 ...baseData,
                 id: generateId('rdv'),
@@ -285,7 +285,7 @@ export default function AppointmentsPage() {
 
   // Ouvrir la modale d'export avec les filtres pre-remplis
   const openExportModal = () => {
-    const today = toLocalDateStr(new Date());
+    const today = dateLocale(new Date());
     setExportDateFrom(today);
     setExportDateTo('');
     setExportCommercial(filterCommercial || '');
@@ -674,8 +674,8 @@ export default function AppointmentsPage() {
         for (let i = 0; i < 7; i++) {
           const d = new Date(monday);
           d.setDate(monday.getDate() + i);
-          const dateStr = toLocalDateStr(d);
-          const todayStr = toLocalDateStr(new Date());
+          const dateStr = dateLocale(d);
+          const todayStr = dateLocale(new Date());
           days.push({
             label: `${joursSemaine[i]} ${d.getDate()}/${d.getMonth() + 1}`,
             shortLabel: `${joursShort[i]} ${d.getDate()}/${d.getMonth() + 1}`,

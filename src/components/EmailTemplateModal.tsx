@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Edit2, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Prospect, Client, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';
-import { generateId, toLocalDateStr } from '../utils/helpers';
+import { generateId } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 interface ProspectProps {
@@ -133,7 +134,7 @@ export default function EmailTemplateModal(props: Props) {
         id: generateId('rem'),
         prospect_id: isProspect ? prospect!.id : '',
         commercial_id: state.currentUser?.id || 'com-1',
-        date: toLocalDateStr(in7days),
+        date: dateLocale(in7days),
         heure: '09:00',
         message: `Relance email - ${entityName} (${selectedTemplate.nom})`,
         statut: 'actif',
