@@ -525,7 +525,7 @@ async function scoreProspect(tagsDuProspect, scoreFourni) {
   return scoreDepuisTags(tagsDuProspect || [], tags, Number(scoreFourni) || 50);
 }
 
-router.post('/tags', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/tags', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
   await db.query('INSERT INTO tags (id, nom, couleur, points) VALUES ($1,$2,$3,$4)', [t.id, t.nom, t.couleur, Number(t.points) || 0]);
@@ -533,7 +533,7 @@ router.post('/tags', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true, scores_recalcules });
 }));
 
-router.put('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/tags/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
   await db.query('UPDATE tags SET nom=$1, couleur=$2, points=$3 WHERE id=$4', [t.nom, t.couleur, Number(t.points) || 0, req.params.id]);
@@ -541,7 +541,7 @@ router.put('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true, scores_recalcules });
 }));
 
-router.delete('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/tags/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM tags WHERE id = $1', [req.params.id]);
   await recalculerScores();
   res.json({ ok: true });
@@ -556,7 +556,7 @@ router.get('/email-templates', authMiddleware, asyncHandler(async (req, res) => 
   res.json(result.rows);
 }));
 
-router.post('/email-templates', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/email-templates', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const e = req.body;
   if (!e.nom) return res.status(400).json({ error: 'nom est requis' });
   await db.query(
@@ -566,7 +566,7 @@ router.post('/email-templates', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true });
 }));
 
-router.put('/email-templates/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/email-templates/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const e = req.body;
   if (!e.nom) return res.status(400).json({ error: 'nom est requis' });
   await db.query(
@@ -576,7 +576,7 @@ router.put('/email-templates/:id', authMiddleware, asyncHandler(async (req, res)
   res.json({ ok: true });
 }));
 
-router.delete('/email-templates/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/email-templates/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM email_templates WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -1098,10 +1098,6 @@ router.get('/commandes', authMiddleware, asyncHandler(async (req, res) => {
   res.json(result.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })));
 }));
 
-router.get('/commandes/client/:clientId', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query('SELECT * FROM commandes WHERE client_id = $1 ORDER BY date_commande DESC', [req.params.clientId]);
-  res.json(result.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })));
-}));
 
 // Debug: inspect raw EasyBeer element structure for a commande
 router.get('/commandes/:id/debug-elements', authMiddleware, asyncHandler(async (req, res) => {
@@ -1858,6 +1854,10 @@ router.get('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (
 }));
 
 router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async (req, res) => {
+  // Chacun règle sa propre tournée ; celle d'un collègue, c'est l'admin.
+  if (!isAdmin(req) && req.params.commercialId !== req.user.id) {
+    return res.status(403).json({ error: 'Vous ne pouvez modifier que votre propre tournée' });
+  }
   const { config, notes, tournee_info, week_pattern } = req.body;
   const now = new Date().toISOString();
   await db.query(
@@ -2107,7 +2107,7 @@ router.get('/visit-frequency-config', authMiddleware, asyncHandler(async (req, r
   res.json(result.rows);
 }));
 
-router.put('/visit-frequency-config', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/visit-frequency-config', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { frequencies, apply_to_existing } = req.body;
   const now = new Date().toISOString();
   for (const [type, days] of Object.entries(frequencies)) {
@@ -3469,34 +3469,6 @@ router.post('/easybeer/config', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true });
 }));
 
-// One-shot: fix client types using original EasyBeer type data
-router.post('/easybeer/fix-client-types', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  const result = await db.query(
-    "SELECT easybeer_id, type, imported_client_id FROM easybeer_clients WHERE imported_client_id IS NOT NULL AND type != ''"
-  );
-
-  let updated = 0;
-  let skipped = 0;
-  const details = [];
-
-  for (const eb of result.rows) {
-    const newType = mapEasyBeerTypeToClientType(eb.type);
-
-    // Get current client type
-    const clientResult = await db.query('SELECT type_client, nom FROM clients WHERE id = $1', [eb.imported_client_id]);
-    if (clientResult.rows.length === 0) { skipped++; continue; }
-
-    const currentType = clientResult.rows[0].type_client;
-    if (currentType === newType) { skipped++; continue; }
-
-    await db.query('UPDATE clients SET type_client = $1 WHERE id = $2', [newType, eb.imported_client_id]);
-    details.push({ nom: clientResult.rows[0].nom, ancien: currentType, nouveau: newType, ebType: eb.type });
-    updated++;
-  }
-
-  console.log(`[EasyBeer Fix Types] ${updated} clients mis a jour, ${skipped} inchanges`);
-  res.json({ ok: true, updated, skipped, total: result.rows.length, details });
-}));
 
 // Full client pull sync (clients only, not prospects). Runs in background.
 router.post('/easybeer/sync-clients', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
@@ -3518,31 +3490,6 @@ router.post('/easybeer/generer-visites', authMiddleware, adminOnly, asyncHandler
   res.json(result);
 }));
 
-// Most-ordered products, aggregated from stored commandes. Scoped to the caller unless admin.
-router.get('/easybeer/top-produits', authMiddleware, asyncHandler(async (req, res) => {
-  const params = [];
-  let where = "WHERE cmd.statut <> 'annulee'";
-  if (!isAdmin(req)) { params.push(req.user.id); where += ` AND cl.commercial_id = $${params.length}`; }
-  else if (req.query.commercial_id) { params.push(String(req.query.commercial_id)); where += ` AND cl.commercial_id = $${params.length}`; }
-  if (req.query.since) { params.push(String(req.query.since)); where += ` AND cmd.date_commande >= $${params.length}`; }
-  const rows = (await db.query(`SELECT cmd.lignes FROM commandes cmd JOIN clients cl ON cl.id = cmd.client_id ${where}`, params)).rows;
-  const agg = new Map();
-  for (const row of rows) {
-    let lignes = [];
-    try { lignes = JSON.parse(row.lignes || '[]'); } catch { lignes = []; }
-    for (const l of lignes) {
-      const key = (l.nom_produit || l.produit || '').trim();
-      if (!key) continue;
-      const cur = agg.get(key) || { produit: key, quantite: 0, montant: 0, commandes: 0 };
-      cur.quantite += Number(l.quantite) || 0;
-      cur.montant += Number(l.montant) || 0;
-      cur.commandes += 1;
-      agg.set(key, cur);
-    }
-  }
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
-  res.json([...agg.values()].sort((a, b) => b.quantite - a.quantite).slice(0, limit));
-}));
 
 router.post('/easybeer/test-connection', authMiddleware, asyncHandler(async (req, res) => {
   let { username, password, api_url } = req.body;
@@ -4534,7 +4481,7 @@ router.get('/assignment-rules', authMiddleware, asyncHandler(async (req, res) =>
   res.json(result.rows);
 }));
 
-router.post('/assignment-rules', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/assignment-rules', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { email, commercial_id } = req.body;
   if (!email || !commercial_id) return res.status(400).json({ error: 'Email et commercial requis' });
   const id = `rule-${Date.now()}`;
@@ -4546,35 +4493,12 @@ router.post('/assignment-rules', authMiddleware, asyncHandler(async (req, res) =
   res.json({ ok: true, id });
 }));
 
-router.delete('/assignment-rules/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/assignment-rules/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM assignment_rules WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
 
-// Webhooks history
-router.get('/webhooks', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query('SELECT * FROM webhooks ORDER BY received_at DESC LIMIT 50');
-  res.json(result.rows);
-}));
 
-// Geocode all clients missing coordinates
-router.post('/clients/geocode-missing', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query(
-    "SELECT id, adresse, code_postal, ville FROM clients WHERE (latitude IS NULL OR longitude IS NULL OR (latitude = 0 AND longitude = 0)) AND (adresse != '' OR ville != '')"
-  );
-  let geocoded = 0;
-  for (const client of result.rows) {
-    const fullAddress = [client.adresse, client.code_postal, client.ville].filter(Boolean).join(' ');
-    const geo = await geocodeServer(fullAddress);
-    if (geo) {
-      await db.query('UPDATE clients SET latitude = $1, longitude = $2 WHERE id = $3', [geo.latitude, geo.longitude, client.id]);
-      geocoded++;
-    }
-    // Rate limit: 50ms between requests
-    await new Promise(r => setTimeout(r, 50));
-  }
-  res.json({ ok: true, total: result.rows.length, geocoded });
-}));
 
 // Import clients from Excel (bulk)
 router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => {
@@ -4721,12 +4645,16 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
 // Notifications
 // ============================================
 
+// Liste des 50 dernières + compteur de non lues, en une seule réponse (l'en-tête interrogeait
+// deux routes toutes les 60 s). Le compteur voyage dans l'en-tête X-Non-Lues pour ne pas
+// changer la forme de la liste.
 router.get('/notifications/:userId', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query(
-    'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
-    [req.params.userId]
-  );
-  res.json(result.rows);
+  const [liste, nonLues] = await Promise.all([
+    db.query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [req.params.userId]),
+    db.query('SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND read = false', [req.params.userId]),
+  ]);
+  res.set('X-Non-Lues', String(parseInt(nonLues.rows[0].count) || 0));
+  res.json(liste.rows);
 }));
 
 router.get('/notifications/:userId/unread-count', authMiddleware, asyncHandler(async (req, res) => {
@@ -6658,10 +6586,19 @@ export async function syncNocturneEasybeer(fenetreJours = 7) {
   }
 }
 
-// Déclenchement manuel (test / rattrapage à la demande)
-router.post('/easybeer/sync-nocturne', authMiddleware, asyncHandler(async (req, res) => {
-  const fenetre = Math.min(Number((req.body || {}).jours) || 7, 60);
-  res.json(await syncNocturneEasybeer(fenetre));
-}));
 
 export default router;
+
+// ============================================
+// Purge nocturne des journaux — ils grossissaient sans fin.
+// ============================================
+export async function purgerJournaux() {
+  const j = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const r1 = await db.query('DELETE FROM notifications WHERE read = true AND created_at < $1', [j(90)]);
+  const r2 = await db.query('DELETE FROM activity_log WHERE created_at < $1', [j(180)]);
+  const r3 = await db.query('DELETE FROM easybeer_sync_logs WHERE id NOT IN (SELECT id FROM easybeer_sync_logs ORDER BY id DESC LIMIT 200)');
+  const r4 = await db.query('DELETE FROM sirene_sync_logs WHERE id NOT IN (SELECT id FROM sirene_sync_logs ORDER BY id DESC LIMIT 200)').catch(() => ({ rowCount: 0 }));
+  const bilan = { notifications: r1.rowCount || 0, activity_log: r2.rowCount || 0, easybeer_sync_logs: r3.rowCount || 0, sirene_sync_logs: r4.rowCount || 0 };
+  console.log('[CRON] Purge des journaux :', JSON.stringify(bilan));
+  return bilan;
+}

@@ -412,6 +412,19 @@ async function initDatabase(attempt = 1) {
     try {
       await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS prospection BOOLEAN DEFAULT FALSE");
     } catch { /* column may already exist */ }
+    // Index sur les colonnes filtrées par les écrans (accueil, semaine, statistiques).
+    for (const [nom, table, cols] of [
+      ['idx_appointments_commercial_id', 'appointments', 'commercial_id'],
+      ['idx_appointments_date', 'appointments', 'date'],
+      ['idx_calls_commercial_id', 'calls', 'commercial_id'],
+      ['idx_calls_date', 'calls', 'date'],
+      ['idx_interactions_commercial_id', 'interactions', 'commercial_id'],
+      ['idx_tasks_client_commercial_id', 'tasks_client', 'commercial_id'],
+      ['idx_notifications_user_id', 'notifications', 'user_id'],
+      ['idx_commandes_date_commande', 'commandes', 'date_commande'],
+    ]) {
+      try { await client.query(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table}(${cols})`); } catch { /* index déjà présent */ }
+    }
     // Points par tag : le score d'un prospect est la somme des points de ses tags.
     try {
       await client.query("ALTER TABLE tags ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0");

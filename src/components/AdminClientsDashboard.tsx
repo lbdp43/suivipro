@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, AlertTriangle, Calendar, CheckCircle2, Clock, ChevronDown, ChevronRight,
-  ListTodo, MapPin, TrendingUp, RefreshCw, Filter,
+  ListTodo, MapPin, TrendingUp, RefreshCw, 
 } from 'lucide-react';
 
 interface CommercialStats {

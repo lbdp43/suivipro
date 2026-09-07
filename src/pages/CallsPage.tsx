@@ -4,7 +4,7 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Phone, PhoneCall, PhoneOff, Search,
   MessageSquare, PhoneMissed, CheckCircle,
-  Edit2, X, Save, Trash2, Filter,
+  Edit2, X, Save, Trash2, 
   ChevronLeft, ChevronRight, Mail,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -14,7 +14,7 @@ import { Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } fr
 import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 
 export default function CallsPage() {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const [searchTerm, setSearchTerm] = usePersistedState('calls_searchTerm', '');
   const [filterResult, setFilterResult] = usePersistedState<CallResult | ''>('calls_filterResult', '');

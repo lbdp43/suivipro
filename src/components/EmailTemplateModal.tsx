@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Download, Edit2, Check } from 'lucide-react';
+import { Mail, X, Send, Eye, ChevronRight, Paperclip, FileText, Edit2, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Prospect, Client, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '../types';
 import { downloadDocument } from '../api/client';

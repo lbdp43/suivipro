@@ -684,7 +684,6 @@ export default function ImportPage() {
         // Commercial resolution
         const commercialEmail = getVal(row, 'Commercial rattaché (email)', 'Commercial rattaché (email)', 'Commercial rattaché', 'Commercial rattaché');
         const commercialPrincipal = getVal(row, 'Commercial principal', 'Commercial', 'commercial');
-        const commercialSecondaire = getVal(row, 'Commercial secondaire');
         const emailOrName = commercialEmail || commercialPrincipal;
 
         let commercialId = clientImportCommercial || state.currentUser?.id || '';

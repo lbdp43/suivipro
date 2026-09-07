@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Database, Search, Download, RefreshCw, Check, AlertTriangle, X, Trash2,
   ChevronDown, ChevronRight, Filter, Building2, MapPin, Clock,
-  Settings, Zap, Globe, Key, Save, Plus,
+  Settings, Zap, Globe, Save, Plus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -80,7 +80,7 @@ interface SireneStats {
 export default function SirenePage() {
   const { state } = useApp();
   const [nafCodes, setNafCodes] = useState<NafCode[]>([]);
-  const [apiConfigured, setApiConfigured] = useState(false);
+  const [, setApiConfigured] = useState(false);
   const [stats, setStats] = useState<SireneStats | null>(null);
   const [etablissements, setEtablissements] = useState<SireneEtablissement[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);

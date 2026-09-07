@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
-  Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
-  Building2, CheckCheck, GitBranch, Contact, ChevronDown,
+  LayoutDashboard, Map, 
+  Bell, Menu, Beer, LogOut, Shield, User, Clock, BookOpen, ScanLine,
+  CheckCheck, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
-import { isToday, toLocalDateStr } from '../utils/helpers';
+import { toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
 
 
@@ -61,7 +61,6 @@ export default function Layout() {
   const [openSections, setOpenSections] = useState<Set<string> | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
-  const navigate = useNavigate();
   const { state, logout, perimetre, setPerimetre } = useApp();
   const today = toLocalDateStr(new Date());
   // Badge = rappels en retard filtrés par utilisateur
@@ -83,14 +82,11 @@ export default function Layout() {
   const fetchNotifications = useCallback(async () => {
     if (!userId || !token) return;
     try {
-      const [notifRes, countRes] = await Promise.all([
-        fetch(`/api/notifications/${userId}`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`/api/notifications/${userId}/unread-count`, { headers: { Authorization: `Bearer ${token}` } }),
-      ]);
-      if (notifRes.ok) setNotifications(await notifRes.json());
-      if (countRes.ok) {
-        const data = await countRes.json();
-        setUnreadCount(data.count || 0);
+      // Une seule requête : la liste, et le compteur de non lues dans l'en-tête X-Non-Lues.
+      const notifRes = await fetch(`/api/notifications/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (notifRes.ok) {
+        setNotifications(await notifRes.json());
+        setUnreadCount(parseInt(notifRes.headers.get('X-Non-Lues') || '0', 10) || 0);
       }
     } catch (err) {
       console.error('Erreur chargement notifications:', err);

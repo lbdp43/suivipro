@@ -20,7 +20,7 @@ function getFileIcon(typeMime: string) {
 }
 
 export default function DocumentsPage() {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const isAdmin = state.currentUser?.role === 'admin';
 

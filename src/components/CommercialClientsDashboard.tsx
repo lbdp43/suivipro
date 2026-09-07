@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, Calendar, CheckCircle2, Clock, MapPin,
-  ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, Eye, ClipboardCheck,
+  ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, ClipboardCheck,
 } from 'lucide-react';
 import { toLocalDateStr } from '../utils/helpers';
 import { useApp } from '../store/AppContext';

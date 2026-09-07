@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
-  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, GripVertical, Settings2, UserX, MessageSquarePlus, UserCheck, Bell, ListTodo,
+  ClipboardCheck, X, Mail, FileText, Filter, Users, CalendarPlus, Download, Settings2, UserX, MessageSquarePlus, UserCheck, Bell, ListTodo,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -12,7 +12,7 @@ import {
 import { toLocalDateStr, downloadICSClientBatch, generateId } from '../utils/helpers';
 import { apiPut, apiPost, apiPatch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { estEnRetard, semaineIso, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
+import { estEnRetard, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
 import ClientDetailModal from '../components/ClientDetailModal';
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
@@ -448,7 +448,6 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
     monday.setHours(0, 0, 0, 0);
 
     // Règle 2 : numéro de semaine ISO, le même que Tournées.
-    const weekNumber = semaineIso(monday).semaine;
 
     const days: { date: Date; dateStr: string; label: string; dayKey: string }[] = [];
     const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];

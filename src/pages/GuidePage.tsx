@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { REGLES } from '../../shared/regles';
 import {
   BookOpen, LayoutDashboard, Kanban, Users, Phone, Calendar, Bell, Mail, Map,
-  Upload, FileText, Tag, Building2, MapPin, ClipboardCheck, ListTodo, Activity,
-  CheckCheck, ChevronDown, LogIn, Shield, UserCheck, MousePointer, Zap,
-  Settings, Search, Filter, ArrowRight, Target, TrendingUp, Star,
-  BarChart3, Eye, Layers, GitBranch, Globe, Database, FolderOpen,
-  MessageSquare, Repeat, Clock, AlertTriangle, Download, RefreshCw, Scale,
+  Upload, FileText, Building2, MapPin, ClipboardCheck, ListTodo, 
+  CheckCheck, ChevronDown, LogIn, Shield, UserCheck, Zap,
+  Settings, ArrowRight, 
+  Eye, Layers, GitBranch, Database, FolderOpen,
+  MessageSquare, Scale,
 } from 'lucide-react';
 
 type RoleId = 'all' | 'commercial' | 'admin' | 'prospection';

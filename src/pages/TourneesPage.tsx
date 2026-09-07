@@ -248,7 +248,7 @@ function ProspectionZonePicker({ entries, allZones, onAdd, onRemove, onSlotsChan
 }
 
 export default function TourneesPage() {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const [configs, setConfigs] = useState<TourneeConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -367,10 +367,6 @@ export default function TourneesPage() {
     }
   };
 
-  const updateDayTournees = (day: string, value: string) => {
-    const tournees = value.split(',').map(s => s.trim()).filter(Boolean);
-    setEditConfig(prev => ({ ...prev, [day]: tournees }));
-  };
 
   const addZoneToDay = (day: string, zone: string) => {
     const trimmed = zone.trim();

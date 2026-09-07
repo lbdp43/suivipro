@@ -2,18 +2,17 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
-  Edit2, Trash2, Save, ArrowUpDown, Filter, User, Eye, EyeOff,
-  Calendar, CheckCircle2, Clock, AlertTriangle, PhoneCall, Navigation,
-  Download, FileSpreadsheet, ListTodo, Check, CheckSquare, Square, XCircle,
-  Users, CalendarPlus, StickyNote, LayoutList, CalendarDays, Map, ClipboardCheck, Link2,
+  Edit2, Trash2, Save, Filter, User, Eye, EyeOff,
+  Calendar, CheckCircle2, AlertTriangle, PhoneCall, Navigation,
+  Download, ListTodo, Check, CheckSquare, Square, XCircle,
+  Users, CalendarPlus, StickyNote, CalendarDays, Link2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType, ClientStatus, Client, InteractionType,
-  INTERACTION_TYPE_LABELS, TaskClient, TASK_CLIENT_STATUS_LABELS,
-  Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS,
+  INTERACTION_TYPE_LABELS, TaskClient, 
 } from '../types';
 import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
@@ -46,7 +45,7 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatch, dispatchLocal, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient, pausePolling } = useApp();
+  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient, pausePolling } = useApp();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -93,7 +92,7 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
   const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien' | 'creation_recent' | 'creation_ancien'>('clients_sort', 'none');
-  const [pageSize, setPageSize] = usePersistedState('clients_pageSize', 50);
+  const [pageSize] = usePersistedState('clients_pageSize', 50);
   const [currentPage, setCurrentPage] = usePersistedState('clients_currentPage', 0);
   const [showFilters, setShowFilters] = usePersistedState('clients_showFilters', false);
 

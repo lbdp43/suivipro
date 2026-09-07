@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import {
-  Mail, Plus, X, Save, Send, Eye, Edit2, Trash2, Copy,
+  Mail, Plus, X, Save, Send, Eye, Edit2, Trash2, 
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
-import { EmailTemplate, Prospect } from '../types';
+import { EmailTemplate } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function EmailsPage() {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);

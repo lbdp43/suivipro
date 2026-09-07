@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, ChevronDown, Check, Filter, Bell, UserCheck, User,
+  CheckSquare, Square, XCircle, Settings, Check, Bell, UserCheck, User,
   Camera, Loader2, Building2, ClipboardCheck, ShoppingCart, Ban, RefreshCw, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -26,7 +26,7 @@ import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function ProspectsPage() {
-  const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { state, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
   const toast = useToast();
   const { startCall, startSession } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1986,7 +1986,7 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 {baremeActif(state.tags) ? (
                   <p className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· calculé d'après les tags</span>
+                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· 50 + points des tags</span>
                   </p>
                 ) : (
                   <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />

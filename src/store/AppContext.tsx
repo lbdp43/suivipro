@@ -4,7 +4,7 @@ import {
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
   Client, Interaction, TaskClient, TourneeConfig, Commande,
 } from '../types';
-import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
+import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
 
 // Périmètre d'affichage des clients. « moi » = mes clients + les fiches libres ; « equipe » =

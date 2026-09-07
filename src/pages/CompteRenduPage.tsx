@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, MapPin, Clock,
   CheckCircle2, AlertCircle, Save, Building2, Phone, PhoneCall, AlertTriangle,
-  StickyNote, X, FileText, Bell, Users2, Navigation, Edit2, Mail,
+  StickyNote, X, FileText, Bell, Users2, Navigation, Mail,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -67,13 +67,13 @@ function getDaysInRange(start: string, end: string): string[] {
 
 // embarque : rendu dans la page Semaine (volet « Bilan »), qui porte déjà le titre.
 export default function CompteRenduPage({ embarque = false }: { embarque?: boolean } = {}) {
-  const { state, dispatch, dispatchLocal, getClient } = useApp();
+  const { state, dispatchLocal, getClient } = useApp();
   const toast = useToast();
   const todayStr = toDateStr(new Date());
 
   const [viewMode, setViewMode] = usePersistedState<ViewMode>('cr_viewMode', 'semaine');
   const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [selectedDate] = useState(todayStr);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -92,8 +92,6 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [selectedCommercialId, setSelectedCommercialId] = usePersistedState<string>('cr_selectedCommercialId', '');
 
-  const [showRdvSection, setShowRdvSection] = useState(true);
-  const [showVisitesSection, setShowVisitesSection] = useState(true);
   const [expandedResult, setExpandedResult] = useState<string | null>(null);
 
   // Modal states
@@ -103,7 +101,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   const [rdvModalClient, setRdvModalClient] = useState<Client | null>(null); // Planifier RDV modal
   const [rdvModalComment, setRdvModalComment] = useState('');
   const [rdvModalCommercialId, setRdvModalCommercialId] = useState('');
-  const [crModalNotes, setCrModalNotes] = useState('');
+  const [, setCrModalNotes] = useState('');
   const [visitModalComment, setVisitModalComment] = useState('');
   const [visitModalNotes, setVisitModalNotes] = useState('');
 
@@ -219,16 +217,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   }, [rangeAppointments, rangeInteractions]);
 
   // Day view data
-  const selectedDow = new Date(selectedDate + 'T12:00:00').getDay().toString();
-  const dayZones = getZonesForDate(selectedDate);
 
-  const dayAppointments = useMemo(() => {
-    const uids = new Set(effectiveUserIds);
-    return state.appointments.filter((a: Appointment) =>
-      a.date === selectedDate &&
-      (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
-    ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
-  }, [state.appointments, selectedDate, effectiveUserIds]);
 
   // Helper: get Monday of a given date
   const getMondayOf = (dateStr: string) => {
@@ -327,41 +316,6 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
     return groups;
   }, [viewMode, dateRange, rangeAppointments, rangeInteractions, state.clients, effectiveUserIds, parsedConfig, state.interactions]);
 
-  const clientsToVisit = useMemo(() => {
-    const uids = new Set(effectiveUserIds);
-    const today = selectedDate;
-    const weekMonday = getMondayOf(today);
-    const weekSunday = getSundayOf(weekMonday);
-
-    return state.clients.filter((c: Client) => {
-      if (!uids.has(c.commercial_id) || c.statut !== 'ACTIF') return false;
-
-      // Case 1: Client is late (next_visit < today)
-      if (c.next_visit && c.next_visit < today && dayZones.includes(c.tournee)) {
-        return true;
-      }
-
-      // Case 2: Client's next_visit falls this week AND their sector matches today's sector
-      if (c.next_visit && c.next_visit >= weekMonday && c.next_visit <= weekSunday) {
-        // Assign client to the day when their zone is scheduled
-        if (c.tournee && dayZones.includes(c.tournee)) {
-          // Client's zone is today's zone
-          const assignedDate = getDateForZone(c.tournee, weekMonday);
-          if (assignedDate === today) return true;
-        }
-      }
-
-      return false;
-    }).sort((a: Client, b: Client) => {
-      // Sort: late clients first (by how many days late), then due clients by name
-      const aLate = a.next_visit && a.next_visit < today;
-      const bLate = b.next_visit && b.next_visit < today;
-      if (aLate && !bLate) return -1;
-      if (!aLate && bLate) return 1;
-      if (aLate && bLate) return (a.next_visit || '').localeCompare(b.next_visit || '');
-      return a.nom.localeCompare(b.nom);
-    });
-  }, [state.clients, dayZones, effectiveUserIds, selectedDate, parsedConfig]);
 
   const todayInteractions = useMemo(() => {
     const uids = new Set(effectiveUserIds);
@@ -373,32 +327,6 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   const visitedClientIds = new Set(todayInteractions.map((i: Interaction) => i.client_id));
 
   // Other days of the week (unused since jour view removed)
-  const otherDayGroups = useMemo((): { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] => {
-    return [];
-    const uids = new Set(effectiveUserIds);
-    const groups: { date: string; label: string; rdvs: Appointment[]; visites: Interaction[]; zones: string[]; clientsToVisit: Client[] }[] = [];
-    for (const day of weekDays) {
-      if (day.date === selectedDate) continue;
-      const d = new Date(day.date + 'T12:00:00');
-      const rdvs = state.appointments.filter((a: Appointment) =>
-        a.date === day.date && (uids.has(a.commercial_id) || uids.has(a.prospecteur_id || ''))
-      ).sort((a: Appointment, b: Appointment) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
-      const visites = state.interactions.filter((i: Interaction) =>
-        i.date.substring(0, 10) === day.date && uids.has(i.commercial_id)
-      );
-      const zones = getZonesForDate(day.date);
-      const clients = getClientsToVisitForDate(day.date);
-      groups.push({
-        date: day.date,
-        label: `${DAY_LABELS[d.getDay()]} ${d.getDate()} ${MONTH_LABELS[d.getMonth()]}`,
-        rdvs,
-        visites,
-        zones,
-        clientsToVisit: clients,
-      });
-    }
-    return groups;
-  }, [viewMode, weekDays, selectedDate, state.appointments, state.interactions, effectiveUserIds, parsedConfig, state.clients]);
 
   // Actions (moved to modal handlers above)
 

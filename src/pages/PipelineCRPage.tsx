@@ -79,7 +79,7 @@ function getColumnId(apt: Appointment, columns: CRColumnDef[]): string {
 // Component
 // ============================================
 export default function PipelineCRPage() {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
 
   // Columns state

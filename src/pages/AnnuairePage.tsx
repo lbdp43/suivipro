@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Search, RefreshCw, MapPin, Building2, Users, Shield, Truck,
-  Handshake, ChevronDown, ChevronRight, Plus, Trash2, Save, Settings, X, Tag, Package,
-  Filter, Phone, Calendar, Eye,
+  Handshake, Plus, Trash2, Save, Settings, X, Tag, Package,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 
@@ -70,16 +69,6 @@ const DEFAULT_ENTITY_TYPES = [
   { value: 'fournisseur', label: 'Fournisseur', icon: Package, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
 ];
 
-const CUSTOM_TYPE_COLORS = [
-  'text-teal-600 bg-teal-50 border-teal-200',
-  'text-pink-600 bg-pink-50 border-pink-200',
-  'text-cyan-600 bg-cyan-50 border-cyan-200',
-  'text-orange-600 bg-orange-50 border-orange-200',
-  'text-lime-600 bg-lime-50 border-lime-200',
-  'text-rose-600 bg-rose-50 border-rose-200',
-  'text-violet-600 bg-violet-50 border-violet-200',
-  'text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200',
-];
 
 function getEntityConfig(type: string, allTypes: typeof DEFAULT_ENTITY_TYPES = DEFAULT_ENTITY_TYPES) {
   return allTypes.find(e => e.value === type) || { value: type, label: type, icon: Tag, color: 'text-gray-600 bg-gray-50 border-gray-200' };
