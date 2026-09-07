@@ -5,6 +5,7 @@ import {
   Settings, Zap, Globe, Save, Plus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { apiFetch } from '../api/client';
 
 interface NafCode {
   code: string;
@@ -143,15 +144,9 @@ export default function SirenePage() {
   const [newEntityLabel, setNewEntityLabel] = useState('');
   const [creatingEntity, setCreatingEntity] = useState(false);
 
-  const token = localStorage.getItem('suivipro_token');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
   const loadEntityTypes = useCallback(async () => {
     try {
-      const res = await fetch('/api/entity-types', { headers });
+      const res = await apiFetch('/entity-types');
       if (!res.ok) return;
       const data = await res.json();
       if (!Array.isArray(data)) return;
@@ -163,9 +158,7 @@ export default function SirenePage() {
     if (!newEntityId || !newEntityLabel) return;
     setCreatingEntity(true);
     try {
-      const res = await fetch('/api/entity-types', {
-        method: 'POST', headers,
-        body: JSON.stringify({ id: newEntityId, label: newEntityLabel, icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false }),
+      const res = await apiFetch('/entity-types', { method: 'POST', body: JSON.stringify({ id: newEntityId, label: newEntityLabel, icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false }),
       });
       const data = await res.json();
       if (data.error) { alert(data.error); return; }
@@ -180,7 +173,7 @@ export default function SirenePage() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const res = await fetch('/api/sirene/config', { headers });
+      const res = await apiFetch('/sirene/config');
       const data = await res.json();
       setNafCodes(data.naf_codes || []);
       setApiConfigured(data.api_configured);
@@ -191,7 +184,7 @@ export default function SirenePage() {
 
   const loadStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/sirene/stats', { headers });
+      const res = await apiFetch('/sirene/stats');
       const data = await res.json();
       setStats(data);
     } catch (err) {
@@ -207,7 +200,7 @@ export default function SirenePage() {
       if (filterImported) params.set('imported', filterImported);
       params.set('limit', '200');
 
-      const res = await fetch(`/api/sirene/etablissements?${params}`, { headers });
+      const res = await apiFetch(`/sirene/etablissements?${params}`);
       const data = await res.json();
       setEtablissements(data);
     } catch (err) {
@@ -217,7 +210,7 @@ export default function SirenePage() {
 
   const loadZoneConfigs = useCallback(async () => {
     try {
-      const res = await fetch('/api/sirene/zone-configs', { headers });
+      const res = await apiFetch('/sirene/zone-configs');
       if (res.ok) {
         const data = await res.json();
         setZoneConfigs(data);
@@ -232,8 +225,7 @@ export default function SirenePage() {
     try {
       if (editingConfigId) {
         // Update existing
-        const res = await fetch(`/api/sirene/zone-configs/${editingConfigId}`, {
-          method: 'PUT', headers, body: JSON.stringify(zoneForm),
+        const res = await apiFetch(`/sirene/zone-configs/${editingConfigId}`, { method: 'PUT', body: JSON.stringify(zoneForm),
         });
         const data = await res.json();
         if (data.ok) {
@@ -242,8 +234,7 @@ export default function SirenePage() {
         }
       } else {
         // Create new
-        const res = await fetch('/api/sirene/zone-configs', {
-          method: 'POST', headers, body: JSON.stringify(zoneForm),
+        const res = await apiFetch('/sirene/zone-configs', { method: 'POST', body: JSON.stringify(zoneForm),
         });
         const data = await res.json();
         if (data.ok) {
@@ -261,7 +252,7 @@ export default function SirenePage() {
   const deleteZoneConfig = async (id: number) => {
     if (!confirm('Supprimer cette configuration de sync ?')) return;
     try {
-      await fetch(`/api/sirene/zone-configs/${id}`, { method: 'DELETE', headers });
+      await apiFetch(`/sirene/zone-configs/${id}`, { method: 'DELETE' });
       setZoneConfigs(prev => prev.filter(c => c.id !== id));
     } catch (err) {
       console.error('Error deleting config:', err);
@@ -272,9 +263,7 @@ export default function SirenePage() {
     setZoneSyncing(true);
     setSyncingConfigId(configId || null);
     try {
-      const res = await fetch('/api/sirene/sync-zone', {
-        method: 'POST', headers,
-        body: JSON.stringify({ config_id: configId }),
+      const res = await apiFetch('/sirene/sync-zone', { method: 'POST', body: JSON.stringify({ config_id: configId }),
       });
       const data = await res.json();
       if (data.error) {
@@ -286,7 +275,7 @@ export default function SirenePage() {
       if (data.ok) {
         const pollInterval = setInterval(async () => {
           await loadSyncLogs();
-          const logsRes = await fetch('/api/sirene/sync-logs', { headers });
+          const logsRes = await apiFetch('/sirene/sync-logs');
           const logs = await logsRes.json();
           if (logs[0]?.status !== 'running') {
             clearInterval(pollInterval);
@@ -306,7 +295,7 @@ export default function SirenePage() {
 
   const loadSyncLogs = useCallback(async () => {
     try {
-      const res = await fetch('/api/sirene/sync-logs', { headers });
+      const res = await apiFetch('/sirene/sync-logs');
       const data = await res.json();
       setSyncLogs(data);
     } catch (err) {
@@ -316,7 +305,7 @@ export default function SirenePage() {
 
   const loadDuplicates = useCallback(async () => {
     try {
-      const res = await fetch('/api/sirene/duplicates', { headers });
+      const res = await apiFetch('/sirene/duplicates');
       const data = await res.json();
       setDuplicateQueue(data);
     } catch (err) {
@@ -327,7 +316,7 @@ export default function SirenePage() {
   const resolveDuplicate = async (dupId: number, action: 'merge' | 'skip' | 'import') => {
     setResolvingDupId(dupId);
     try {
-      await fetch(`/api/sirene/duplicates/${dupId}/${action}`, { method: 'POST', headers });
+      await apiFetch(`/sirene/duplicates/${dupId}/${action}`, { method: 'POST' });
       setDuplicateQueue(prev => prev.filter(d => d.id !== dupId));
     } catch (err) {
       console.error('Error resolving duplicate:', err);
@@ -353,10 +342,7 @@ export default function SirenePage() {
       // Merge predefined selected + custom NAF codes
       const customCodes = customNafInput.split(',').map(c => c.trim()).filter(Boolean);
       const allNafCodes = [...Array.from(selectedNafCodes), ...customCodes];
-      const res = await fetch('/api/sirene/sync', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
+      const res = await apiFetch('/sirene/sync', { method: 'POST', body: JSON.stringify({
           naf_codes: allNafCodes,
           departements,
           lookback_days: lookbackDays,
@@ -368,7 +354,7 @@ export default function SirenePage() {
         const pollInterval = setInterval(async () => {
           await loadSyncLogs();
           await loadStats();
-          const logsRes = await fetch('/api/sirene/sync-logs', { headers });
+          const logsRes = await apiFetch('/sirene/sync-logs');
           const logs = await logsRes.json();
           const latest = logs[0];
           if (latest && latest.status !== 'running') {
@@ -397,9 +383,7 @@ export default function SirenePage() {
     if (selectedIds.size === 0) return;
     if (!confirm(`Supprimer ${selectedIds.size} etablissement(s) selectionne(s) ?`)) return;
     try {
-      await fetch('/api/sirene/delete-etablissements', {
-        method: 'POST', headers,
-        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      await apiFetch('/sirene/delete-etablissements', { method: 'POST', body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
       setSelectedIds(new Set());
       loadEtablissements();
@@ -414,10 +398,7 @@ export default function SirenePage() {
     setImporting(true);
     setImportResult(null);
     try {
-      const res = await fetch('/api/sirene/import-prospects', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
+      const res = await apiFetch('/sirene/import-prospects', { method: 'POST', body: JSON.stringify({
           etablissement_ids: Array.from(selectedIds),
           commercial_id: importCommercialId,
         }),
@@ -442,10 +423,7 @@ export default function SirenePage() {
     try {
       const departements = filterDept ? [filterDept] : [];
       const naf = filterNaf ? [filterNaf] : [];
-      const res = await fetch('/api/sirene/import-all', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
+      const res = await apiFetch('/sirene/import-all', { method: 'POST', body: JSON.stringify({
           commercial_id: importCommercialId,
           departements,
           naf_codes: naf,
@@ -1017,14 +995,12 @@ export default function SirenePage() {
                 setSyncing(true);
                 try {
                   const nafCodesToUse = selectedNafCodes.size > 0 ? Array.from(selectedNafCodes) : [];
-                  const res = await fetch('/api/sirene/sync-near', {
-                    method: 'POST', headers,
-                    body: JSON.stringify({ latitude: parseFloat(geoLat), longitude: parseFloat(geoLng), radius: geoRadius, naf_codes: nafCodesToUse }),
+                  const res = await apiFetch('/sirene/sync-near', { method: 'POST', body: JSON.stringify({ latitude: parseFloat(geoLat), longitude: parseFloat(geoLng), radius: geoRadius, naf_codes: nafCodesToUse }),
                   });
                   const data = await res.json();
                   if (data.ok) {
                     const pollInterval = setInterval(async () => {
-                      const logsRes = await fetch('/api/sirene/sync-logs', { headers });
+                      const logsRes = await apiFetch('/sirene/sync-logs');
                       const logs = await logsRes.json();
                       if (logs[0]?.status !== 'running') {
                         clearInterval(pollInterval);
