@@ -99,6 +99,17 @@ export async function loadFullState(forcer = false): Promise<any | null> {
   return res.json();
 }
 
+/**
+ * Appel brut avec l'en-tête d'authentification : pour les écrans qui lisent la réponse
+ * eux-mêmes (statut, JSON ou texte). Un seul endroit sait où est le jeton.
+ */
+export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = { ...((init.headers as Record<string, string>) || {}) };
+  if (init.body && !(init.body instanceof FormData) && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  return fetch(`${API_BASE}${path}`, { ...init, headers });
+}
+
 /** Lecture simple : en-tête d'authentification, erreur lisible, JSON déjà décodé. */
 export function apiGet<T = any>(path: string): Promise<T> {
   return withRetry(() => request(path)) as Promise<T>;
