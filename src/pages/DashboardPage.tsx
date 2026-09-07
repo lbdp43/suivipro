@@ -74,7 +74,7 @@ type TimePeriod = 'week' | 'week-1' | 'week-2' | 'week-3' | 'month' | 'month-1' 
 
 const PERIOD_OPTIONS: { value: TimePeriod; label: string }[] = [
   { value: 'week', label: 'Cette semaine' },
-  { value: 'week-1', label: 'Semaine derniere' },
+  { value: 'week-1', label: 'Semaine dernière' },
   { value: 'week-2', label: 'Il y a 2 sem.' },
   { value: 'week-3', label: 'Il y a 3 sem.' },
   { value: 'month', label: 'Ce mois' },
@@ -113,7 +113,7 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
   }
 }
 
-// Charge les compteurs d'activite de l'equipe pour une periode et les range par
+// Charge les compteurs d'activité de l'equipe pour une periode et les range par
 // commercial_id. Renvoie la fonction d'annulation attendue par useEffect.
 function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) => void) {
   const range = getPeriodRange(periode);
@@ -154,7 +154,7 @@ export default function DashboardPage() {
     try { return localStorage.getItem('suivipro_dashboard_prospection') === 'ouvert'; } catch { return false; }
   });
   // Activite de prospection de toute l'equipe. /state etant cloisonne, ces compteurs
-  // viennent d'un endpoint dedie qui ne renvoie que de l'activite (ni client, ni CA).
+  // viennent d'un endpoint dédié qui ne renvoie que de l'activite (ni client, ni CA).
   // Le classement et le tableau de performance ont chacun leur periode : deux jeux.
   const [activitesEquipe, setActivitesEquipe] = useState<Record<string, any>>({});
   const [activitesClassement, setActivitesClassement] = useState<Record<string, any>>({});
@@ -880,7 +880,7 @@ export default function DashboardPage() {
           <p className="text-[10px] text-gray-400">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
           <p className="text-[10px] text-gray-400">
             Mois prec. {caStats.caHtPrecedent.toFixed(0)} EUR HT
-            {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulee(s) exclue(s)`}
+            {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulée(s) exclue(s)`}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-indigo-100 p-3 sm:p-4">
@@ -910,7 +910,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-amber-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-amber-100 p-1.5 rounded-lg"><Clock className="w-3.5 h-3.5 text-amber-600" /></div>
-            <p className="text-[10px] text-gray-500">Taux reponse</p>
+            <p className="text-[10px] text-gray-500">Taux réponse</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.responseRate}%</p>
           <p className="text-[10px] text-gray-400">Duree moy. {formatDuration(stats.avgDuration)}</p>
@@ -942,7 +942,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
           <MapPin className="w-4 h-4 text-indigo-500" />
-          Sante des visites
+          Santé des visites
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className={`rounded-lg p-3 text-center ${visitHealth.lateCount > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
@@ -995,7 +995,7 @@ export default function DashboardPage() {
                 },
               }} />
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucune commande sur la periode</div>
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucune commande sur la période</div>
             )}
           </div>
         </div>
@@ -1140,7 +1140,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
             <ShoppingCart className="w-4 h-4 text-emerald-500" />
-            Dernieres commandes
+            Dernières commandes
           </h3>
           {topClientsData.recentOrders.length > 0 ? (
             <div className="space-y-2">
@@ -1220,7 +1220,7 @@ export default function DashboardPage() {
             {/* Activite par membre : chiffres de toute l'equipe, donc admin uniquement */}
             {isAdmin && (
             <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-              <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Activite par membre</h3>
+              <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Activité par membre</h3>
               <div className="h-52 sm:h-64">
                 {allUsers.length > 0 ? (
                   <Bar
@@ -1242,7 +1242,7 @@ export default function DashboardPage() {
 
           {/* Pipeline breakdown - only active columns */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-            <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Prospects par etape</h3>
+            <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Prospects par étape</h3>
             <div className={`grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-${Math.min(activeColumns.length, 8)} gap-2 sm:gap-3`}>
               {stats.prospectsByStage.map(s => (
                 <div key={s.stage} className="text-center p-3 rounded-lg bg-gray-50">
@@ -1415,7 +1415,7 @@ export default function DashboardPage() {
                     <th className="text-center py-3 px-2 font-medium text-gray-500">RDV</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">RDV prosp.</span><span className="sm:hidden">Prosp.</span></th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Rep.</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Duree</span><span className="sm:hidden">Dur.</span></th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Durée</span><span className="sm:hidden">Dur.</span></th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Visites</th>
                     {isAdmin && <th className="text-center py-3 px-2 font-medium text-gray-500">CA</th>}
                     {isAdmin && <th className="text-center py-3 px-2 font-medium text-gray-500">Couv.</th>}
@@ -1508,7 +1508,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-amber-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-amber-700">{monthlyHistory.totalProspects}</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">Prospects crees</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">Prospects créés</p>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-blue-700">{monthlyHistory.totalRdv}</p>
@@ -1520,7 +1520,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-gray-700">{monthlyHistory.responseRate}%</p>
-                <p className="text-[10px] text-gray-600 mt-0.5">Taux reponse</p>
+                <p className="text-[10px] text-gray-600 mt-0.5">Taux réponse</p>
               </div>
             </div>
 

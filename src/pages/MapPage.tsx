@@ -38,7 +38,7 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
   let label: string;
   if (offset === 0) label = `Cette semaine`;
   else if (offset === 1) label = `Sem. prochaine`;
-  else if (offset === -1) label = `Sem. derniere`;
+  else if (offset === -1) label = `Sem. dernière`;
   else if (offset > 0) label = `+${offset} sem.`;
   else label = `${offset} sem.`;
   label += ` (${fmt(monday)} - ${fmt(sunday)})`;
@@ -400,7 +400,7 @@ export default function MapPage() {
                   <span className="text-emerald-600 font-medium">
                     + {filteredClients.length} client{filteredClients.length > 1 ? 's' : ''}
                     {clientsWithoutGPS > 0 && (
-                      <span className="text-amber-500 text-[10px] ml-1" title={`${clientsWithoutGPS} client(s) sans coordonnees GPS`}>
+                      <span className="text-amber-500 text-[10px] ml-1" title={`${clientsWithoutGPS} client(s) sans coordonnées GPS`}>
                         ({clientsWithoutGPS} sans GPS)
                       </span>
                     )}
@@ -496,7 +496,7 @@ export default function MapPage() {
             {/* Sector / Tournee filters */}
             {tournees.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Secteur / Tournee</p>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Secteur / Tournée</p>
                 <div className="flex flex-wrap gap-1.5">
                   {tournees.map(t => (
                     <button
@@ -587,7 +587,7 @@ export default function MapPage() {
 
             {/* Pipeline stage filters */}
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Etape pipeline</p>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Étape pipeline</p>
               <div className="flex flex-wrap gap-1.5">
                 {state.pipelineColumns.map(col => (
                   <button
@@ -633,7 +633,7 @@ export default function MapPage() {
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
                   onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedDepartments([]); setSelectedRegions([]); }}
                 >
-                  Reinitialiser les filtres
+                  Réinitialiser les filtres
                 </button>
               )}
               <FilterPresets

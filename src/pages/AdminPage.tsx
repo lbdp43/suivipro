@@ -232,7 +232,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       });
       if (res.ok) setActivityLog(await res.json());
     } catch (err) {
-      console.error('Erreur chargement activite:', err);
+      console.error('Erreur chargement activité:', err);
     } finally {
       setActivityLoading(false);
     }
@@ -283,7 +283,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         setTourneeConfigs(configs);
       }
     } catch (err) {
-      console.error('Erreur chargement tournees:', err);
+      console.error('Erreur chargement tournées:', err);
     }
   }, []);
 
@@ -302,7 +302,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         setFrequencyConfig(config);
       }
     } catch (err) {
-      console.error('Erreur chargement frequences:', err);
+      console.error('Erreur chargement fréquences:', err);
     }
   }, []);
 
@@ -348,9 +348,9 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         },
       }));
       setTourneeEditing(null);
-      toast.success('Tournees sauvegardees');
+      toast.success('Tournées sauvegardees');
     } catch (err) {
-      toast.error('Erreur sauvegarde tournees');
+      toast.error('Erreur sauvegarde tournées');
     } finally {
       setTourneeSaving(false);
     }
@@ -412,9 +412,9 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       });
       setFrequencyConfig(frequencies);
       setFrequencyEditing(false);
-      toast.success(applyToExisting ? 'Recurrences sauvegardees et appliquees aux clients existants' : 'Recurrences sauvegardees');
+      toast.success(applyToExisting ? 'Récurrences sauvegardees et appliquees aux clients existants' : 'Récurrences sauvegardees');
     } catch {
-      toast.error('Erreur sauvegarde recurrences');
+      toast.error('Erreur sauvegarde récurrences');
     } finally {
       setFrequencySaving(false);
     }
@@ -436,7 +436,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
       const res = await fetch('/api/clients/doublons', { headers });
       if (res.ok) setDoublons(await res.json());
-      else toast.error('Erreur lors de la detection des doublons');
+      else toast.error('Erreur lors de la détection des doublons');
     } catch { toast.error('Erreur reseau'); }
     setDoublonsLoading(false);
   };
@@ -444,7 +444,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const fusionnerClients = async (garder: any, supprimer: any) => {
     const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
       + `${supprimer.nb_commandes} commande(s), ${supprimer.nb_interactions} interaction(s) et l'historique de « ${supprimer.nom} » `
-      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimee.\n\nCette action est definitive.`;
+      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimée.\n\nCette action est definitive.`;
     if (!confirm(message)) return;
     setFusionEnCours(`${garder.id}|${supprimer.id}`);
     try {
@@ -463,7 +463,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         } : prev);
         // La liste clients de l'app se rafraichit toute seule (polling 30 s).
       } else {
-        toast.error(data.error || data.message || 'Echec de la fusion');
+        toast.error(data.error || data.message || 'Échec de la fusion');
       }
     } catch { toast.error('Erreur reseau'); }
     setFusionEnCours(null);
@@ -556,7 +556,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       });
       if (res.ok) {
         setEbPending(prev => prev.filter(c => c.id !== ebId));
-        toast.success('Client importe avec succes');
+        toast.success('Client importé avec succes');
         // Reload to get new client in state
         window.location.reload();
       }
@@ -572,10 +572,10 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Synchronise: ${data.name || 'OK'}`);
+        toast.success(`Synchronisé: ${data.name || 'OK'}`);
         loadEasyBeerData();
       } else {
-        toast.error(data.message || 'Echec de la synchronisation');
+        toast.error(data.message || 'Échec de la synchronisation');
       }
     } catch { toast.error('Erreur de synchronisation'); }
   };
@@ -604,7 +604,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         if (data.resultat) {
           setSyncAllResult(data.resultat);
           if (data.resultat.ok && (data.resultat.total_imported || 0) > 0) {
-            toast.success(`${data.resultat.total_imported} commandes importees pour ${data.resultat.details?.length || 0} clients`);
+            toast.success(`${data.resultat.total_imported} commandes importées pour ${data.resultat.details?.length || 0} clients`);
           } else if (data.resultat.ok) {
             toast.success(data.resultat.message || 'Aucune nouvelle commande');
           } else {
@@ -682,7 +682,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       if (res.ok && data.ok !== false) {
         toast.success(data.message || 'Synchronisation des clients lancee');
         setTimeout(loadEbSyncLogs, 1500);
-      } else { toast.error(data.message || data.error || 'Echec du lancement'); }
+      } else { toast.error(data.message || data.error || 'Échec du lancement'); }
     } catch { toast.error('Erreur reseau'); }
     setSyncingClients(false);
   };
@@ -691,8 +691,8 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     try {
       const res = await fetch('/api/easybeer/generer-visites', { method: 'POST', headers: ebHeaders(), body: JSON.stringify({ sinceDays: 365 }) });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites creees depuis les commandes`);
-      else toast.error(data.message || 'Echec');
+      if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites créées depuis les commandes`);
+      else toast.error(data.message || 'Échec');
     } catch { toast.error('Erreur reseau'); }
     setGenVisites(false);
   };
@@ -1124,7 +1124,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
                     <input
                       type="tel"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1135,7 +1135,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rôle</label>
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -1205,7 +1205,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                     className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
                     onClick={saveUser}
                   >
-                    <Save className="w-4 h-4" /> {editingUser ? 'Modifier' : 'Creer'}
+                    <Save className="w-4 h-4" /> {editingUser ? 'Modifier' : 'Créer'}
                   </button>
                 </div>
               </div>
@@ -1375,7 +1375,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                 <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
                   <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowTagForm(false)}>Annuler</button>
                   <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveTag}>
-                    <Save className="w-4 h-4" /> {editingTag ? 'Modifier' : 'Creer'}
+                    <Save className="w-4 h-4" /> {editingTag ? 'Modifier' : 'Créer'}
                   </button>
                 </div>
               </div>
@@ -1427,7 +1427,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <TrendingUp className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.responseRate}%</p>
-                  <p className="text-[10px] text-gray-500">Taux reponse</p>
+                  <p className="text-[10px] text-gray-500">Taux réponse</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Award className="w-4 h-4 text-gray-400 mx-auto mb-1" />
@@ -1437,7 +1437,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </div>
 
               <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-xs font-medium text-gray-600 mb-2">Duree moyenne des appels: {formatDuration(stats.avgDuration)}</p>
+                <p className="text-xs font-medium text-gray-600 mb-2">Durée moyenne des appels : {formatDuration(stats.avgDuration)}</p>
                 <p className="text-xs font-medium text-gray-600">Prospects geres: {stats.totalProspects}</p>
               </div>
             </div>
@@ -1604,16 +1604,16 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               <Users className="w-4 h-4" /> Doublons de clients
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              Repere les fiches qui designent probablement le meme etablissement (SIRET, email ou telephone
-              partage, nom identique ou tres proche). La fusion transfere commandes, visites et rendez-vous
-              sur la fiche gardee, complete ses champs vides, puis supprime le doublon.
+              Repère les fiches qui désignent probablement le même etablissement (SIRET, email ou téléphone
+              partage, nom identique ou très proche). La fusion transfère commandes, visites et rendez-vous
+              sur la fiche gardée, complète ses champs vides, puis supprimé le doublon.
             </p>
             <button
               className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 mb-3"
               onClick={chargerDoublons}
               disabled={doublonsLoading}
             >
-              {doublonsLoading ? 'Analyse…' : doublons ? 'Relancer la detection' : 'Detecter les doublons'}
+              {doublonsLoading ? 'Analyse…' : doublons ? 'Relancer la détection' : 'Détecter les doublons'}
             </button>
 
             {doublons && (
@@ -1637,8 +1637,8 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   <div className="mb-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-900">
                     <p className="font-medium mb-1">Contacts ignores comme preuve d'identite</p>
                     <p className="text-blue-800 mb-1">
-                      Portes par 3 fiches ou plus, ce sont des contacts partages (boite mail de la brasserie,
-                      standard telephonique) : deux clients qui les partagent ne sont pas pour autant un doublon.
+                      Portes par 3 fiches ou plus, ce sont des contacts partagés (boite mail de la brasserie,
+                      standard téléphonique) : deux clients qui les partagent ne sont pas pour autant un doublon.
                       Ils restent comparés sur leur nom.
                     </p>
                     <p className="text-blue-700">
@@ -1670,7 +1670,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   );
                   return visibles.length === 0 ? (
                   <p className="text-sm text-gray-600">
-                    {doublons.paires.length === 0 ? 'Aucun doublon detecte ✓' : 'Aucune paire ne correspond a ce filtre.'}
+                    {doublons.paires.length === 0 ? 'Aucun doublon détecté ✓' : 'Aucune paire ne correspond a ce filtre.'}
                   </p>
                 ) : (
                   <div className="space-y-3 max-h-[32rem] overflow-y-auto">
@@ -1782,10 +1782,10 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           {/* Regles d'affectation */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <Users className="w-4 h-4" /> Regles d'affectation automatique
+              <Users className="w-4 h-4" /> Règles d'affectation automatique
             </h3>
             <p className="text-xs text-gray-500 mb-4">
-              Quand un client arrive d'EasyBeer avec un email commercial, il est automatiquement assigne au bon commercial.
+              Quand un client arrive d'EasyBeer avec un email commercial, il est automatiquement assigné au bon commercial.
             </p>
 
             {assignmentRules.length > 0 && (
@@ -1875,7 +1875,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Commercial assigne</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Commercial assigné</label>
                   <select
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                     value={ebImportCommercial}
@@ -1923,7 +1923,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                           <p className="text-[10px] text-gray-400">Contact: {client.contact_name}</p>
                         )}
                         {client.tournee && (
-                          <p className="text-[10px] text-indigo-500">Tournee: {client.tournee}</p>
+                          <p className="text-[10px] text-indigo-500">Tournée : {client.tournee}</p>
                         )}
                         {client.phone_mobile && (
                           <p className="text-[10px] text-gray-400">Mobile: {client.phone_mobile}</p>
@@ -1940,7 +1940,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                       <button
                         className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium"
                         onClick={() => syncEbClient(client.id)}
-                        title="Recuperer les infos depuis EasyBeer"
+                        title="Récupérer les infos depuis EasyBeer"
                       >
                         Sync
                       </button>
@@ -1990,7 +1990,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Importe tous les clients EasyBeer (rattaches au bon commercial par leur identifiant natif). Lance ensuite « Synchroniser les commandes » : chaque commande cree une visite avec son commentaire.
+              Importé tous les clients EasyBeer (rattachés au bon commercial par leur identifiant natif). Lance ensuite « Synchroniser les commandes » : chaque commande créé une visite avec son commentaire.
             </p>
             <div className="flex items-center gap-2 mb-3">
               <button
@@ -1998,7 +1998,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                 onClick={genererVisites}
                 disabled={genVisites}
               >
-                {genVisites ? 'Generation...' : 'Generer les visites depuis les commandes'}
+                {genVisites ? 'Generation...' : 'Générer les visites depuis les commandes'}
               </button>
             </div>
             {ebSyncLogs.length > 0 && (
@@ -2041,13 +2041,13 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Recupere la liste des clients depuis l'API EasyBeer, les matche par SIRET/nom/email, puis recupere toutes leurs commandes (en cours + livrees).
+              Récupéré la liste des clients depuis l'API EasyBeer, les matche par SIRET/nom/email, puis récupéré toutes leurs commandes (en cours + livrees).
             </p>
             {syncingAllCommandes && (
               <div className="p-3 rounded-lg text-sm bg-blue-50 text-blue-800">
                 <p className="font-medium">Synchronisation des commandes en cours...</p>
                 <p className="text-xs mt-1">{syncCommandesProgress || 'Recuperation des commandes EasyBeer'}</p>
-                <p className="text-xs mt-1 opacity-75">Elle continue cote serveur meme si vous quittez cette page.</p>
+                <p className="text-xs mt-1 opacity-75">Elle continue cote serveur même si vous quittez cette page.</p>
               </div>
             )}
             {syncAllResult && (
@@ -2057,18 +2057,18 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   <div className="mt-2 text-xs space-y-1">
                     <p>Clients API EasyBeer: <strong>{syncAllResult.api_clients || 0}</strong> — matches: <strong>{syncAllResult.clients_matched || 0}</strong>, non matches: {syncAllResult.clients_unmatched || 0}</p>
                     <p>Commandes trouvees: <strong>{syncAllResult.total_orders_found || 0}</strong></p>
-                    <p>Nouvelles importees: <strong>{syncAllResult.total_imported || 0}</strong></p>
-                    <p>Deja existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
+                    <p>Nouvelles importées: <strong>{syncAllResult.total_imported || 0}</strong></p>
+                    <p>Déjà existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
                     {(syncAllResult.clients_importes_commande || 0) > 0 && (
-                      <p>Clients crees depuis leurs commandes: <strong>{syncAllResult.clients_importes_commande}</strong></p>
+                      <p>Clients créés depuis leurs commandes: <strong>{syncAllResult.clients_importes_commande}</strong></p>
                     )}
                     {(syncAllResult.total_echecs || 0) > 0 && (
                       <p>Non recuperees (API surchargee): <strong>{syncAllResult.total_echecs}</strong> — relancez la synchro pour les rattraper</p>
                     )}
-                    {(syncAllResult.total_orphans || 0) > 0 && <p>Orphelines (client non importe): <strong>{syncAllResult.total_orphans}</strong></p>}
+                    {(syncAllResult.total_orphans || 0) > 0 && <p>Orphelines (client non importé): <strong>{syncAllResult.total_orphans}</strong></p>}
                     {syncAllResult.details && syncAllResult.details.length > 0 && (
                       <div className="mt-2 border-t pt-2">
-                        <p className="font-medium mb-1">Detail par client:</p>
+                        <p className="font-medium mb-1">Détail par client:</p>
                         {syncAllResult.details.map((d: any, i: number) => (
                           <p key={i}>{d.nom}: {d.commandes_importees} commande{d.commandes_importees > 1 ? 's' : ''} ({d.total_ttc}€ TTC)</p>
                         ))}
@@ -2123,11 +2123,11 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </h3>
               <div className="flex flex-wrap gap-1">
                 {[
-                  { round: 7, label: 'document + commande detail' },
+                  { round: 7, label: 'document + commande détail' },
                   { round: 6, label: 'Swagger (documents/commandes)' },
                   { round: 4, label: 'commande/document/facture' },
                   { round: 5, label: 'bl/tournee/commercial' },
-                  { round: 3, label: 'parametres POST' },
+                  { round: 3, label: 'paramètres POST' },
                 ].map(({ round, label }) => (
                   <button
                     key={round}
@@ -2148,7 +2148,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Teste differentes approches pour trouver les commandes: detail client, formats alternatifs, endpoints racine. Maximum 5 appels API avec delai de 500ms.
+              Teste différentes approches pour trouver les commandes: détail client, formats alternatifs, endpoints racine. Maximum 5 appels API avec delai de 500ms.
             </p>
             {exploreResult && (
               <div className="p-3 rounded-lg text-sm bg-purple-50 text-purple-900">
@@ -2190,7 +2190,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                 <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
               </button>
             </div>
-            <p className="text-xs text-gray-500 mb-4">Ces commandes ont ete recues par webhook EasyBeer mais n'ont pas pu etre associees automatiquement a un client.</p>
+            <p className="text-xs text-gray-500 mb-4">Ces commandes ont ete recues par webhook EasyBeer mais n'ont pas pu être associees automatiquement a un client.</p>
             <div className="space-y-3">
               {orphanCommandes.map(cmd => {
                 const lignes = cmd.lignes || [];
@@ -2216,7 +2216,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                             cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
                             'bg-yellow-100 text-yellow-700'
                           }`}>
-                            {cmd.statut === 'livree' ? 'Livree' : cmd.statut === 'annulee' ? 'Annulee' : 'En cours'}
+                            {cmd.statut === 'livree' ? 'Livrée' : cmd.statut === 'annulee' ? 'Annulée' : 'En cours'}
                           </span>
                         </div>
                         {cmd.client_name && (
@@ -2231,7 +2231,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                             headers: { Authorization: `Bearer ${token}` },
                           });
                           setOrphanCommandes(prev => prev.filter(c => c.id !== cmd.id));
-                          toast.success('Commande supprimee');
+                          toast.success('Commande supprimée');
                         }}
                         className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
                         title="Supprimer"
@@ -2298,7 +2298,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                         return (
                           <details className="pt-2 border-t border-gray-100">
                             <summary className="cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium">
-                              Voir les donnees brutes EasyBeer
+                              Voir les données brutes EasyBeer
                             </summary>
                             <pre className="mt-1.5 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600 max-h-60 overflow-y-auto">
                               {JSON.stringify(rawObj, null, 2)}
@@ -2335,7 +2335,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                                     const data = await resp.json();
                                     if (data.ok) {
                                       setOrphanCommandes(prev => prev.filter(c => c.id !== cmd.id));
-                                      toast.success(`Commande #${cmd.numero || ''} assignee a ${client.nom}`);
+                                      toast.success(`Commande #${cmd.numero || ''} assignée a ${client.nom}`);
                                     } else {
                                       toast.error(data.error || 'Erreur');
                                     }
@@ -2434,7 +2434,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </div>
             </div>
             {webhookLogs.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-6">Aucun webhook recu</p>
+              <p className="text-sm text-gray-500 text-center py-6">Aucun webhook reçu</p>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {webhookLogs.map(log => {
@@ -2488,7 +2488,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
               <div>
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4" /> Recurrence des visites par type de client
+                  <RefreshCw className="w-4 h-4" /> Récurrence des visites par type de client
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">Nombre de jours entre chaque visite (vide = pas de recurrence)</p>
               </div>
@@ -2575,7 +2575,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
 
           {/* Tournées par commercial */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-3">Tournees par commercial</h3>
+            <h3 className="font-semibold text-gray-900 mb-3">Tournées par commercial</h3>
           </div>
 
           {state.commerciaux.filter(c => c.role !== 'prospection').map(commercial => {
@@ -2626,7 +2626,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   <div className="space-y-3">
                     {/* Week pattern */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Frequence</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Fréquence</label>
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(WEEK_PATTERN_LABELS).map(([key, label]) => (
                           <button
@@ -2667,7 +2667,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                       ))}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Info tournee (visible par l'equipe)</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Info tournée (visible par l'equipe)</label>
                       <textarea
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                         rows={2}
@@ -2736,7 +2736,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                         </div>
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400 italic">Aucune tournee configuree</p>
+                      <p className="text-sm text-gray-400 italic">Aucune tournée configurée</p>
                     )}
                     {config?.notes && (
                       <p className="mt-2 text-xs text-gray-500 italic">{config.notes}</p>
@@ -2750,7 +2750,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           {state.commerciaux.filter(c => c.role !== 'prospection').length === 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
               <p className="text-sm text-gray-500">Aucun commercial dans l'equipe</p>
-              <p className="text-xs text-gray-400 mt-1">Ajoutez des membres dans l'onglet Equipe</p>
+              <p className="text-xs text-gray-400 mt-1">Ajoutez des membres dans l'onglet Équipe</p>
             </div>
           )}
         </div>
@@ -2765,7 +2765,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
               <Clock className="w-5 h-5 text-gray-500" />
-              Derniere connexion
+              Dernière connexion
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {lastSeenData.map(u => {
@@ -2811,7 +2811,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
               </div>
             ) : activityLog.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                <p className="text-sm text-gray-500">Aucune activite enregistree</p>
+                <p className="text-sm text-gray-500">Aucune activité enregistrée</p>
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-[600px] overflow-y-auto">

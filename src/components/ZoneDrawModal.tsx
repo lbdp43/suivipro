@@ -72,7 +72,7 @@ function DrawController({ commercialId, color, initialZones, onChanged }: {
           coordinates: latlngs,
         }) as { id: string };
         layer._zoneId = created.id;
-        toast.success('Zone enregistree');
+        toast.success('Zone enregistrée');
         onChanged();
       } catch {
         toast.error('Erreur enregistrement de la zone');
@@ -90,10 +90,10 @@ function DrawController({ commercialId, color, initialZones, onChanged }: {
         try {
           await apiPut(`/commercial-zones/${layer._zoneId}`, { couleur: color, coordinates: latlngs });
         } catch {
-          toast.error('Erreur mise a jour de la zone');
+          toast.error('Erreur mise à jour de la zone');
         }
       }
-      toast.success('Zone(s) mise(s) a jour');
+      toast.success('Zone(s) mise(s) à jour');
       onChanged();
     };
 
@@ -109,7 +109,7 @@ function DrawController({ commercialId, color, initialZones, onChanged }: {
           toast.error('Erreur suppression de la zone');
         }
       }
-      if (ids.length > 0) toast.success('Zone(s) supprimee(s)');
+      if (ids.length > 0) toast.success('Zone(s) supprimée(s)');
       onChanged();
     };
 
@@ -149,7 +149,7 @@ export default function ZoneDrawModal({ commercialId, commercialName, color, ini
               Zone de {commercialName}
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Utilisez l'outil polygone (en haut a droite de la carte) pour dessiner, modifier ou supprimer la zone.
+              Utilisez l'outil polygone (en haut à droite de la carte) pour dessiner, modifier ou supprimer la zone.
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
@@ -159,7 +159,7 @@ export default function ZoneDrawModal({ commercialId, commercialName, color, ini
 
         <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2 text-xs text-blue-700">
           <Info className="w-3.5 h-3.5 flex-shrink-0" />
-          Les zones grisees appartiennent aux autres commerciaux (lecture seule, pour reference).
+          Les zones grisees appartiennent aux autres commerciaux (lecture seule, pour référence).
         </div>
 
         <div className="flex-1 relative">

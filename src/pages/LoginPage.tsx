@@ -103,7 +103,7 @@ export default function LoginPage() {
         {/* Hint */}
         <div className="mt-4 bg-white/80 rounded-xl border border-gray-200 p-4 text-xs text-gray-500 text-center">
           <p>Connectez-vous avec vos identifiants professionnels.</p>
-          <p className="mt-1">Contactez votre administrateur en cas de probleme.</p>
+          <p className="mt-1">Contactez votre administrateur en cas de problème.</p>
         </div>
       </div>
     </div>

@@ -182,19 +182,19 @@ export default function PipelinePage() {
       dispatchLocal({ type: 'UPDATE_PIPELINE_COLUMN', payload: updated });
       setEditingColumn(null);
     } catch {
-      toast.error('Erreur lors de la mise a jour de l\'etape');
+      toast.error('Erreur lors de la mise à jour de l\'etape');
     }
   };
 
   const deleteColumn = async (col: PipelineColumn) => {
     if (columns.length <= 1) {
-      toast.warning('Impossible de supprimer la derniere etape.');
+      toast.warning('Impossible de supprimer la dernière étape.');
       return;
     }
     const count = (prospectsByStage[col.id] || []).length;
     const firstOther = columns.find(c => c.id !== col.id);
     const msg = count > 0
-      ? `Supprimer l'etape "${col.label}" ?\n\n${count} prospect(s) seront deplaces vers "${firstOther?.label}".`
+      ? `Supprimer l'etape "${col.label}" ?\n\n${count} prospect(s) seront déplacés vers "${firstOther?.label}".`
       : `Supprimer l'etape "${col.label}" ?`;
     if (confirm(msg)) {
       try {
@@ -210,7 +210,7 @@ export default function PipelinePage() {
     if (!newLabel.trim()) return;
     const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (columns.some(c => c.id === id)) {
-      toast.warning('Une etape avec cet identifiant existe deja');
+      toast.warning('Une étape avec cet identifiant existe déjà');
       return;
     }
     const newCol = { id: id as PipelineStage, label: newLabel.trim(), color: newColor };
@@ -233,7 +233,7 @@ export default function PipelinePage() {
       await apiPut('/pipeline-columns-reorder', { order: newColumns.map((c, i) => ({ id: c.id, sort_order: i })) });
       dispatchLocal({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
     } catch {
-      toast.error('Erreur lors du reordonnancement des etapes');
+      toast.error('Erreur lors du reordonnancement des étapes');
     }
   };
 
@@ -245,7 +245,7 @@ export default function PipelinePage() {
       await apiPut('/pipeline-columns-reorder', { order: newColumns.map((c, i) => ({ id: c.id, sort_order: i })) });
       dispatchLocal({ type: 'REORDER_PIPELINE_COLUMNS', payload: newColumns });
     } catch {
-      toast.error('Erreur lors du reordonnancement des etapes');
+      toast.error('Erreur lors du reordonnancement des étapes');
     }
   };
 
@@ -258,8 +258,8 @@ export default function PipelinePage() {
     <div className="h-full flex flex-col">
       <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex items-center gap-2 sm:gap-3">
         <div className="flex-1 min-w-0">
-          <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline commercial</h1>
-          <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les etapes</p>
+          <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline</h1>
+          <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les étapes</p>
         </div>
         {/* Filters */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -341,8 +341,8 @@ export default function PipelinePage() {
           onClick={() => setShowSettings(!showSettings)}
         >
           <Settings className="w-4 h-4" />
-          <span className="hidden sm:inline">Gerer les etapes</span>
-          <span className="sm:hidden">Etapes</span>
+          <span className="hidden sm:inline">Gérer les étapes</span>
+          <span className="sm:hidden">Étapes</span>
         </button>
       </div>
 
@@ -351,12 +351,12 @@ export default function PipelinePage() {
         <div className="bg-white border-b border-gray-200 p-4 fade-in">
           <div className="max-w-3xl mx-auto space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900 text-sm">Etapes du pipeline</h3>
+              <h3 className="font-semibold text-gray-900 text-sm">Étapes du pipeline</h3>
               <button
                 className="flex items-center gap-1 px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium hover:bg-brewery-700"
                 onClick={() => setShowAddForm(true)}
               >
-                <Plus className="w-3 h-3" /> Ajouter une etape
+                <Plus className="w-3 h-3" /> Ajouter une étape
               </button>
             </div>
 
@@ -455,7 +455,7 @@ export default function PipelinePage() {
                         <button
                           className="p-1 text-gray-400 hover:text-red-600"
                           onClick={() => deleteColumn(col)}
-                          title={count > 0 ? `${count} prospect(s) seront deplaces` : 'Supprimer'}
+                          title={count > 0 ? `${count} prospect(s) seront déplacés` : 'Supprimer'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -468,7 +468,7 @@ export default function PipelinePage() {
 
             <p className="text-[10px] text-gray-400 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
-              Supprimer une etape deplacera ses prospects vers la premiere etape restante
+              Supprimer une étape deplacera ses prospects vers la première étape restante
             </p>
           </div>
         </div>
@@ -521,7 +521,7 @@ export default function PipelinePage() {
                     draggable
                     onDragStart={e => handleDragStart(e, prospect.id)}
                     onDragEnd={handleDragEnd}
-                    className={`kanban-card bg-white rounded-lg border border-gray-200 p-3 cursor-grab active:cursor-grabbing ${
+                    className={`kanban-card bg-white rounded-lg border border-gray-200 p-3 cursor-grab activé:cursor-grabbing ${
                       draggedId === prospect.id ? 'dragging' : ''
                     }`}
                   >

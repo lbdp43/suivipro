@@ -307,7 +307,7 @@ export default function TourneesPage() {
         setExpandedCommercials(new Set());
       }
     } catch (err) {
-      console.error('Erreur chargement tournees:', err);
+      console.error('Erreur chargement tournées:', err);
     } finally {
       setLoading(false);
     }
@@ -356,7 +356,7 @@ export default function TourneesPage() {
         }),
       });
       if (res.ok) {
-        toast.success('Tournees sauvegardees');
+        toast.success('Tournées sauvegardees');
         setEditing(false);
         loadData();
       }
@@ -589,7 +589,7 @@ export default function TourneesPage() {
         await apiPut(`/clients/${clientId}`, updated);
         dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
       }
-      toast.success(`${selectedClientIds.size} client(s) affecte(s) a "${assignTournee.trim()}"`);
+      toast.success(`${selectedClientIds.size} client(s) affecté(s) a "${assignTournee.trim()}"`);
       setSelectedClientIds(new Set());
       setAssignTournee('');
     } catch {
@@ -659,11 +659,11 @@ export default function TourneesPage() {
           <div className="flex items-center gap-2 flex-shrink-0">
             {hasConfig ? (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium hidden sm:inline">
-                Configure
+                Configuré
               </span>
             ) : (
               <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium hidden sm:inline">
-                Non configure
+                Non configuré
               </span>
             )}
           </div>
@@ -715,7 +715,7 @@ export default function TourneesPage() {
               const commercialRdvs = rdvCountsByCommercialDay[commercial.id] || {};
               const hasAnyRdv = Object.values(commercialRdvs).some(c => c > 0);
 
-              if (!hasConfig && !hasAnyRdv) return <p className="text-sm text-gray-400 italic py-2">Aucune tournee configuree</p>;
+              if (!hasConfig && !hasAnyRdv) return <p className="text-sm text-gray-400 italic py-2">Aucune tournée configurée</p>;
 
               return (
                 <>
@@ -845,7 +845,7 @@ export default function TourneesPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
             <MapPin className="w-5 h-5 sm:w-6 sm:h-6" />
-            Tournees
+            Tournées
           </h1>
         </div>
         <div className="flex gap-2">
@@ -857,7 +857,7 @@ export default function TourneesPage() {
               onClick={startEdit}
               className="px-3 py-2 sm:px-4 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
             >
-              <Edit2 className="w-4 h-4" /> Mes tournees
+              <Edit2 className="w-4 h-4" /> Mes tournées
             </button>
           )}
         </div>
@@ -868,7 +868,7 @@ export default function TourneesPage() {
         <button
           onClick={() => setWeekOffset(prev => prev - 1)}
           className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
-          title="Semaine precedente"
+          title="Semaine précédente"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -915,7 +915,7 @@ export default function TourneesPage() {
       {editing && (
         <div className="bg-white rounded-xl border-2 border-brewery-300 p-4 sm:p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900">Configurer mes tournees</h3>
+            <h3 className="font-semibold text-gray-900">Configurer mes tournées</h3>
             <div className="flex gap-2">
               <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">
                 Annuler
@@ -933,7 +933,7 @@ export default function TourneesPage() {
 
           {/* Week pattern */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Frequence</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Fréquence</label>
             <div className="flex flex-wrap gap-2">
               {Object.entries(WEEK_PATTERN_LABELS).map(([key, label]) => (
                 <button
@@ -1005,14 +1005,14 @@ export default function TourneesPage() {
           {/* Info tournée (visible par les prospecteurs) */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Info tournee <span className="text-gray-400 font-normal">(visible par toute l'equipe)</span>
+              Info tournée <span className="text-gray-400 font-normal">(visible par toute l'equipe)</span>
             </label>
             <textarea
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
               rows={5}
               value={editInfo}
               onChange={e => setEditInfo(e.target.value)}
-              placeholder="Ex: Je passe en priorite sur Lyon centre le mardi matin...&#10;&#10;Utilisez la touche Entree pour faire des retours a la ligne."
+              placeholder="Ex: Je passe en priorité sur Lyon centre le mardi matin...&#10;&#10;Utilisez la touche Entree pour faire des retours a la ligne."
             />
           </div>
 
@@ -1062,7 +1062,7 @@ export default function TourneesPage() {
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
-            Tournees inactives cette semaine
+            Tournées inactives cette semaine
           </h2>
           {inactiveToursWithClients.map(item => (
             <div key={item.commercialId} className="bg-amber-50 rounded-xl border border-amber-200 p-3 sm:p-4">
@@ -1099,13 +1099,13 @@ export default function TourneesPage() {
             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showUnassignedZones ? '' : '-rotate-90'}`} />
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-red-500" />
-              Tournees non affectees
+              Tournées non affectées
               <span className="text-xs font-normal normal-case text-red-600 bg-red-100 px-2 py-0.5 rounded-full">{unassignedZones.length}</span>
             </h2>
           </button>
           {showUnassignedZones && (
             <div className="bg-red-50 rounded-xl border border-red-200 p-3 sm:p-4">
-              <p className="text-xs text-red-700 mb-3">Ces zones existent sur des clients mais ne sont configurees dans aucune tournee de commercial.</p>
+              <p className="text-xs text-red-700 mb-3">Ces zones existent sur des clients mais ne sont configurées dans aucune tournée de commercial.</p>
               <div className="flex flex-wrap gap-2">
                 {unassignedZones.map(zone => (
                   <div key={zone} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg">
@@ -1132,7 +1132,7 @@ export default function TourneesPage() {
             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showClientsWithoutTour ? '' : '-rotate-90'}`} />
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-orange-500" />
-              Clients sans tournee
+              Clients sans tournée
               <span className="text-xs font-normal normal-case text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">{clientsWithoutTour.length}</span>
             </h2>
           </button>
@@ -1149,7 +1149,7 @@ export default function TourneesPage() {
                   }`}
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
-                  {selectedClientIds.size === clientsWithoutTour.length ? 'Tout deselectionner' : 'Tout selectionner'}
+                  {selectedClientIds.size === clientsWithoutTour.length ? 'Tout désélectionner' : 'Tout sélectionner'}
                 </button>
                 {selectedClientIds.size > 0 && (
                   <>
@@ -1160,7 +1160,7 @@ export default function TourneesPage() {
                         onChange={e => setAssignTournee(e.target.value)}
                         className="text-sm border border-gray-300 rounded-lg px-2 py-1.5"
                       >
-                        <option value="">Choisir une tournee...</option>
+                        <option value="">Choisir une tournée...</option>
                         {allZones.map(z => (
                           <option key={z} value={z}>{z}</option>
                         ))}

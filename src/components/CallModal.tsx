@@ -232,7 +232,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
           newStage = 'gagne';
         }
-        // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
+        // Regle : memo → "Contacte" si encore en "À contacter" ou "Nouveau"
         else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
           newStage = 'contacte';
         }
@@ -289,7 +289,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         setCallActive(false);
         setCallTimer(0);
         setSaving(false);
-        toast.success('Appel et RDV enregistres avec succes');
+        toast.success('Appel et RDV enregistrés avec succes');
         return;
       }
 
@@ -299,7 +299,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       if (!suivantDeSession()) setShowModal(false);
     } catch (err) {
       console.error('Erreur sauvegarde appel:', err);
-      toast.error('Erreur lors de la sauvegarde. Veuillez reessayer.');
+      toast.error('Erreur lors de la sauvegarde. Veuillez réessayer.');
     } finally {
       setSaving(false);
     }
@@ -432,7 +432,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                 <>
                   {callTimer > 0 && (
                     <div className="text-center text-sm text-gray-500">
-                      Duree de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span>
+                      Durée de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span>
                     </div>
                   )}
 
@@ -440,7 +440,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   {(!prospect.nom_contact || !prospect.email) && (
                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
                       <label className="block text-xs font-medium text-orange-700 flex items-center gap-1">
-                        <User className="w-3 h-3" /> Completer les infos du prospect
+                        <User className="w-3 h-3" /> Compléter les infos du prospect
                       </label>
                       <div className="grid grid-cols-1 gap-2">
                         <div>
@@ -475,7 +475,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
                   {/* Call result */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-2">Resultat de l'appel</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-2">Résultat de l'appel</label>
                     <div className="grid grid-cols-2 gap-2">
                       {RESULTATS_APPEL_SAISISSABLES.map(result => {
                         const Icon = resultIcons[result];
@@ -510,7 +510,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         onClick={() => setNegativeOutcome(prev => prev === 'pas_interesse' ? 'none' : 'pas_interesse')}
                       >
                         <ThumbsDown className="w-4 h-4" />
-                        Pas interesse
+                        Pas intéressé
                       </button>
                       <button
                         className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
@@ -525,10 +525,10 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       </button>
                     </div>
                     {negativeOutcome === 'pas_interesse' && (
-                      <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
+                      <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
                     )}
                     {negativeOutcome === 'ne_pas_contacter' && (
-                      <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera deplace dans "Ne pas contacter"</p>
+                      <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera déplacé dans "Ne pas contacter"</p>
                     )}
                   </div>
 
@@ -659,7 +659,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       {/* Selecteur commercial assigne */}
                       <div>
                         <label className="block text-[10px] text-blue-600 mb-0.5 flex items-center gap-1">
-                          <Users className="w-3 h-3" /> Commercial assigne au RDV
+                          <Users className="w-3 h-3" /> Commercial assigné au RDV
                         </label>
                         <select
                           className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
@@ -720,7 +720,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       {googleConflicts.length > 0 && (
                         <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
                           <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — evenement(s) Google Agenda sur ce creneau
+                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — événement(s) Google Agenda sur ce creneau
                           </p>
                           {googleConflicts.map(evt => {
                             const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
@@ -748,7 +748,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         onChange={e => setRdvNotes(e.target.value)}
                       />
                       <p className="text-[10px] text-blue-500 italic">
-                        Le prospect sera automatiquement deplace dans "RDV / Gagne"
+                        Le prospect sera automatiquement déplacé dans "RDV / Gagne"
                       </p>
                     </div>
                   )}
@@ -841,7 +841,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     <div className="w-14 h-14 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
                       <CheckCircle className="w-7 h-7 text-green-600" />
                     </div>
-                    <h3 className="font-bold text-gray-900">RDV cree avec succes !</h3>
+                    <h3 className="font-bold text-gray-900">RDV créé avec succes !</h3>
                     <p className="text-sm text-gray-500 mt-1">
                       {rdvProspect?.nom_etablissement} - {formatDate(createdRdv?.date || '')}
                     </p>

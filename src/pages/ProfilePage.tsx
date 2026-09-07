@@ -36,7 +36,7 @@ export default function ProfilePage() {
       return;
     }
     if (password && password.length < 4) {
-      setError('Le mot de passe doit contenir au moins 4 caracteres.');
+      setError('Le mot de passe doit contenir au moins 4 caractères.');
       return;
     }
     if (password && password !== confirmPassword) {
@@ -77,7 +77,7 @@ export default function ProfilePage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      setError('Erreur reseau, reessayez.');
+      setError('Erreur reseau, réessayez.');
     } finally {
       setSaving(false);
     }
@@ -164,7 +164,7 @@ export default function ProfilePage() {
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5" />
-              Telephone
+              Téléphone
             </label>
             <input
               type="tel"
@@ -227,7 +227,7 @@ export default function ProfilePage() {
           {saved && (
             <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
               <Check className="w-4 h-4" />
-              Profil mis a jour avec succes !
+              Profil mis à jour avec succes !
             </div>
           )}
 

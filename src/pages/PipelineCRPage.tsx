@@ -30,12 +30,12 @@ interface CRColumnDef {
 
 const DEFAULT_COLUMNS: CRColumnDef[] = [
   { id: 'en_attente', label: 'RDV en attente', color: '#6b7280', description: 'RDV passes sans CR', builtin: true },
-  { id: 'decale', label: 'RDV decale', color: '#8b5cf6', description: 'RDV reporte a une autre date', builtin: true },
-  { id: 'mail_envoye', label: 'Mail envoye', color: '#3b82f6', description: 'Mail/devis envoye', builtin: true },
-  { id: 'commande_plus_tard', label: 'Commande plus tard', color: '#f59e0b', description: 'Interesse, a recontacter', builtin: true },
-  { id: 'a_relancer', label: 'A relancer', color: '#f97316', description: 'Relance necessaire', builtin: true },
+  { id: 'decale', label: 'RDV décalé', color: '#8b5cf6', description: 'RDV reporté a une autre date', builtin: true },
+  { id: 'mail_envoye', label: 'Mail envoyé', color: '#3b82f6', description: 'Mail/devis envoyé', builtin: true },
+  { id: 'commande_plus_tard', label: 'Commande plus tard', color: '#f59e0b', description: 'Intéressé, a recontacter', builtin: true },
+  { id: 'a_relancer', label: 'À relancer', color: '#f97316', description: 'Relance nécessaire', builtin: true },
   { id: 'client', label: 'Client gagne', color: '#22c55e', description: 'Devenu client !', builtin: true },
-  { id: 'pas_interesse', label: 'Pas interesse', color: '#ef4444', description: 'Pas interesse / Perdu', builtin: true },
+  { id: 'pas_interesse', label: 'Pas intéressé', color: '#ef4444', description: 'Pas intéressé / Perdu', builtin: true },
 ];
 
 const COLUMN_ICONS: Record<string, React.ReactNode> = {
@@ -126,14 +126,14 @@ export default function PipelineCRPage() {
     if (!newLabel.trim()) return;
     const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_');
     if (columns.some(c => c.id === id)) {
-      toast.warning('Une etape avec cet identifiant existe deja');
+      toast.warning('Une étape avec cet identifiant existe déjà');
       return;
     }
     setColumns(prev => [...prev, { id, label: newLabel.trim(), color: newColor, description: '' }]);
     setNewLabel('');
     setNewColor('#6b7280');
     setShowAddForm(false);
-    toast.success(`Etape "${newLabel.trim()}" ajoutee`);
+    toast.success(`Étape "${newLabel.trim()}" ajoutee`);
   };
 
   const startEditColumn = (col: CRColumnDef) => {
@@ -146,13 +146,13 @@ export default function PipelineCRPage() {
     if (!editingColumn || !editLabel.trim()) return;
     setColumns(prev => prev.map(c => c.id === editingColumn.id ? { ...c, label: editLabel.trim(), color: editColor } : c));
     setEditingColumn(null);
-    toast.success('Etape modifiee');
+    toast.success('Étape modifiée');
   };
 
   const deleteColumn = (col: CRColumnDef) => {
-    if (col.builtin) { toast.warning('Impossible de supprimer une etape par defaut'); return; }
-    if (columns.length <= 1) { toast.warning('Impossible de supprimer la derniere etape'); return; }
-    if (confirm(`Supprimer l'etape "${col.label}" ? Les RDV seront deplaces vers "RDV en attente".`)) {
+    if (col.builtin) { toast.warning('Impossible de supprimer une étape par defaut'); return; }
+    if (columns.length <= 1) { toast.warning('Impossible de supprimer la dernière étape'); return; }
+    if (confirm(`Supprimer l'etape "${col.label}" ? Les RDV seront déplacés vers "RDV en attente".`)) {
       setColumns(prev => prev.filter(c => c.id !== col.id));
       // Move any appointments from deleted column back to en_attente
       state.appointments.forEach(async (a) => {
@@ -163,7 +163,7 @@ export default function PipelineCRPage() {
             await apiPut(`/appointments/${a.id}`, updated);
             dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
           } catch {
-            toast.error('Erreur lors de la mise a jour du RDV');
+            toast.error('Erreur lors de la mise à jour du RDV');
           }
         }
       });
@@ -346,10 +346,10 @@ export default function PipelineCRPage() {
       toast.success(
         colId === 'client'
           ? 'Client gagne ! Le prospect a ete converti.'
-          : `Compte-rendu mis a jour: ${colLabel}`
+          : `Compte-rendu mis à jour: ${colLabel}`
       );
     } catch {
-      toast.error('Erreur lors de la mise a jour du RDV');
+      toast.error('Erreur lors de la mise à jour du RDV');
     }
 
     setDraggedId(null);
@@ -383,7 +383,7 @@ export default function PipelineCRPage() {
       const updatedApt = {
         ...rescheduleApt,
         compte_rendu: 'decale' as AppointmentResult,
-        notes_compte_rendu: `Decale au ${format(parseISO(rescheduleDate), 'dd/MM/yyyy', { locale: fr })}${rescheduleNotes ? '. ' + rescheduleNotes : ''}`,
+        notes_compte_rendu: `Décalé au ${format(parseISO(rescheduleDate), 'dd/MM/yyyy', { locale: fr })}${rescheduleNotes ? '. ' + rescheduleNotes : ''}`,
         statut: 'termine' as const,
       };
       await apiPut(`/appointments/${rescheduleApt.id}`, updatedApt);
@@ -407,7 +407,7 @@ export default function PipelineCRPage() {
       await apiPost('/appointments', newApt);
       dispatchLocal({ type: 'ADD_APPOINTMENT', payload: newApt });
 
-      toast.success(`RDV decale au ${format(parseISO(rescheduleDate), 'dd MMMM yyyy', { locale: fr })}`);
+      toast.success(`RDV décalé au ${format(parseISO(rescheduleDate), 'dd MMMM yyyy', { locale: fr })}`);
       setRescheduleApt(null);
     } catch (err) {
       toast.error('Erreur lors du decalage du RDV');
@@ -458,7 +458,7 @@ export default function PipelineCRPage() {
       <div className="p-3 sm:p-4 bg-white border-b border-gray-200">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline Comptes Rendus</h1>
+            <h1 className="text-base sm:text-xl font-bold text-gray-900">Suivi des rendez-vous</h1>
             <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">
               Suivez la progression des RDV vers la conversion client
             </p>
@@ -487,7 +487,7 @@ export default function PipelineCRPage() {
           <button
             className={`p-2 rounded-lg border transition-colors ${showSettings ? 'bg-brewery-50 border-brewery-300 text-brewery-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
             onClick={() => setShowSettings(!showSettings)}
-            title="Gerer les etapes"
+            title="Gérer les étapes"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -575,12 +575,12 @@ export default function PipelineCRPage() {
         <div className="bg-white border-b border-gray-200 p-4 fade-in">
           <div className="max-w-3xl mx-auto space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm text-gray-900">Gerer les etapes du pipeline</h3>
+              <h3 className="font-semibold text-sm text-gray-900">Gérer les étapes du pipeline</h3>
               <button
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium hover:bg-brewery-700"
                 onClick={() => setShowAddForm(true)}
               >
-                <Plus className="w-3.5 h-3.5" /> Ajouter une etape
+                <Plus className="w-3.5 h-3.5" /> Ajouter une étape
               </button>
             </div>
 
@@ -722,7 +722,7 @@ export default function PipelineCRPage() {
                         draggable
                         onDragStart={e => handleDragStart(e, apt.id)}
                         onDragEnd={handleDragEnd}
-                        className={`bg-white rounded-lg border border-gray-200 p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                        className={`bg-white rounded-lg border border-gray-200 p-3 cursor-grab activé:cursor-grabbing hover:shadow-md transition-shadow ${
                           draggedId === apt.id ? 'opacity-50' : ''
                         }`}
                       >
@@ -791,7 +791,7 @@ export default function PipelineCRPage() {
                               <button
                                 className="p-1 rounded bg-gray-50 text-gray-500 hover:bg-gray-100"
                                 onClick={e => { e.stopPropagation(); setDetailApt(apt); }}
-                                title="Details du RDV"
+                                title="Détails du RDV"
                               >
                                 <FileText className="w-3 h-3" />
                               </button>
@@ -831,7 +831,7 @@ export default function PipelineCRPage() {
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-brewery-500" />
-                Details du RDV
+                Détails du RDV
               </h3>
               <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDetailApt(null)}>
                 <X className="w-5 h-5 text-gray-500" />

@@ -121,7 +121,7 @@ export default function DocumentsPage() {
             <FileText className="w-6 h-6 text-brewery-600" />
             Documents
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Catalogues, grilles tarifaires et documents partages</p>
+          <p className="text-sm text-gray-500 mt-1">Catalogues, grilles tarifaires et documents partagés</p>
         </div>
         {isAdmin && (
           <button
@@ -152,7 +152,7 @@ export default function DocumentsPage() {
             value={filterCategory}
             onChange={e => setFilterCategory(e.target.value as DocumentCategory | '')}
           >
-            <option value="">Toutes les categories</option>
+            <option value="">Toutes les catégories</option>
             {CATEGORIES.map(cat => (
               <option key={cat} value={cat}>{DOCUMENT_CATEGORY_LABELS[cat]}</option>
             ))}
@@ -262,7 +262,7 @@ export default function DocumentsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Categorie *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie *</label>
                 <select
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
                   value={uploadCategorie}

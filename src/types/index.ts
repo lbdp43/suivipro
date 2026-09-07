@@ -63,9 +63,9 @@ export type PipelineStage =
   | 'ne_pas_contacter';
 
 export const PIPELINE_LABELS: Record<PipelineStage, string> = {
-  nouveau_datagouv: 'Importe Datagouv',
+  nouveau_datagouv: 'Importé Datagouv',
   nouveau: 'Nouveau',
-  a_contacter: 'A contacter',
+  a_contacter: 'À contacter',
   contacte: 'Contacte',
   proposition: 'Proposition',
   negociation: 'Negociation',
@@ -92,23 +92,23 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
 // Only the original built-in stages have a known rule - custom
 // admin-created stages have no entry here (nothing to show).
 export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
-  nouveau_datagouv: 'importe automatiquement depuis data.gouv',
-  nouveau: 'cree manuellement, pas encore contacte',
+  nouveau_datagouv: 'importé automatiquement depuis data.gouv',
+  nouveau: 'créé manuellement, pas encore contacte',
   a_contacter: 'en attente du premier appel/visite',
-  contacte: 'apres appel + rappel programme, ou email envoye',
-  proposition: 'RDV : commande plus tard / a relancer',
-  negociation: 'RDV : mail envoye, ou email envoye depuis la fiche',
-  gagne: 'RDV pris (planifie ou lors d\'un appel)',
+  contacte: 'après appel + rappel programme, ou email envoyé',
+  proposition: 'RDV : commande plus tard / à relancer',
+  negociation: 'RDV : mail envoyé, ou email envoyé depuis la fiche',
+  gagne: 'RDV pris (planifié ou lors d\'un appel)',
   client_gagne: 'RDV : Client, ou converti manuellement en client',
-  perdu: 'RDV ou appel : pas interesse',
+  perdu: 'RDV ou appel : pas intéressé',
   ne_pas_contacter: 'appel : ne pas contacter, ou import liste noire',
 };
 
 export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoignable' | 'email_envoye';
 
 export const CALL_RESULT_LABELS: Record<CallResult, string> = {
-  repondu: 'Repondu',
-  pas_de_reponse: 'Pas de reponse',
+  repondu: 'Répondu',
+  pas_de_reponse: 'Pas de réponse',
   messagerie: 'Messagerie',
   injoignable: 'Injoignable',
   email_envoye: 'Email envoyé',
@@ -119,19 +119,19 @@ export const RESULTATS_APPEL_SAISISSABLES: CallResult[] = ['repondu', 'pas_de_re
 export type AppointmentStatus = 'planifie' | 'confirme' | 'termine' | 'annule';
 
 export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
-  planifie: 'Planifie',
-  confirme: 'Confirme',
-  termine: 'Termine',
-  annule: 'Annule',
+  planifie: 'Planifié',
+  confirme: 'Confirmé',
+  termine: 'Terminé',
+  annule: 'Annulé',
 };
 
 export type EventType = 'rdv' | 'reunion' | 'boutique' | 'depot' | 'marche' | 'autre';
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   rdv: 'RDV Client/Prospect',
-  reunion: 'Reunion',
+  reunion: 'Réunion',
   boutique: 'Boutique',
-  depot: 'Depot',
+  depot: 'Dépôt',
   marche: 'Marche',
   autre: 'Autre',
 };
@@ -161,11 +161,11 @@ export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' 
 
 export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
   client: 'Client',
-  mail_envoye: 'Mail envoye',
+  mail_envoye: 'Mail envoyé',
   commande_plus_tard: 'Commande plus tard',
-  a_relancer: 'A relancer',
-  pas_interesse: 'Pas interesse',
-  decale: 'RDV decale',
+  a_relancer: 'À relancer',
+  pas_interesse: 'Pas intéressé',
+  decale: 'RDV décalé',
 };
 
 export type ReminderStatus = 'actif' | 'termine' | 'reporte';
@@ -290,7 +290,7 @@ export const DEPARTEMENT_TO_REGION: Record<string, string> = {
   'Guadeloupe': 'DOM-TOM',
   'Martinique': 'DOM-TOM',
   'Guyane': 'DOM-TOM',
-  'La Reunion': 'DOM-TOM',
+  'La Réunion': 'DOM-TOM',
   'Mayotte': 'DOM-TOM',
 };
 
@@ -502,15 +502,15 @@ export type InteractionType = 'VISITE' | 'APPEL' | 'RDV_PLANIFIE';
 export const INTERACTION_TYPE_LABELS: Record<InteractionType, string> = {
   VISITE: 'Visite',
   APPEL: 'Appel',
-  RDV_PLANIFIE: 'RDV planifie',
+  RDV_PLANIFIE: 'RDV planifié',
 };
 
 export type TaskClientStatus = 'A_FAIRE' | 'EN_COURS' | 'TERMINEE';
 
 export const TASK_CLIENT_STATUS_LABELS: Record<TaskClientStatus, string> = {
-  A_FAIRE: 'A faire',
+  A_FAIRE: 'À faire',
   EN_COURS: 'En cours',
-  TERMINEE: 'Terminee',
+  TERMINEE: 'Terminée',
 };
 
 export type TaskClientPriority = 'BASSE' | 'MOYENNE' | 'HAUTE';
@@ -606,7 +606,7 @@ export type CommandeStatut = 'en_cours' | 'livree' | 'annulee';
 export const COMMANDE_STATUT_LABELS: Record<CommandeStatut, string> = {
   en_cours: 'En cours',
   livree: 'Livree',
-  annulee: 'Annulee',
+  annulee: 'Annulée',
 };
 
 export interface CommandeLigne {

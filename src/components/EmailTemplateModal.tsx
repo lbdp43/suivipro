@@ -100,7 +100,7 @@ export default function EmailTemplateModal(props: Props) {
 
     // Add attachment note if documents selected
     if (selectedDocs.length > 0) {
-      bodyText += '\n\n---\nPieces jointes a envoyer :\n';
+      bodyText += '\n\n---\nPieces jointes à envoyer :\n';
       selectedDocs.forEach(doc => {
         bodyText += `- ${doc.nom} (${doc.nom_fichier})\n`;
       });
@@ -206,7 +206,7 @@ export default function EmailTemplateModal(props: Props) {
 
           {/* Liste des templates */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Choisir un modele</label>
+            <label className="block text-xs font-medium text-gray-600 mb-2">Choisir un modèle</label>
             <div className="space-y-2">
               {state.emailTemplates.map(tpl => (
                 <button
@@ -298,7 +298,7 @@ export default function EmailTemplateModal(props: Props) {
                     <>
                       <hr className="border-gray-200" />
                       <div className="text-xs text-gray-500">
-                        <p className="font-medium mb-1">Pieces jointes :</p>
+                        <p className="font-medium mb-1">Pièces jointes :</p>
                         {selectedDocs.map(doc => (
                           <p key={doc.id} className="flex items-center gap-1">
                             <Paperclip className="w-3 h-3" /> {doc.nom} ({doc.nom_fichier})

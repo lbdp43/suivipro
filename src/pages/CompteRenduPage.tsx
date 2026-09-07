@@ -19,7 +19,7 @@ import { rdvSansCompteRendu } from '../../shared/regles';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-const MONTH_LABELS = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'];
+const MONTH_LABELS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 type ViewMode = 'semaine' | 'mois' | 'periode';
 
@@ -429,7 +429,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
       const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
       await apiPut(`/clients/${noteClientId}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-      toast.success('Note enregistree');
+      toast.success('Note enregistrée');
       setNoteClientId(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setNoteSaving(false); }
@@ -496,7 +496,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         } catch { /* notes save is secondary */ }
       }
 
-      toast.success(visitModalType === 'VISITE' ? `Visite enregistree pour ${visitModalClient.nom}` : `Appel enregistre pour ${visitModalClient.nom}`);
+      toast.success(visitModalType === 'VISITE' ? `Visite enregistrée pour ${visitModalClient.nom}` : `Appel enregistré pour ${visitModalClient.nom}`);
       setVisitModalClient(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setSaving(null); }
@@ -538,7 +538,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         await apiPost('/appointments', rdv);
         dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdv });
       } catch { /* secondary */ }
-      toast.success(`RDV planifie pour ${rdvModalClient.nom}`);
+      toast.success(`RDV planifié pour ${rdvModalClient.nom}`);
       setRdvModalClient(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setSaving(null); }
@@ -548,7 +548,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
   const saveCrModal = async () => {
     if (!crModalRdv) return;
     const form = crForms[crModalRdv.id];
-    if (!form?.compte_rendu) { toast.error('Selectionnez un resultat'); return; }
+    if (!form?.compte_rendu) { toast.error('Sélectionnez un résultat'); return; }
     if (!form.notes?.trim()) { toast.error('Les notes sont obligatoires'); return; }
     setSaving(crModalRdv.id);
     try {
@@ -600,7 +600,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         }
       }
 
-      toast.success('Compte rendu enregistre');
+      toast.success('Compte rendu enregistré');
       setCrModalRdv(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setSaving(null); }
@@ -760,7 +760,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             {client.next_visit && (
               <div className="mt-1 text-[10px] text-gray-400">
                 Visite prevue: {client.next_visit}
-                {client.last_visit && ` — Derniere: ${client.last_visit}`}
+                {client.last_visit && ` — Dernière: ${client.last_visit}`}
               </div>
             )}
             {isLate && (
@@ -822,7 +822,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
           {gmapsUrl && (
             <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
               className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
-              title="Itineraire Google Maps">
+              title="Itinéraire Google Maps">
               <Navigation className="w-3.5 h-3.5" />
             </a>
           )}
@@ -856,7 +856,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
               ? 'Vue globale de toute l\'equipe'
               : isAdmin && selectedCommercialId && selectedCommercialId !== ''
               ? `Rapport de ${state.commerciaux.find((c: any) => c.id === selectedCommercialId)?.prenom || ''} ${state.commerciaux.find((c: any) => c.id === selectedCommercialId)?.nom || ''}`
-              : 'Faites le bilan de votre activite'}
+              : 'Faites le bilan de votre activité'}
           </p>
         </div>
         {isAdmin && (
@@ -865,7 +865,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             onChange={e => setSelectedCommercialId(e.target.value)}
             className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
           >
-            <option value="">Mon activite</option>
+            <option value="">Mon activité</option>
             <option value="all">Toute l'equipe</option>
             {state.commerciaux.map((c: any) => (
               <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
@@ -876,7 +876,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
 
       {/* View mode tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1">
-        {([['semaine', 'Semaine'], ['mois', 'Mois'], ['periode', 'Periode']] as [ViewMode, string][]).map(([mode, label]) => (
+        {([['semaine', 'Semaine'], ['mois', 'Mois'], ['periode', 'Période']] as [ViewMode, string][]).map(([mode, label]) => (
           <button key={mode} onClick={() => setViewMode(mode)}
             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === mode ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
@@ -969,8 +969,8 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
           {Object.keys(stats.resultCounts).length > 0 && (
             <div className="col-span-2 sm:col-span-3 bg-white rounded-xl border border-gray-200 p-3">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-gray-600">Resultats des RDV</p>
-                <p className="text-[10px] text-gray-400 italic">Cliquez pour voir le detail</p>
+                <p className="text-xs font-medium text-gray-600">Résultats des RDV</p>
+                <p className="text-[10px] text-gray-400 italic">Cliquez pour voir le détail</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(stats.resultCounts).map(([key, count]) => {
@@ -1108,7 +1108,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         <div className="space-y-2">
           {dayGroups.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-              <p className="text-sm text-gray-400">Aucune activite sur cette periode</p>
+              <p className="text-sm text-gray-400">Aucune activité sur cette période</p>
             </div>
           ) : dayGroups.map(group => {
             const isOpen = expandedDay === group.date;
@@ -1228,7 +1228,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             <div className="p-4 space-y-4">
               {/* Resultat */}
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Resultat du rendez-vous</label>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Résultat du rendez-vous</label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
                     const sel = crForms[crModalRdv.id]?.compte_rendu === key;
@@ -1405,7 +1405,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                   <PhoneCall className="w-4 h-4" /> Appel
                 </button>
                 <button className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium bg-purple-100 border border-purple-300 text-purple-700">
-                  <Calendar className="w-4 h-4" /> RDV planifie
+                  <Calendar className="w-4 h-4" /> RDV planifié
                 </button>
               </div>
 
@@ -1419,7 +1419,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 {isAdmin && (
                   <div>
                     <label className="text-xs font-medium text-purple-600 mb-0.5 flex items-center gap-1 block">
-                      <Users2 className="w-3 h-3" /> Commercial assigne au RDV
+                      <Users2 className="w-3 h-3" /> Commercial assigné au RDV
                     </label>
                     <select
                       value={rdvModalCommercialId}

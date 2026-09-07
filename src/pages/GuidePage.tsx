@@ -66,41 +66,38 @@ const sections: GuideSection[] = [
         text: 'Ouvrez l\'application et saisissez votre **identifiant** (votre prenom) et votre **mot de passe**. Cliquez sur "Se connecter" pour acceder a votre espace.',
       },
       {
-        subtitle: 'Premiere connexion',
-        text: 'Lors de votre premiere connexion, l\'application vous demandera de **changer votre mot de passe**. Saisissez un nouveau mot de passe (minimum 4 caracteres) et confirmez-le.',
+        subtitle: 'Première connexion',
+        text: 'Lors de votre première connexion, l\'application vous demandera de **changer votre mot de passe**. Saisissez un nouveau mot de passe (minimum 4 caractères) et confirmez-le.',
       },
       {
-        subtitle: 'Les 3 roles de l\'application',
-        text: 'Chaque utilisateur a un role qui determine ce qu\'il peut faire :',
+        subtitle: 'Les 3 rôles de l\'application',
+        text: 'Chaque utilisateur a un rôle qui determine ce qu\'il peut faire :',
         list: [
-          '**Commercial** : Gere ses prospects et clients, passe des appels, prend des rendez-vous, planifie ses tournees.',
-          '**Admin** : Supervise tous les commerciaux, voit toutes les donnees, configure le systeme et les integrations.',
+          '**Commercial** : Gère ses prospects et clients, passe des appels, prend des rendez-vous, planifié ses tournées.',
+          '**Admin** : Supervise tous les commerciaux, voit toutes les données, configuré le système et les intégrations.',
           '**Prospection** : Appelle les prospects, prend les rendez-vous pour les commerciaux, gère ses rappels. Voit aussi les clients pour dépanner.',
         ],
       },
       {
         subtitle: 'Navigation',
-        text: 'La barre laterale a gauche est organisee en sous-dossiers depliables :',
+        text: 'Le menu de gauche est le même pour tout le monde, en quatre groupes ; votre groupe vient en premier, ouvert, les autres sont repliés. Les mots du menu sont ceux de toute l\'application :',
         list: [
-          '**Accueil** : Tableau de bord avec KPIs et resume d\'activite.',
-          '**Taches** : Gestion des taches (a faire, en cours, terminees).',
-          '**Rappels** : Rappels avec badge urgent.',
-          '**Prospects** : Pipeline commercial et historique des appels.',
-          '**Clients** : Liste des clients et planning semaine.',
-          '**Visites et CR** : Visites clients, tournees, comptes-rendus.',
-          '**Guide / Documents / Emails** : Aide, fichiers partages, modeles.',
-          '**Administration** : Import/export et SIRENE (admin).',
+          '**Accueil** : votre journée — rendez-vous, clients à visiter, à rattraper, objectifs du mois.',
+          '**Prospection** : Prospects, Pipeline, Appels, Rendez-vous, Emails, Carte.',
+          '**Commercial** : Clients, Semaine (à préparer / bilan), Suivi des rendez-vous, Tournées (réglage des secteurs).',
+          '**Pour tous** : Rappels et tâches, Statistiques, Documents, Annuaire, Guide.',
+          '**Administration** (admin) : Équipe et réglages, EasyBeer, Import / Export, SIRENE.',
         ],
       },
       {
         subtitle: 'Notifications',
-        text: 'La **cloche** en haut a droite affiche vos notifications non lues.',
+        text: 'La **cloche** en haut à droite affiche vos notifications non lues.',
       },
     ],
   },
   {
     id: 'dashboard',
-    title: 'Tableau de bord',
+    title: 'Statistiques',
     icon: LayoutDashboard,
     iconColor: 'text-indigo-600',
     iconBg: 'bg-indigo-100',
@@ -113,21 +110,21 @@ const sections: GuideSection[] = [
           '**CA ce mois** : Chiffre d\'affaires et nombre de commandes.',
           '**Appels** : Aujourd\'hui, cette semaine, ce mois.',
           '**RDV** : Rendez-vous cette semaine et ce mois.',
-          '**Taux de reponse** : Pourcentage d\'appels decroches.',
-          '**Duree moyenne** : Temps moyen de vos appels.',
+          '**Taux de réponse** : Pourcentage d\'appels decroches.',
+          '**Durée moyenne** : Temps moyen de vos appels.',
         ],
       },
       {
-        subtitle: 'Classement equipe',
-        text: 'Comparez les performances par appels, RDV, prospects, CA, visites et couverture. La **periode** est configurable (semaine, mois).',
+        subtitle: 'Classement équipe',
+        text: 'Comparez les performances par appels, RDV, prospects, CA, visites et couverture. La **période** est configurable (semaine, mois).',
       },
       {
-        subtitle: 'Analyse des resultats RDV',
-        text: 'Graphiques detailles des resultats de vos rendez-vous par semaine (Client, Mail envoye, Commande plus tard, A relancer, Pas interesse). Filtrable par commercial et navigable par mois.',
+        subtitle: 'Analyse des résultats RDV',
+        text: 'Graphiques detailles des résultats de vos rendez-vous par semaine (Client, Mail envoyé, Commande plus tard, À relancer, Pas intéressé). Filtrable par commercial et navigable par mois.',
       },
       {
         subtitle: 'Vue Admin vs Commercial',
-        text: 'Les **administrateurs** voient les statistiques de toute l\'equipe. Les **commerciaux** voient uniquement leurs propres donnees.',
+        text: 'Les **administrateurs** voient les statistiques de toute l\'equipe. Les **commerciaux** voient uniquement leurs propres données.',
       },
     ],
   },
@@ -141,25 +138,25 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Tableau Kanban',
-        text: 'Le pipeline visualise vos prospects par etape de progression. Chaque prospect est une **carte deplacable** d\'une colonne a l\'autre par glisser-deposer.',
+        text: 'Le pipeline visualise vos prospects par étape de progression. Chaque prospect est une **carte deplacable** d\'une colonne a l\'autre par glisser-deposer.',
       },
       {
-        subtitle: 'Etapes',
+        subtitle: 'Étapes',
         list: [
-          '**Importe Datagouv** : Import automatique depuis SIRENE.',
+          '**Importé Datagouv** : Import automatique depuis SIRENE.',
           '**Nouveau** : Prospect tout juste ajoute.',
-          '**A contacter** : A contacter en priorite.',
+          '**À contacter** : À contacter en priorité.',
           '**Contacte** : Premier contact etabli.',
           '**Proposition** : Offre commerciale presentee.',
           '**Negociation** : Conditions en discussion.',
-          '**RDV** : Rendez-vous planifie.',
+          '**RDV** : Rendez-vous planifié.',
           '**Gagne** : Prospect devenu client.',
           '**Perdu / Ne pas contacter** : Clos.',
         ],
       },
       {
         subtitle: 'Personnalisation et filtres',
-        text: 'Cliquez sur l\'**engrenage** pour creer, renommer, reordonner et supprimer des colonnes. Filtrez par **secteur**, **code postal**, **commercial** ou **avec RDV**.',
+        text: 'Cliquez sur l\'**engrenage** pour créer, renommer, reordonner et supprimer des colonnes. Filtrez par **secteur**, **code postal**, **commercial** ou **avec RDV**.',
       },
     ],
   },
@@ -173,42 +170,42 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Fiche prospect',
-        text: 'Chaque prospect contient : nom, adresse, contact, telephone, email, historique des interactions, RDV, rappels, tags, score (1-5) et notes.',
+        text: 'Chaque prospect contient : nom, adresse, contact, téléphone, email, historique des interactions, RDV, rappels, tags, score (1-5) et notes.',
       },
       {
-        subtitle: 'Creer un prospect',
-        text: 'Cliquez sur **"+ Nouveau prospect"**. Seul le **nom d\'etablissement** est obligatoire. Le type et l\'etape sont detectes automatiquement.',
+        subtitle: 'Créer un prospect',
+        text: 'Cliquez sur **"+ Nouveau prospect"**. Seul le **nom d\'etablissement** est obligatoire. Le type et l\'etape sont détectés automatiquement.',
       },
       {
         subtitle: 'Recherche et filtres',
-        text: 'Recherchez par **nom, adresse ou telephone**. Filtrez par etape pipeline, secteur, tags ou commercial.',
+        text: 'Recherchez par **nom, adresse ou téléphone**. Filtrez par étape pipeline, secteur, tags ou commercial.',
       },
     ],
   },
   {
     id: 'appels',
-    title: 'Appels telephoniques',
+    title: 'Appels téléphoniques',
     icon: Phone,
     iconColor: 'text-green-600',
     iconBg: 'bg-green-100',
     roles: ['commercial', 'admin'],
     content: [
       {
-        subtitle: 'Resultats d\'appel',
+        subtitle: 'Résultats d\'appel',
         list: [
-          '**Repondu** : Echange effectue.',
-          '**Pas de reponse** : Personne n\'a repondu.',
+          '**Répondu** : Echange effectue.',
+          '**Pas de réponse** : Personne n\'a répondu.',
           '**Messagerie** : Message vocal laisse.',
-          '**Injoignable** : Numero ne fonctionne pas.',
+          '**Injoignable** : Numéro ne fonctionne pas.',
         ],
       },
       {
         subtitle: 'Statistiques',
-        text: 'En haut de page : appels aujourd\'hui, cette semaine, taux de reponse global et hebdomadaire.',
+        text: 'En haut de page : appels aujourd\'hui, cette semaine, taux de réponse global et hebdomadaire.',
       },
       {
         subtitle: 'Click-to-call',
-        text: 'Sur mobile, cliquez sur le **numero** pour appeler directement. L\'application propose ensuite d\'enregistrer le resultat.',
+        text: 'Sur mobile, cliquez sur le **numéro** pour appeler directement. L\'application propose ensuite d\'enregistrer le résultat.',
       },
     ],
   },
@@ -224,14 +221,14 @@ const sections: GuideSection[] = [
         subtitle: 'Types d\'evenements',
         list: [
           '**RDV** : Rendez-vous commercial.',
-          '**Reunion** : Reunion interne/externe.',
-          '**Boutique / Depot / Marche / Autre**.',
+          '**Réunion** : Réunion interne/externe.',
+          '**Boutique / Dépôt / Marche / Autre**.',
         ],
       },
       {
         subtitle: 'Statuts',
         list: [
-          '**Planifie** → **Confirme** → **Termine** (ou **Annule**).',
+          '**Planifié** → **Confirmé** → **Terminé** (ou **Annulé**).',
         ],
       },
       {
@@ -240,18 +237,18 @@ const sections: GuideSection[] = [
       },
       {
         subtitle: 'Compte-rendu',
-        text: 'Apres un RDV termine, enregistrez le resultat :',
+        text: 'Après un RDV terminé, enregistrez le résultat :',
         list: [
           '**Client** → passage en "Gagne".',
-          '**Mail envoye** → passage en "Negociation".',
-          '**Commande plus tard / A relancer** → rappel automatique.',
-          '**RDV decale** → nouvelle date.',
-          '**Pas interesse** → passage en "Perdu".',
+          '**Mail envoyé** → passage en "Negociation".',
+          '**Commande plus tard / À relancer** → rappel automatique.',
+          '**RDV décalé** → nouvelle date.',
+          '**Pas intéressé** → passage en "Perdu".',
         ],
       },
       {
-        subtitle: 'Recurrence et conflits',
-        text: 'Creez des RDV **recurrents hebdomadaires** avec date de fin. L\'application detecte les **conflits horaires** automatiquement.',
+        subtitle: 'Récurrence et conflits',
+        text: 'Créez des RDV **recurrents hebdomadaires** avec date de fin. L\'application détecté les **conflits horaires** automatiquement.',
       },
       {
         subtitle: 'Export calendrier',
@@ -271,9 +268,9 @@ const sections: GuideSection[] = [
         subtitle: 'Organisation',
         list: [
           '**Aujourd\'hui** : Rappels urgents (fond rouge).',
-          '**A venir** : Programmes pour les prochains jours.',
-          '**En retard** : Date depassee, a traiter en priorite.',
-          '**Termines** : Historique.',
+          '**À venir** : Programmes pour les prochains jours.',
+          '**En retard** : Date dépassée, à traiter en priorité.',
+          '**Terminés** : Historique.',
         ],
       },
       {
@@ -284,19 +281,19 @@ const sections: GuideSection[] = [
   },
   {
     id: 'emails',
-    title: 'Emails et modeles',
+    title: 'Emails et modèles',
     icon: Mail,
     iconColor: 'text-rose-600',
     iconBg: 'bg-rose-100',
     roles: ['commercial', 'admin'],
     content: [
       {
-        subtitle: 'Modeles',
-        text: 'Creez des **modeles d\'emails** reutilisables (presentation, suivi, relance). Ils supportent des **variables dynamiques** remplacees par les donnees du prospect.',
+        subtitle: 'Modèles',
+        text: 'Créez des **modèles d\'emails** reutilisables (présentation, suivi, relance). Ils supportent des **variables dynamiques** remplacees par les données du prospect.',
       },
       {
         subtitle: 'Utilisation',
-        text: 'Depuis la fiche prospect ou le pipeline, cliquez sur l\'icone **email**, selectionnez un modele et copiez le contenu.',
+        text: 'Depuis la fiche prospect ou le pipeline, cliquez sur l\'icone **email**, sélectionnez un modèle et copiez le contenu.',
       },
     ],
   },
@@ -312,44 +309,44 @@ const sections: GuideSection[] = [
         subtitle: 'Fiche client',
         text: 'Chaque client contient :',
         list: [
-          '**Nom, adresse, contact, telephone, email.**',
-          '**Type** (bar, restaurant, cave, etc.) et **tournee**.',
+          '**Nom, adresse, contact, téléphone, email.**',
+          '**Type** (bar, restaurant, cave, etc.) et **tournée**.',
           '**Commercial** responsable.',
           '**Statut** : ACTIF, INACTIF ou SUSPENDU.',
-          '**Frequence de visite** et **prochaine visite** auto-calculee.',
+          '**Fréquence de visite** et **prochaine visite** auto-calculee.',
         ],
       },
       {
         subtitle: 'Indicateurs de visite',
         list: [
-          '**En retard** (rouge) : Visite depassee, prioritaire.',
-          '**Aujourd\'hui** (vert) : Visite prevue ce jour.',
-          '**A venir** (bleu) : Visite programmee.',
-          '**Pas de recurrence** (gris) : Aucune frequence configuree.',
+          '**En retard** (rouge) : Visite dépassée, prioritaire.',
+          '**Aujourd\'hui** (vert) : Visite prévue ce jour.',
+          '**À venir** (bleu) : Visite programmee.',
+          '**Pas de récurrence** (gris) : Aucune fréquence configurée.',
         ],
       },
       {
         subtitle: 'Filtres avances',
-        text: 'Filtrez par **type**, **statut**, **statut de visite**, **commercial**, **tournee**, **sans type** ou **sans tournee**.',
+        text: 'Filtrez par **type**, **statut**, **statut de visite**, **commercial**, **tournée**, **sans type** ou **sans tournée**.',
       },
       {
         subtitle: 'Actions',
         list: [
           '**Click-to-call / Click-to-email / Navigation GPS.**',
           '**Enregistrer une interaction** (visite, appel, email).',
-          '**Planifier un RDV** ou **creer une tache**.',
+          '**Planifier un RDV** ou **créer une tâche**.',
           '**Export ICS** vers le calendrier.',
         ],
       },
       {
         subtitle: 'Actions de masse',
-        text: 'Selectionnez plusieurs clients pour changer le commercial, la tournee, la recurrence, desactiver ou reactiver en lot.',
+        text: 'Sélectionnez plusieurs clients pour changer le commercial, la tournée, la récurrence, désactiver ou réactiver en lot.',
       },
     ],
   },
   {
     id: 'planning-clients',
-    title: 'Planning semaine',
+    title: 'Semaine — À préparer',
     icon: Layers,
     iconColor: 'text-teal-600',
     iconBg: 'bg-teal-100',
@@ -357,7 +354,7 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Vue planning',
-        text: 'Clients organises **par jour** selon les tournees. Chaque jour affiche le nombre de RDV. Naviguez entre les semaines avec les fleches.',
+        text: 'Clients organises **par jour** selon les tournées. Chaque jour affiche le nombre de RDV. Naviguez entre les semaines avec les fleches.',
       },
       {
         subtitle: 'Clients en retard',
@@ -371,7 +368,7 @@ const sections: GuideSection[] = [
   },
   {
     id: 'tournees',
-    title: 'Tournees',
+    title: 'Tournées',
     icon: MapPin,
     iconColor: 'text-orange-600',
     iconBg: 'bg-orange-100',
@@ -382,22 +379,22 @@ const sections: GuideSection[] = [
         text: 'Assignez des **zones a chaque jour** de la semaine (ex: Lundi = "Zone Nord").',
       },
       {
-        subtitle: 'Recurrence',
+        subtitle: 'Récurrence',
         list: [
-          '**Toutes les semaines** : Meme tournee chaque semaine.',
+          '**Toutes les semaines** : Même tournée chaque semaine.',
           '**Semaines paires** : Uniquement semaines paires.',
           '**Semaines impaires** : Uniquement semaines impaires.',
         ],
       },
       {
         subtitle: 'Zones prioritaires',
-        text: 'Definissez des **zones de prospection prioritaires** par jour, en plus des tournees clients.',
+        text: 'Definissez des **zones de prospection prioritaires** par jour, en plus des tournées clients.',
       },
     ],
   },
   {
     id: 'visites',
-    title: 'Visites clients',
+    title: 'Visites (dans Semaine)',
     icon: ClipboardCheck,
     iconColor: 'text-lime-600',
     iconBg: 'bg-lime-100',
@@ -405,21 +402,21 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Vue des visites',
-        text: 'Clients a visiter cette semaine, organises **par jour** selon les tournees. Les clients en retard apparaissent en haut (fond rouge).',
+        text: 'Clients à visiter cette semaine, organises **par jour** selon les tournées. Les clients en retard apparaissent en haut (fond rouge).',
       },
       {
         subtitle: 'Enregistrer une visite',
         text: 'Cliquez sur un client : enregistrez une **visite**, un **appel**, un **RDV** ou un **email**. La prochaine visite est recalculee automatiquement.',
       },
       {
-        subtitle: 'Vue equipe (Admin)',
+        subtitle: 'Vue équipe (Admin)',
         text: 'Filtrez par commercial pour suivre l\'activite terrain de toute l\'equipe.',
       },
     ],
   },
   {
     id: 'compte-rendu',
-    title: 'Rapport Journalier',
+    title: 'Semaine — Bilan',
     icon: CheckCheck,
     iconColor: 'text-sky-600',
     iconBg: 'bg-sky-100',
@@ -429,24 +426,24 @@ const sections: GuideSection[] = [
         subtitle: 'Vues',
         list: [
           '**Jour** : Bilan de la journee.',
-          '**Semaine** : Resume par jour.',
+          '**Semaine** : Résumé par jour.',
           '**Mois** : Tendances mensuelles.',
-          '**Periode** : Plage personnalisee.',
+          '**Période** : Plage personnalisee.',
         ],
       },
       {
         subtitle: 'Contenu',
-        text: 'Toutes les interactions (visites, appels, RDV, taches). Resultats interactifs avec statistiques par type. Regroupement par commercial en vue equipe.',
+        text: 'Toutes les interactions (visites, appels, RDV, tâches). Résultats interactifs avec statistiques par type. Regroupement par commercial en vue équipe.',
       },
       {
-        subtitle: 'Detection de conflits',
+        subtitle: 'Détection de conflits',
         text: 'Les conflits horaires entre RDV sont signales visuellement.',
       },
     ],
   },
   {
     id: 'pipeline-cr',
-    title: 'Pipeline CR',
+    title: 'Suivi des rendez-vous',
     icon: GitBranch,
     iconColor: 'text-fuchsia-600',
     iconBg: 'bg-fuchsia-100',
@@ -454,7 +451,7 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Principe',
-        text: 'Tableau **Kanban** dedie au suivi des resultats de RDV. Colonnes : RDV en attente, RDV decale, Mail envoye, Commande plus tard, A relancer, Client gagne, Pas interesse.',
+        text: 'Tableau **Kanban** dédié au suivi des résultats de RDV. Colonnes : RDV en attente, RDV décalé, Mail envoyé, Commande plus tard, À relancer, Client gagne, Pas intéressé.',
       },
       {
         subtitle: 'Actions rapides',
@@ -464,23 +461,23 @@ const sections: GuideSection[] = [
   },
   {
     id: 'taches',
-    title: 'Taches',
+    title: 'Tâches',
     icon: ListTodo,
     iconColor: 'text-pink-600',
     iconBg: 'bg-pink-100',
     roles: ['commercial', 'admin'],
     content: [
       {
-        subtitle: 'Statuts et priorites',
-        text: 'Statuts : **A faire** → **En cours** → **Terminee**. Priorites : **Haute**, **Moyenne**, **Basse**.',
+        subtitle: 'Statuts et priorités',
+        text: 'Statuts : **À faire** → **En cours** → **Terminée**. Priorités : **Haute**, **Moyenne**, **Basse**.',
       },
       {
-        subtitle: 'Categories',
-        text: 'General, Tournee/Visite, Prospection, Administratif, Livraison, Evenement, Autre.',
+        subtitle: 'Catégories',
+        text: 'Général, Tournée/Visite, Prospection, Administratif, Livraison, Événement, Autre.',
       },
       {
         subtitle: 'Filtres',
-        text: 'Par **statut**, **priorite**, **commercial**, **client** ou via **recherche** par titre.',
+        text: 'Par **statut**, **priorité**, **commercial**, **client** ou via **recherche** par titre.',
       },
     ],
   },
@@ -498,11 +495,11 @@ const sections: GuideSection[] = [
       },
       {
         subtitle: 'Filtres',
-        text: 'Par type d\'etablissement, etape pipeline, tags, secteur, region, departement, code postal, commercial. Boutons **bascule** prospects/clients.',
+        text: 'Par type d\'etablissement, étape pipeline, tags, secteur, region, departement, code postal, commercial. Boutons **bascule** prospects/clients.',
       },
       {
         subtitle: 'Panneau RDV',
-        text: 'A droite : **RDV de la semaine** avec navigation, filtre commercial et confirmation directe.',
+        text: 'À droite : **RDV de la semaine** avec navigation, filtre commercial et confirmation directe.',
       },
     ],
   },
@@ -515,7 +512,7 @@ const sections: GuideSection[] = [
     roles: ['commercial', 'admin'],
     content: [
       {
-        subtitle: 'Categories',
+        subtitle: 'Catégories',
         list: [
           '**Bar/Restaurant** : Tarifs et fiches.',
           '**Prix CE** : Grilles comites d\'entreprise.',
@@ -540,7 +537,7 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Types d\'entites',
-        text: 'Affiche les types d\'etablissements configures (bar, restaurant, cave, etc.). Les admins peuvent **creer, modifier et supprimer** des types avec icone, couleur et description.',
+        text: 'Affiche les types d\'etablissements configurés (bar, restaurant, cave, etc.). Les admins peuvent **créer, modifier et supprimer** des types avec icone, couleur et description.',
       },
     ],
   },
@@ -558,11 +555,11 @@ const sections: GuideSection[] = [
       },
       {
         subtitle: 'Synchronisation',
-        text: 'CRON hebdomadaire automatique (lundi 6h). Declenchement manuel possible. Les doublons sont detectes et filtres.',
+        text: 'CRON hebdomadaire automatique (lundi 6h). Declenchement manuel possible. Les doublons sont détectés et filtres.',
       },
       {
         subtitle: 'Journal',
-        text: 'Historique des synchronisations : date, records traites, inserts, updates, erreurs.',
+        text: 'Historique des synchronisations : date, records traités, inserts, updates, erreurs.',
       },
     ],
   },
@@ -576,20 +573,20 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Import prospects',
-        text: 'Import depuis **Excel/CSV** avec detection automatique des colonnes, geocodage optionnel et detection des doublons.',
+        text: 'Import depuis **Excel/CSV** avec détection automatique des colonnes, géocodage optionnel et détection des doublons.',
       },
       {
         subtitle: 'Import clients (EasyBeer)',
         text: 'Import en masse depuis le template EasyBeer avec **38 colonnes** reconnues. Flow multi-etapes :',
         list: [
           '**Upload** : Analyse du fichier.',
-          '**Verification** : Preview avec doublons (SIRET, nom, telephone), commerciaux inconnus a creer.',
-          '**Validation** : L\'admin valide ou annule l\'import apres avoir vu le resume complet.',
+          '**Vérification** : Preview avec doublons (SIRET, nom, téléphone), commerciaux inconnus a créer.',
+          '**Validation** : L\'admin validé ou annulé l\'import après avoir vu le résumé complet.',
         ],
       },
       {
         subtitle: 'Croisement doublons',
-        text: 'Comparez un fichier clients avec vos prospects existants pour detecter les doublons (nom, telephone).',
+        text: 'Comparez un fichier clients avec vos prospects existants pour détecter les doublons (nom, téléphone).',
       },
       {
         subtitle: 'Export',
@@ -607,7 +604,7 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Utilisateurs',
-        text: 'Ajoutez, modifiez ou supprimez des comptes. Assignez les roles (Admin, Commercial, Prospection) et les zones actives.',
+        text: 'Ajoutez, modifiez ou supprimez des comptes. Assignez les rôles (Admin, Commercial, Prospection) et les zones actives.',
       },
       {
         subtitle: 'Statistiques globales',
@@ -615,11 +612,11 @@ const sections: GuideSection[] = [
       },
       {
         subtitle: 'Tags',
-        text: 'Creez et gerez les tags pour categoriser les prospects. Personnalisez les couleurs.',
+        text: 'Créez et gerez les tags pour categoriser les prospects. Personnalisez les couleurs.',
       },
       {
-        subtitle: 'Activite',
-        text: 'Suivez les connexions et actions de chaque utilisateur : derniere connexion, nombre d\'actions, historique.',
+        subtitle: 'Activité',
+        text: 'Suivez les connexions et actions de chaque utilisateur : dernière connexion, nombre d\'actions, historique.',
       },
     ],
   },
@@ -634,16 +631,16 @@ const sections: GuideSection[] = [
       {
         subtitle: 'Raccourcis',
         list: [
-          '**Click-to-call** : Cliquez sur un numero pour appeler.',
-          '**Click-to-email** : Cliquez sur un email pour ecrire.',
+          '**Click-to-call** : Cliquez sur un numéro pour appeler.',
+          '**Click-to-email** : Cliquez sur un email pour écrire.',
           '**Navigation GPS** : Cliquez sur une adresse pour Google Maps.',
           '**Recherche rapide** : Barre de recherche en haut de chaque page.',
         ],
       },
       {
-        subtitle: 'Bien remplir ses donnees',
+        subtitle: 'Bien remplir ses données',
         list: [
-          'Toujours enregistrer le **resultat d\'un appel** (meme "pas de reponse").',
+          'Toujours enregistrer le **résultat d\'un appel** (même "pas de réponse").',
           'Remplir les **comptes-rendus de RDV** pour alimenter le pipeline.',
           'Enregistrer ses **visites** pour le calcul automatique des prochaines.',
           'Utiliser les **tags** et **notes** pour mieux retrouver ses prospects.',
@@ -652,16 +649,16 @@ const sections: GuideSection[] = [
       {
         subtitle: 'Organiser sa semaine',
         list: [
-          'Configurer ses **tournees** (zones par jour).',
+          'Configurer ses **tournées** (zones par jour).',
           'Consulter le **planning semaine** chaque matin.',
-          'Traiter les **rappels en retard** en priorite.',
+          'Traiter les **rappels en retard** en priorité.',
           'Exporter ses **RDV** vers le calendrier.',
           'Consulter le **rapport journalier** chaque soir.',
         ],
       },
       {
         subtitle: 'Synchronisation',
-        text: 'L\'application se synchronise automatiquement toutes les **30 secondes**. Les modifications de vos collegues apparaissent rapidement.',
+        text: 'L\'application se synchronisé automatiquement toutes les **30 secondes**. Les modifications de vos collegues apparaissent rapidement.',
       },
     ],
   },
@@ -824,7 +821,7 @@ export default function GuidePage() {
           <div>
             <h3 className="font-semibold text-gray-900 text-sm">Besoin d'aide ?</h3>
             <p className="text-sm text-gray-600 mt-0.5">
-              Contactez votre administrateur. Ce guide est accessible a tout moment depuis le menu lateral.
+              Contactez votre administrateur. Ce guide est accessible à tout moment depuis le menu lateral.
             </p>
           </div>
         </div>

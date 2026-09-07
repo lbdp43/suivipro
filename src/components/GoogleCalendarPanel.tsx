@@ -67,7 +67,7 @@ export default function GoogleCalendarPanel() {
   };
 
   const handleDisconnect = async (commercialId: string) => {
-    if (!confirm('Deconnecter Google Agenda pour cet utilisateur ?')) return;
+    if (!confirm('Déconnecter Google Agenda pour cet utilisateur ?')) return;
     setLoading(true);
     try {
       await disconnectGoogleCalendar(commercialId);
@@ -100,10 +100,10 @@ export default function GoogleCalendarPanel() {
             <p className="text-sm font-medium text-gray-900">Google Agenda</p>
             <p className="text-[10px] text-gray-500">
               {!configured
-                ? 'Non configure'
+                ? 'Non configuré'
                 : connectedCount > 0
-                  ? `${connectedCount} agenda${connectedCount > 1 ? 's' : ''} connecte${connectedCount > 1 ? 's' : ''}`
-                  : 'Aucun agenda connecte'
+                  ? `${connectedCount} agenda${connectedCount > 1 ? 's' : ''} connecté${connectedCount > 1 ? 's' : ''}`
+                  : 'Aucun agenda connecté'
               }
             </p>
           </div>
@@ -111,7 +111,7 @@ export default function GoogleCalendarPanel() {
         <div className="flex items-center gap-2">
           {isCurrentUserConnected && (
             <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-              <CheckCircle className="w-3 h-3" /> Connecte
+              <CheckCircle className="w-3 h-3" /> Connecté
             </span>
           )}
           {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
@@ -160,7 +160,7 @@ export default function GoogleCalendarPanel() {
                   <div className="flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     <div>
-                      <p className="text-xs font-medium text-green-800">Votre agenda est connecte</p>
+                      <p className="text-xs font-medium text-green-800">Votre agenda est connecté</p>
                       {statusMap[currentUserId!]?.calendar_email && (
                         <p className="text-[10px] text-green-600">{statusMap[currentUserId!].calendar_email}</p>
                       )}
@@ -170,7 +170,7 @@ export default function GoogleCalendarPanel() {
                     onClick={() => handleDisconnect(currentUserId!)}
                     disabled={loading}
                     className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Deconnecter"
+                    title="Déconnecter"
                   >
                     <Unlink className="w-3.5 h-3.5" />
                   </button>
@@ -179,7 +179,7 @@ export default function GoogleCalendarPanel() {
 
               {/* Status of all team members */}
               <div>
-                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Equipe</p>
+                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Équipe</p>
                 <div className="space-y-1.5">
                   {state.commerciaux.map(c => {
                     const status = statusMap[c.id];
@@ -200,14 +200,14 @@ export default function GoogleCalendarPanel() {
                                   onClick={() => handleDisconnect(c.id)}
                                   disabled={loading}
                                   className="p-1 text-red-400 hover:text-red-600 transition-colors"
-                                  title="Deconnecter"
+                                  title="Déconnecter"
                                 >
                                   <Unlink className="w-3 h-3" />
                                 </button>
                               )}
                             </>
                           ) : (
-                            <span className="text-[10px] text-gray-400">Non connecte</span>
+                            <span className="text-[10px] text-gray-400">Non connecté</span>
                           )}
                         </div>
                       </div>

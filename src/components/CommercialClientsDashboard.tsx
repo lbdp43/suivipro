@@ -127,7 +127,7 @@ export default function CommercialClientsDashboard() {
       // Une reponse d'erreur ({ error }) n'a pas la forme attendue : la stocker comme
       // donnees faisait planter tout l'ecran sur data.today_clients.length.
       if (!res.ok || !result || !Array.isArray(result.late_clients)) {
-        setErreur(result?.error || `Le serveur a repondu ${res.status}`);
+        setErreur(result?.error || `Le serveur a répondu ${res.status}`);
         setData(null);
         return;
       }
@@ -178,7 +178,7 @@ export default function CommercialClientsDashboard() {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 flex items-center justify-between gap-3 flex-wrap">
         <span>Impossible de charger la gestion clients : {erreur}</span>
-        <button onClick={loadData} className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">Reessayer</button>
+        <button onClick={loadData} className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">Réessayer</button>
       </div>
     );
   }
@@ -229,7 +229,7 @@ export default function CommercialClientsDashboard() {
               <ListTodo className="w-4 h-4 text-blue-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500">Taches en cours</p>
+              <p className="text-xs text-gray-500">Tâches en cours</p>
               <p className="text-2xl font-bold text-blue-600">{data.pending_tasks.length}</p>
             </div>
           </div>
@@ -432,8 +432,8 @@ export default function CommercialClientsDashboard() {
                             apt.event_type === 'marche' ? 'bg-green-100 text-green-600' :
                             'bg-gray-100 text-gray-600'
                           }`}>
-                            {apt.event_type === 'rdv' ? 'RDV' : apt.event_type === 'reunion' ? 'Reunion' :
-                             apt.event_type === 'boutique' ? 'Boutique' : apt.event_type === 'depot' ? 'Depot' :
+                            {apt.event_type === 'rdv' ? 'RDV' : apt.event_type === 'reunion' ? 'Réunion' :
+                             apt.event_type === 'boutique' ? 'Boutique' : apt.event_type === 'depot' ? 'Dépôt' :
                              apt.event_type === 'marche' ? 'Marche' : apt.event_type}
                           </span>
                         </div>
@@ -468,7 +468,7 @@ export default function CommercialClientsDashboard() {
                   </div>
                 )}
                 {expandedDays.has(dayKey) && day.clients.length === 0 && (day.appointments?.length || 0) === 0 && (
-                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucun client ou RDV prevu</p>
+                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucun client ou RDV prévu</p>
                 )}
               </div>
             );
@@ -482,13 +482,13 @@ export default function CommercialClientsDashboard() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
             <ListTodo className="w-4 h-4" />
-            Taches en cours ({data.pending_tasks.length})
+            Tâches en cours ({data.pending_tasks.length})
           </h3>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {data.pending_tasks.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-gray-400 py-4 justify-center">
                 <CheckCircle2 className="w-4 h-4" />
-                Toutes les taches sont terminees
+                Toutes les tâches sont terminées
               </div>
             ) : data.pending_tasks.map(t => {
               const isOverdue = t.date_echeance && t.date_echeance < todayStr;
@@ -520,11 +520,11 @@ export default function CommercialClientsDashboard() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4" />
-            Activite recente
+            Activité recente
           </h3>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {data.recent_interactions.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">Aucune activite recente</p>
+              <p className="text-sm text-gray-400 text-center py-4">Aucune activité recente</p>
             ) : data.recent_interactions.map(i => (
               <div key={i.id} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
                 <span className="text-xs mt-0.5">

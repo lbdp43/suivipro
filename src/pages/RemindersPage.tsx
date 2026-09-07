@@ -82,9 +82,9 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     try {
       await apiPut(`/reminders/${id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel termine');
+      toast.success('Rappel terminé');
     } catch (err) {
-      toast.error(`Erreur mise a jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      toast.error(`Erreur mise à jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
   };
 
@@ -110,7 +110,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     try {
       await apiPut(`/reminders/${snoozeTarget.id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel reporte');
+      toast.success('Rappel reporté');
       setSnoozeTarget(null);
     } catch (err) {
       toast.error(`Erreur report rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
@@ -134,7 +134,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     try {
       await apiDelete(`/reminders/${id}`);
       dispatchLocal({ type: 'DELETE_REMINDER', payload: id });
-      toast.success('Rappel supprime');
+      toast.success('Rappel supprimé');
     } catch (err) {
       toast.error(`Erreur suppression rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
@@ -151,7 +151,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     try {
       await apiPut(`/reminders/${editTarget.id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel modifie');
+      toast.success('Rappel modifié');
       setEditTarget(null);
     } catch (err) {
       toast.error(`Erreur modification rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
@@ -163,7 +163,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     try {
       await apiPut(`/reminders/${rem.id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel reactive');
+      toast.success('Rappel réactivé');
     } catch (err) {
       toast.error(`Erreur reactivation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
@@ -270,7 +270,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
                   onClick={() => reactivateReminder(rem)}
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Reactiver
+                  <RotateCcw className="w-3.5 h-3.5" /> Réactiver
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
@@ -362,7 +362,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
       {/* Completed */}
       {completedReminders.length > 0 && (
         <div>
-          <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
+          <h3 className="font-semibold text-gray-500 mb-3">Terminés ({completedReminders.length})</h3>
           <div className="space-y-3">
             {completedReminders.slice(0, completedPage * COMPLETED_PER_PAGE).map(r => renderReminder(r))}
           </div>
@@ -549,7 +549,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Prospect *</label>
                 <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.prospect_id} onChange={e => setFormData(prev => ({ ...prev, prospect_id: e.target.value }))}>
-                  <option value="">Selectionnez</option>
+                  <option value="">Sélectionnez</option>
                   {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
                 </select>
               </div>

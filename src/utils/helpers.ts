@@ -240,10 +240,10 @@ export function downloadICSClientBatch(
     // Infos client
     descParts.push(`Type: ${client.type_client}`);
     if (client.siret) descParts.push(`SIRET: ${client.siret}`);
-    if (client.tournee) descParts.push(`Tournee: ${client.tournee}`);
+    if (client.tournee) descParts.push(`Tournée: ${client.tournee}`);
 
     // Historique visites
-    if (client.last_visit) descParts.push(`Derniere visite: ${client.last_visit}`);
+    if (client.last_visit) descParts.push(`Dernière visite: ${client.last_visit}`);
 
     // Notes
     if (client.notes) {
@@ -557,9 +557,9 @@ export function processEmailTemplate(
 
 export function exportProspectsCSV(prospects: Prospect[]): void {
   const headers = [
-    'Etablissement', 'Type', 'Contact', 'Telephone', 'Email',
+    'Etablissement', 'Type', 'Contact', 'Téléphone', 'Email',
     'Adresse', 'Ville', 'Code Postal', 'Departement', 'Secteur',
-    'Etape Pipeline', 'Score', 'Notes', 'Date Creation',
+    'Étape Pipeline', 'Score', 'Notes', 'Date Creation',
   ];
 
   const rows = prospects.map(p => [

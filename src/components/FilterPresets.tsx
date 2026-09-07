@@ -81,7 +81,7 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
         {showList && (
           <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] max-h-64 overflow-y-auto">
             {presets.length === 0 ? (
-              <p className="p-3 text-[11px] text-gray-400 text-center">Aucun preset enregistre</p>
+              <p className="p-3 text-[11px] text-gray-400 text-center">Aucun preset enregistré</p>
             ) : (
               presets.map(preset => (
                 <div key={preset.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 group">

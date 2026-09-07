@@ -142,7 +142,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
         } catch { /* secondary */ }
       }
 
-      toast.success('Interaction enregistree');
+      toast.success('Interaction enregistrée');
       setShowInteraction(false);
       setInteractionComment('');
       setInteractionDate('');
@@ -169,11 +169,11 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
     try {
       await apiPost('/tasks-client', payload);
       dispatchLocal({ type: 'ADD_TASK_CLIENT', payload });
-      toast.success('Tache ajoutee');
+      toast.success('Tâche ajoutee');
       setShowTaskForm(false);
       setTaskTitle('');
       setTaskDate('');
-    } catch { toast.error("Erreur lors de l'ajout de la tache"); }
+    } catch { toast.error("Erreur lors de l'ajout de la tâche"); }
   };
 
   const toggleTask = async (task: TaskClient) => {
@@ -186,7 +186,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
     try {
       await apiPut(`/tasks-client/${task.id}`, payload);
       dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload });
-    } catch { toast.error('Erreur lors de la mise a jour'); }
+    } catch { toast.error('Erreur lors de la mise à jour'); }
   };
 
   const deleteTask = async (taskId: string) => {
@@ -202,7 +202,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
       const updated: Client = { ...client, notes: noteText, date_modification: new Date().toISOString() };
       await apiPut(`/clients/${client.id}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-      toast.success('Notes enregistrees');
+      toast.success('Notes enregistrées');
       setEditingNotes(false);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setNoteSaving(false); }
@@ -220,7 +220,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
     try {
       await apiPut(`/clients/${client.id}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-      toast.success(updated.statut === 'ACTIF' ? 'Client reactive' : 'Client desactive');
+      toast.success(updated.statut === 'ACTIF' ? 'Client réactivé' : 'Client désactivé');
     } catch { toast.error('Erreur lors du changement de statut'); }
   };
 
@@ -229,7 +229,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
     try {
       await apiDelete(`/clients/${client.id}`);
       dispatchLocal({ type: 'DELETE_CLIENT', payload: client.id });
-      toast.success('Client supprime');
+      toast.success('Client supprimé');
       onClose();
     } catch { toast.error('Erreur lors de la suppression du client'); }
   };
@@ -248,7 +248,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
               <a href={`/clients?id=${client.id}`} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="Modifier">
                 <Edit2 className="w-4 h-4" />
               </a>
-              <button onClick={toggleStatus} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title={client.statut === 'ACTIF' ? 'Desactiver' : 'Reactiver'}>
+              <button onClick={toggleStatus} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title={client.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}>
                 {client.statut === 'ACTIF' ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
               <button onClick={deleteClient} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Supprimer">
@@ -318,13 +318,13 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
           <div className="mt-3 p-3 bg-gray-50 rounded-lg">
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <span className="text-gray-500">Derniere visite</span>
+                <span className="text-gray-500">Dernière visite</span>
                 <p className="font-medium text-gray-900">{client.last_visit ? formatDate(client.last_visit) : 'Jamais'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Prochaine visite</span>
                 <p className={`font-medium ${visitStatus === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
-                  {client.next_visit ? formatDate(client.next_visit) : 'Non planifiee'}
+                  {client.next_visit ? formatDate(client.next_visit) : 'Non planifiée'}
                 </p>
               </div>
               <div>
@@ -430,7 +430,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
           <div className="px-4 pt-2 pb-2">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                <ListTodo className="w-4 h-4" /> Taches ({tasks.filter(t => t.statut !== 'TERMINEE').length})
+                <ListTodo className="w-4 h-4" /> Tâches ({tasks.filter(t => t.statut !== 'TERMINEE').length})
               </h3>
               <button
                 onClick={() => setShowTaskForm(true)}
@@ -445,7 +445,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
                   type="text"
                   value={taskTitle}
                   onChange={e => setTaskTitle(e.target.value)}
-                  placeholder="Titre de la tache..."
+                  placeholder="Titre de la tâche..."
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs"
                   autoFocus
                 />
@@ -556,7 +556,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
                         cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
                         'bg-yellow-100 text-yellow-700'
                       }`}>
-                        {cmd.statut === 'livree' ? 'Livree' : cmd.statut === 'annulee' ? 'Annulee' : 'En cours'}
+                        {cmd.statut === 'livree' ? 'Livrée' : cmd.statut === 'annulee' ? 'Annulée' : 'En cours'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[10px] text-gray-500">
@@ -585,7 +585,7 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
           <div className="px-4 pt-2 pb-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Historique ({interactions.length})</h3>
             {interactions.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">Aucune interaction enregistree</p>
+              <p className="text-xs text-gray-400 text-center py-4">Aucune interaction enregistrée</p>
             ) : (
               <div className="space-y-2">
                 {interactions.slice(0, 15).map(interaction => {
