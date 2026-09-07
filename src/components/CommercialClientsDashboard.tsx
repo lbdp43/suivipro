@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toLocalDateStr } from '../utils/helpers';
 import { useApp } from '../store/AppContext';
+import { apiGet } from '../api/client';
 
 interface AppointmentInfo {
   id: string;
@@ -110,11 +111,6 @@ export default function CommercialClientsDashboard() {
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [showLateClients, setShowLateClients] = useState(false);
 
-  const token = localStorage.getItem('suivipro_token');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 
   const { perimetre } = useApp();
   const [erreur, setErreur] = useState<string | null>(null);
@@ -122,12 +118,10 @@ export default function CommercialClientsDashboard() {
     setLoading(true);
     setErreur(null);
     try {
-      const res = await fetch(`/api/commercial/dashboard${perimetre === 'equipe' ? '?perimetre=equipe' : ''}`, { headers });
-      const result = await res.json().catch(() => ({}));
-      // Une reponse d'erreur ({ error }) n'a pas la forme attendue : la stocker comme
-      // donnees faisait planter tout l'ecran sur data.today_clients.length.
-      if (!res.ok || !result || !Array.isArray(result.late_clients)) {
-        setErreur(result?.error || `Le serveur a répondu ${res.status}`);
+      const result = await apiGet(`/commercial/dashboard${perimetre === 'equipe' ? '?perimetre=equipe' : ''}`);
+      // Une réponse sans la forme attendue faisait planter tout l'écran sur data.today_clients.length.
+      if (!result || !Array.isArray(result.late_clients)) {
+        setErreur(result?.error || 'Réponse inattendue du serveur');
         setData(null);
         return;
       }

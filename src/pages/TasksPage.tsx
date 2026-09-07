@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   ListTodo, Plus, Edit2, Trash2, Save, X, RefreshCw, Filter,
@@ -7,8 +7,10 @@ import {
   PhoneOff, MessageCircle, MapPin, UserCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import type { TaskClient } from '../types';
 import { useToast } from '../components/Toast';
 import { toLocalDateStr, generateId } from '../utils/helpers';
+import { apiPost, apiPut, apiDelete } from '../api/client';
 
 interface Task {
   id: string;
@@ -74,15 +76,12 @@ const emptyForm = {
 // embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
 // idsVisibles : responsables à afficher (null = tout le monde) ; une tâche non affectée reste visible.
 export default function TasksPage({ embarque = false, idsVisibles = null }: { embarque?: boolean; idsVisibles?: Set<string> | null } = {}) {
-  const { state } = useApp();
+  const { state, stateComplet, dispatchLocal } = useApp();
   const toast = useToast();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [clients, setClients] = useState<ClientOption[]>([]);
   const [search, setSearch] = usePersistedState('tasks_search', '');
   const [filterStatut, setFilterStatut] = usePersistedState<string>('tasks_filterStatut', 'all');
   const [filterAssignee, setFilterAssignee] = usePersistedState<string>('tasks_filterAssignee', 'all');
@@ -100,32 +99,18 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
 
   const isAdmin = state.currentUser?.role === 'admin';
   const currentUserId = state.currentUser?.id;
-  const token = localStorage.getItem('suivipro_token');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  const loadTasks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [tasksRes, clientsRes] = await Promise.all([
-        fetch('/api/tasks-client', { headers }),
-        fetch('/api/clients', { headers }),
-      ]);
-      if (tasksRes.ok) setTasks(await tasksRes.json());
-      if (clientsRes.ok) {
-        const all = await clientsRes.json();
-        setClients(all.map((c: any) => ({ id: c.id, nom: c.nom, telephone: c.telephone || '', telephone_mobile: c.telephone_mobile || '', tournee: c.tournee || '', commercial_id: c.commercial_id || '' })).sort((a: ClientOption, b: ClientOption) => a.nom.localeCompare(b.nom)));
-      }
-    } catch {
-      toast.error('Erreur chargement');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadTasks(); }, [loadTasks]);
+  // Tâches et clients viennent de l'état commun (rechargé toutes les 30 s) : rien à re-télécharger.
+  const clients = useMemo<ClientOption[]>(() => stateComplet.clients
+    .map(c => ({ id: c.id, nom: c.nom, telephone: c.telephone || '', telephone_mobile: c.telephone_mobile || '', tournee: c.tournee || '', commercial_id: c.commercial_id || '' }))
+    .sort((a, b) => a.nom.localeCompare(b.nom)), [stateComplet.clients]);
+  const tasks = useMemo<Task[]>(() => {
+    const nomClient = new Map(stateComplet.clients.map(c => [c.id, c.nom]));
+    const parCommercial = new Map(state.commerciaux.map(c => [c.id, c]));
+    return stateComplet.tasksClient.map(t => {
+      const com = t.commercial_id ? parCommercial.get(t.commercial_id) : undefined;
+      return { ...(t as unknown as Task), client_nom: t.client_id ? nomClient.get(t.client_id) : undefined, commercial_prenom: com?.prenom, commercial_nom: com?.nom };
+    });
+  }, [stateComplet.tasksClient, stateComplet.clients, state.commerciaux]);
 
   const openNewTask = () => {
     setEditingTask(null);
@@ -152,23 +137,16 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
     if (!form.titre.trim()) { toast.warning('Le titre est requis'); return; }
     setSaving(true);
     try {
-      const url = editingTask ? `/api/tasks-client/${editingTask.id}` : '/api/tasks-client';
-      const method = editingTask ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers,
-        body: JSON.stringify({
-          ...form,
-          date_echeance: form.date_echeance || null,
-          commercial_id: form.commercial_id || currentUserId,
-          client_id: form.client_id || null,
-        }),
-      });
-      if (res.ok) {
-        toast.success(editingTask ? 'Tâche modifiée' : 'Tâche créée');
-        setShowForm(false);
-        loadTasks();
-      }
+      const corps = {
+        ...form,
+        date_echeance: form.date_echeance || null,
+        commercial_id: form.commercial_id || currentUserId,
+        client_id: form.client_id || null,
+      };
+      const enregistree = (editingTask ? await apiPut(`/tasks-client/${editingTask.id}`, corps) : await apiPost('/tasks-client', corps)) as TaskClient;
+      dispatchLocal({ type: editingTask ? 'UPDATE_TASK_CLIENT' : 'ADD_TASK_CLIENT', payload: enregistree });
+      toast.success(editingTask ? 'Tâche modifiée' : 'Tâche créée');
+      setShowForm(false);
     } catch {
       toast.error('Erreur sauvegarde');
     } finally {
@@ -179,16 +157,9 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   const toggleStatut = async (task: Task) => {
     const nextStatut = task.statut === 'A_FAIRE' ? 'EN_COURS' : task.statut === 'EN_COURS' ? 'TERMINEE' : 'A_FAIRE';
     try {
-      const res = await fetch(`/api/tasks-client/${task.id}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({ ...task, statut: nextStatut }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updated } : t));
-        if (nextStatut === 'TERMINEE') toast.success('Tâche terminée !');
-      }
+      const updated = await apiPut(`/tasks-client/${task.id}`, { ...task, statut: nextStatut }) as TaskClient;
+      dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload: updated });
+      if (nextStatut === 'TERMINEE') toast.success('Tâche terminée !');
     } catch {
       toast.error('Erreur');
     }
@@ -197,8 +168,8 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   const deleteTask = async (taskId: string) => {
     if (!confirm('Supprimer cette tâche ?')) return;
     try {
-      await fetch(`/api/tasks-client/${taskId}`, { method: 'DELETE', headers });
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      await apiDelete(`/tasks-client/${taskId}`);
+      dispatchLocal({ type: 'DELETE_TASK_CLIENT', payload: taskId });
       toast.success('Tâche supprimée');
     } catch {
       toast.error('Erreur suppression');
@@ -241,24 +212,16 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
         comment: (outcomePrefix + crComment.trim()).trim(),
         date_creation: new Date().toISOString(),
       };
-      const res = await fetch('/api/interactions', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) { toast.error('Erreur enregistrement'); return; }
+      await apiPost('/interactions', interaction);
+      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction as any });
 
       if (crCompleteTask && crTask.statut !== 'TERMINEE') {
-        await fetch(`/api/tasks-client/${crTask.id}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({ ...crTask, statut: 'TERMINEE' }),
-        });
+        const terminee = await apiPut(`/tasks-client/${crTask.id}`, { ...crTask, statut: 'TERMINEE' }) as TaskClient;
+        dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload: terminee });
       }
 
       toast.success(crType === 'APPEL' ? 'Appel enregistré' : 'Visite enregistrée');
       setCrTask(null);
-      loadTasks();
     } catch {
       toast.error('Erreur enregistrement');
     } finally {
@@ -330,14 +293,6 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
     return task.date_echeance < toLocalDateStr(new Date());
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-        <span className="ml-2 text-gray-500">Chargement...</span>
-      </div>
-    );
-  }
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 fade-in max-w-5xl mx-auto">
@@ -356,9 +311,6 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
         )}
         {embarque && <div />}
         <div className="flex items-center gap-2">
-          <button onClick={loadTasks} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
-            <RefreshCw className="w-4 h-4" />
-          </button>
           {isAdmin && (
             <button
               onClick={openNewTask}

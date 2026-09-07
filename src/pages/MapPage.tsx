@@ -8,7 +8,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
-import { apiPut } from '../api/client';
+import { apiPut, apiGet } from '../api/client';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS, CommercialZone, colorForCommercial } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -81,11 +81,7 @@ export default function MapPage() {
   const [zones, setZones] = useState<CommercialZone[]>([]);
 
   useEffect(() => {
-    const token = localStorage.getItem('suivipro_token');
-    const zHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) zHeaders['Authorization'] = `Bearer ${token}`;
-    fetch('/api/commercial-zones', { headers: zHeaders })
-      .then(r => r.ok ? r.json() : [])
+    apiGet<CommercialZone[]>('/commercial-zones')
       .then(setZones)
       .catch(err => console.error('Erreur chargement zones:', err));
   }, []);

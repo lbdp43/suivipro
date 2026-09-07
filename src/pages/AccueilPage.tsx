@@ -5,7 +5,7 @@ import {
   ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
-import { apiDelete } from '../api/client';
+import { apiDelete, apiGet } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
@@ -463,9 +463,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
   const today = dateLocale(now);
   const [logs, setLogs] = useState<LogSync[] | null>(null);
   useEffect(() => {
-    const token = localStorage.getItem('suivipro_token');
-    fetch('/api/easybeer/sync-logs', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then(r => (r.ok ? r.json() : []))
+    apiGet<LogSync[]>('/easybeer/sync-logs')
       .then(l => setLogs(Array.isArray(l) ? l : []))
       .catch(() => setLogs([]));
   }, []);

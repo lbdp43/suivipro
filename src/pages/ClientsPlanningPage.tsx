@@ -39,23 +39,15 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
   // Tournee configs
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; week_pattern: string }>>({});
 
-  // Load tournee configs
+  // Les tournées sont déjà dans l'état commun : rien à re-télécharger.
   useEffect(() => {
-    const token = localStorage.getItem('suivipro_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/tournee-config', { headers })
-      .then(r => r.ok ? r.json() : [])
-      .then((rows: any[]) => {
-        const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
-        rows.forEach(r => {
-          const cfg = typeof r.config === 'string' ? JSON.parse(r.config) : r.config;
-          map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
-        });
-        setTourneeConfigs(map);
-      })
-      .catch(err => console.error('Failed to load tournée configs:', err));
-  }, []);
+    const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
+    (state.tourneeConfigs || []).forEach((r: any) => {
+      const cfg = typeof r.config === 'string' ? JSON.parse(r.config || '{}') : (r.config || {});
+      map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
+    });
+    setTourneeConfigs(map);
+  }, [state.tourneeConfigs]);
 
   // CR modal state
   const [crModalRdv, setCrModalRdv] = useState<Appointment | null>(null);

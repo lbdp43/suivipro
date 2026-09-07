@@ -7,7 +7,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Client, CommercialZone, colorForCommercial } from '../types';
-import { apiPut } from '../api/client';
+import { apiPut, apiGet, apiPost } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
 import { semaineIso } from '../../shared/regles';
 import ZoneDrawModal from '../components/ZoneDrawModal';
@@ -284,28 +284,19 @@ export default function TourneesPage() {
     return Array.from(set).sort();
   }, [state.clients, configs, state.tourneeConfigs]);
 
-  const token = localStorage.getItem('suivipro_token');
   const isAdmin = state.currentUser?.role === 'admin';
   const currentUserId = state.currentUser?.id;
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/tournee-config', { headers });
-      if (res.ok) {
-        const rows = await res.json();
-        const parsed = rows.map((r: any) => ({
-          ...r,
-          config: typeof r.config === 'string' ? JSON.parse(r.config) : r.config,
-        }));
-        setConfigs(parsed);
-        setExpandedCommercials(new Set());
-      }
+      const rows = await apiGet<any[]>('/tournee-config');
+      const parsed = rows.map((r: any) => ({
+        ...r,
+        config: typeof r.config === 'string' ? JSON.parse(r.config) : r.config,
+      }));
+      setConfigs(parsed);
+      setExpandedCommercials(new Set());
     } catch (err) {
       console.error('Erreur chargement tournées:', err);
     } finally {
@@ -315,8 +306,7 @@ export default function TourneesPage() {
 
   const loadZones = useCallback(async () => {
     try {
-      const res = await fetch('/api/commercial-zones', { headers });
-      if (res.ok) setZones(await res.json());
+      setZones(await apiGet('/commercial-zones'));
     } catch (err) {
       console.error('Erreur chargement zones:', err);
     }
@@ -345,21 +335,15 @@ export default function TourneesPage() {
     if (!currentUserId) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/tournee-config/${currentUserId}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          config: { ...editConfig, ...(editProspectionZones.length > 0 ? { prospection: editProspectionZones } : {}) },
-          notes: editNotes,
-          tournee_info: editInfo,
-          week_pattern: editWeekPattern,
-        }),
+      await apiPost(`/tournee-config/${currentUserId}`, {
+        config: { ...editConfig, ...(editProspectionZones.length > 0 ? { prospection: editProspectionZones } : {}) },
+        notes: editNotes,
+        tournee_info: editInfo,
+        week_pattern: editWeekPattern,
       });
-      if (res.ok) {
-        toast.success('Tournées sauvegardees');
-        setEditing(false);
-        loadData();
-      }
+      toast.success('Tournées sauvegardées');
+      setEditing(false);
+      loadData();
     } catch {
       toast.error('Erreur sauvegarde');
     } finally {

@@ -5,6 +5,7 @@ import {
   Handshake, Plus, Trash2, Save, Settings, X, Tag, Package,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api/client';
 
 interface AnnuaireEntry {
   id: string;
@@ -101,11 +102,6 @@ export default function AnnuairePage() {
   const [editingEntityType, setEditingEntityType] = useState<string | null>(null);
   const [editEntityForm, setEditEntityForm] = useState({ label: '', icon: '', color: '', show_in_pipeline: false });
 
-  const token = localStorage.getItem('suivipro_token');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
   const isAdmin = state.currentUser?.role === 'admin';
 
   const loadEntries = useCallback(async () => {
@@ -118,8 +114,7 @@ export default function AnnuairePage() {
       if (filterActivity) params.set('activity', filterActivity);
       params.set('limit', '300');
 
-      const res = await fetch(`/api/annuaire?${params}`, { headers });
-      const data = await res.json();
+      const data = await apiGet(`/annuaire?${params}`);
       setEntries(data.entries || []);
       setStats(data.stats || {});
     } catch (err) {
@@ -130,9 +125,7 @@ export default function AnnuairePage() {
   const loadRules = useCallback(async () => {
     if (!isAdmin) return; // Only admins can access import rules
     try {
-      const res = await fetch('/api/import-rules', { headers });
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiGet('/import-rules');
       setRules(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading rules:', err);
@@ -141,9 +134,7 @@ export default function AnnuairePage() {
 
   const loadEntityTypes = useCallback(async () => {
     try {
-      const res = await fetch('/api/entity-types', { headers });
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiGet('/entity-types');
       setEntityTypesDB(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading entity types:', err);
@@ -153,17 +144,15 @@ export default function AnnuairePage() {
   const createEntityType = async () => {
     if (!newEntityType.id || !newEntityType.label) return;
     try {
-      const res = await fetch('/api/entity-types', { method: 'POST', headers, body: JSON.stringify(newEntityType) });
-      const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      await apiPost('/entity-types', newEntityType);
       setNewEntityType({ id: '', label: '', icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false });
       await loadEntityTypes();
-    } catch (err) { console.error('Error creating entity type:', err); }
+    } catch (err) { alert(err instanceof Error ? err.message : 'Erreur'); }
   };
 
   const updateEntityType = async (id: string) => {
     try {
-      await fetch(`/api/entity-types/${id}`, { method: 'PUT', headers, body: JSON.stringify(editEntityForm) });
+      await apiPut(`/entity-types/${id}`, editEntityForm);
       setEditingEntityType(null);
       await loadEntityTypes();
     } catch (err) { console.error('Error updating entity type:', err); }
@@ -172,11 +161,9 @@ export default function AnnuairePage() {
   const deleteEntityType = async (id: string) => {
     if (!confirm('Supprimer ce type d\'entite ?')) return;
     try {
-      const res = await fetch(`/api/entity-types/${id}`, { method: 'DELETE', headers });
-      const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      await apiDelete(`/entity-types/${id}`);
       await loadEntityTypes();
-    } catch (err) { console.error('Error deleting entity type:', err); }
+    } catch (err) { alert(err instanceof Error ? err.message : 'Erreur'); }
   };
 
   useEffect(() => {
@@ -191,13 +178,9 @@ export default function AnnuairePage() {
     setSavingRule(true);
     try {
       if (rule.id) {
-        await fetch(`/api/import-rules/${rule.id}`, {
-          method: 'PUT', headers, body: JSON.stringify(rule),
-        });
+        await apiPut(`/import-rules/${rule.id}`, rule);
       } else {
-        await fetch('/api/import-rules', {
-          method: 'POST', headers, body: JSON.stringify(rule),
-        });
+        await apiPost('/import-rules', rule);
       }
       await loadRules();
       setEditingRule(null);
@@ -211,7 +194,7 @@ export default function AnnuairePage() {
   const deleteRule = async (id: number) => {
     if (!confirm('Supprimer cette règle ?')) return;
     try {
-      await fetch(`/api/import-rules/${id}`, { method: 'DELETE', headers });
+      await apiDelete(`/import-rules/${id}`);
       await loadRules();
     } catch (err) {
       console.error('Error deleting rule:', err);

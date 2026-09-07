@@ -6,6 +6,7 @@ import {
   AlertTriangle, ShoppingCart, TrendingUp, Euro,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { apiGet } from '../api/client';
 import { APPOINTMENT_RESULT_LABELS, CLIENT_TYPE_LABELS, ClientType } from '../types';
 import {
   getCallsToday, getCallsThisWeek, getCallsThisMonth,
@@ -122,12 +123,8 @@ function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) =
   let annule = false;
   (async () => {
     try {
-      const token = localStorage.getItem('suivipro_token');
-      const res = await fetch(`/api/prospection/activite?debut=${debut}&fin=${fin}`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      if (!res.ok || annule) return;
-      const data = await res.json();
+      const data = await apiGet(`/prospection/activite?debut=${debut}&fin=${fin}`);
+      if (annule) return;
       const parId: Record<string, any> = {};
       for (const a of (data.activites || [])) parId[a.commercial_id] = a;
       poser(parId);

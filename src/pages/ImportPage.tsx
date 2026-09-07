@@ -854,17 +854,13 @@ export default function ImportPage() {
 
       // Send import request
       if (finalClients.length > 0 || newComPayload.length > 0) {
-        const token = localStorage.getItem('suivipro_token');
-        const importRes = await fetch('/api/clients/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ clients: finalClients, newCommerciaux: newComPayload }),
-        });
-        if (!importRes.ok) {
-          const err = await importRes.json().catch(() => ({}));
-          errors.push(`Erreur serveur: ${err.error || importRes.statusText}`);
-        } else {
-          const result = await importRes.json();
+        let result: any = null;
+        try {
+          result = await apiPost('/clients/import', { clients: finalClients, newCommerciaux: newComPayload });
+        } catch (err) {
+          errors.push(`Erreur serveur: ${err instanceof Error ? err.message : 'inconnue'}`);
+        }
+        if (result) {
 
           // Update local state - add new commercials
           if (result.commerciauxCreated) {

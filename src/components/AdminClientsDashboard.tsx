@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiGet } from '../api/client';
 import {
   Users, AlertTriangle, Calendar, CheckCircle2, Clock, ChevronDown, ChevronRight,
   ListTodo, MapPin, TrendingUp, RefreshCw, 
@@ -100,19 +101,13 @@ export default function AdminClientsDashboard() {
   const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set([1]));
   const [planningCommercial, setPlanningCommercial] = useState('');
 
-  const token = localStorage.getItem('suivipro_token');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [statsRes, activitiesRes, planningRes] = await Promise.all([
-        fetch('/api/admin/stats', { headers }).then(r => r.json()),
-        fetch(`/api/admin/activity-feed?${activityFilter ? `type=${activityFilter}` : ''}${activityCommercial ? `&commercial_id=${activityCommercial}` : ''}`, { headers }).then(r => r.json()),
-        fetch(`/api/admin/planning?${planningCommercial ? `commercial_id=${planningCommercial}` : ''}`, { headers }).then(r => r.json()),
+        apiGet('/admin/stats'),
+        apiGet(`/admin/activity-feed?${activityFilter ? `type=${activityFilter}` : ''}${activityCommercial ? `&commercial_id=${activityCommercial}` : ''}`),
+        apiGet(`/admin/planning?${planningCommercial ? `commercial_id=${planningCommercial}` : ''}`),
       ]);
       setStats(statsRes);
       setActivities(activitiesRes);

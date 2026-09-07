@@ -242,7 +242,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM sessions_appel WHERE jour >= $1', [hier]),
   ]);
 
-  res.json({
+  const etat = {
     prospects: prospects.rows.map(parseProspect),
     calls: calls.rows,
     appointments: appointments.rows,
@@ -258,7 +258,15 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     tourneeConfigs: tourneeConfigs.rows,
     commandes: commandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
     sessionsAppel: sessionsAppel.rows.map(parseSessionAppel),
-  });
+  };
+  // L'écran redemande l'état toutes les 30 s. Quand rien n'a changé, on répond « 304 »
+  // sans corps : l'empreinte du JSON sert d'ETag, l'écran garde ce qu'il a.
+  const corps = JSON.stringify(etat);
+  const empreinte = `"${crypto.createHash('md5').update(corps).digest('hex')}"`;
+  res.set('ETag', empreinte);
+  res.set('Cache-Control', 'no-cache');
+  if (req.headers['if-none-match'] === empreinte) return res.status(304).end();
+  res.type('application/json').send(corps);
 }));
 
 // ============================================
@@ -4822,120 +4830,67 @@ router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
   // Start of month
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
-  // All commerciaux
-  const commerciaux = await db.query('SELECT id, prenom, nom, role FROM commerciaux');
+  // Quatre requêtes groupées par commercial, au lieu d'une dizaine par commercial :
+  // clients, visites de la semaine et du mois par type, tâches. Le total de l'équipe est
+  // la somme des groupes (les fiches sans commercial comptent dans le total, pas par personne).
+  const [commerciaux, clientsAgg, visitesSemaine, visitesMois, tachesAgg] = await Promise.all([
+    db.query('SELECT id, prenom, nom, role FROM commerciaux'),
+    db.query(
+      `SELECT commercial_id, COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE statut = 'ACTIF') AS actifs,
+              COUNT(*) FILTER (WHERE statut = 'ACTIF' AND next_visit IS NOT NULL AND next_visit < $1) AS en_retard,
+              COUNT(*) FILTER (WHERE statut = 'ACTIF' AND next_visit = $1) AS aujourd_hui
+       FROM clients GROUP BY commercial_id`, [today]),
+    db.query('SELECT commercial_id, type, COUNT(*) AS count FROM interactions WHERE date >= $1 GROUP BY commercial_id, type', [weekStart]),
+    db.query('SELECT commercial_id, type, COUNT(*) AS count FROM interactions WHERE date >= $1 GROUP BY commercial_id, type', [monthStart]),
+    db.query(
+      `SELECT commercial_id,
+              COUNT(*) FILTER (WHERE statut <> 'TERMINEE') AS en_cours,
+              COUNT(*) FILTER (WHERE statut <> 'TERMINEE' AND date_echeance IS NOT NULL AND date_echeance < $1) AS en_retard,
+              COUNT(*) FILTER (WHERE statut = 'TERMINEE' AND completed_at >= $2) AS terminees_mois
+       FROM tasks_client GROUP BY commercial_id`, [today, monthStart]),
+  ]);
+  const n = (v) => parseInt(v || 0, 10) || 0;
+  const parType = (rows, commercialId) => {
+    const out = {};
+    for (const r of rows) if (commercialId === undefined || r.commercial_id === commercialId) out[r.type] = (out[r.type] || 0) + n(r.count);
+    return out;
+  };
+  const somme = (obj) => Object.values(obj).reduce((a, b) => a + b, 0);
+  const clientsPar = new Map(clientsAgg.rows.map(r => [r.commercial_id, r]));
+  const tachesPar = new Map(tachesAgg.rows.map(r => [r.commercial_id, r]));
 
-  // Per-commercial stats
-  const stats = [];
-  for (const com of commerciaux.rows) {
-    // Clients count
-    const clientsResult = await db.query(
-      "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE statut = 'ACTIF') as actifs FROM clients WHERE commercial_id = $1",
-      [com.id]
-    );
-    // Late clients (next_visit < today AND statut = ACTIF)
-    const lateResult = await db.query(
-      "SELECT COUNT(*) as count FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' AND next_visit IS NOT NULL AND next_visit < $2",
-      [com.id, today]
-    );
-    // Today's clients
-    const todayResult = await db.query(
-      "SELECT COUNT(*) as count FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' AND next_visit = $2",
-      [com.id, today]
-    );
-    // Visits this week (with type breakdown)
-    const visitsWeek = await db.query(
-      "SELECT COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2",
-      [com.id, weekStart]
-    );
-    const visitsWeekByType = await db.query(
-      "SELECT type, COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2 GROUP BY type",
-      [com.id, weekStart]
-    );
-    // Visits this month (with type breakdown)
-    const visitsMonth = await db.query(
-      "SELECT COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2",
-      [com.id, monthStart]
-    );
-    const visitsMonthByType = await db.query(
-      "SELECT type, COUNT(*) as count FROM interactions WHERE commercial_id = $1 AND date >= $2 GROUP BY type",
-      [com.id, monthStart]
-    );
-    // Tasks pending
-    const tasksPending = await db.query(
-      "SELECT COUNT(*) as count FROM tasks_client WHERE commercial_id = $1 AND statut != 'TERMINEE'",
-      [com.id]
-    );
-    // Tasks overdue
-    const tasksOverdue = await db.query(
-      "SELECT COUNT(*) as count FROM tasks_client WHERE commercial_id = $1 AND statut != 'TERMINEE' AND date_echeance IS NOT NULL AND date_echeance < $2",
-      [com.id, today]
-    );
-    // Tasks completed this month
-    const tasksCompleted = await db.query(
-      "SELECT COUNT(*) as count FROM tasks_client WHERE commercial_id = $1 AND statut = 'TERMINEE' AND completed_at >= $2",
-      [com.id, monthStart]
-    );
-
-    const weekByType = {};
-    visitsWeekByType.rows.forEach(r => { weekByType[r.type] = parseInt(r.count); });
-    const monthByType = {};
-    visitsMonthByType.rows.forEach(r => { monthByType[r.type] = parseInt(r.count); });
-
-    stats.push({
+  const stats = commerciaux.rows.map(com => {
+    const c = clientsPar.get(com.id) || {};
+    const t = tachesPar.get(com.id) || {};
+    const semaine = parType(visitesSemaine.rows, com.id);
+    const mois = parType(visitesMois.rows, com.id);
+    return {
       commercial: { id: com.id, prenom: com.prenom, nom: com.nom, role: com.role },
-      clients_total: parseInt(clientsResult.rows[0].total),
-      clients_actifs: parseInt(clientsResult.rows[0].actifs),
-      clients_en_retard: parseInt(lateResult.rows[0].count),
-      clients_aujourd_hui: parseInt(todayResult.rows[0].count),
-      visites_semaine: parseInt(visitsWeek.rows[0].count),
-      visites_mois: parseInt(visitsMonth.rows[0].count),
-      visites_semaine_par_type: weekByType,
-      visites_mois_par_type: monthByType,
-      taches_en_cours: parseInt(tasksPending.rows[0].count),
-      taches_en_retard: parseInt(tasksOverdue.rows[0].count),
-      taches_terminees_mois: parseInt(tasksCompleted.rows[0].count),
-    });
-  }
+      clients_total: n(c.total),
+      clients_actifs: n(c.actifs),
+      clients_en_retard: n(c.en_retard),
+      clients_aujourd_hui: n(c.aujourd_hui),
+      visites_semaine: somme(semaine),
+      visites_mois: somme(mois),
+      visites_semaine_par_type: semaine,
+      visites_mois_par_type: mois,
+      taches_en_cours: n(t.en_cours),
+      taches_en_retard: n(t.en_retard),
+      taches_terminees_mois: n(t.terminees_mois),
+    };
+  });
 
-  // Global stats
-  const totalLate = await db.query(
-    "SELECT COUNT(*) as count FROM clients WHERE statut = 'ACTIF' AND next_visit IS NOT NULL AND next_visit < $1",
-    [today]
-  );
-  const totalToday = await db.query(
-    "SELECT COUNT(*) as count FROM clients WHERE statut = 'ACTIF' AND next_visit = $1",
-    [today]
-  );
-  const totalVisitsWeek = await db.query(
-    "SELECT COUNT(*) as count FROM interactions WHERE date >= $1",
-    [weekStart]
-  );
-  const totalVisitsMonth = await db.query(
-    "SELECT COUNT(*) as count FROM interactions WHERE date >= $1",
-    [monthStart]
-  );
-  const totalVisitsWeekByType = await db.query(
-    "SELECT type, COUNT(*) as count FROM interactions WHERE date >= $1 GROUP BY type",
-    [weekStart]
-  );
-  const totalVisitsMonthByType = await db.query(
-    "SELECT type, COUNT(*) as count FROM interactions WHERE date >= $1 GROUP BY type",
-    [monthStart]
-  );
-  const globalWeekByType = {};
-  totalVisitsWeekByType.rows.forEach(r => { globalWeekByType[r.type] = parseInt(r.count); });
-  const globalMonthByType = {};
-  totalVisitsMonthByType.rows.forEach(r => { globalMonthByType[r.type] = parseInt(r.count); });
-
+  const globalSemaine = parType(visitesSemaine.rows);
+  const globalMois = parType(visitesMois.rows);
   res.json({
     global: {
-      clients_en_retard: parseInt(totalLate.rows[0].count),
-      clients_aujourd_hui: parseInt(totalToday.rows[0].count),
-      visites_semaine: parseInt(totalVisitsWeek.rows[0].count),
-      visites_mois: parseInt(totalVisitsMonth.rows[0].count),
-      visites_semaine_par_type: globalWeekByType,
-      visites_mois_par_type: globalMonthByType,
+      clients_en_retard: clientsAgg.rows.reduce((a, r) => a + n(r.en_retard), 0),
+      clients_aujourd_hui: clientsAgg.rows.reduce((a, r) => a + n(r.aujourd_hui), 0),
+      visites_semaine: somme(globalSemaine),
+      visites_mois: somme(globalMois),
+      visites_semaine_par_type: globalSemaine,
+      visites_mois_par_type: globalMois,
     },
     par_commercial: stats,
   });
