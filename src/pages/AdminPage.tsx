@@ -8,7 +8,8 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { Commercial, Objectifs, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
-import { objectifsDuRole, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
+import { objectifsDe, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
+import { libelleRole } from '../utils/roles';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -118,7 +119,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<Commercial | null>(null);
   const [userForm, setUserForm] = useState({
-    prenom: '', nom: '', email: '', telephone: '', role: 'commercial' as UserRole, password: '',
+    prenom: '', nom: '', email: '', telephone: '', role: 'commercial' as UserRole, password: '', prospection: false,
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -774,7 +775,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   // ============================================
 
   const openNewUser = () => {
-    setUserForm({ prenom: '', nom: '', email: '', telephone: '', role: 'commercial', password: '' });
+    setUserForm({ prenom: '', nom: '', email: '', telephone: '', role: 'commercial', password: '', prospection: false });
     setEditingUser(null);
     setShowUserForm(true);
     setShowPassword(false);
@@ -788,6 +789,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       telephone: user.telephone,
       role: user.role,
       password: '',
+      prospection: !!user.prospection,
     });
     setEditingUser(user);
     setShowUserForm(true);
@@ -806,6 +808,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           email: userForm.email,
           telephone: userForm.telephone,
           role: userForm.role,
+          prospection: userForm.role !== 'prospection' && userForm.prospection,
           password: userForm.password || editingUser.password,
         };
         await apiPut(`/commerciaux/${editingUser.id}`, updated);
@@ -819,8 +822,9 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           email: userForm.email,
           telephone: userForm.telephone,
           role: userForm.role,
+          prospection: userForm.role !== 'prospection' && userForm.prospection,
           password: userForm.password,
-          objectifs: objectifsParDefaut(userForm.role),
+          objectifs: objectifsParDefaut(userForm.role, userForm.role !== 'prospection' && userForm.prospection),
         };
         await apiPost('/commerciaux', newUser);
         dispatchLocal({ type: 'ADD_COMMERCIAL', payload: newUser });
@@ -859,7 +863,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     setEditingObjectives(commercial.id);
     // Les clés du rôle, pré-remplies avec l'existant ou la valeur proposée.
     const f: Objectifs = { ...commercial.objectifs };
-    for (const def of objectifsDuRole(commercial.role)) if (f[def.cle] === undefined) f[def.cle] = def.defaut;
+    for (const def of objectifsDe(commercial)) if (f[def.cle] === undefined) f[def.cle] = def.defaut;
     setObjectivesForm(f);
   };
 
@@ -1055,6 +1059,11 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                           <User className="w-3 h-3" /> Commercial
                         </span>
                       )}
+                      {user.role !== 'prospection' && user.prospection && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                          <Users className="w-3 h-3" /> + prospection
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-500 mt-2">{user.email}</p>
                     <p className="text-xs text-gray-500">{user.telephone}</p>
@@ -1168,6 +1177,12 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                         <Users className="w-4 h-4" /> Prospection
                       </button>
                     </div>
+                    {userForm.role !== 'prospection' && (
+                      <label className="mt-2 flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5" checked={userForm.prospection} onChange={e => setUserForm(prev => ({ ...prev, prospection: e.target.checked }))} />
+                        <span><b>Fait aussi de la prospection</b> — appels et rendez-vous pris pour les autres. Il aura les deux accueils, les deux jeux d'objectifs, et comptera dans les deux vues d'équipe.</span>
+                      </label>
+                    )}
                   </div>
 
                   <div>
@@ -1229,7 +1244,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           {state.commerciaux.map(commercial => {
             const isEditing = editingObjectives === commercial.id;
             const mesures = mesurerObjectifs(state, commercial);
-            const defs = objectifsDuRole(commercial.role);
+            const defs = objectifsDe(commercial);
             return (
               <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -1241,7 +1256,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{commercial.prenom} {commercial.nom}</h3>
-                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'} · objectifs du mois</p>
+                      <p className="text-xs text-gray-500">{libelleRole(commercial)} · objectifs du mois</p>
                     </div>
                   </div>
                   {isEditing ? (

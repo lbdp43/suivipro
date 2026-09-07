@@ -654,8 +654,8 @@ router.post('/commerciaux', authMiddleware, adminOnly, asyncHandler(async (req, 
   }
   const hashedPwd = bcrypt.hashSync(c.password, 10);
   await db.query(
-    'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {})]
+    'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs, prospection) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), !!c.prospection]
   );
   res.json({ ok: true });
 }));
@@ -669,9 +669,15 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
     if (targetId !== req.user.id) {
       return res.status(403).json({ error: 'Vous ne pouvez modifier que votre propre profil' });
     }
-    // Prevent role escalation
+    // Prevent role escalation (la casquette prospection se règle aussi par l'admin)
     delete c.role;
+    delete c.prospection;
   }
+  // Rôle : celui envoyé par un admin, sinon celui en place (un prospecteur qui change son
+  // mot de passe ne doit pas devenir « commercial » par défaut).
+  if (!c.role) c.role = (await db.query('SELECT role FROM commerciaux WHERE id = $1', [targetId])).rows[0]?.role || 'commercial';
+  // Hors admin, on garde la casquette en place ; un admin envoie la valeur voulue.
+  const prospection = isAdmin(req) ? !!c.prospection : (await db.query('SELECT prospection FROM commerciaux WHERE id = $1', [targetId])).rows[0]?.prospection === true;
 
   // Password policy
   if (c.password && c.password.length > 0) {
@@ -680,13 +686,13 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
     }
     const hashedPwd = bcrypt.hashSync(c.password, 10);
     await db.query(
-      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7 WHERE id=$8',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId]
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7, prospection=$9 WHERE id=$8',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId, prospection]
     );
   } else {
     await db.query(
-      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6 WHERE id=$7',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId]
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6, prospection=$8 WHERE id=$7',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId, prospection]
     );
   }
   res.json({ ok: true });

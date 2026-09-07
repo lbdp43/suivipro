@@ -391,6 +391,8 @@ export interface Commercial {
   email: string;
   telephone: string;
   role: UserRole;
+  /** Un commercial (ou admin) qui fait AUSSI de la prospection : deux accueils, deux jeux d'objectifs. */
+  prospection?: boolean;
   password: string;
   objectifs: Objectifs;
 }

@@ -69,8 +69,9 @@ export function groupesDuMenu(role: string | undefined): GroupeMenu[] {
   return [COMMERCIAL, PROSPECTION, COMMUN];
 }
 
-export function groupesOuvertsParDefaut(role: string | undefined): Set<string> {
+export function groupesOuvertsParDefaut(role: string | undefined, prospection = false): Set<string> {
   if (role === 'prospection') return new Set(['prospection', 'commun']);
   if (role === 'admin') return new Set(['commercial', 'prospection', 'commun', 'admin']);
-  return new Set(['commercial', 'commun']);
+  // Un commercial qui fait aussi de la prospection a ses deux groupes ouverts.
+  return new Set(prospection ? ['commercial', 'prospection', 'commun'] : ['commercial', 'commun']);
 }

@@ -5,6 +5,7 @@ import { useApp } from '../store/AppContext';
 import { usePersistedState } from '../hooks/usePersistedState';
 import RemindersPage from './RemindersPage';
 import TasksPage from './TasksPage';
+import { faitDeLaProspection, estCommercial } from '../utils/roles';
 
 // Rappels (prospection) et tâches (clients) sont deux listes pour la même journée : une
 // seule page, deux onglets, et une même « vue » qui vaut pour les deux :
@@ -32,8 +33,8 @@ export default function RappelsTachesPage() {
   const idsVisibles = useMemo<Set<string> | null>(() => {
     const moi = state.currentUser?.id || '';
     if (vue === 'moi') return new Set([moi]);
-    if (vue === 'prospection') return new Set(state.commerciaux.filter(c => c.role === 'prospection').map(c => c.id));
-    if (vue === 'commerciaux') return new Set(state.commerciaux.filter(c => c.role !== 'prospection').map(c => c.id));
+    if (vue === 'prospection') return new Set(state.commerciaux.filter(faitDeLaProspection).map(c => c.id));
+    if (vue === 'commerciaux') return new Set(state.commerciaux.filter(estCommercial).map(c => c.id));
     return null;
   }, [vue, state.currentUser, state.commerciaux]);
 

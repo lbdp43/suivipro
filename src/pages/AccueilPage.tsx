@@ -12,6 +12,7 @@ import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectif
 import BlocErreur from '../components/BlocErreur';
 import BilanDuSoir from '../components/BilanDuSoir';
 import { useCallModal } from '../components/CallModal';
+import { faitDeLaProspection, estCommercial, libelleRole } from '../utils/roles';
 
 // ============================================================================
 // Accueil « Ma journée » : une porte d'entrée par rôle. Pas d'itinéraire, pas de graphiques :
@@ -66,7 +67,7 @@ function Jauges({ personne }: { personne: Commercial }) {
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Target className="w-4 h-4 text-brewery-600" /> Mes objectifs du mois</h3>
         <span className="text-[11px] text-gray-400">{MOIS[new Date().getMonth()]}</span>
       </div>
-      <div className={`grid grid-cols-1 ${personne.role === 'prospection' ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-4'} gap-4`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${mesures.length + (personne.role !== 'prospection' ? 1 : 0) > 4 ? 'lg:grid-cols-3 xl:grid-cols-6' : mesures.length + (personne.role !== 'prospection' ? 1 : 0) > 2 ? 'lg:grid-cols-4' : ''} gap-4`}>
         {mesures.map(m => {
           const c = COULEUR_ETAT[m.etat];
           return (
@@ -179,7 +180,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
-      <Bonjour personne={moi} sousTitre={perimetre === 'equipe' ? 'vue de toute l\'équipe' : 'mes clients'} />
+      <Bonjour personne={moi} sousTitre={(perimetre === 'equipe' ? 'vue de toute l\'équipe' : 'mes clients') + (faitDeLaProspection(moi) ? ' · prospection' : '')} />
 
       <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
 
@@ -289,6 +290,16 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
           </div>
         </div>
       </BlocErreur>
+
+      {faitDeLaProspection(moi) && (
+        <>
+          <div className="pt-2 flex items-center gap-2">
+            <Phone className="w-4 h-4 text-emerald-600" />
+            <h2 className="font-semibold text-gray-900">Ma prospection</h2>
+          </div>
+          <BlocsProspection moi={moi} />
+        </>
+      )}
     </div>
   );
 }
@@ -296,7 +307,10 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
 // ============================================================================
 // PROSPECTION
 // ============================================================================
-function AccueilProspection({ moi }: { moi: Commercial }) {
+// Les blocs de prospection : rappels, file d'appels, appels du jour, RDV pris, bilan du soir.
+// Utilisés par l'accueil « prospection » et, en plus de ses blocs, par un commercial qui fait
+// aussi de la prospection.
+function BlocsProspection({ moi }: { moi: Commercial }) {
   const { state, getProspect, getCommercial } = useApp();
   const { startSession } = useCallModal();
   const now = new Date();
@@ -320,11 +334,7 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
     .slice(0, 8), [state.prospects, moi.id]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 fade-in">
-      <Bonjour personne={moi} sousTitre="prospection" />
-
-      <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
-
+    <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Rappels">
           <Carte titre="À rappeler aujourd'hui" icone={Bell} lien="/rappels" compte={rappels.length} vide="Aucun rappel en attente." teinte={rappels.length ? 'amber' : 'gray'}
@@ -383,6 +393,16 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
       </div>
 
       <BlocErreur titre="Bilan du soir"><BilanDuSoir moi={moi} /></BlocErreur>
+    </>
+  );
+}
+
+function AccueilProspection({ moi }: { moi: Commercial }) {
+  return (
+    <div className="p-4 sm:p-6 space-y-4 fade-in">
+      <Bonjour personne={moi} sousTitre="prospection" />
+      <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
+      <BlocsProspection moi={moi} />
     </div>
   );
 }
@@ -423,7 +443,8 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
   }, [state, today]);
 
   const equipe = useMemo(() => state.commerciaux.filter(c => c.role !== 'admin' || c.id === moi.id).map(p => {
-    const prosp = p.role === 'prospection';
+    const prosp = faitDeLaProspection(p);
+    const comm = estCommercial(p);
     const appels = state.calls.filter(c => c.commercial_id === p.id && jourDe(c.date) === today).length;
     const rdvPris = state.appointments.filter(a => a.prospecteur_id === p.id && jourDe(a.created_at) === today).length;
     const rdvJour = state.appointments.filter(a => a.commercial_id === p.id && jourDe(a.date) === today && !rdvAnnule(a)).length;
@@ -433,7 +454,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
     const rappels = state.reminders.filter(r => r.commercial_id === p.id && r.statut === 'actif' && r.date <= today).length;
     const objectifs = mesurerObjectifs(state, p, now);
     const derive = objectifs.filter(o => o.etat === 'en_retard').length;
-    return { p, prosp, appels, rdvPris, rdvJour, visites, retards, sansCr, rappels, objectifs, derive };
+    return { p, prosp, comm, appels, rdvPris, rdvJour, visites, retards, sansCr, rappels, objectifs, derive };
   }), [state, moi.id, today]);
 
   const cartes: { label: string; n: number; lien: string; icone: typeof Calendar; grave?: boolean }[] = [
@@ -494,23 +515,26 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
               </tr>
             </thead>
             <tbody>
-              {equipe.map(({ p, prosp, appels, rdvPris, rdvJour, visites, retards, sansCr, rappels, objectifs, derive }) => (
+              {equipe.map(({ p, prosp, comm, appels, rdvPris, rdvJour, visites, retards, sansCr, rappels, objectifs, derive }) => (
                 <tr key={p.id} className="border-b border-gray-50 last:border-0 align-top">
                   <td className="py-2 pr-2">
                     <p className="font-semibold text-gray-800">{p.prenom} {p.nom}</p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${prosp ? 'bg-emerald-100 text-emerald-700' : p.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{prosp ? 'Prospection' : p.role === 'admin' ? 'Admin' : 'Commercial'}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : p.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{libelleRole(p)}</span>
                   </td>
                   <td className="py-2 px-2 text-center text-gray-700 whitespace-nowrap">
-                    {prosp ? <><b className="tabular-nums">{appels}</b> appels · <b className="tabular-nums">{rdvPris}</b> RDV pris</>
-                      : <><b className="tabular-nums">{rdvJour}</b> RDV · <b className="tabular-nums">{visites}</b> visites</>}
+                    {comm && <span><b className="tabular-nums">{rdvJour}</b> RDV · <b className="tabular-nums">{visites}</b> visites</span>}
+                    {comm && prosp && <br />}
+                    {prosp && <span><b className="tabular-nums">{appels}</b> appels · <b className="tabular-nums">{rdvPris}</b> RDV pris</span>}
                   </td>
                   <td className="py-2 px-2 text-center whitespace-nowrap">
-                    {prosp
-                      ? (rappels ? <span className="text-amber-700"><b className="tabular-nums">{rappels}</b> rappels</span> : <span className="text-green-700">—</span>)
-                      : <span className="space-x-2">
-                          <span className={retards ? 'text-red-700' : 'text-gray-400'}><b className="tabular-nums">{retards}</b> retards</span>
-                          <span className={sansCr ? 'text-amber-700' : 'text-gray-400'}><b className="tabular-nums">{sansCr}</b> sans CR</span>
-                        </span>}
+                    {comm && (
+                      <span className="space-x-2">
+                        <span className={retards ? 'text-red-700' : 'text-gray-400'}><b className="tabular-nums">{retards}</b> retards</span>
+                        <span className={sansCr ? 'text-amber-700' : 'text-gray-400'}><b className="tabular-nums">{sansCr}</b> sans CR</span>
+                      </span>
+                    )}
+                    {comm && prosp && <br />}
+                    {prosp && (rappels ? <span className="text-amber-700"><b className="tabular-nums">{rappels}</b> rappels</span> : <span className="text-gray-400">0 rappels</span>)}
                   </td>
                   <td className="py-2 px-2">
                     <div className="flex flex-wrap gap-1.5">
