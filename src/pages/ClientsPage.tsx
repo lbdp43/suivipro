@@ -485,30 +485,29 @@ export default function ClientsPage() {
   // Fusion de deux fiches en double : tout l'historique du doublon part sur la fiche
   // gardee (commandes, visites, taches, rendez-vous, lien EasyBeer), ses champs vides la
   // completent, puis la fiche en trop est supprimee. Cote serveur c'est une transaction.
-  const fusionnerDeuxClients = async (garderId: string, supprimerId: string) => {
+  // Fusionner toutes les fiches sélectionnées dans celle qu'on garde (deux ou plus).
+  const fusionnerDansClient = async (garderId: string) => {
     const garder = state.clients.find(c => c.id === garderId);
-    const supprimer = state.clients.find(c => c.id === supprimerId);
-    if (!garder || !supprimer) return;
-    const nbCommandes = getCommandesForClient(supprimerId).length;
-    const nbInteractions = getInteractionsForClient(supprimerId).length;
-    const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
-      + `${nbCommandes} commande(s) et ${nbInteractions} visite(s)/appel(s) de « ${supprimer.nom} » `
-      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimée.\n\nCette action est definitive.`;
+    if (!garder) return;
+    const autres = Array.from(selectedIds).filter(id => id !== garderId).map(id => state.clients.find(c => c.id === id)).filter((c): c is Client => !!c);
+    if (autres.length === 0) return;
+    const nbCommandes = autres.reduce((n, c) => n + getCommandesForClient(c.id).length, 0);
+    const nbInteractions = autres.reduce((n, c) => n + getInteractionsForClient(c.id).length, 0);
+    const message = `Fusionner ${autres.length > 1 ? `ces ${autres.length} fiches` : `« ${autres[0].nom} »`} dans « ${garder.nom} » ?\n\n`
+      + autres.map(c => `• ${c.nom}`).join('\n')
+      + `\n\n${nbCommandes} commande(s) et ${nbInteractions} visite(s)/appel(s) seront transférés sur « ${garder.nom} », puis les fiches en double seront supprimées.\n\nCette action est définitive.`;
     if (!confirm(message)) return;
     setFusionEnCours(true);
-    try {
-      const res = await apiPost('/clients/fusionner', { garder_id: garderId, supprimer_id: supprimerId }) as { ok?: boolean; message?: string };
-      if (res && res.ok) {
-        dispatchLocal({ type: 'DELETE_CLIENT', payload: supprimerId });
-        toast.success(res.message || 'Clients fusionnes');
-        setFusionOuverte(false);
-        exitSelectionMode();
-      } else {
-        toast.error('Échec de la fusion');
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Échec de la fusion');
+    let ok = 0, echecs = 0;
+    for (const c of autres) {
+      try {
+        const res = await apiPost('/clients/fusionner', { garder_id: garderId, supprimer_id: c.id }) as { ok?: boolean; message?: string };
+        if (res && res.ok) { ok++; dispatchLocal({ type: 'DELETE_CLIENT', payload: c.id }); } else echecs++;
+      } catch { echecs++; }
     }
+    if (echecs) toast.error(`${ok} fusion(s) faite(s), ${echecs} échec(s)`); else toast.success(`${ok} fiche(s) fusionnée(s) dans « ${garder.nom} »`);
+    setFusionOuverte(false);
+    exitSelectionMode();
     setFusionEnCours(false);
   };
 
@@ -1433,8 +1432,8 @@ export default function ClientsPage() {
               {isAdmin && (
                 <button
                   onClick={() => setFusionOuverte(v => !v)}
-                  disabled={selectedIds.size !== 2}
-                  title={selectedIds.size === 2 ? 'Fusionner les deux fiches sélectionnées' : 'Sélectionnez exactement 2 clients pour les fusionner'}
+                  disabled={selectedIds.size < 2}
+                  title={selectedIds.size >= 2 ? `Fusionner les ${selectedIds.size} fiches sélectionnées en une seule` : 'Sélectionnez au moins 2 clients pour les fusionner'}
                   className="px-3 py-1 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg disabled:opacity-40"
                 >
                   <Link2 className="w-3 h-3 inline mr-1" />Fusionner
@@ -1451,16 +1450,15 @@ export default function ClientsPage() {
         )}
 
         {/* Choix de la fiche a conserver */}
-        {selectionMode && fusionOuverte && selectedIds.size === 2 && (
+        {selectionMode && fusionOuverte && selectedIds.size >= 2 && (
           <div className="px-4 py-3 bg-brewery-50 border-b border-brewery-200">
             <p className="text-xs font-semibold text-brewery-800 mb-2">
-              Quelle fiche garder ? L'autre y sera fusionnee puis supprimée.
+              Quelle fiche garder ? {selectedIds.size === 2 ? 'L\'autre y sera fusionnée' : `Les ${selectedIds.size - 1} autres y seront fusionnées`} puis supprimée{selectedIds.size > 2 ? 's' : ''}.
             </p>
-            <div className="grid md:grid-cols-2 gap-2">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
               {Array.from(selectedIds).map(id => {
                 const c = state.clients.find(x => x.id === id);
-                const autre = Array.from(selectedIds).find(x => x !== id);
-                if (!c || !autre) return null;
+                if (!c) return null;
                 const nbCmd = getCommandesForClient(id).length;
                 const nbInter = getInteractionsForClient(id).length;
                 const commercial = getCommercial(c.commercial_id || '');
@@ -1475,7 +1473,7 @@ export default function ClientsPage() {
                     <button
                       className="mt-2 w-full px-2 py-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 disabled:opacity-50"
                       disabled={fusionEnCours}
-                      onClick={() => fusionnerDeuxClients(id, autre)}
+                      onClick={() => fusionnerDansClient(id)}
                     >
                       {fusionEnCours ? 'Fusion…' : 'Garder cette fiche'}
                     </button>

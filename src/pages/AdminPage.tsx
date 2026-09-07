@@ -138,10 +138,42 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     try {
       const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
       const res = await fetch('/api/prospects/doublons-clients', { headers });
-      if (res.ok) setDoublonsPC(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setDoublonsPC(data);
+        setPcCoches(new Set((data.paires || []).filter((p: any) => p.score === 100).map((p: any) => p.prospect.id)));
+      }
       else toast.error('Erreur lors de la détection des doublons prospects/clients');
     } catch { toast.error('Erreur réseau'); }
     setDoublonsPCLoading(false);
+  };
+  const [pcCoches, setPcCoches] = useState<Set<string>>(new Set());
+  const [pcLotEnCours, setPcLotEnCours] = useState(false);
+  const traiterPcCoches = async (action: 'gagne' | 'supprimer') => {
+    if (!doublonsPC) return;
+    const choisis = doublonsPC.paires.filter((p: any) => pcCoches.has(p.prospect.id));
+    if (choisis.length === 0) return;
+    const verbe = action === 'gagne' ? 'passé(s) en « Gagné »' : 'supprimé(s)';
+    if (!confirm(`${action === 'gagne' ? 'Passer en « Gagné »' : 'Supprimer'} ${choisis.length} prospect(s) ?\n\n${choisis.slice(0, 15).map((p: any) => `• ${p.prospect.nom} (client : ${p.client.nom})`).join('\n')}${choisis.length > 15 ? `\n… et ${choisis.length - 15} autre(s)` : ''}\n\n${action === 'gagne' ? 'Ils sortent de la prospection ; les clients restent les fiches de référence.' : 'Leurs appels et rendez-vous seront supprimés avec eux.'}`)) return;
+    setPcLotEnCours(true);
+    let ok = 0, echecs = 0;
+    const faits = new Set<string>();
+    for (const p of choisis) {
+      try {
+        if (action === 'gagne') {
+          await apiPatch(`/prospects/${p.prospect.id}/stage`, { etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: p.prospect.id, stage: 'client_gagne' } });
+        } else {
+          await apiDelete(`/prospects/${p.prospect.id}`);
+          dispatchLocal({ type: 'DELETE_PROSPECT', payload: p.prospect.id });
+        }
+        ok++; faits.add(p.prospect.id);
+      } catch { echecs++; }
+    }
+    setDoublonsPC(prev => prev ? { ...prev, paires: prev.paires.filter((x: any) => !faits.has(x.prospect.id)), total_paires: prev.paires.filter((x: any) => !faits.has(x.prospect.id)).length } : prev);
+    setPcCoches(new Set());
+    setPcLotEnCours(false);
+    toast[echecs ? 'warning' : 'success'](`${ok} prospect(s) ${verbe}${echecs ? ` · ${echecs} échec(s)` : ''}`);
   };
   const retirerPaireDoublonPC = (prospectId: string) => setDoublonsPC(prev => prev ? { ...prev, paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId), total_paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId).length } : prev);
   const prospectGagne = async (paire: any) => {
@@ -504,10 +536,52 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     try {
       const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
       const res = await fetch('/api/clients/doublons', { headers });
-      if (res.ok) setDoublons(await res.json());
-      else toast.error('Erreur lors de la détection des doublons');
+      if (res.ok) {
+        const data = await res.json();
+        setDoublons(data);
+        // Les paires certaines (identifiant commun) sont cochées d'avance.
+        setPairesCochees(new Set((data.paires || []).filter((p: any) => p.score === 100).map((p: any) => `${p.clients[0].id}|${p.clients[1].id}`)));
+      } else toast.error('Erreur lors de la détection des doublons');
     } catch { toast.error('Erreur reseau'); }
     setDoublonsLoading(false);
+  };
+
+  // Sélection multiple des paires de doublons : clé = les deux identifiants.
+  const clePaire = (p: any) => `${p.clients[0].id}|${p.clients[1].id}`;
+  const [pairesCochees, setPairesCochees] = useState<Set<string>>(new Set());
+  const [fusionLotEnCours, setFusionLotEnCours] = useState(false);
+  const fusionnerPairesCochees = async () => {
+    if (!doublons) return;
+    const choisies = doublons.paires.filter((p: any) => pairesCochees.has(clePaire(p)));
+    if (choisies.length === 0) return;
+    const message = `Fusionner ${choisies.length} paire(s) ?\n\nPour chaque paire, la fiche suggérée (la plus riche en historique) est gardée, l'autre y est fusionnée puis supprimée :\n\n`
+      + choisies.slice(0, 15).map((p: any) => { const g = p.clients.find((c: any) => c.id === p.suggestion_garder); const s = p.clients.find((c: any) => c.id !== p.suggestion_garder); return `• « ${s?.nom} » → « ${g?.nom} »`; }).join('\n')
+      + (choisies.length > 15 ? `\n… et ${choisies.length - 15} autre(s)` : '')
+      + '\n\nCette action est définitive.';
+    if (!confirm(message)) return;
+    setFusionLotEnCours(true);
+    const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}`, 'Content-Type': 'application/json' };
+    const supprimees = new Set<string>();
+    let ok = 0, echecs = 0, ignorees = 0;
+    for (const p of choisies) {
+      const garder = p.clients.find((c: any) => c.id === p.suggestion_garder) || p.clients[0];
+      const supprimer = p.clients.find((c: any) => c.id !== garder.id);
+      // Une fiche déjà supprimée dans ce lot (elle était dans deux paires) : on passe.
+      if (!supprimer || supprimees.has(garder.id) || supprimees.has(supprimer.id)) { ignorees++; continue; }
+      try {
+        const res = await fetch('/api/clients/fusionner', { method: 'POST', headers, body: JSON.stringify({ garder_id: garder.id, supprimer_id: supprimer.id }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) { ok++; supprimees.add(supprimer.id); } else echecs++;
+      } catch { echecs++; }
+    }
+    setDoublons(prev => {
+      if (!prev) return prev;
+      const paires = prev.paires.filter((p: any) => !p.clients.some((c: any) => supprimees.has(c.id)));
+      return { ...prev, paires, total_paires: paires.length, certains: paires.filter((p: any) => p.score === 100).length, total_clients: prev.total_clients - supprimees.size };
+    });
+    setPairesCochees(new Set());
+    setFusionLotEnCours(false);
+    toast[echecs ? 'warning' : 'success'](`${ok} fusion(s) faite(s)${echecs ? ` · ${echecs} échec(s)` : ''}${ignorees ? ` · ${ignorees} ignorée(s) (fiche déjà fusionnée)` : ''}`);
   };
 
   const fusionnerClients = async (garder: any, supprimer: any) => {
@@ -526,10 +600,11 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       if (res.ok && data.ok) {
         toast.success(data.message || 'Clients fusionnes');
         // On retire de la liste toutes les paires qui referencent la fiche supprimee.
-        setDoublons(prev => prev ? {
-          ...prev,
-          paires: prev.paires.filter((p: any) => !p.clients.some((c: any) => c.id === supprimer.id)),
-        } : prev);
+        setDoublons(prev => {
+          if (!prev) return prev;
+          const paires = prev.paires.filter((p: any) => !p.clients.some((c: any) => c.id === supprimer.id));
+          return { ...prev, paires, total_paires: paires.length, certains: paires.filter((p: any) => p.score === 100).length, total_clients: prev.total_clients - 1 };
+        });
         // La liste clients de l'app se rafraichit toute seule (polling 30 s).
       } else {
         toast.error(data.error || data.message || 'Échec de la fusion');
@@ -1763,11 +1838,26 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   </p>
                 ) : (
                   <div className="space-y-3 max-h-[32rem] overflow-y-auto">
-                    <p className="text-xs text-gray-500">{visibles.length} paire(s) affichee(s)</p>
+                    <div className="flex items-center gap-2 flex-wrap sticky top-0 bg-white py-1">
+                      <p className="text-xs text-gray-500">{visibles.length} paire(s) affichée(s) · {visibles.filter((p: any) => pairesCochees.has(clePaire(p))).length} cochée(s)</p>
+                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPairesCochees(new Set(visibles.filter((p: any) => p.score === 100).map(clePaire)))}>cocher les certaines</button>
+                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPairesCochees(new Set(visibles.map(clePaire)))}>tout cocher</button>
+                      <button className="text-[11px] text-gray-500 hover:underline" onClick={() => setPairesCochees(new Set())}>tout décocher</button>
+                      <button
+                        className="ml-auto px-3 py-1.5 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg disabled:opacity-50"
+                        disabled={fusionLotEnCours || visibles.filter((p: any) => pairesCochees.has(clePaire(p))).length === 0}
+                        onClick={fusionnerPairesCochees}
+                      >
+                        {fusionLotEnCours ? 'Fusion en cours…' : `Fusionner les paires cochées (${visibles.filter((p: any) => pairesCochees.has(clePaire(p))).length}), fiche suggérée gardée`}
+                      </button>
+                    </div>
                     {visibles.map((paire: any, i: number) => (
                       <div key={`${paire.clients[0].id}-${paire.clients[1].id}-${i}`}
                         className={`p-3 rounded-lg border ${paire.score === 100 ? 'border-red-200 bg-red-50' : paire.score >= 80 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
-                        <p className="text-xs font-medium text-gray-600 mb-2">{paire.motif}</p>
+                        <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-2 cursor-pointer">
+                          <input type="checkbox" checked={pairesCochees.has(clePaire(paire))} onChange={e => setPairesCochees(prev => { const n = new Set(prev); if (e.target.checked) n.add(clePaire(paire)); else n.delete(clePaire(paire)); return n; })} />
+                          {paire.motif}
+                        </label>
                         <div className="grid md:grid-cols-2 gap-2">
                           {paire.clients.map((c: any) => {
                             const autre = paire.clients.find((x: any) => x.id !== c.id);
@@ -1837,10 +1927,23 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                   <p className="text-sm text-gray-500">Aucun prospect ne ressemble à un client ✓</p>
                 ) : (
                   <div className="space-y-2 max-h-[32rem] overflow-y-auto">
+                    <div className="flex items-center gap-2 flex-wrap sticky top-0 bg-white py-1">
+                      <p className="text-xs text-gray-500">{pcCoches.size} coché(s)</p>
+                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPcCoches(new Set(doublonsPC.paires.filter((p: any) => p.score === 100).map((p: any) => p.prospect.id)))}>cocher les certains</button>
+                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPcCoches(new Set(doublonsPC.paires.map((p: any) => p.prospect.id)))}>tout cocher</button>
+                      <button className="text-[11px] text-gray-500 hover:underline" onClick={() => setPcCoches(new Set())}>tout décocher</button>
+                      <div className="ml-auto flex gap-2">
+                        <button onClick={() => traiterPcCoches('gagne')} disabled={pcLotEnCours || pcCoches.size === 0} className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-50">Passer en « Gagné » ({pcCoches.size})</button>
+                        <button onClick={() => traiterPcCoches('supprimer')} disabled={pcLotEnCours || pcCoches.size === 0} className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 disabled:opacity-50">Supprimer ({pcCoches.size})</button>
+                      </div>
+                    </div>
                     {doublonsPC.paires.map((paire: any) => (
                       <div key={paire.prospect.id + paire.client.id}
                         className={`p-3 rounded-lg border ${paire.score === 100 ? 'border-red-200 bg-red-50' : paire.score >= 80 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
-                        <p className="text-xs font-medium text-gray-600 mb-2">{paire.motif}</p>
+                        <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-2 cursor-pointer">
+                          <input type="checkbox" checked={pcCoches.has(paire.prospect.id)} onChange={e => setPcCoches(prev => { const n = new Set(prev); if (e.target.checked) n.add(paire.prospect.id); else n.delete(paire.prospect.id); return n; })} />
+                          {paire.motif}
+                        </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                           <div className="bg-white rounded-lg border border-gray-200 p-2.5">
                             <p className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold mb-1">Prospect</p>
