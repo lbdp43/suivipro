@@ -59,7 +59,7 @@ export default function Layout() {
   const notifRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { state, logout } = useApp();
+  const { state, logout, perimetre, setPerimetre } = useApp();
   const today = toLocalDateStr(new Date());
   // Badge = rappels en retard filtrés par utilisateur
   // Les prospecteurs partagent leurs rappels entre eux
@@ -407,6 +407,25 @@ export default function Layout() {
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-3 text-sm text-gray-600">
+            {/* Périmètre : mes clients (défaut commercial) ou toute l'équipe (remplacement). */}
+            <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs font-medium" role="group" aria-label="Périmètre des clients">
+              <button
+                type="button"
+                onClick={() => setPerimetre('moi')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${perimetre === 'moi' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                title="Mes clients et les fiches sans commercial"
+              >
+                Mes clients
+              </button>
+              <button
+                type="button"
+                onClick={() => setPerimetre('equipe')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${perimetre === 'equipe' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                title="Tous les clients de l'équipe (remplacement d'un collègue)"
+              >
+                Toute l'équipe
+              </button>
+            </div>
             <Link
               to="/carte"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"

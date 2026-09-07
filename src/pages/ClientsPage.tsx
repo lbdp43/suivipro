@@ -19,16 +19,17 @@ import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddr
 import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
+// Règle 1 (shared/regles) : un client est en retard quand sa visite prévue est dépassée
+// d'au moins un jour. Même règle que l'accueil, la semaine et l'administration.
+const STATUT_VERS_CODE: Record<StatutVisite, 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF'> = {
+  RETARD: 'LATE', AUJOURDHUI: 'TODAY', A_VENIR: 'UPCOMING', SANS_RECURRENCE: 'NO_RECURRENCE', INACTIF: 'INACTIF',
+};
 function getVisitStatusFromDate(nextVisit: string | null, statut: string): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
-  if (statut === 'INACTIF') return 'INACTIF';
-  if (!nextVisit) return 'NO_RECURRENCE';
-  const today = toLocalDateStr(new Date());
-  if (nextVisit < today) return 'LATE';
-  if (nextVisit === today) return 'TODAY';
-  return 'UPCOMING';
+  return STATUT_VERS_CODE[statutVisite({ statut, next_visit: nextVisit })];
 }
 
 function getVisitStatus(client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
@@ -276,11 +277,10 @@ export default function ClientsPage() {
     }
   }, [state.currentUser, state.interactions, getInteractionsForClient]);
 
-  // Personal visit status for current user
-  const getPersonalVisitStatus = useCallback((client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' => {
-    const { nextVisit } = getPersonalVisitInfo(client);
-    return getVisitStatusFromDate(nextVisit, client.statut);
-  }, [getPersonalVisitInfo]);
+  // Le statut (en retard, aujourd'hui, à venir) suit la règle unique, sur la date de
+  // prochaine visite de la fiche — plus de calcul « personnel » qui donnait un autre
+  // chiffre que l'accueil. « Ma dernière visite » reste affichée à titre d'information.
+  const getPersonalVisitStatus = useCallback((client: Client) => getVisitStatus(client), []);
 
   // Multi-select helpers
   const toggleSelection = (id: string, e: React.MouseEvent) => {
@@ -449,8 +449,8 @@ export default function ClientsPage() {
     for (const id of selectedIds) {
       const client = state.clients.find(c => c.id === id);
       if (!client) continue;
-      // Hors admin, on ne s'affecte que des fiches libres : le portefeuille d'un collegue
-      // ne se reprend pas d'un clic (le serveur refuse de toute facon).
+      // Hors admin, on ne s'affecte que des fiches libres : reprendre le portefeuille d'un
+      // collègue est une décision d'admin, pas un clic dans une liste.
       if (bulkAction === 'commercial' && !isAdmin && client.commercial_id) {
         ignoresAutreCommercial++;
         continue;
@@ -870,10 +870,8 @@ export default function ClientsPage() {
   const filtered = useMemo(() => {
     let list = state.clients;
 
-    // Non-admin: only own clients (unless commercial filter is active)
-    if (!isAdmin && state.currentUser && filterCommercials.size === 0) {
-      list = list.filter(c => c.commercial_id === state.currentUser!.id);
-    }
+    // Le périmètre (Mes clients / Toute l'équipe) est déjà appliqué par le contexte :
+    // aucun filtre propre à la page, sinon le compteur « en retard » et la liste divergent.
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -1561,20 +1559,14 @@ export default function ClientsPage() {
                             </span>
                           )}
                         </div>
-                        {personalInfo.nextVisit && (
+                        {client.next_visit && (
                           <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                             <Calendar className="w-3 h-3" />
-                            {visitStatus === 'LATE' && personalInfo.isPersonal
-                              ? (() => {
-                                  const d = new Date(personalInfo.nextVisit + 'T12:00:00').getTime();
-                                  const days = !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0;
-                                  return `En retard de ${days}j (ma derniere visite: ${personalInfo.lastVisit ? formatDate(personalInfo.lastVisit) : 'jamais'})`;
-                                })()
-                              : visitStatus === 'LATE'
-                                ? `En retard - Prochaine visite : ${formatDate(personalInfo.nextVisit)}`
-                                : personalInfo.isPersonal
-                                  ? `Ma prochaine visite : ${formatDate(personalInfo.nextVisit)}`
-                                  : `Prochaine visite : ${formatDate(personalInfo.nextVisit)}`}
+                            {visitStatus === 'LATE'
+                              ? `En retard de ${joursDeRetard(client)} j — visite prévue le ${formatDate(client.next_visit)}${personalInfo.isPersonal && personalInfo.lastVisit ? ` (ma dernière visite : ${formatDate(personalInfo.lastVisit)})` : ''}`
+                              : visitStatus === 'TODAY'
+                                ? 'À visiter aujourd\'hui'
+                                : `Prochaine visite : ${formatDate(client.next_visit)}`}
                           </div>
                         )}
                         {client.notes && (
@@ -1758,10 +1750,8 @@ export default function ClientsPage() {
             {/* Visit info - personal when available, global otherwise */}
             {(() => {
               const pInfo = getPersonalVisitInfo(selectedClient);
-              const pStatus = getVisitStatusFromDate(pInfo.nextVisit, selectedClient.statut);
-              const daysLate = pStatus === 'LATE' && pInfo.nextVisit
-                ? (() => { const d = new Date(pInfo.nextVisit + 'T12:00:00').getTime(); return !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0; })()
-                : 0;
+              const pStatus = getVisitStatus(selectedClient);
+              const daysLate = joursDeRetard(selectedClient);
               return (
                 <div className={`mt-3 p-3 rounded-lg ${pStatus === 'LATE' ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="grid grid-cols-2 gap-3 text-xs">
@@ -1770,9 +1760,9 @@ export default function ClientsPage() {
                       <p className="font-medium text-gray-900">{pInfo.lastVisit ? formatDate(pInfo.lastVisit) : 'Jamais'}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma prochaine visite' : 'Prochaine visite'}</span>
+                      <span className="text-gray-500">Prochaine visite</span>
                       <p className={`font-medium ${pStatus === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
-                        {pInfo.nextVisit ? formatDate(pInfo.nextVisit) : 'Non planifiee'}
+                        {selectedClient.next_visit ? formatDate(selectedClient.next_visit) : 'Non planifiée'}
                         {pStatus === 'LATE' && daysLate > 0 && <span className="ml-1">({daysLate}j retard)</span>}
                       </p>
                     </div>

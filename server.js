@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -76,6 +77,8 @@ app.use('/api/prospects/import', rateLimit({
 }));
 
 // Body parser — 10mb pour les uploads de documents
+// /state pèse plusieurs Mo en JSON : compressé, il en fait dix fois moins sur la 4G.
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
 // API routes

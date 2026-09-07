@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { REGLES } from '../../shared/regles';
 import {
   BookOpen, LayoutDashboard, Kanban, Users, Phone, Calendar, Bell, Mail, Map,
   Upload, FileText, Tag, Building2, MapPin, ClipboardCheck, ListTodo, Activity,
   CheckCheck, ChevronDown, LogIn, Shield, UserCheck, MousePointer, Zap,
   Settings, Search, Filter, ArrowRight, Target, TrendingUp, Star,
   BarChart3, Eye, Layers, GitBranch, Globe, Database, FolderOpen,
-  MessageSquare, Repeat, Clock, AlertTriangle, Download, RefreshCw,
+  MessageSquare, Repeat, Clock, AlertTriangle, Download, RefreshCw, Scale,
 } from 'lucide-react';
 
 type RoleId = 'all' | 'commercial' | 'admin' | 'prospection';
@@ -35,6 +36,24 @@ interface GuideSection {
 
 const sections: GuideSection[] = [
   {
+    id: 'regles',
+    title: 'Les règles de l\'application',
+    icon: Scale,
+    iconColor: 'text-red-600',
+    iconBg: 'bg-red-100',
+    roles: ['all'],
+    content: [
+      {
+        text: 'Trois règles, écrites une seule fois et appliquées partout : le chiffre affiché sur l\'accueil est celui de la liste des clients, de la semaine et de l\'administration.',
+      },
+      ...REGLES.map(r => ({ subtitle: r.titre, text: `**${r.regle}** ${r.detail}` })),
+      {
+        subtitle: 'Mes clients / Toute l\'équipe',
+        text: 'En haut de chaque page, la bascule **Mes clients** n\'affiche que votre portefeuille et les fiches sans commercial ; **Toute l\'équipe** montre tous les clients, pour remplacer un collègue. Elle s\'applique à toutes les pages, retards compris. La prospection (prospects, appels, rendez-vous, rappels) est commune à toute l\'équipe.',
+      },
+    ],
+  },
+  {
     id: 'premiers-pas',
     title: 'Connexion et premiers pas',
     icon: LogIn,
@@ -56,7 +75,7 @@ const sections: GuideSection[] = [
         list: [
           '**Commercial** : Gere ses prospects et clients, passe des appels, prend des rendez-vous, planifie ses tournees.',
           '**Admin** : Supervise tous les commerciaux, voit toutes les donnees, configure le systeme et les integrations.',
-          '**Prospection** : Consulte en lecture seule l\'ensemble des plannings et clients pour coordonner l\'activite.',
+          '**Prospection** : Appelle les prospects, prend les rendez-vous pour les commerciaux, gère ses rappels. Voit aussi les clients pour dépanner.',
         ],
       },
       {

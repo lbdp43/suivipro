@@ -6,6 +6,7 @@ import { createWorker } from 'tesseract.js';
 import * as eb from './easybeer-client.js';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
+import * as regles from '../shared/regles.js';
 
 
 const router = Router();
@@ -205,23 +206,12 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
-  // Cloisonnement par commercial : chacun ne recoit que son portefeuille CLIENT (ses clients,
-  // leurs interactions, commandes et taches). Un admin recoit l'ensemble.
-  // Le filtre est fait ICI et non dans les ecrans : c'est la seule facon qu'il s'applique
-  // partout, y compris aux pages qu'on ne touche pas — retards de visite compris.
-  // La PROSPECTION est commune a toute l'equipe : prospects, appels, rendez-vous et rappels
-  // sont visibles de tous (le prospecteur prend les RDV, le commercial les tient, chacun
-  // doit voir la fiche et l'historique de l'autre). Restent communs aussi : l'equipe, les
-  // tags, les modeles d'email, les colonnes de pipeline, les documents et les tournees.
-  const admin = req.user.role === 'admin';
-  const moi = req.user.id;
-  const params = admin ? [] : [moi];
-  // Les fiches sans commercial restent visibles de tous : sinon personne ne peut plus les
-  // reprendre, et elles disparaissent du radar. Chacun voit donc son portefeuille + les
-  // fiches libres, et peut s'affecter celles-ci.
-  const SANS_COMMERCIAL = "(commercial_id IS NULL OR commercial_id = '')";
-  const clientsVisibles = `SELECT id FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL}`;
-
+  // Tout le monde reçoit tout : la prospection est commune, et les clients des collègues
+  // sont consultables (remplacements, appels de dépannage). Le PÉRIMÈTRE affiché
+  // (« Mes clients » / « Toute l'équipe ») est une bascule d'écran, appliquée une seule
+  // fois dans le contexte de l'application, donc partout — accueil et retards compris.
+  // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
+  // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
@@ -232,15 +222,13 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
     db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
-    db.query(admin ? 'SELECT * FROM clients ORDER BY date_modification DESC'
-      : `SELECT * FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL} ORDER BY date_modification DESC`, params),
-    db.query(admin ? 'SELECT * FROM interactions ORDER BY date DESC'
-      : `SELECT * FROM interactions WHERE client_id IN (${clientsVisibles}) ORDER BY date DESC`, params),
-    db.query(admin ? 'SELECT * FROM tasks_client ORDER BY date_echeance ASC'
-      : 'SELECT * FROM tasks_client WHERE commercial_id = $1 OR created_by = $1 ORDER BY date_echeance ASC', params),
+    db.query('SELECT * FROM clients ORDER BY date_modification DESC'),
+    db.query('SELECT * FROM interactions ORDER BY date DESC'),
+    db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
     db.query('SELECT * FROM tournee_config'),
-    db.query(admin ? 'SELECT * FROM commandes ORDER BY date_commande DESC'
-      : `SELECT * FROM commandes WHERE client_id IN (${clientsVisibles}) ORDER BY date_commande DESC`, params),
+    db.query(`SELECT id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc,
+                     lignes, notes, source, client_name, date_creation
+              FROM commandes ORDER BY date_commande DESC`),
   ]);
 
   res.json({
@@ -951,12 +939,8 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
   const actuel = (await db.query('SELECT commercial_id FROM clients WHERE id = $1', [req.params.id])).rows[0];
   if (!actuel) return res.status(404).json({ error: 'Client introuvable' });
 
-  // Un commercial ne modifie que son portefeuille ou une fiche libre (qu'il peut donc
-  // s'affecter). Le portefeuille d'un collegue reste intouchable.
-  const proprietaire = actuel.commercial_id || '';
-  if (req.user.role !== 'admin' && proprietaire && proprietaire !== req.user.id) {
-    return res.status(403).json({ error: 'Ce client est suivi par un autre commercial' });
-  }
+  // Toute l'équipe peut corriger n'importe quelle fiche (remplacements, dépannage) : le
+  // client reste rattaché à son commercial tant qu'on ne change pas explicitement ce champ.
 
   // commercial_id absent du corps -> on garde celui en place. Sans ce garde-fou, une
   // simple modification de fiche transferait silencieusement le client a celui qui edite.
@@ -4902,9 +4886,8 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
   monday.setHours(0, 0, 0, 0);
   const mondayStr = toLocalDateStr(monday);
 
-  // Week number for target week
-  const startOfYear = new Date(monday.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((monday - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  // Numéro de semaine : règle 2 (ISO), la même que Tournées et la Semaine.
+  const weekNum = regles.semaineIso(monday).semaine;
   const isEvenWeek = weekNum % 2 === 0;
 
   if (viewAll) {
@@ -5073,6 +5056,9 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
 
 router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.user.id;
+  // ?perimetre=equipe : vue d'ensemble (remplacement d'un collègue) — les clients, retards
+  // et visites du jour de toute l'équipe. Par défaut : mes clients + les fiches libres.
+  const equipe = req.query.perimetre === 'equipe';
   const now = new Date();
   const today = toLocalDateStr(now);
 
@@ -5085,10 +5071,12 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
   weekEnd.setDate(monday.getDate() + 6);
   const weekEndStr = toLocalDateStr(weekEnd);
 
-  // My clients
+  // My clients (+ fiches libres), ou toute l'équipe
   const clients = await db.query(
-    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
-    [userId]
+    equipe
+      ? "SELECT * FROM clients WHERE statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST"
+      : "SELECT * FROM clients WHERE (commercial_id = $1 OR commercial_id IS NULL OR commercial_id = '') AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
+    equipe ? [] : [userId]
   );
 
   // My tournée config
@@ -5136,8 +5124,8 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     };
   }
 
-  // Late clients
-  const lateClients = clients.rows.filter(c => c.next_visit && c.next_visit < today);
+  // Late clients : règle 1
+  const lateClients = clients.rows.filter(c => regles.estEnRetard(c, today));
 
   // Today's clients
   const todayClients = clients.rows.filter(c => c.next_visit === today);
@@ -5235,7 +5223,8 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     total_clients: clients.rows.length,
     interactions_semaine_par_type: weekByType,
     interactions_mois_par_type: monthByType,
-    rdv_sans_compte_rendu: rdvSansCR.rows,
+    // Règle 3 : un RDV de cet après-midi n'est pas « sans compte rendu », il est à venir.
+    rdv_sans_compte_rendu: rdvSansCR.rows.filter(a => regles.rdvSansCompteRendu(a, now)),
   });
 }));
 

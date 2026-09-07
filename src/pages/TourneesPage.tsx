@@ -9,6 +9,7 @@ import { useToast } from '../components/Toast';
 import { Client, CommercialZone, colorForCommercial } from '../types';
 import { apiPut } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
+import { semaineIso } from '../../shared/regles';
 import ZoneDrawModal from '../components/ZoneDrawModal';
 
 interface TourneeConfig {
@@ -402,9 +403,8 @@ export default function TourneesPage() {
   const dayOfWeekT = targetDate.getDay() || 7;
   const targetMonday = new Date(targetDate);
   targetMonday.setDate(targetDate.getDate() - dayOfWeekT + 1);
-  const currentWeekNum = Math.ceil(
-    (Math.floor((targetMonday.getTime() - new Date(targetMonday.getFullYear(), 0, 1).getTime()) / 86400000) + 1) / 7
-  );
+  // Règle 2 : numéro ISO, le même que le serveur et la Semaine (fini le « impaire » ici, « paire » là-bas).
+  const currentWeekNum = semaineIso(targetMonday).semaine;
   const isEvenWeek = currentWeekNum % 2 === 0;
   const isCurrentWeek = weekOffset === 0;
 

@@ -13,6 +13,7 @@ import {
   getResponseRate, getAverageCallDuration,
   formatDuration, formatDate, isLastMonth, toLocalDateStr,
 } from '../utils/helpers';
+import { estEnRetard, joursDeRetard } from '../../shared/regles';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
@@ -135,7 +136,7 @@ function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) =
 }
 
 export default function DashboardPage() {
-  const { state } = useApp();
+  const { state, perimetre: perimetreChoisi } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
   const [crFilterResult, setCrFilterResult] = useState<string>('');
   const [crFilterUser, setCrFilterUser] = useState<string>('');
@@ -144,6 +145,8 @@ export default function DashboardPage() {
   const [comparePeriod, setComparePeriod] = useState<TimePeriod | ''>('');
   const [pipelineFilterUser, setPipelineFilterUser] = useState<string>('');
   const isAdmin = state.currentUser?.role === 'admin';
+  // Périmètre : « equipe » = tout le monde (défaut admin/prospecteur, ou remplacement).
+  const vueEquipe = perimetreChoisi === 'equipe';
   // La section Prospection represente plus de la moitie de la page : on la replie par
   // defaut et on retient le choix, pour que le haut du dashboard reste lisible.
   const [prospectionOuverte, setProspectionOuverte] = useState(() => {
@@ -177,7 +180,8 @@ export default function DashboardPage() {
   // RDV pris en prospection (prospecteur_id) : ce ne sont pas les memes personnes.
   const perimetre = useMemo(() => {
     const moi = state.currentUser?.id || '';
-    if (isAdmin) {
+    // state.clients / commandes sont déjà restreints au périmètre par le contexte.
+    if (vueEquipe) {
       return {
         clients: state.clients,
         commandes: state.commandes,
@@ -187,17 +191,15 @@ export default function DashboardPage() {
         rdvPris: state.appointments,
       };
     }
-    const clients = state.clients.filter(c => c.commercial_id === moi);
-    const idsClients = new Set(clients.map(c => c.id));
     return {
-      clients,
-      commandes: state.commandes.filter(c => c.client_id && idsClients.has(c.client_id)),
+      clients: state.clients,
+      commandes: state.commandes,
       prospects: state.prospects.filter(p => p.commercial_id === moi),
       calls: state.calls.filter(c => c.commercial_id === moi),
       appointments: state.appointments.filter(a => a.commercial_id === moi),
       rdvPris: state.appointments.filter(a => a.prospecteur_id === moi),
     };
-  }, [isAdmin, state.currentUser, state.clients, state.commandes, state.prospects, state.calls, state.appointments]);
+  }, [vueEquipe, state.currentUser, state.clients, state.commandes, state.prospects, state.calls, state.appointments]);
 
   // Une commande annulee n'est pas du chiffre d'affaires : elle etait pourtant comptee.
   const commandesCA = useMemo(
@@ -398,8 +400,8 @@ export default function DashboardPage() {
       // Visit coverage: clients visited in time vs late
       const today = toLocalDateStr(new Date());
       const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
-      const clientsOnTime = activeClients.filter(c => c.next_visit! >= today).length;
-      const clientsLate = activeClients.filter(c => c.next_visit! < today).length;
+      const clientsLate = activeClients.filter(c => estEnRetard(c, today)).length;
+      const clientsOnTime = activeClients.length - clientsLate;
 
       return {
         user,
@@ -613,18 +615,16 @@ export default function DashboardPage() {
     const activeClients = perimetre.clients.filter(c => c.statut === 'ACTIF');
     const weekEnd = toLocalDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
 
-    const lateClients = activeClients.filter(c => c.next_visit && c.next_visit < today);
+    // Règle 1 : en retard = visite prévue dépassée d'au moins un jour.
+    const lateClients = activeClients.filter(c => estEnRetard(c, today));
     const todayClients = activeClients.filter(c => c.next_visit && c.next_visit === today);
     const weekClients = activeClients.filter(c => c.next_visit && c.next_visit >= today && c.next_visit <= weekEnd);
     const withRecurrence = activeClients.filter(c => c.next_visit);
-    const onTime = withRecurrence.filter(c => c.next_visit! >= today);
-    const coverageRate = withRecurrence.length > 0 ? Math.round((onTime.length / withRecurrence.length) * 100) : 100;
+    const onTime = withRecurrence.length - lateClients.length;
+    const coverageRate = withRecurrence.length > 0 ? Math.round((onTime / withRecurrence.length) * 100) : 100;
 
     const avgDelay = lateClients.length > 0
-      ? Math.round(lateClients.reduce((sum, c) => {
-          const diff = Math.floor((new Date(today).getTime() - new Date(c.next_visit!).getTime()) / 86400000);
-          return sum + diff;
-        }, 0) / lateClients.length)
+      ? Math.round(lateClients.reduce((sum, c) => sum + joursDeRetard(c, today), 0) / lateClients.length)
       : 0;
 
     return { lateCount: lateClients.length, todayCount: todayClients.length, weekCount: weekClients.length, coverageRate, avgDelay, totalActive: activeClients.length };
@@ -724,10 +724,10 @@ export default function DashboardPage() {
     const taches = ((state as any).tasksClient || []) as any[];
     const overdueTasks = taches.filter((t) =>
       t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < toLocalDateStr(new Date())
-      && (isAdmin || t.commercial_id === moi)
+      && (vueEquipe || t.commercial_id === moi)
     ).length;
     return { lateVisits: visitHealth.lateCount, stagnantProspects: funnelData.stagnantCount, orphanCommandes, overdueTasks };
-  }, [visitHealth, funnelData, state, isAdmin]);
+  }, [visitHealth, funnelData, state, isAdmin, vueEquipe]);
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {

@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { generateId, detectConflicts } from '../utils/helpers';
 import { apiPost, apiPut, apiPatch } from '../api/client';
+import { rdvSansCompteRendu } from '../../shared/regles';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -204,11 +205,10 @@ export default function CompteRenduPage() {
       RDV_PLANIFIE: rangeInteractions.filter(i => i.type === 'RDV_PLANIFIE').length,
     };
     const resultCounts: Record<string, number> = {};
-    const todayDate = toDateStr(new Date());
     rangeAppointments.forEach(a => {
       if (a.compte_rendu) {
         resultCounts[a.compte_rendu] = (resultCounts[a.compte_rendu] || 0) + 1;
-      } else if (a.date <= todayDate) {
+      } else if (rdvSansCompteRendu(a)) { // règle 3 : l'heure est passée
         resultCounts['sans_cr'] = (resultCounts['sans_cr'] || 0) + 1;
       }
     });
@@ -992,9 +992,8 @@ export default function CompteRenduPage() {
               </div>
               {/* Expanded result detail */}
               {expandedResult && (() => {
-                const todayDate = toDateStr(new Date());
                 const rdvsForResult = expandedResult === 'sans_cr'
-                  ? rangeAppointments.filter(a => !a.compte_rendu && a.date <= todayDate)
+                  ? rangeAppointments.filter(a => rdvSansCompteRendu(a))
                   : rangeAppointments.filter(a => a.compte_rendu === expandedResult);
                 const resultColors: Record<string, string> = {
                   client: 'border-green-200', mail_envoye: 'border-blue-200',

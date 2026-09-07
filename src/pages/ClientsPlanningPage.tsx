@@ -12,6 +12,7 @@ import {
 import { toLocalDateStr, downloadICSClientBatch, generateId } from '../utils/helpers';
 import { apiPut, apiPost, apiPatch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { estEnRetard, semaineIso, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
 import ClientDetailModal from '../components/ClientDetailModal';
 
 export default function ClientsPlanningPage() {
@@ -444,8 +445,8 @@ export default function ClientsPlanningPage() {
     monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (planningWeekOffset * 7));
     monday.setHours(0, 0, 0, 0);
 
-    const startOfYear = new Date(monday.getFullYear(), 0, 1);
-    const weekNumber = Math.ceil(((monday.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+    // Règle 2 : numéro de semaine ISO, le même que Tournées.
+    const weekNumber = semaineIso(monday).semaine;
 
     const days: { date: Date; dateStr: string; label: string; dayKey: string }[] = [];
     const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -469,8 +470,10 @@ export default function ClientsPlanningPage() {
       clientsBase = clientsBase.filter(c => c.commercial_id === targetCommercialId);
     }
 
-    // Late clients
-    const lateClients = clientsBase.filter(c => c.next_visit && c.next_visit < weekStart);
+    // Règle 1 : en retard = visite prévue dépassée d'au moins un jour (par rapport à aujourd'hui,
+    // quelle que soit la semaine affichée).
+    const aujourdhui = toLocalDateStr(new Date());
+    const lateClients = clientsBase.filter(c => estEnRetard(c, aujourdhui));
     const groupByTournee = (clients: Client[]) => {
       const groups: Record<string, Client[]> = {};
       clients.forEach(c => {
@@ -499,8 +502,7 @@ export default function ClientsPlanningPage() {
       for (const commId of commercialIds) {
         const tc = tourneeConfigs[commId];
         if (!tc) continue;
-        if (tc.week_pattern === 'even' && weekNumber % 2 !== 0) continue;
-        if (tc.week_pattern === 'odd' && weekNumber % 2 !== 1) continue;
+        if (!tourneeActive(tc.week_pattern, monday)) continue;
         const dayZones = tc.config[day.dayKey];
         if (Array.isArray(dayZones)) {
           dayZones.forEach(z => { if (typeof z === 'string') zonesToShow.add(z); });
@@ -604,14 +606,12 @@ export default function ClientsPlanningPage() {
         rdvWithCR++;
       }
     });
-    // Add "sans_cr" for past appointments without CR
-    const sansCr = filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayStr).length;
+    // Règle 3 : « sans CR » = RDV dont l'heure est passée, sans compte rendu. Avant l'heure : « à venir ».
+    const sansCr = filteredAppointments.filter(a => rdvSansCompteRendu(a)).length;
     if (sansCr > 0) {
       resultCounts.sans_cr = sansCr;
     }
-
-    // Add "cr_a_venir" for upcoming appointments without CR
-    const crAVenir = filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] > todayStr).length;
+    const crAVenir = filteredAppointments.filter(a => !a.compte_rendu && rdvAVenir(a)).length;
     if (crAVenir > 0) {
       resultCounts.cr_a_venir = crAVenir;
     }
@@ -711,11 +711,10 @@ export default function ClientsPlanningPage() {
 
           {/* Expanded result detail */}
           {expandedResult && (() => {
-            const todayDate = toLocalDateStr(new Date());
             const rdvsForResult = expandedResult === 'sans_cr'
-              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayDate)
+              ? resultsData.filteredAppointments.filter(a => rdvSansCompteRendu(a))
               : expandedResult === 'cr_a_venir'
-              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] > todayDate)
+              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && rdvAVenir(a))
               : resultsData.filteredAppointments.filter(a => a.compte_rendu === expandedResult);
             const resultColors: Record<string, string> = {
               client: 'border-green-200', mail_envoye: 'border-blue-200',

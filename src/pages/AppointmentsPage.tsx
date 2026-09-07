@@ -8,6 +8,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS, PipelineStage, ReminderStatus } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts, toLocalDateStr } from '../utils/helpers';
+import { rdvSansCompteRendu } from '../../shared/regles';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
@@ -99,7 +100,7 @@ export default function AppointmentsPage() {
     if (filterProspecteur) list = list.filter(a => a.prospecteur_id === filterProspecteur);
     if (filterCompteRendu) {
       if (filterCompteRendu === 'sans') {
-        list = list.filter(a => !a.compte_rendu);
+        list = list.filter(a => rdvSansCompteRendu(a)); // règle 3
       } else {
         list = list.filter(a => a.compte_rendu === filterCompteRendu);
       }
@@ -853,7 +854,7 @@ export default function AppointmentsPage() {
             }`}
             onClick={() => setFilterCompteRendu(filterCompteRendu === 'sans' ? '' : 'sans')}
           >
-            Sans CR ({state.appointments.filter(a => !a.compte_rendu).length})
+            Sans CR ({state.appointments.filter(a => rdvSansCompteRendu(a)).length})
           </button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import {
   ListTodo, RefreshCw, ChevronDown, ChevronRight, Phone, Eye, ClipboardCheck,
 } from 'lucide-react';
 import { toLocalDateStr } from '../utils/helpers';
+import { useApp } from '../store/AppContext';
 
 interface AppointmentInfo {
   id: string;
@@ -115,12 +116,13 @@ export default function CommercialClientsDashboard() {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
+  const { perimetre } = useApp();
   const [erreur, setErreur] = useState<string | null>(null);
   const loadData = useCallback(async () => {
     setLoading(true);
     setErreur(null);
     try {
-      const res = await fetch('/api/commercial/dashboard', { headers });
+      const res = await fetch(`/api/commercial/dashboard${perimetre === 'equipe' ? '?perimetre=equipe' : ''}`, { headers });
       const result = await res.json().catch(() => ({}));
       // Une reponse d'erreur ({ error }) n'a pas la forme attendue : la stocker comme
       // donnees faisait planter tout l'ecran sur data.today_clients.length.
@@ -149,7 +151,7 @@ export default function CommercialClientsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [perimetre]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
