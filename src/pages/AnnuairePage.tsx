@@ -220,7 +220,7 @@ export default function AnnuairePage() {
   };
 
   const deleteRule = async (id: number) => {
-    if (!confirm('Supprimer cette regle ?')) return;
+    if (!confirm('Supprimer cette règle ?')) return;
     try {
       await fetch(`/api/import-rules/${id}`, { method: 'DELETE', headers });
       await loadRules();
@@ -351,11 +351,11 @@ export default function AnnuairePage() {
             value={filterActivity}
             onChange={e => setFilterActivity(e.target.value)}
           >
-            <option value="">Toute activite</option>
+            <option value="">Toute activité</option>
             <option value="visite">Ont eu des visites</option>
             <option value="rdv">Ont eu des RDV</option>
             <option value="appel">Ont eu des appels</option>
-            <option value="aucune">Aucune activite</option>
+            <option value="aucune">Aucune activité</option>
           </select>
         </div>
         <div>
@@ -497,7 +497,7 @@ export default function AnnuairePage() {
                   Pipeline
                 </label>
                 <button onClick={createEntityType} disabled={!newEntityType.id || !newEntityType.label} className="px-3 py-1 bg-purple-600 text-white rounded text-xs disabled:opacity-50 flex items-center gap-1">
-                  <Plus className="w-3 h-3" /> Creer
+                  <Plus className="w-3 h-3" /> Créer
                 </button>
               </div>
             </div>
@@ -511,7 +511,7 @@ export default function AnnuairePage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
               <Settings className="w-4 h-4 text-indigo-500" />
-              Regles d'importation SIRENE
+              Règles d'importation SIRENE
             </h2>
             <button
               onClick={() => setEditingRule({ naf_code: '', naf_label: '', entity_type: 'prospect', pipeline_stage: 'nouveau_datagouv', auto_import: true, commercial_id: '' })}
@@ -522,7 +522,7 @@ export default function AnnuairePage() {
           </div>
 
           <p className="text-xs text-gray-500 mb-3">
-            Ces regles determinent automatiquement le type (prospect, concurrent, distributeur...) lors de l'import SIRENE selon le code NAF.
+            Ces règles determinent automatiquement le type (prospect, concurrent, distributeur...) lors de l'import SIRENE selon le code NAF.
           </p>
 
           {/* Edit form */}
@@ -550,7 +550,7 @@ export default function AnnuairePage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-indigo-600 mb-0.5">Type entite</label>
+                  <label className="block text-[10px] text-indigo-600 mb-0.5">Type entité</label>
                   <input
                     type="text"
                     list="entity-type-options"
@@ -572,7 +572,7 @@ export default function AnnuairePage() {
                     value={editingRule.commercial_id || ''}
                     onChange={e => setEditingRule(r => r ? { ...r, commercial_id: e.target.value } : r)}
                   >
-                    <option value="">Non assigne</option>
+                    <option value="">Non assigné</option>
                     {state.commerciaux.map(c => (
                       <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
                     ))}
@@ -671,7 +671,7 @@ export default function AnnuairePage() {
                 <th className="px-2 py-2 text-left">Nom</th>
                 <th className="px-2 py-2 text-left">Ville</th>
                 <th className="px-2 py-2 text-left">Dept</th>
-                <th className="px-2 py-2 text-left">Telephone</th>
+                <th className="px-2 py-2 text-left">Téléphone</th>
                 <th className="px-2 py-2 text-left">SIRET</th>
                 <th className="px-2 py-2 text-left">Commercial</th>
                 <th className="px-2 py-2 text-left">Pipeline</th>
@@ -682,7 +682,7 @@ export default function AnnuairePage() {
               {sortedEntries.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
-                    Aucune entite trouvee.
+                    Aucune entité trouvee.
                   </td>
                 </tr>
               ) : sortedEntries.map(entry => {

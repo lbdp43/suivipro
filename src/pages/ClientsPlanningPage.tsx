@@ -12,9 +12,12 @@ import {
 import { toLocalDateStr, downloadICSClientBatch, generateId } from '../utils/helpers';
 import { apiPut, apiPost, apiPatch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { estEnRetard, semaineIso, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
 import ClientDetailModal from '../components/ClientDetailModal';
 
-export default function ClientsPlanningPage() {
+// embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
+// est alors dans le volet Bilan, on ne l'affiche pas deux fois.
+export default function ClientsPlanningPage({ embarque = false }: { embarque?: boolean } = {}) {
   const { state, dispatchLocal, getCommercial } = useApp();
   const toast = useToast();
   const isAdmin = state.currentUser?.role === 'admin';
@@ -51,7 +54,7 @@ export default function ClientsPlanningPage() {
         });
         setTourneeConfigs(map);
       })
-      .catch(err => console.error('Failed to load tournee configs:', err));
+      .catch(err => console.error('Failed to load tournée configs:', err));
   }, []);
 
   // CR modal state
@@ -106,7 +109,7 @@ export default function ClientsPlanningPage() {
   const saveCrModal = async () => {
     if (!crModalRdv) return;
     const form = crForms[crModalRdv.id];
-    if (!form?.compte_rendu) { toast.error('Selectionnez un resultat'); return; }
+    if (!form?.compte_rendu) { toast.error('Sélectionnez un résultat'); return; }
     if (!form.notes?.trim()) { toast.error('Les notes sont obligatoires'); return; }
     setCrSaving(crModalRdv.id);
     try {
@@ -158,7 +161,7 @@ export default function ClientsPlanningPage() {
         }
       }
 
-      toast.success('Compte rendu enregistre');
+      toast.success('Compte rendu enregistré');
       setCrModalRdv(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setCrSaving(null); }
@@ -265,7 +268,7 @@ export default function ClientsPlanningPage() {
           commercial_id: userId,
           type: 'VISITE',
           date: `${entry.date}T${entry.startTime}:00`,
-          comment: `Visite planifiee (${entry.startTime} - ${entry.endTime})`,
+          comment: `Visite planifiée (${entry.startTime} - ${entry.endTime})`,
           date_creation: now,
         };
         await apiPost('/interactions', interaction);
@@ -273,7 +276,7 @@ export default function ClientsPlanningPage() {
       }
 
       downloadICSClientBatch(entries, `visites-${entries[0].date}.ics`);
-      toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} enregistree${entries.length > 1 ? 's' : ''} et exportee${entries.length > 1 ? 's' : ''}`);
+      toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} enregistrée${entries.length > 1 ? 's' : ''} et exportée${entries.length > 1 ? 's' : ''}`);
       setShowConfirmExport(false);
       setShowSchedulingModal(false);
       setSelectedClients(new Set());
@@ -356,15 +359,15 @@ export default function ClientsPlanningPage() {
             commercial_id: userId,
             type: 'VISITE',
             date: now,
-            comment: massNote.trim() || 'Visite enregistree',
+            comment: massNote.trim() || 'Visite enregistrée',
             date_creation: now,
           };
           await apiPost('/interactions', interaction);
           dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
         }
-        toast.success(`Visite enregistree pour ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
+        toast.success(`Visite enregistrée pour ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
       } else if (massAction === 'commercial') {
-        if (!massCommercialId) { toast.error('Selectionnez un commercial'); setMassSaving(false); return; }
+        if (!massCommercialId) { toast.error('Sélectionnez un commercial'); setMassSaving(false); return; }
         for (const clientId of clientIds) {
           const client = state.clients.find(c => c.id === clientId);
           if (!client) continue;
@@ -375,7 +378,7 @@ export default function ClientsPlanningPage() {
         const comm = getCommercial(massCommercialId);
         toast.success(`${clientIds.length} client${clientIds.length > 1 ? 's' : ''} reassigne${clientIds.length > 1 ? 's' : ''} a ${comm?.prenom || 'commercial'}`);
       } else if (massAction === 'tache') {
-        if (!massTaskTitle.trim()) { toast.error('Le titre de la tache est obligatoire'); setMassSaving(false); return; }
+        if (!massTaskTitle.trim()) { toast.error('Le titre de la tâche est obligatoire'); setMassSaving(false); return; }
         const assigneeId = massTaskAssigneeId || userId;
         const typeLabel = massTaskType === 'appel' ? 'Appel' : 'Visite';
         for (const clientId of clientIds) {
@@ -396,7 +399,7 @@ export default function ClientsPlanningPage() {
           await apiPost('/tasks-client', payload);
           dispatchLocal({ type: 'ADD_TASK_CLIENT', payload });
         }
-        toast.success(`${clientIds.length} tache(s) creee(s) et assignee(s)`);
+        toast.success(`${clientIds.length} tâche(s) créée(s) et assignée(s)`);
       }
 
       setShowMassActionModal(false);
@@ -444,8 +447,8 @@ export default function ClientsPlanningPage() {
     monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (planningWeekOffset * 7));
     monday.setHours(0, 0, 0, 0);
 
-    const startOfYear = new Date(monday.getFullYear(), 0, 1);
-    const weekNumber = Math.ceil(((monday.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+    // Règle 2 : numéro de semaine ISO, le même que Tournées.
+    const weekNumber = semaineIso(monday).semaine;
 
     const days: { date: Date; dateStr: string; label: string; dayKey: string }[] = [];
     const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -469,8 +472,10 @@ export default function ClientsPlanningPage() {
       clientsBase = clientsBase.filter(c => c.commercial_id === targetCommercialId);
     }
 
-    // Late clients
-    const lateClients = clientsBase.filter(c => c.next_visit && c.next_visit < weekStart);
+    // Règle 1 : en retard = visite prévue dépassée d'au moins un jour (par rapport à aujourd'hui,
+    // quelle que soit la semaine affichée).
+    const aujourdhui = toLocalDateStr(new Date());
+    const lateClients = clientsBase.filter(c => estEnRetard(c, aujourdhui));
     const groupByTournee = (clients: Client[]) => {
       const groups: Record<string, Client[]> = {};
       clients.forEach(c => {
@@ -499,18 +504,25 @@ export default function ClientsPlanningPage() {
       for (const commId of commercialIds) {
         const tc = tourneeConfigs[commId];
         if (!tc) continue;
-        if (tc.week_pattern === 'even' && weekNumber % 2 !== 0) continue;
-        if (tc.week_pattern === 'odd' && weekNumber % 2 !== 1) continue;
+        if (!tourneeActive(tc.week_pattern, monday)) continue;
         const dayZones = tc.config[day.dayKey];
         if (Array.isArray(dayZones)) {
           dayZones.forEach(z => { if (typeof z === 'string') zonesToShow.add(z); });
         }
       }
 
+      // Ordre dans un secteur : jamais vus en tête, puis du plus ancien au plus récent —
+      // ceux qu'on vient de voir ferment la liste.
+      const parAnciennete = (a: Client, b: Client) => {
+        if (!a.last_visit && !b.last_visit) return a.nom.localeCompare(b.nom);
+        if (!a.last_visit) return -1;
+        if (!b.last_visit) return 1;
+        return a.last_visit.localeCompare(b.last_visit) || a.nom.localeCompare(b.nom);
+      };
       const sectors = Array.from(zonesToShow).sort().map(zone => {
         const zoneClients = clientsBase.filter(c =>
           c.tournee && c.tournee.toLowerCase() === zone.toLowerCase()
-        );
+        ).sort(parAnciennete);
         const visitDueClients = zoneClients.filter(c =>
           c.next_visit && c.next_visit <= day.dateStr
         );
@@ -570,7 +582,7 @@ export default function ClientsPlanningPage() {
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       startDate = toLocalDateStr(firstDay);
       endDate = toLocalDateStr(lastDay);
-      const monthNames = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'];
+      const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
       periodLabel = monthNames[now.getMonth()] + ' ' + now.getFullYear();
     } else if (resultsPeriod === 'trimestre') {
       const quarter = Math.floor(now.getMonth() / 3);
@@ -583,7 +595,7 @@ export default function ClientsPlanningPage() {
       // tout
       startDate = '2000-01-01';
       endDate = '2099-12-31';
-      periodLabel = 'Totalite';
+      periodLabel = 'Totalité';
     }
 
     const targetCommercialId = planningCommercialId || (state.currentUser ? state.currentUser.id : '');
@@ -604,14 +616,12 @@ export default function ClientsPlanningPage() {
         rdvWithCR++;
       }
     });
-    // Add "sans_cr" for past appointments without CR
-    const sansCr = filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayStr).length;
+    // Règle 3 : « sans CR » = RDV dont l'heure est passée, sans compte rendu. Avant l'heure : « à venir ».
+    const sansCr = filteredAppointments.filter(a => rdvSansCompteRendu(a)).length;
     if (sansCr > 0) {
       resultCounts.sans_cr = sansCr;
     }
-
-    // Add "cr_a_venir" for upcoming appointments without CR
-    const crAVenir = filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] > todayStr).length;
+    const crAVenir = filteredAppointments.filter(a => !a.compte_rendu && rdvAVenir(a)).length;
     if (crAVenir > 0) {
       resultCounts.cr_a_venir = crAVenir;
     }
@@ -640,16 +650,16 @@ export default function ClientsPlanningPage() {
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
       {/* Resultats des RDV - interactive card with period selector */}
-      {resultsData.totalRdv > 0 && (
+      {!embarque && resultsData.totalRdv > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           {/* Header with period selector */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <ClipboardCheck className="w-4 h-4 text-indigo-500" />
-              <p className="text-sm font-semibold text-gray-700">Resultats des RDV</p>
+              <p className="text-sm font-semibold text-gray-700">Résultats des RDV</p>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">{resultsData.totalRdv} RDV</span>
             </div>
-            <p className="text-[10px] text-gray-400 italic hidden sm:block">Cliquez pour voir le detail</p>
+            <p className="text-[10px] text-gray-400 italic hidden sm:block">Cliquez pour voir le détail</p>
           </div>
 
           {/* Period selector */}
@@ -659,7 +669,7 @@ export default function ClientsPlanningPage() {
               { key: 'semaine' as const, label: 'Cette semaine' },
               { key: 'mois' as const, label: 'Ce mois' },
               { key: 'trimestre' as const, label: 'Trimestre' },
-              { key: 'tout' as const, label: 'Totalite' },
+              { key: 'tout' as const, label: 'Totalité' },
             ]).map(p => (
               <button
                 key={p.key}
@@ -701,7 +711,7 @@ export default function ClientsPlanningPage() {
                 return (
                   <button key={key} onClick={() => setExpandedResult(isActive ? null : key)}
                     className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-pointer transition-all ${colors[key] || 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'} ${isActive ? 'ring-2 ring-offset-1 ring-gray-400 scale-105 shadow-sm' : 'hover:scale-105 hover:shadow-sm'}`}>
-                    {key === 'sans_cr' ? 'Sans CR' : key === 'cr_a_venir' ? 'CR a venir' : (APPOINTMENT_RESULT_LABELS[key] || key)}: {count}
+                    {key === 'sans_cr' ? 'Sans CR' : key === 'cr_a_venir' ? 'CR à venir' : (APPOINTMENT_RESULT_LABELS[key] || key)}: {count}
                     <ChevronDown className={`w-3 h-3 transition-transform ${isActive ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />
                   </button>
                 );
@@ -711,11 +721,10 @@ export default function ClientsPlanningPage() {
 
           {/* Expanded result detail */}
           {expandedResult && (() => {
-            const todayDate = toLocalDateStr(new Date());
             const rdvsForResult = expandedResult === 'sans_cr'
-              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] <= todayDate)
+              ? resultsData.filteredAppointments.filter(a => rdvSansCompteRendu(a))
               : expandedResult === 'cr_a_venir'
-              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && a.date.split('T')[0] > todayDate)
+              ? resultsData.filteredAppointments.filter(a => !a.compte_rendu && rdvAVenir(a))
               : resultsData.filteredAppointments.filter(a => a.compte_rendu === expandedResult);
             const resultColors: Record<string, string> = {
               client: 'border-green-200', mail_envoye: 'border-blue-200',
@@ -727,7 +736,7 @@ export default function ClientsPlanningPage() {
             return (
               <div className="mt-3 border-t pt-3 space-y-2">
                 <p className="text-xs text-gray-500 font-medium">
-                  {expandedResult === 'sans_cr' ? 'Sans compte-rendu' : expandedResult === 'cr_a_venir' ? 'CR a venir' : (APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult)} ({rdvsForResult.length})
+                  {expandedResult === 'sans_cr' ? 'Sans compte-rendu' : expandedResult === 'cr_a_venir' ? 'CR à venir' : (APPOINTMENT_RESULT_LABELS[expandedResult] || expandedResult)} ({rdvsForResult.length})
                 </p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {rdvsForResult.map(rdv => {
@@ -912,7 +921,7 @@ export default function ClientsPlanningPage() {
                           ? 'bg-brewery-600 text-white ring-2 ring-brewery-300'
                           : 'bg-gray-100 text-gray-500 hover:bg-brewery-50 hover:text-brewery-600'
                       }`}
-                      title="Selectionner des clients pour planifier les visites"
+                      title="Sélectionner des clients pour planifier les visites"
                     >
                       <CalendarPlus className="w-3.5 h-3.5" />
                       {schedulingDay === day.dateStr ? 'Annuler' : 'Planifier'}
@@ -924,7 +933,7 @@ export default function ClientsPlanningPage() {
                           ? 'bg-indigo-600 text-white ring-2 ring-indigo-300'
                           : 'bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'
                       }`}
-                      title="Selectionner des clients pour actions de masse"
+                      title="Sélectionner des clients pour actions de masse"
                     >
                       <Settings2 className="w-3.5 h-3.5" />
                       {massActionDay === day.dateStr ? 'Annuler' : 'Actions'}
@@ -994,7 +1003,7 @@ export default function ClientsPlanningPage() {
                   )}
 
                   {day.sectors.length === 0 && !(planningData.rdvByDate[day.dateStr] || []).length ? (
-                    <p className="text-xs text-gray-400 italic">Aucun secteur prevu ce jour</p>
+                    <p className="text-xs text-gray-400 italic">Aucun secteur prévu ce jour</p>
                   ) : day.sectors.length > 0 ? (
                     <div className="space-y-3">
                       {day.sectors.map(sector => (
@@ -1088,7 +1097,7 @@ export default function ClientsPlanningPage() {
             </div>
             <div className="p-4 space-y-4">
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Resultat du rendez-vous</label>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Résultat du rendez-vous</label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
                     const sel = crForms[crModalRdv.id]?.compte_rendu === key;
@@ -1170,7 +1179,7 @@ export default function ClientsPlanningPage() {
             onClick={() => setSelectedClients(new Set())}
             className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
           >
-            Tout deselectionner
+            Tout désélectionner
           </button>
           <button
             onClick={openSchedulingModal}
@@ -1230,7 +1239,7 @@ export default function ClientsPlanningPage() {
 
               {/* Duration selector */}
               <div className="flex items-center gap-3">
-                <label className="text-xs font-medium text-gray-600 w-12">Duree</label>
+                <label className="text-xs font-medium text-gray-600 w-12">Durée</label>
                 <div className="flex gap-1.5 flex-wrap">
                   {[15, 30, 45, 60, 90].map(d => (
                     <button
@@ -1260,7 +1269,7 @@ export default function ClientsPlanningPage() {
             {/* Client list */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {scheduleEntries.length === 0 ? (
-                <p className="text-sm text-gray-400 italic text-center py-4">Aucun client selectionne</p>
+                <p className="text-sm text-gray-400 italic text-center py-4">Aucun client sélectionné</p>
               ) : (
                 scheduleEntries.map((entry, idx) => {
                   const client = state.clients.find(c => c.id === entry.clientId);
@@ -1401,7 +1410,7 @@ export default function ClientsPlanningPage() {
             onClick={() => setMassSelectedClients(new Set())}
             className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
           >
-            Tout deselectionner
+            Tout désélectionner
           </button>
           <button
             onClick={openMassActionModal}
@@ -1441,7 +1450,7 @@ export default function ClientsPlanningPage() {
                   { key: 'note' as const, icon: MessageSquarePlus, label: 'Ajouter une note', color: 'text-blue-600', bg: 'border-blue-200 hover:bg-blue-50', activeBg: 'border-blue-400 bg-blue-50 ring-2 ring-blue-200' },
                   { key: 'visite' as const, icon: CheckCircle2, label: 'Enregistrer visite', color: 'text-green-600', bg: 'border-green-200 hover:bg-green-50', activeBg: 'border-green-400 bg-green-50 ring-2 ring-green-200' },
                   { key: 'commercial' as const, icon: UserCheck, label: 'Changer commercial', color: 'text-purple-600', bg: 'border-purple-200 hover:bg-purple-50', activeBg: 'border-purple-400 bg-purple-50 ring-2 ring-purple-200' },
-                  { key: 'tache' as const, icon: ListTodo, label: 'Creer une tache (appels/visites)', color: 'text-indigo-600', bg: 'border-indigo-200 hover:bg-indigo-50', activeBg: 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200' },
+                  { key: 'tache' as const, icon: ListTodo, label: 'Créer une tâche (appels/visites)', color: 'text-indigo-600', bg: 'border-indigo-200 hover:bg-indigo-50', activeBg: 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200' },
                 ] as const).map(a => {
                   const Icon = a.icon;
                   const isActive = massAction === a.key;
@@ -1474,7 +1483,7 @@ export default function ClientsPlanningPage() {
                   <textarea
                     value={massNote}
                     onChange={e => setMassNote(e.target.value)}
-                    placeholder="Cette note sera ajoutee a chaque client selectionne..."
+                    placeholder="Cette note sera ajoutee a chaque client sélectionné..."
                     className={`w-full text-sm border rounded-lg px-3 py-2 resize-none h-20 focus:ring-2 focus:ring-indigo-300 ${!massNote.trim() ? 'border-red-300' : 'border-gray-300'}`}
                     autoFocus
                   />
@@ -1485,7 +1494,7 @@ export default function ClientsPlanningPage() {
                 <div>
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-2">
                     <p className="text-sm text-green-700">
-                      Une visite sera enregistree pour chaque client. La date de prochaine visite sera automatiquement recalculee.
+                      Une visite sera enregistrée pour chaque client. La date de prochaine visite sera automatiquement recalculee.
                     </p>
                   </div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">Commentaire (optionnel)</label>
@@ -1506,7 +1515,7 @@ export default function ClientsPlanningPage() {
                     onChange={e => setMassCommercialId(e.target.value)}
                     className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300"
                   >
-                    <option value="">Selectionner...</option>
+                    <option value="">Sélectionner...</option>
                     {state.commerciaux.map(c => (
                       <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
                     ))}
@@ -1534,7 +1543,7 @@ export default function ClientsPlanningPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Objet de la tache *</label>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Objet de la tâche *</label>
                     <input
                       type="text"
                       value={massTaskTitle}
@@ -1559,7 +1568,7 @@ export default function ClientsPlanningPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Echeance</label>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Échéance</label>
                       <input
                         type="date"
                         value={massTaskDate}
@@ -1569,7 +1578,7 @@ export default function ClientsPlanningPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Priorite</label>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Priorité</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['BASSE', 'MOYENNE', 'HAUTE'] as const).map(p => (
                         <button
@@ -1618,7 +1627,7 @@ export default function ClientsPlanningPage() {
                 onClick={executeMassAction}
                 disabled={!massAction || massSaving || (massAction === 'note' && !massNote.trim()) || (massAction === 'commercial' && !massCommercialId) || (massAction === 'tache' && !massTaskTitle.trim())}
               >
-                {massSaving ? 'En cours...' : massAction === 'inactif' ? 'Confirmer la desactivation' : massAction === 'tache' ? `Creer ${massSelectedClients.size} tache(s)` : 'Valider'}
+                {massSaving ? 'En cours...' : massAction === 'inactif' ? 'Confirmer la desactivation' : massAction === 'tache' ? `Créer ${massSelectedClients.size} tâche(s)` : 'Valider'}
               </button>
             </div>
           </div>

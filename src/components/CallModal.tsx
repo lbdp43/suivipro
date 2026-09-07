@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Clock, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
-import { CallResult, CALL_RESULT_LABELS } from '../types';
+import { CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } from '../types';
+import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
 import { getGoogleCalendarEvents, apiPost, apiPut, type GoogleCalendarEvent } from '../api/client';
 
@@ -12,6 +13,9 @@ import { getGoogleCalendarEvents, apiPost, apiPut, type GoogleCalendarEvent } fr
 
 interface CallModalContextType {
   startCall: (prospectId: string) => void;
+  /** Session d'appels : une file de prospects, enchaînés avec « Suivant ». */
+  startSession: (prospectIds: string[]) => void;
+  session: { ids: string[]; index: number } | null;
 }
 
 const CallModalContext = createContext<CallModalContextType | undefined>(undefined);
@@ -68,6 +72,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStartTimeRef = useRef<number>(0);
+  // Session d'appels : file de prospects (ceux qui ont un téléphone) et position courante.
+  const [session, setSession] = useState<{ ids: string[]; index: number } | null>(null);
 
   // Timer logic - uses Date.now() diff to avoid drift/freeze issues
   useEffect(() => {
@@ -134,6 +140,28 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   const endCall = () => {
     setCallActive(false);
+  };
+
+  const startSession = (prospectIds: string[]) => {
+    const ids = prospectIds.filter(id => { const p = state.prospects.find(x => x.id === id); return p && p.telephone; });
+    if (ids.length === 0) { toast.error('Aucun prospect avec un numéro de téléphone dans la sélection.'); return; }
+    setSession({ ids, index: 0 });
+    startCall(ids[0]);
+    if (ids.length < prospectIds.length) toast.info(`${prospectIds.length - ids.length} prospect(s) sans téléphone ignoré(s)`);
+  };
+
+  /** Passe au prospect suivant de la session, ou la termine. Renvoie true si on a enchaîné. */
+  const suivantDeSession = (): boolean => {
+    if (!session) return false;
+    const index = session.index + 1;
+    if (index >= session.ids.length) {
+      toast.success(`Session terminée : ${session.ids.length} appel(s)`);
+      setSession(null);
+      return false;
+    }
+    setSession({ ids: session.ids, index });
+    startCall(session.ids[index]);
+    return true;
   };
 
   const toggleTag = (tagId: string) => {
@@ -204,7 +232,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
           newStage = 'gagne';
         }
-        // Regle : memo → "Contacte" si encore en "A contacter" ou "Nouveau"
+        // Regle : memo → "Contacte" si encore en "À contacter" ou "Nouveau"
         else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
           newStage = 'contacte';
         }
@@ -212,6 +240,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         const updatedProspect = {
           ...prospect,
           tags: selectedTags,
+          score: scoreDepuisTags(selectedTags, state.tags, prospect.score),
           nom_contact: editContact.trim() || prospect.nom_contact,
           email: editEmail.trim() || prospect.email,
           etape_pipeline: newStage,
@@ -260,17 +289,17 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         setCallActive(false);
         setCallTimer(0);
         setSaving(false);
-        toast.success('Appel et RDV enregistres avec succes');
+        toast.success('Appel et RDV enregistrés avec succes');
         return;
       }
 
-      toast.success('Appel enregistre avec succes');
-      setShowModal(false);
+      toast.success('Appel enregistré');
       setCallActive(false);
       setCallTimer(0);
+      if (!suivantDeSession()) setShowModal(false);
     } catch (err) {
       console.error('Erreur sauvegarde appel:', err);
-      toast.error('Erreur lors de la sauvegarde. Veuillez reessayer.');
+      toast.error('Erreur lors de la sauvegarde. Veuillez réessayer.');
     } finally {
       setSaving(false);
     }
@@ -282,6 +311,14 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     }
     setShowModal(false);
     setCallTimer(0);
+    setSession(null);
+  };
+
+  /** Passer ce prospect sans enregistrer d'appel (session). */
+  const passerCeProspect = () => {
+    setCallActive(false);
+    setCallTimer(0);
+    if (!suivantDeSession()) setShowModal(false);
   };
 
   const prospect = state.prospects.find(p => p.id === prospectId);
@@ -290,6 +327,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     repondu: CheckCircle,
     pas_de_reponse: PhoneMissed,
     messagerie: MessageSquare,
+    email_envoye: Mail,
     injoignable: PhoneOff,
   };
 
@@ -297,6 +335,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     repondu: 'border-green-500 bg-green-50 text-green-700',
     pas_de_reponse: 'border-red-500 bg-red-50 text-red-700',
     messagerie: 'border-amber-500 bg-amber-50 text-amber-700',
+    email_envoye: 'border-blue-500 bg-blue-50 text-blue-700',
     injoignable: 'border-gray-500 bg-gray-100 text-gray-700',
   };
 
@@ -333,7 +372,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     : [];
 
   return (
-    <CallModalContext.Provider value={{ startCall }}>
+    <CallModalContext.Provider value={{ startCall, startSession, session }}>
       {children}
 
       {/* Global Call Modal */}
@@ -346,14 +385,22 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                 <div>
                   <h3 className="font-bold text-gray-900">
                     {callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
+                    {session && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-brewery-100 text-brewery-700">Session {session.index + 1} / {session.ids.length}</span>}
                   </h3>
                   <p className="text-sm text-gray-500 mt-0.5">{prospect.nom_etablissement}</p>
                 </div>
-                {!callActive && (
-                  <button className="p-1 rounded hover:bg-gray-100" onClick={cancelCall}>
-                    <X className="w-5 h-5 text-gray-500" />
-                  </button>
-                )}
+                <div className="flex items-center gap-1">
+                  {session && (
+                    <button className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded" onClick={passerCeProspect} title="Passer au suivant sans enregistrer">
+                      Passer →
+                    </button>
+                  )}
+                  {!callActive && (
+                    <button className="p-1 rounded hover:bg-gray-100" onClick={cancelCall} title={session ? 'Arrêter la session' : 'Fermer'}>
+                      <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -385,7 +432,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                 <>
                   {callTimer > 0 && (
                     <div className="text-center text-sm text-gray-500">
-                      Duree de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span>
+                      Durée de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span>
                     </div>
                   )}
 
@@ -393,7 +440,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   {(!prospect.nom_contact || !prospect.email) && (
                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
                       <label className="block text-xs font-medium text-orange-700 flex items-center gap-1">
-                        <User className="w-3 h-3" /> Completer les infos du prospect
+                        <User className="w-3 h-3" /> Compléter les infos du prospect
                       </label>
                       <div className="grid grid-cols-1 gap-2">
                         <div>
@@ -428,9 +475,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
                   {/* Call result */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-2">Resultat de l'appel</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-2">Résultat de l'appel</label>
                     <div className="grid grid-cols-2 gap-2">
-                      {(Object.keys(CALL_RESULT_LABELS) as CallResult[]).map(result => {
+                      {RESULTATS_APPEL_SAISISSABLES.map(result => {
                         const Icon = resultIcons[result];
                         return (
                           <button
@@ -463,7 +510,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         onClick={() => setNegativeOutcome(prev => prev === 'pas_interesse' ? 'none' : 'pas_interesse')}
                       >
                         <ThumbsDown className="w-4 h-4" />
-                        Pas interesse
+                        Pas intéressé
                       </button>
                       <button
                         className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
@@ -478,10 +525,10 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       </button>
                     </div>
                     {negativeOutcome === 'pas_interesse' && (
-                      <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
+                      <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
                     )}
                     {negativeOutcome === 'ne_pas_contacter' && (
-                      <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera deplace dans "Ne pas contacter"</p>
+                      <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera déplacé dans "Ne pas contacter"</p>
                     )}
                   </div>
 
@@ -612,7 +659,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       {/* Selecteur commercial assigne */}
                       <div>
                         <label className="block text-[10px] text-blue-600 mb-0.5 flex items-center gap-1">
-                          <Users className="w-3 h-3" /> Commercial assigne au RDV
+                          <Users className="w-3 h-3" /> Commercial assigné au RDV
                         </label>
                         <select
                           className="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white"
@@ -673,7 +720,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       {googleConflicts.length > 0 && (
                         <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
                           <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — evenement(s) Google Agenda sur ce creneau
+                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — événement(s) Google Agenda sur ce creneau
                           </p>
                           {googleConflicts.map(evt => {
                             const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
@@ -701,7 +748,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         onChange={e => setRdvNotes(e.target.value)}
                       />
                       <p className="text-[10px] text-blue-500 italic">
-                        Le prospect sera automatiquement deplace dans "RDV / Gagne"
+                        Le prospect sera automatiquement déplacé dans "RDV / Gagne"
                       </p>
                     </div>
                   )}
@@ -772,7 +819,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   onClick={saveCall}
                   disabled={saving}
                 >
-                  <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : 'Enregistrer'}
+                  <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : session && session.index + 1 < session.ids.length ? 'Enregistrer et suivant' : 'Enregistrer'}
                 </button>
               </div>
             )}
@@ -794,7 +841,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     <div className="w-14 h-14 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
                       <CheckCircle className="w-7 h-7 text-green-600" />
                     </div>
-                    <h3 className="font-bold text-gray-900">RDV cree avec succes !</h3>
+                    <h3 className="font-bold text-gray-900">RDV créé avec succes !</h3>
                     <p className="text-sm text-gray-500 mt-1">
                       {rdvProspect?.nom_etablissement} - {formatDate(createdRdv?.date || '')}
                     </p>
@@ -861,9 +908,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     )}
                     <button
                       className="flex-1 px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
-                      onClick={() => { setShowConfirmation(false); setShowModal(false); }}
+                      onClick={() => { setShowConfirmation(false); if (!suivantDeSession()) setShowModal(false); }}
                     >
-                      Fermer
+                      {session && session.index + 1 < session.ids.length ? 'Suivant →' : 'Fermer'}
                     </button>
                   </div>
                 </div>

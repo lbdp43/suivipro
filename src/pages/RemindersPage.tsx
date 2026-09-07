@@ -11,7 +11,9 @@ import { apiPost, apiPut, apiDelete } from '../api/client';
 import { Reminder, ReminderStatus } from '../types';
 import { generateId, formatDate, isToday, toLocalDateStr } from '../utils/helpers';
 
-export default function RemindersPage() {
+// embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
+// idsVisibles : auteurs à afficher (null = tout le monde).
+export default function RemindersPage({ embarque = false, idsVisibles = null }: { embarque?: boolean; idsVisibles?: Set<string> | null } = {}) {
   const { state, dispatchLocal, getProspect } = useApp();
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
@@ -40,9 +42,10 @@ export default function RemindersPage() {
 
   const reminders = useMemo(() => {
     let filtered = [...state.reminders];
+    if (idsVisibles) filtered = filtered.filter(r => idsVisibles.has(r.commercial_id));
     if (filterCommercial) filtered = filtered.filter(r => r.commercial_id === filterCommercial);
     return filtered.sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.reminders, filterCommercial]);
+  }, [state.reminders, filterCommercial, idsVisibles]);
 
   const todayReminders = reminders.filter(r => r.statut === 'actif' && isToday(r.date));
   const upcomingReminders = reminders.filter(r => r.statut === 'actif' && !isToday(r.date) && r.date >= toLocalDateStr(new Date()));
@@ -79,9 +82,9 @@ export default function RemindersPage() {
     try {
       await apiPut(`/reminders/${id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel termine');
+      toast.success('Rappel terminé');
     } catch (err) {
-      toast.error(`Erreur mise a jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      toast.error(`Erreur mise à jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
   };
 
@@ -107,7 +110,7 @@ export default function RemindersPage() {
     try {
       await apiPut(`/reminders/${snoozeTarget.id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel reporte');
+      toast.success('Rappel reporté');
       setSnoozeTarget(null);
     } catch (err) {
       toast.error(`Erreur report rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
@@ -131,7 +134,7 @@ export default function RemindersPage() {
     try {
       await apiDelete(`/reminders/${id}`);
       dispatchLocal({ type: 'DELETE_REMINDER', payload: id });
-      toast.success('Rappel supprime');
+      toast.success('Rappel supprimé');
     } catch (err) {
       toast.error(`Erreur suppression rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
@@ -148,7 +151,7 @@ export default function RemindersPage() {
     try {
       await apiPut(`/reminders/${editTarget.id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel modifie');
+      toast.success('Rappel modifié');
       setEditTarget(null);
     } catch (err) {
       toast.error(`Erreur modification rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
@@ -160,7 +163,7 @@ export default function RemindersPage() {
     try {
       await apiPut(`/reminders/${rem.id}`, payload);
       dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel reactive');
+      toast.success('Rappel réactivé');
     } catch (err) {
       toast.error(`Erreur reactivation rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
@@ -267,7 +270,7 @@ export default function RemindersPage() {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
                   onClick={() => reactivateReminder(rem)}
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Reactiver
+                  <RotateCcw className="w-3.5 h-3.5" /> Réactiver
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
@@ -292,21 +295,26 @@ export default function RemindersPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rappels</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
-        </div>
+        {!embarque && (
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rappels</h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Programmez vos rappels de prospection</p>
+          </div>
+        )}
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <select
-            className="px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg text-xs sm:text-sm bg-white"
-            value={filterCommercial}
-            onChange={e => setFilterCommercial(e.target.value)}
-          >
-            <option value="">Tous les commerciaux</option>
-            {state.commerciaux.map(c => (
-              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
-            ))}
-          </select>
+          {/* Embarqué dans « Rappels et tâches », la vue d'équipe remplace ce filtre par auteur. */}
+          {!embarque && (
+            <select
+              className="px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg text-xs sm:text-sm bg-white"
+              value={filterCommercial}
+              onChange={e => setFilterCommercial(e.target.value)}
+            >
+              <option value="">Tous les commerciaux</option>
+              {state.commerciaux.map(c => (
+                <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+              ))}
+            </select>
+          )}
           <button
             className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium"
             onClick={() => setShowForm(true)}
@@ -354,7 +362,7 @@ export default function RemindersPage() {
       {/* Completed */}
       {completedReminders.length > 0 && (
         <div>
-          <h3 className="font-semibold text-gray-500 mb-3">Termines ({completedReminders.length})</h3>
+          <h3 className="font-semibold text-gray-500 mb-3">Terminés ({completedReminders.length})</h3>
           <div className="space-y-3">
             {completedReminders.slice(0, completedPage * COMPLETED_PER_PAGE).map(r => renderReminder(r))}
           </div>
@@ -541,7 +549,7 @@ export default function RemindersPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Prospect *</label>
                 <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.prospect_id} onChange={e => setFormData(prev => ({ ...prev, prospect_id: e.target.value }))}>
-                  <option value="">Selectionnez</option>
+                  <option value="">Sélectionnez</option>
                   {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
                 </select>
               </div>

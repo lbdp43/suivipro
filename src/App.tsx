@@ -7,12 +7,12 @@ import LoginPage from './pages/LoginPage';
 
 // Lazy-loaded pages
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AccueilPage = lazy(() => import('./pages/AccueilPage'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const PipelinePage = lazy(() => import('./pages/PipelinePage'));
 const ProspectsPage = lazy(() => import('./pages/ProspectsPage'));
 const CallsPage = lazy(() => import('./pages/CallsPage'));
 const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'));
-const RemindersPage = lazy(() => import('./pages/RemindersPage'));
 const EmailsPage = lazy(() => import('./pages/EmailsPage'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
@@ -21,13 +21,11 @@ const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
 const GuidePage = lazy(() => import('./pages/GuidePage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
 const TourneesPage = lazy(() => import('./pages/TourneesPage'));
-const VisitesPage = lazy(() => import('./pages/VisitesPage'));
-const TasksPage = lazy(() => import('./pages/TasksPage'));
-const CompteRenduPage = lazy(() => import('./pages/CompteRenduPage'));
 const PipelineCRPage = lazy(() => import('./pages/PipelineCRPage'));
 const SirenePage = lazy(() => import('./pages/SirenePage'));
 const AnnuairePage = lazy(() => import('./pages/AnnuairePage'));
-const ClientsPlanningPage = lazy(() => import('./pages/ClientsPlanningPage'));
+const SemainePage = lazy(() => import('./pages/SemainePage'));
+const RappelsTachesPage = lazy(() => import('./pages/RappelsTachesPage'));
 
 function PageLoader() {
   return (
@@ -70,21 +68,25 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<AccueilPage />} />
+          <Route path="/statistiques" element={<DashboardPage />} />
           <Route path="/carte" element={<MapPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/prospects" element={<ProspectsPage />} />
           <Route path="/appels" element={<CallsPage />} />
           <Route path="/rdv" element={<AppointmentsPage />} />
-          <Route path="/rappels" element={<RemindersPage />} />
+          <Route path="/rappels" element={<RappelsTachesPage />} />
+          <Route path="/taches" element={<RappelsTachesPage />} />
           <Route path="/emails" element={<EmailsPage />} />
           <Route path="/clients" element={<ClientsPage />} />
-          <Route path="/clients/planning" element={<ClientsPlanningPage />} />
+          <Route path="/semaine" element={<SemainePage />} />
+          <Route path="/semaine/bilan" element={<SemainePage />} />
+          {/* Anciennes adresses : Planning semaine, Visites et CR, Visites clients → Semaine */}
+          <Route path="/clients/planning" element={<Navigate to="/semaine" replace />} />
+          <Route path="/visites" element={<Navigate to="/semaine" replace />} />
+          <Route path="/compte-rendu" element={<Navigate to="/semaine/bilan" replace />} />
           <Route path="/tournees" element={<TourneesPage />} />
-          <Route path="/visites" element={<VisitesPage />} />
-          <Route path="/compte-rendu" element={<CompteRenduPage />} />
           <Route path="/pipeline-cr" element={<PipelineCRPage />} />
-          <Route path="/taches" element={<TasksPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/import" element={<AdminRoute><ImportPage /></AdminRoute>} />
           <Route path="/annuaire" element={<AnnuairePage />} />
@@ -92,6 +94,7 @@ export default function App() {
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/profil" element={<ProfilePage />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+          <Route path="/easybeer" element={<AdminRoute><AdminPage section="easybeer" /></AdminRoute>} />
         </Route>
       </Routes>
     </Suspense>

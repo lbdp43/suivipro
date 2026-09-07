@@ -30,9 +30,9 @@ interface Task {
 }
 
 const STATUT_CONFIG: Record<string, { label: string; color: string; bg: string; icon: typeof Clock }> = {
-  A_FAIRE: { label: 'A faire', color: 'text-amber-700', bg: 'bg-amber-100', icon: Clock },
+  A_FAIRE: { label: 'À faire', color: 'text-amber-700', bg: 'bg-amber-100', icon: Clock },
   EN_COURS: { label: 'En cours', color: 'text-blue-700', bg: 'bg-blue-100', icon: RefreshCw },
-  TERMINEE: { label: 'Terminee', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
+  TERMINEE: { label: 'Terminée', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
 };
 
 const PRIORITE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -42,12 +42,12 @@ const PRIORITE_CONFIG: Record<string, { label: string; color: string; bg: string
 };
 
 const CATEGORIES: Record<string, string> = {
-  general: 'General',
-  tournee: 'Tournee / Visite',
+  general: 'Général',
+  tournee: 'Tournée / Visite',
   prospection: 'Prospection',
   administratif: 'Administratif',
   livraison: 'Livraison',
-  evenement: 'Evenement',
+  evenement: 'Événement',
   autre: 'Autre',
 };
 
@@ -71,7 +71,9 @@ const emptyForm = {
   client_id: '',
 };
 
-export default function TasksPage() {
+// embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
+// idsVisibles : responsables à afficher (null = tout le monde) ; une tâche non affectée reste visible.
+export default function TasksPage({ embarque = false, idsVisibles = null }: { embarque?: boolean; idsVisibles?: Set<string> | null } = {}) {
   const { state } = useApp();
   const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -163,7 +165,7 @@ export default function TasksPage() {
         }),
       });
       if (res.ok) {
-        toast.success(editingTask ? 'Tache modifiee' : 'Tache creee');
+        toast.success(editingTask ? 'Tâche modifiée' : 'Tâche créée');
         setShowForm(false);
         loadTasks();
       }
@@ -185,7 +187,7 @@ export default function TasksPage() {
       if (res.ok) {
         const updated = await res.json();
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updated } : t));
-        if (nextStatut === 'TERMINEE') toast.success('Tache terminee !');
+        if (nextStatut === 'TERMINEE') toast.success('Tâche terminée !');
       }
     } catch {
       toast.error('Erreur');
@@ -193,11 +195,11 @@ export default function TasksPage() {
   };
 
   const deleteTask = async (taskId: string) => {
-    if (!confirm('Supprimer cette tache ?')) return;
+    if (!confirm('Supprimer cette tâche ?')) return;
     try {
       await fetch(`/api/tasks-client/${taskId}`, { method: 'DELETE', headers });
       setTasks(prev => prev.filter(t => t.id !== taskId));
-      toast.success('Tache supprimee');
+      toast.success('Tâche supprimée');
     } catch {
       toast.error('Erreur suppression');
     }
@@ -229,7 +231,7 @@ export default function TasksPage() {
     if (crOutcome !== 'pas_repondu' && !crComment.trim()) { toast.warning('Indiquez ce qui a ete dit ou constate'); return; }
     setCrSaving(true);
     try {
-      const outcomePrefix = crOutcome === 'pas_repondu' ? "N'a pas repondu. " : crOutcome === 'repondu' ? 'A repondu. ' : '';
+      const outcomePrefix = crOutcome === 'pas_repondu' ? "N'a pas répondu. " : crOutcome === 'repondu' ? 'A répondu. ' : '';
       const interaction = {
         id: generateId('int'),
         client_id: crTask.client_id,
@@ -254,7 +256,7 @@ export default function TasksPage() {
         });
       }
 
-      toast.success(crType === 'APPEL' ? 'Appel enregistre' : 'Visite enregistree');
+      toast.success(crType === 'APPEL' ? 'Appel enregistré' : 'Visite enregistrée');
       setCrTask(null);
       loadTasks();
     } catch {
@@ -282,6 +284,7 @@ export default function TasksPage() {
     if (filterStatut !== 'all') result = result.filter(t => t.statut === filterStatut);
     if (filterPriorite !== 'all') result = result.filter(t => t.priorite === filterPriorite);
 
+    if (idsVisibles) result = result.filter(t => !t.commercial_id || idsVisibles.has(t.commercial_id));
     if (filterAssignee === 'me') result = result.filter(t => t.commercial_id === currentUserId);
     else if (filterAssignee === 'unassigned') result = result.filter(t => !t.commercial_id);
     else if (filterAssignee !== 'all') result = result.filter(t => t.commercial_id === filterAssignee);
@@ -297,23 +300,25 @@ export default function TasksPage() {
     }
 
     return result;
-  }, [tasks, filterStatut, filterAssignee, filterPriorite, showCompleted, search, currentUserId]);
+  }, [tasks, filterStatut, filterAssignee, filterPriorite, showCompleted, search, currentUserId, idsVisibles]);
 
-  // Stats
+  // Stats — sur la même base que la liste (vue d'équipe appliquée), sinon les chiffres
+  // du haut ne correspondent pas à ce qu'on voit dessous.
   const stats = useMemo(() => {
     const today = toLocalDateStr(new Date());
-    const myTasks = tasks.filter(t => t.commercial_id === currentUserId);
+    const base = idsVisibles ? tasks.filter(t => !t.commercial_id || idsVisibles.has(t.commercial_id)) : tasks;
+    const myTasks = base.filter(t => t.commercial_id === currentUserId);
     return {
-      total: tasks.filter(t => t.statut !== 'TERMINEE').length,
+      total: base.filter(t => t.statut !== 'TERMINEE').length,
       myPending: myTasks.filter(t => t.statut !== 'TERMINEE').length,
-      overdue: tasks.filter(t => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < today).length,
-      completedThisMonth: tasks.filter(t => {
+      overdue: base.filter(t => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < today).length,
+      completedThisMonth: base.filter(t => {
         if (t.statut !== 'TERMINEE' || !t.completed_at) return false;
         const month = new Date().toISOString().slice(0, 7);
         return t.completed_at.startsWith(month);
       }).length,
     };
-  }, [tasks, currentUserId]);
+  }, [tasks, currentUserId, idsVisibles]);
 
   const formatDate = (d: string | null) => {
     if (!d) return '-';
@@ -338,15 +343,18 @@ export default function TasksPage() {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 fade-in max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ListTodo className="w-5 h-5 sm:w-6 sm:h-6" />
-            Taches
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            Gestion des taches de l'equipe
-          </p>
-        </div>
+        {!embarque && (
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <ListTodo className="w-5 h-5 sm:w-6 sm:h-6" />
+              Tâches
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+              Gestion des tâches de l'équipe
+            </p>
+          </div>
+        )}
+        {embarque && <div />}
         <div className="flex items-center gap-2">
           <button onClick={loadTasks} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <RefreshCw className="w-4 h-4" />
@@ -356,7 +364,7 @@ export default function TasksPage() {
               onClick={openNewTask}
               className="px-3 py-2 sm:px-4 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
             >
-              <Plus className="w-4 h-4" /> Nouvelle tache
+              <Plus className="w-4 h-4" /> Nouvelle tâche
             </button>
           )}
         </div>
@@ -366,11 +374,11 @@ export default function TasksPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
           <p className="text-2xl font-bold text-indigo-600">{stats.total}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">En cours / A faire</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">En cours / À faire</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
           <p className="text-2xl font-bold text-brewery-600">{stats.myPending}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">Mes taches</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">Mes tâches</p>
         </div>
         <div className={`rounded-xl border p-3 text-center ${stats.overdue > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
           <p className={`text-2xl font-bold ${stats.overdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{stats.overdue}</p>
@@ -378,7 +386,7 @@ export default function TasksPage() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
           <p className="text-2xl font-bold text-green-600">{stats.completedThisMonth}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">Terminees ce mois</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">Terminées ce mois</p>
         </div>
       </div>
 
@@ -407,7 +415,7 @@ export default function TasksPage() {
             onChange={e => setFilterStatut(e.target.value)}
           >
             <option value="all">Tout statut</option>
-            <option value="A_FAIRE">A faire</option>
+            <option value="A_FAIRE">À faire</option>
             <option value="EN_COURS">En cours</option>
           </select>
 
@@ -417,7 +425,7 @@ export default function TasksPage() {
             value={filterPriorite}
             onChange={e => setFilterPriorite(e.target.value)}
           >
-            <option value="all">Toute priorite</option>
+            <option value="all">Toute priorité</option>
             <option value="HAUTE">Haute</option>
             <option value="MOYENNE">Moyenne</option>
             <option value="BASSE">Basse</option>
@@ -430,7 +438,7 @@ export default function TasksPage() {
             onChange={e => setFilterAssignee(e.target.value)}
           >
             <option value="all">Tout le monde</option>
-            <option value="me">Mes taches</option>
+            <option value="me">Mes tâches</option>
             {state.commerciaux.map(c => (
               <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
             ))}
@@ -446,7 +454,7 @@ export default function TasksPage() {
             }`}
           >
             <CheckCircle2 className="w-4 h-4 inline mr-1" />
-            Terminees
+            Terminées
           </button>
         </div>
       </div>
@@ -457,7 +465,7 @@ export default function TasksPage() {
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="font-semibold text-gray-900 text-lg">
-                {editingTask ? 'Modifier la tache' : 'Nouvelle tache'}
+                {editingTask ? 'Modifier la tâche' : 'Nouvelle tâche'}
               </h3>
               <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-gray-100">
                 <X className="w-5 h-5 text-gray-400" />
@@ -486,14 +494,14 @@ export default function TasksPage() {
                   rows={3}
                   value={form.description}
                   onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Details de la tache..."
+                  placeholder="Détails de la tâche..."
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 {/* Priorite */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Priorite</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Priorité</label>
                   <div className="flex gap-1">
                     {Object.entries(PRIORITE_CONFIG).map(([key, cfg]) => (
                       <button
@@ -513,7 +521,7 @@ export default function TasksPage() {
 
                 {/* Categorie */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Categorie</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                   <select
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
                     value={form.categorie}
@@ -529,7 +537,7 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-3">
                 {/* Echeance */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Echeance</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Échéance</label>
                   <input
                     type="date"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -563,7 +571,7 @@ export default function TasksPage() {
                   value={form.commercial_id}
                   onChange={e => setForm(prev => ({ ...prev, commercial_id: e.target.value }))}
                 >
-                  <option value="">-- Selectionner --</option>
+                  <option value="">-- Sélectionner --</option>
                   {state.commerciaux.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.prenom} {c.nom} ({c.role === 'admin' ? 'Admin' : c.role === 'prospection' ? 'Prospection' : 'Commercial'})
@@ -575,7 +583,7 @@ export default function TasksPage() {
               {/* Client (optional) */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Client lie <span className="text-gray-400 font-normal">(optionnel)</span>
+                  Client lié <span className="text-gray-400 font-normal">(optionnel)</span>
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
@@ -600,7 +608,7 @@ export default function TasksPage() {
                 className="px-4 py-2 text-sm font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-2 disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {editingTask ? 'Modifier' : 'Creer'}
+                {editingTask ? 'Modifier' : 'Créer'}
               </button>
             </div>
           </div>
@@ -649,7 +657,7 @@ export default function TasksPage() {
                       crOutcome === 'repondu' ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}
                   >
-                    <MessageCircle className="w-4 h-4" /> A repondu
+                    <MessageCircle className="w-4 h-4" /> A répondu
                   </button>
                   <button
                     onClick={() => setCrOutcome('pas_repondu')}
@@ -657,7 +665,7 @@ export default function TasksPage() {
                       crOutcome === 'pas_repondu' ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}
                   >
-                    <PhoneOff className="w-4 h-4" /> N'a pas repondu
+                    <PhoneOff className="w-4 h-4" /> N'a pas répondu
                   </button>
                 </div>
               )}
@@ -685,7 +693,7 @@ export default function TasksPage() {
                   onChange={e => setCrCompleteTask(e.target.checked)}
                   className="rounded border-gray-300"
                 />
-                Marquer la tache comme terminee
+                Marquer la tâche comme terminée
               </label>
             </div>
 
@@ -713,8 +721,8 @@ export default function TasksPage() {
             <ListTodo className="w-8 h-8 text-gray-300 mx-auto mb-2" />
             <p className="text-sm text-gray-500">
               {search || filterStatut !== 'all' || filterAssignee !== 'all'
-                ? 'Aucune tache ne correspond aux filtres'
-                : 'Aucune tache en cours'}
+                ? 'Aucune tâche ne correspond aux filtres'
+                : 'Aucune tâche en cours'}
             </p>
           </div>
         )}

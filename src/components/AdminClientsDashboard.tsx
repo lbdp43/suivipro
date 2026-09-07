@@ -200,7 +200,7 @@ export default function AdminClientsDashboard() {
 
       {/* Interaction type breakdown */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Detail par type d'interaction</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Détail par type d'interaction</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-gray-500 mb-2">Cette semaine</p>
@@ -271,7 +271,7 @@ export default function AdminClientsDashboard() {
                 </div>
                 <div className="text-center p-2 bg-gray-50 rounded-lg">
                   <p className="text-lg font-bold text-gray-900">{s.taches_terminees_mois}</p>
-                  <p className="text-[10px] text-gray-500">Taches term.</p>
+                  <p className="text-[10px] text-gray-500">Tâches term.</p>
                 </div>
               </div>
 
@@ -317,7 +317,7 @@ export default function AdminClientsDashboard() {
                 {s.clients_en_retard === 0 && s.taches_en_retard === 0 && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
                     <CheckCircle2 className="w-3 h-3" />
-                    A jour
+                    À jour
                   </span>
                 )}
               </div>
@@ -333,7 +333,7 @@ export default function AdminClientsDashboard() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              Activite recente
+              Activité recente
             </h3>
             <button onClick={loadData} className="p-1 text-gray-400 hover:text-gray-600">
               <RefreshCw className="w-4 h-4" />
@@ -347,10 +347,10 @@ export default function AdminClientsDashboard() {
               onChange={e => setActivityFilter(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-2 py-1"
             >
-              <option value="">Toutes activites</option>
+              <option value="">Toutes activités</option>
               <option value="visite">Visites</option>
               <option value="appel">Appels</option>
-              <option value="tache">Taches</option>
+              <option value="tache">Tâches</option>
               <option value="nouveau_client">Nouveaux clients</option>
             </select>
             <select
@@ -369,7 +369,7 @@ export default function AdminClientsDashboard() {
 
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {activities.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">Aucune activite pour cette periode</p>
+              <p className="text-sm text-gray-400 text-center py-4">Aucune activité pour cette période</p>
             ) : activities.slice(0, 30).map(a => (
               <div key={a.id} className="flex items-start gap-2 py-2 border-b border-gray-50 last:border-0">
                 <span className={`text-xs px-1.5 py-0.5 rounded ${ACTIVITY_COLORS[a.type] || 'bg-gray-100 text-gray-600'}`}>
@@ -461,7 +461,7 @@ export default function AdminClientsDashboard() {
                   </div>
                 )}
                 {expandedWeeks.has(week.week_number) && week.clients.length === 0 && (
-                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucune visite planifiee</p>
+                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucune visite planifiée</p>
                 )}
               </div>
             ))}

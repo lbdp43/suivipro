@@ -19,16 +19,18 @@ import { generateId, formatDate, detectConflicts, downloadICSClient, geocodeAddr
 import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalendarEvent } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
+import { decrocheDuClient } from '../utils/commandes';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
+// Règle 1 (shared/regles) : un client est en retard quand sa visite prévue est dépassée
+// d'au moins un jour. Même règle que l'accueil, la semaine et l'administration.
+const STATUT_VERS_CODE: Record<StatutVisite, 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF'> = {
+  RETARD: 'LATE', AUJOURDHUI: 'TODAY', A_VENIR: 'UPCOMING', SANS_RECURRENCE: 'NO_RECURRENCE', INACTIF: 'INACTIF',
+};
 function getVisitStatusFromDate(nextVisit: string | null, statut: string): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
-  if (statut === 'INACTIF') return 'INACTIF';
-  if (!nextVisit) return 'NO_RECURRENCE';
-  const today = toLocalDateStr(new Date());
-  if (nextVisit < today) return 'LATE';
-  if (nextVisit === today) return 'TODAY';
-  return 'UPCOMING';
+  return STATUT_VERS_CODE[statutVisite({ statut, next_visit: nextVisit })];
 }
 
 function getVisitStatus(client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' {
@@ -38,8 +40,8 @@ function getVisitStatus(client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_REC
 const VISIT_STATUS_CONFIG = {
   LATE: { label: 'En retard', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
   TODAY: { label: 'Aujourd\'hui', color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
-  UPCOMING: { label: 'A venir', color: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
-  NO_RECURRENCE: { label: 'Sans recurrence', color: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+  UPCOMING: { label: 'À venir', color: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
+  NO_RECURRENCE: { label: 'Sans récurrence', color: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
   INACTIF: { label: 'Inactif', color: 'bg-gray-100 text-gray-500', dot: 'bg-gray-400' },
 };
 
@@ -140,6 +142,7 @@ export default function ClientsPage() {
 
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
+  const [menuMobileId, setMenuMobileId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [fusionOuverte, setFusionOuverte] = useState(false);
   const [fusionEnCours, setFusionEnCours] = useState(false);
@@ -204,7 +207,7 @@ export default function ClientsPage() {
         });
         setTourneeConfigs(map);
       })
-      .catch(err => console.error('Failed to load tournee configs:', err));
+      .catch(err => console.error('Failed to load tournée configs:', err));
   }, []);
 
   // Initialize RDV fields when modal opens
@@ -276,11 +279,10 @@ export default function ClientsPage() {
     }
   }, [state.currentUser, state.interactions, getInteractionsForClient]);
 
-  // Personal visit status for current user
-  const getPersonalVisitStatus = useCallback((client: Client): 'LATE' | 'TODAY' | 'UPCOMING' | 'NO_RECURRENCE' | 'INACTIF' => {
-    const { nextVisit } = getPersonalVisitInfo(client);
-    return getVisitStatusFromDate(nextVisit, client.statut);
-  }, [getPersonalVisitInfo]);
+  // Le statut (en retard, aujourd'hui, à venir) suit la règle unique, sur la date de
+  // prochaine visite de la fiche — plus de calcul « personnel » qui donnait un autre
+  // chiffre que l'accueil. « Ma dernière visite » reste affichée à titre d'information.
+  const getPersonalVisitStatus = useCallback((client: Client) => getVisitStatus(client), []);
 
   // Multi-select helpers
   const toggleSelection = (id: string, e: React.MouseEvent) => {
@@ -307,7 +309,7 @@ export default function ClientsPage() {
     } else if (bulkAction === 'note') {
       if (!bulkNoteText.trim()) { toast.error('Le texte de la note est obligatoire'); return; }
     } else if (bulkAction === 'tache') {
-      if (!bulkTaskTitle.trim()) { toast.error('Le titre de la tache est obligatoire'); return; }
+      if (!bulkTaskTitle.trim()) { toast.error('Le titre de la tâche est obligatoire'); return; }
     } else if (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') {
       // No value needed
     } else if (!bulkValue.trim() && bulkAction !== 'recurrence') {
@@ -342,8 +344,8 @@ export default function ClientsPage() {
           errors++;
         }
       }
-      if (errors > 0) toast.error(`${errors} visite(s) non enregistree(s)`);
-      if (count > 0) toast.success(`${count} visite(s) enregistree(s)`);
+      if (errors > 0) toast.error(`${errors} visite(s) non enregistrée(s)`);
+      if (count > 0) toast.success(`${count} visite(s) enregistrée(s)`);
       setBulkVisiteComment('');
       setBulkVisiteType('VISITE');
       exitSelectionMode();
@@ -351,7 +353,7 @@ export default function ClientsPage() {
     }
 
     if (bulkAction === 'tache') {
-      if (!bulkTaskTitle.trim()) { toast.error('Le titre de la tache est obligatoire'); return; }
+      if (!bulkTaskTitle.trim()) { toast.error('Le titre de la tâche est obligatoire'); return; }
       const assigneeId = bulkTaskCommercialId || state.currentUser?.id || '';
       const typeLabel = bulkTaskType === 'appel' ? 'Appel' : 'Visite';
       for (const id of selectedIds) {
@@ -375,8 +377,8 @@ export default function ClientsPage() {
           count++;
         } catch { errors++; }
       }
-      if (errors > 0) toast.error(`${errors} tache(s) non creee(s)`);
-      if (count > 0) toast.success(`${count} tache(s) creee(s) et assignee(s)`);
+      if (errors > 0) toast.error(`${errors} tâche(s) non créée(s)`);
+      if (count > 0) toast.success(`${count} tâche(s) créée(s) et assignée(s)`);
       setBulkTaskTitle('');
       setBulkTaskDate('');
       setBulkTaskCommercialId('');
@@ -399,7 +401,7 @@ export default function ClientsPage() {
           count++;
         } catch { errors++; }
       }
-      if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
+      if (errors > 0) toast.error(`${errors} client(s) non mis à jour`);
       if (count > 0) toast.success(`Note ${bulkNoteMode === 'replace' ? 'remplacee' : 'ajoutee'} pour ${count} client(s)`);
       setBulkNoteText('');
       exitSelectionMode();
@@ -439,7 +441,7 @@ export default function ClientsPage() {
           errors++;
         }
       }
-      if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
+      if (errors > 0) toast.error(`${errors} client(s) non mis à jour`);
       if (count > 0) toast.success(`${count} client(s) : récurrence retirée et visites supprimées`);
       exitSelectionMode();
       return;
@@ -449,8 +451,8 @@ export default function ClientsPage() {
     for (const id of selectedIds) {
       const client = state.clients.find(c => c.id === id);
       if (!client) continue;
-      // Hors admin, on ne s'affecte que des fiches libres : le portefeuille d'un collegue
-      // ne se reprend pas d'un clic (le serveur refuse de toute facon).
+      // Hors admin, on ne s'affecté que des fiches libres : reprendre le portefeuille d'un
+      // collègue est une décision d'admin, pas un clic dans une liste.
       if (bulkAction === 'commercial' && !isAdmin && client.commercial_id) {
         ignoresAutreCommercial++;
         continue;
@@ -474,9 +476,9 @@ export default function ClientsPage() {
         errors++;
       }
     }
-    if (errors > 0) toast.error(`${errors} client(s) non mis a jour`);
-    if (ignoresAutreCommercial > 0) toast.error(`${ignoresAutreCommercial} client(s) ignore(s) : deja suivis par un autre commercial`);
-    if (count > 0) toast.success(`${count} client(s) mis a jour`);
+    if (errors > 0) toast.error(`${errors} client(s) non mis à jour`);
+    if (ignoresAutreCommercial > 0) toast.error(`${ignoresAutreCommercial} client(s) ignore(s) : déjà suivis par un autre commercial`);
+    if (count > 0) toast.success(`${count} client(s) mis à jour`);
     exitSelectionMode();
   };
 
@@ -491,7 +493,7 @@ export default function ClientsPage() {
     const nbInteractions = getInteractionsForClient(supprimerId).length;
     const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
       + `${nbCommandes} commande(s) et ${nbInteractions} visite(s)/appel(s) de « ${supprimer.nom} » `
-      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimee.\n\nCette action est definitive.`;
+      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimée.\n\nCette action est definitive.`;
     if (!confirm(message)) return;
     setFusionEnCours(true);
     try {
@@ -502,10 +504,10 @@ export default function ClientsPage() {
         setFusionOuverte(false);
         exitSelectionMode();
       } else {
-        toast.error('Echec de la fusion');
+        toast.error('Échec de la fusion');
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Echec de la fusion');
+      toast.error(err instanceof Error ? err.message : 'Échec de la fusion');
     }
     setFusionEnCours(false);
   };
@@ -519,7 +521,7 @@ export default function ClientsPage() {
         dispatchLocal({ type: 'DELETE_CLIENT', payload: id });
       } catch { errors++; }
     }
-    if (errors > 0) toast.error(`${errors} client(s) non supprimes`);
+    if (errors > 0) toast.error(`${errors} client(s) non supprimés`);
     exitSelectionMode();
   };
 
@@ -627,7 +629,7 @@ export default function ClientsPage() {
       const updated: Client = { ...full, notes: noteText, date_modification: new Date().toISOString() };
       await apiPut(`/clients/${noteClientId}`, updated);
       dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-      toast.success('Note enregistree');
+      toast.success('Note enregistrée');
       setNoteClientId(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setNoteSaving(false); }
@@ -667,9 +669,9 @@ export default function ClientsPage() {
       try {
         await apiPut(`/clients/${editingClient.id}`, updated);
         dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-        toast.success('Client mis a jour');
+        toast.success('Client mis à jour');
       } catch {
-        toast.error('Erreur lors de la mise a jour du client');
+        toast.error('Erreur lors de la mise à jour du client');
         return;
       }
     } else {
@@ -805,15 +807,15 @@ export default function ClientsPage() {
         'Type': CLIENT_TYPE_LABELS[c.type_client],
         'Statut': c.statut,
         'Contact': c.contact,
-        'Telephone': c.telephone,
+        'Téléphone': c.telephone,
         'Mobile': c.telephone_mobile || '',
         'Email': c.email,
         'Adresse': c.adresse,
         'Ville': c.ville,
         'Code postal': c.code_postal,
-        'Tournee': c.tournee,
+        'Tournée': c.tournee,
         'Commercial': getCommercial(c.commercial_id)?.prenom || '',
-        'Derniere visite': c.last_visit || '',
+        'Dernière visite': c.last_visit || '',
         'Prochaine visite': c.next_visit || '',
         'Notes': c.notes,
         'SIRET': c.siret || '',
@@ -870,10 +872,8 @@ export default function ClientsPage() {
   const filtered = useMemo(() => {
     let list = state.clients;
 
-    // Non-admin: only own clients (unless commercial filter is active)
-    if (!isAdmin && state.currentUser && filterCommercials.size === 0) {
-      list = list.filter(c => c.commercial_id === state.currentUser!.id);
-    }
+    // Le périmètre (Mes clients / Toute l'équipe) est déjà appliqué par le contexte :
+    // aucun filtre propre à la page, sinon le compteur « en retard » et la liste divergent.
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -996,7 +996,7 @@ export default function ClientsPage() {
               <Link
                 to="/clients/planning"
                 className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                title="Planning semaine"
+                title="Semaine"
               >
                 <CalendarDays className="w-4 h-4" />
               </Link>
@@ -1066,8 +1066,8 @@ export default function ClientsPage() {
                   <option value="all">Toutes visites</option>
                   <option value="late">En retard</option>
                   <option value="today">Aujourd'hui</option>
-                  <option value="upcoming">A venir</option>
-                  <option value="no_recurrence">Sans recurrence</option>
+                  <option value="upcoming">À venir</option>
+                  <option value="no_recurrence">Sans récurrence</option>
                 </select>
 
                 <select
@@ -1123,7 +1123,7 @@ export default function ClientsPage() {
               {/* Multi-select tournees (tags) */}
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-xs font-medium text-gray-600">Tournees</span>
+                  <span className="text-xs font-medium text-gray-600">Tournées</span>
                   {(filterTournees.size > 0 || filterNoTournee) && (
                     <button onClick={() => { setFilterTournees(new Set()); setFilterNoTournee(false); setCurrentPage(0); }} className="text-xs text-red-500 hover:text-red-700">Effacer</button>
                   )}
@@ -1170,7 +1170,7 @@ export default function ClientsPage() {
                     );
                   })}
                   {allTournees.length === 0 && (
-                    <span className="text-xs text-gray-400">Aucune tournee configuree</span>
+                    <span className="text-xs text-gray-400">Aucune tournée configurée</span>
                   )}
                 </div>
               </div>
@@ -1258,14 +1258,14 @@ export default function ClientsPage() {
             >
               <option value="none">Choisir une action…</option>
               <option value="visite">Enregistrer une visite</option>
-              <option value="tache">Creer une tache (appels/visites)</option>
+              <option value="tache">Créer une tâche (appels/visites)</option>
               <option value="note">Ajouter / modifier une note</option>
               <option value="commercial">{isAdmin ? 'Changer le commercial' : 'Affecter un commercial (fiches libres)'}</option>
               <option value="tournee">Changer la tournée</option>
               <option value="type">Changer le type</option>
               <option value="statut">Changer le statut</option>
-              <option value="next_visit">Definir date de visite</option>
-              <option value="recurrence">Recurrence + prochaine visite</option>
+              <option value="next_visit">Définir date de visite</option>
+              <option value="recurrence">Récurrence + prochaine visite</option>
               <option value="retirer_recurrence">Retirer récurrence + supprimer visites</option>
             </select>
 
@@ -1319,7 +1319,7 @@ export default function ClientsPage() {
                 </select>
                 <input
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white flex-1 min-w-[150px]"
-                  placeholder="Objet de la tache (obligatoire)…"
+                  placeholder="Objet de la tâche (obligatoire)…"
                   value={bulkTaskTitle}
                   onChange={e => setBulkTaskTitle(e.target.value)}
                 />
@@ -1336,7 +1336,7 @@ export default function ClientsPage() {
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
                   value={bulkTaskDate}
                   onChange={e => setBulkTaskDate(e.target.value)}
-                  placeholder="Echeance"
+                  placeholder="Échéance"
                 />
                 <select
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
@@ -1426,7 +1426,7 @@ export default function ClientsPage() {
                 disabled={bulkAction === 'visite' ? !bulkVisiteComment.trim() : bulkAction === 'note' ? !bulkNoteText.trim() : bulkAction === 'tache' ? !bulkTaskTitle.trim() : (bulkAction === 'supprimer_visites' || bulkAction === 'retirer_recurrence') ? false : (!bulkValue && bulkAction !== 'statut' && bulkAction !== 'recurrence')}
                 className="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-40"
               >
-                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'tache' ? `Creer ${selectedIds.size} tache(s)` : bulkAction === 'note' ? `${bulkNoteMode === 'append' ? 'Ajouter' : 'Remplacer'} (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
+                {bulkAction === 'visite' ? `Enregistrer (${selectedIds.size})` : bulkAction === 'tache' ? `Créer ${selectedIds.size} tâche(s)` : bulkAction === 'note' ? `${bulkNoteMode === 'append' ? 'Ajouter' : 'Remplacer'} (${selectedIds.size})` : bulkAction === 'supprimer_visites' ? `Supprimer visites (${selectedIds.size})` : bulkAction === 'retirer_recurrence' ? `Retirer récurrence (${selectedIds.size})` : 'Appliquer'}
               </button>
             )}
             <div className="flex items-center gap-2 ml-auto">
@@ -1434,7 +1434,7 @@ export default function ClientsPage() {
                 <button
                   onClick={() => setFusionOuverte(v => !v)}
                   disabled={selectedIds.size !== 2}
-                  title={selectedIds.size === 2 ? 'Fusionner les deux fiches selectionnees' : 'Selectionnez exactement 2 clients pour les fusionner'}
+                  title={selectedIds.size === 2 ? 'Fusionner les deux fiches sélectionnées' : 'Sélectionnez exactement 2 clients pour les fusionner'}
                   className="px-3 py-1 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg disabled:opacity-40"
                 >
                   <Link2 className="w-3 h-3 inline mr-1" />Fusionner
@@ -1454,7 +1454,7 @@ export default function ClientsPage() {
         {selectionMode && fusionOuverte && selectedIds.size === 2 && (
           <div className="px-4 py-3 bg-brewery-50 border-b border-brewery-200">
             <p className="text-xs font-semibold text-brewery-800 mb-2">
-              Quelle fiche garder ? L'autre y sera fusionnee puis supprimee.
+              Quelle fiche garder ? L'autre y sera fusionnee puis supprimée.
             </p>
             <div className="grid md:grid-cols-2 gap-2">
               {Array.from(selectedIds).map(id => {
@@ -1506,6 +1506,7 @@ export default function ClientsPage() {
                 const statusConfig = VISIT_STATUS_CONFIG[visitStatus];
                 const commercial = getCommercial(client.commercial_id);
                 const isSelected = selectedId === client.id;
+                const decroche = client.statut === 'ACTIF' ? decrocheDuClient(getCommandesForClient(client.id)) : null;
 
                 return (
                   <div
@@ -1534,6 +1535,11 @@ export default function ClientsPage() {
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusConfig.color}`}>
                             {statusConfig.label}
                           </span>
+                          {decroche && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title={`Dernière commande le ${formatDate(decroche.derniere)}`}>
+                              Décroche · {decroche.libelle}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
                           {client.contact && <span className="text-gray-500">{client.contact}</span>}
@@ -1561,20 +1567,14 @@ export default function ClientsPage() {
                             </span>
                           )}
                         </div>
-                        {personalInfo.nextVisit && (
+                        {client.next_visit && (
                           <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                             <Calendar className="w-3 h-3" />
-                            {visitStatus === 'LATE' && personalInfo.isPersonal
-                              ? (() => {
-                                  const d = new Date(personalInfo.nextVisit + 'T12:00:00').getTime();
-                                  const days = !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0;
-                                  return `En retard de ${days}j (ma derniere visite: ${personalInfo.lastVisit ? formatDate(personalInfo.lastVisit) : 'jamais'})`;
-                                })()
-                              : visitStatus === 'LATE'
-                                ? `En retard - Prochaine visite : ${formatDate(personalInfo.nextVisit)}`
-                                : personalInfo.isPersonal
-                                  ? `Ma prochaine visite : ${formatDate(personalInfo.nextVisit)}`
-                                  : `Prochaine visite : ${formatDate(personalInfo.nextVisit)}`}
+                            {visitStatus === 'LATE'
+                              ? `En retard de ${joursDeRetard(client)} j — visite prévue le ${formatDate(client.next_visit)}${personalInfo.isPersonal && personalInfo.lastVisit ? ` (ma dernière visite : ${formatDate(personalInfo.lastVisit)})` : ''}`
+                              : visitStatus === 'TODAY'
+                                ? 'À visiter aujourd\'hui'
+                                : `Prochaine visite : ${formatDate(client.next_visit)}`}
                           </div>
                         )}
                         {client.notes && (
@@ -1586,8 +1586,39 @@ export default function ClientsPage() {
                       </div>
 
                     </div>
-                    {/* Quick actions - horizontal */}
-                    <div className="flex items-center gap-3 sm:gap-1.5 mt-2 pl-5">
+                    {/* Sur mobile : deux boutons lisibles (Appel, Visite) et le reste sous « ⋯ ».
+                        Sur ordinateur : la rangée d'icônes, chacune avec son libellé au survol. */}
+                    <div className="sm:hidden flex items-center gap-2 mt-2 pl-5">
+                      {(client.telephone || client.telephone_mobile) && (
+                        <a href={`tel:${client.telephone_mobile || client.telephone}`} onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 text-green-700 text-xs font-medium">
+                          <Phone className="w-3.5 h-3.5" /> Appel
+                        </a>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Visite
+                      </button>
+                      <div className="relative ml-auto">
+                        <button onClick={(e) => { e.stopPropagation(); setMenuMobileId(menuMobileId === client.id ? null : client.id); }}
+                          className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium" aria-label="Autres actions">⋯</button>
+                        {menuMobileId === client.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg border border-gray-200 shadow-lg z-20 py-1 text-xs" onClick={e => e.stopPropagation()}>
+                            {client.email && <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); setEmailClient(client); }}><Mail className="w-3.5 h-3.5 text-purple-600" /> Envoyer un e-mail</button>}
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); setInteractionClient(client); setInteractionType('RDV_PLANIFIE'); }}><Calendar className="w-3.5 h-3.5 text-purple-600" /> Planifier un RDV</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); openEditForm(client); }}><Edit2 className="w-3.5 h-3.5 text-gray-500" /> Modifier la fiche</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); openQuickNote(client.id); }}><StickyNote className="w-3.5 h-3.5 text-yellow-600" /> Note rapide</button>
+                            {(client.latitude && client.longitude) ? (
+                              <a className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" href={`https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`} target="_blank" rel="noopener noreferrer"><Navigation className="w-3.5 h-3.5 text-amber-600" /> Itinéraire</a>
+                            ) : client.adresse ? (
+                              <a className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([client.adresse, client.ville].filter(Boolean).join(' '))}`} target="_blank" rel="noopener noreferrer"><Navigation className="w-3.5 h-3.5 text-amber-600" /> Voir sur la carte</a>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {/* Quick actions - horizontal (ordinateur) */}
+                    <div className="hidden sm:flex items-center gap-3 sm:gap-1.5 mt-2 pl-5">
                       {(client.telephone || client.telephone_mobile) && (
                         <a
                           href={`tel:${client.telephone_mobile || client.telephone}`}
@@ -1693,11 +1724,16 @@ export default function ClientsPage() {
                 <ChevronLeft className="w-5 h-5 text-gray-600" />
               </button>
               <h2 className="text-lg font-bold text-gray-900 flex-1 truncate">{selectedClient.nom}</h2>
+              {(() => { const d = selectedClient.statut === 'ACTIF' ? decrocheDuClient(selectedCommandes) : null; return d ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 mr-2" title={`Dernière commande le ${formatDate(d.derniere)} — il commandait, il ne commande plus : à relancer`}>
+                  Décroche · {d.libelle}
+                </span>
+              ) : null; })()}
               <div className="flex gap-1">
                 <button onClick={() => openEditForm(selectedClient)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="Modifier">
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button onClick={() => toggleStatus(selectedClient)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title={selectedClient.statut === 'ACTIF' ? 'Desactiver' : 'Reactiver'}>
+                <button onClick={() => toggleStatus(selectedClient)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title={selectedClient.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}>
                   {selectedClient.statut === 'ACTIF' ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
                 <button onClick={() => deleteClient(selectedClient.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Supprimer">
@@ -1758,26 +1794,24 @@ export default function ClientsPage() {
             {/* Visit info - personal when available, global otherwise */}
             {(() => {
               const pInfo = getPersonalVisitInfo(selectedClient);
-              const pStatus = getVisitStatusFromDate(pInfo.nextVisit, selectedClient.statut);
-              const daysLate = pStatus === 'LATE' && pInfo.nextVisit
-                ? (() => { const d = new Date(pInfo.nextVisit + 'T12:00:00').getTime(); return !isNaN(d) ? Math.floor((Date.now() - d) / 86400000) : 0; })()
-                : 0;
+              const pStatus = getVisitStatus(selectedClient);
+              const daysLate = joursDeRetard(selectedClient);
               return (
                 <div className={`mt-3 p-3 rounded-lg ${pStatus === 'LATE' ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma derniere visite' : 'Derniere visite'}</span>
+                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma dernière visite' : 'Dernière visite'}</span>
                       <p className="font-medium text-gray-900">{pInfo.lastVisit ? formatDate(pInfo.lastVisit) : 'Jamais'}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma prochaine visite' : 'Prochaine visite'}</span>
+                      <span className="text-gray-500">Prochaine visite</span>
                       <p className={`font-medium ${pStatus === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
-                        {pInfo.nextVisit ? formatDate(pInfo.nextVisit) : 'Non planifiee'}
+                        {selectedClient.next_visit ? formatDate(selectedClient.next_visit) : 'Non planifiée'}
                         {pStatus === 'LATE' && daysLate > 0 && <span className="ml-1">({daysLate}j retard)</span>}
                       </p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Frequence</span>
+                      <span className="text-gray-500">Fréquence</span>
                       <p className="font-medium text-gray-900">
                         {selectedClient.custom_recurrence
                           ? `${selectedClient.custom_recurrence}j (perso)`
@@ -1903,7 +1937,7 @@ export default function ClientsPage() {
                       cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
                       'bg-yellow-100 text-yellow-700'
                     }`}>
-                      {cmd.statut === 'livree' ? 'Livree' : cmd.statut === 'annulee' ? 'Annulee' : 'En cours'}
+                      {cmd.statut === 'livree' ? 'Livrée' : cmd.statut === 'annulee' ? 'Annulée' : 'En cours'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-gray-500">
@@ -1931,7 +1965,7 @@ export default function ClientsPage() {
           <div className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Historique ({selectedInteractions.length})</h3>
             {selectedInteractions.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Aucune interaction enregistree</p>
+              <p className="text-xs text-gray-400 text-center py-6">Aucune interaction enregistrée</p>
             ) : (
               <div className="space-y-2">
                 {selectedInteractions.slice(0, 20).map(interaction => {
@@ -1997,7 +2031,7 @@ export default function ClientsPage() {
                   <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                     <p className="text-xs font-semibold text-orange-700 mb-1.5 flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" />
-                      Doublons potentiels detectes
+                      Doublons potentiels détectés
                     </p>
                     <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
                       {duplicateClients.map(c => (
@@ -2018,7 +2052,7 @@ export default function ClientsPage() {
                       className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700"
                       onClick={() => setForceCreate(true)}
                     >
-                      Creer quand meme
+                      Créer quand même
                     </button>
                   </div>
                 )}
@@ -2070,7 +2104,7 @@ export default function ClientsPage() {
               {/* Phone & Email */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Telephone</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Téléphone</label>
                   <input
                     type="tel"
                     value={formData.telephone || ''}
@@ -2147,13 +2181,13 @@ export default function ClientsPage() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Tournee</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tournée</label>
                   <input
                     type="text"
                     value={formData.tournee || ''}
                     onChange={e => setFormData(prev => ({ ...prev, tournee: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Zone / Tournee"
+                    placeholder="Zone / Tournée"
                     list="tournee-list"
                   />
                   <datalist id="tournee-list">
@@ -2165,7 +2199,7 @@ export default function ClientsPage() {
               {/* Custom recurrence */}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Frequence de visite personnalisee (jours)
+                  Fréquence de visite personnalisee (jours)
                   <span className="text-gray-400 font-normal ml-1">
                     (defaut: {CLIENT_VISIT_FREQUENCIES[(formData.type_client || 'BAR_RESTAURANT_GENERAL') as ClientType] ?? 'aucune'}j)
                   </span>
@@ -2214,7 +2248,7 @@ export default function ClientsPage() {
                   className="flex items-center gap-1.5 px-4 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 disabled:opacity-50 transition-colors"
                 >
                   <Save className="w-4 h-4" />
-                  {editingClient ? 'Enregistrer' : 'Creer le client'}
+                  {editingClient ? 'Enregistrer' : 'Créer le client'}
                 </button>
               </div>
             </div>
@@ -2240,7 +2274,7 @@ export default function ClientsPage() {
                     <div className="w-14 h-14 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
                       <CheckCircle2 className="w-7 h-7 text-green-600" />
                     </div>
-                    <h3 className="font-bold text-gray-900">RDV cree avec succes !</h3>
+                    <h3 className="font-bold text-gray-900">RDV créé avec succes !</h3>
                     <p className="text-sm text-gray-500 mt-1">
                       {interactionClient.nom} - {formatDate(createdRdv?.date || '')}
                     </p>
@@ -2355,7 +2389,7 @@ export default function ClientsPage() {
                       {/* Commercial assigne */}
                       <div>
                         <label className="block text-[10px] text-purple-600 mb-0.5 flex items-center gap-1">
-                          <Users className="w-3 h-3" /> Commercial assigne au RDV
+                          <Users className="w-3 h-3" /> Commercial assigné au RDV
                         </label>
                         <select
                           className="w-full px-2 py-1.5 border border-purple-200 rounded-lg text-xs bg-white"
@@ -2421,7 +2455,7 @@ export default function ClientsPage() {
                       {googleConflicts.length > 0 && (
                         <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
                           <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — evenement(s) Google Agenda sur ce creneau
+                            <AlertTriangle className="w-3.5 h-3.5" /> Attention — événement(s) Google Agenda sur ce creneau
                           </p>
                           {googleConflicts.map(evt => {
                             const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
@@ -2500,7 +2534,7 @@ export default function ClientsPage() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
-                <ListTodo className="w-4 h-4 text-brewery-600" /> Nouvelle tache
+                <ListTodo className="w-4 h-4 text-brewery-600" /> Nouvelle tâche
               </h3>
               <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowTaskForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
@@ -2519,7 +2553,7 @@ export default function ClientsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Echeance (optionnel)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Échéance (optionnel)</label>
                 <input
                   type="date"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -2537,7 +2571,7 @@ export default function ClientsPage() {
                 disabled={!taskTitle.trim()}
                 onClick={addTask}
               >
-                <Plus className="w-3.5 h-3.5" /> Creer
+                <Plus className="w-3.5 h-3.5" /> Créer
               </button>
             </div>
           </div>

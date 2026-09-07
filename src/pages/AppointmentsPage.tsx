@@ -8,6 +8,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS, PipelineStage, ReminderStatus } from '../types';
 import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts, toLocalDateStr } from '../utils/helpers';
+import { rdvSansCompteRendu } from '../../shared/regles';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
@@ -66,9 +67,9 @@ export default function AppointmentsPage() {
     try {
       await apiPut(`/prospects/${editProspectData.id}`, payload);
       dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
-      toast.success('Prospect mis a jour');
+      toast.success('Prospect mis à jour');
     } catch (err: unknown) {
-      toast.error(`Erreur mise a jour prospect: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      toast.error(`Erreur mise à jour prospect: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
     setEditProspectData(null);
   };
@@ -99,7 +100,7 @@ export default function AppointmentsPage() {
     if (filterProspecteur) list = list.filter(a => a.prospecteur_id === filterProspecteur);
     if (filterCompteRendu) {
       if (filterCompteRendu === 'sans') {
-        list = list.filter(a => !a.compte_rendu);
+        list = list.filter(a => rdvSansCompteRendu(a)); // règle 3
       } else {
         list = list.filter(a => a.compte_rendu === filterCompteRendu);
       }
@@ -305,7 +306,7 @@ export default function AppointmentsPage() {
         }
       }
       setShowForm(false);
-      toast.success(editing ? 'RDV mis a jour' : 'RDV cree');
+      toast.success(editing ? 'RDV mis à jour' : 'RDV créé');
     } catch (err: unknown) {
       toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
@@ -316,7 +317,7 @@ export default function AppointmentsPage() {
       try {
         await apiDelete(`/appointments/${id}`);
         dispatchLocal({ type: 'DELETE_APPOINTMENT', payload: id });
-        toast.success('RDV supprime');
+        toast.success('RDV supprimé');
       } catch (err: unknown) {
         toast.error(`Erreur suppression: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
       }
@@ -433,7 +434,7 @@ export default function AppointmentsPage() {
       }
 
       setShowCompteRendu(false);
-      toast.success('Compte-rendu enregistre');
+      toast.success('Compte-rendu enregistré');
     } catch (err: unknown) {
       toast.error(`Erreur compte-rendu: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
@@ -472,7 +473,7 @@ export default function AppointmentsPage() {
       await apiPost('/appointments', newApt);
       dispatchLocal({ type: 'ADD_APPOINTMENT', payload: newApt });
 
-      toast.success(`Nouveau RDV cree pour le ${rescheduleDate}`);
+      toast.success(`Nouveau RDV créé pour le ${rescheduleDate}`);
       setShowReschedule(false);
       setRescheduleRdv(null);
     } catch (err: unknown) {
@@ -525,7 +526,7 @@ export default function AppointmentsPage() {
     const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
     if (weekOffset === 0) return `Cette semaine (${fmt(monday)} - ${fmt(sunday)})`;
     if (weekOffset === 1) return `Semaine prochaine (${fmt(monday)} - ${fmt(sunday)})`;
-    if (weekOffset === -1) return `Semaine derniere (${fmt(monday)} - ${fmt(sunday)})`;
+    if (weekOffset === -1) return `Semaine dernière (${fmt(monday)} - ${fmt(sunday)})`;
     return `${fmt(monday)} - ${fmt(sunday)}`;
   };
 
@@ -600,7 +601,7 @@ export default function AppointmentsPage() {
                 {rdv.lieu}
                 <Navigation className="w-3 h-3" />
               </a>
-            ) : 'Non defini'}
+            ) : 'Non défini'}
           </div>
           {rdv.notes && (
             <p className="text-gray-500 bg-gray-50 p-2 rounded">{rdv.notes}</p>
@@ -673,7 +674,7 @@ export default function AppointmentsPage() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Prospects & Rendez-vous</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Rendez-vous</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Prospection, RDV et export calendrier</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -784,7 +785,7 @@ export default function AppointmentsPage() {
               className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
               onClick={() => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); setFilterCompteRendu(''); }}
             >
-              Reinitialiser
+              Réinitialiser
             </button>
           )}
         </div>
@@ -853,7 +854,7 @@ export default function AppointmentsPage() {
             }`}
             onClick={() => setFilterCompteRendu(filterCompteRendu === 'sans' ? '' : 'sans')}
           >
-            Sans CR ({state.appointments.filter(a => !a.compte_rendu).length})
+            Sans CR ({state.appointments.filter(a => rdvSansCompteRendu(a)).length})
           </button>
         </div>
       </div>
@@ -1224,7 +1225,7 @@ export default function AppointmentsPage() {
           {/* Past */}
           {past.length > 0 && (
             <div>
-              <h3 className="font-semibold text-gray-700 mb-3">Passes / Termines ({past.length})</h3>
+              <h3 className="font-semibold text-gray-700 mb-3">Passés / Terminés ({past.length})</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-75">
                 {past.map(renderRdvCard)}
               </div>
@@ -1255,7 +1256,7 @@ export default function AppointmentsPage() {
             <div className="p-5 space-y-4">
               {/* Periode */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Periode</label>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Période</label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] text-gray-400 mb-1">Du</label>
@@ -1320,7 +1321,7 @@ export default function AppointmentsPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-gray-400 italic">Aucun RDV sur cette periode</p>
+                  <p className="text-[11px] text-gray-400 italic">Aucun RDV sur cette période</p>
                 )}
               </div>
             </div>
@@ -1348,7 +1349,7 @@ export default function AppointmentsPage() {
         <div className="modal-backdrop">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">{editing ? 'Modifier' : 'Nouveau'} {formData.event_type === 'rdv' ? 'RDV' : 'Evenement'}</h3>
+              <h3 className="font-bold text-gray-900">{editing ? 'Modifier' : 'Nouveau'} {formData.event_type === 'rdv' ? 'RDV' : 'Événement'}</h3>
               <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
@@ -1414,7 +1415,7 @@ export default function AppointmentsPage() {
                       setFormData(prev => ({ ...prev, prospect_id: val, client_id: '' }));
                     }
                   }}>
-                    <option value="">Selectionnez</option>
+                    <option value="">Sélectionnez</option>
                     <optgroup label="Prospects">
                       {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
                     </optgroup>
@@ -1478,7 +1479,7 @@ export default function AppointmentsPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5" /> Commercial assigne
+                    <Users className="w-3.5 h-3.5" /> Commercial assigné
                   </label>
                   <select
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1510,14 +1511,14 @@ export default function AppointmentsPage() {
               {!editing && (
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
-                    <RefreshCw className="w-3.5 h-3.5" /> Recurrence
+                    <RefreshCw className="w-3.5 h-3.5" /> Récurrence
                   </label>
                   <select
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                     value={formData.recurrence}
                     onChange={e => setFormData(prev => ({ ...prev, recurrence: e.target.value as RecurrenceType }))}
                   >
-                    <option value="none">Pas de recurrence</option>
+                    <option value="none">Pas de récurrence</option>
                     <option value="weekly">Chaque semaine</option>
                   </select>
                   {formData.recurrence === 'weekly' && (
@@ -1577,14 +1578,14 @@ export default function AppointmentsPage() {
                     );
                   })}
                   <p className="text-[10px] text-red-500 mt-1 italic">
-                    Ce commercial a deja un RDV sur ce creneau.
+                    Ce commercial a déjà un RDV sur ce creneau.
                   </p>
                 </div>
               )}
               {formGoogleConflicts.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
-                    <AlertTriangle className="w-4 h-4" /> Attention — evenement(s) Google Agenda sur ce creneau
+                    <AlertTriangle className="w-4 h-4" /> Attention — événement(s) Google Agenda sur ce creneau
                   </p>
                   {formGoogleConflicts.map(evt => {
                     const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
@@ -1596,7 +1597,7 @@ export default function AppointmentsPage() {
                     );
                   })}
                   <p className="text-[10px] text-amber-500 mt-1 italic">
-                    Ce commercial a un evenement Google Agenda sur ce creneau.
+                    Ce commercial a un événement Google Agenda sur ce creneau.
                   </p>
                 </div>
               )}
@@ -1620,7 +1621,7 @@ export default function AppointmentsPage() {
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
               <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveAppointment}>
-                <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Creer'}
+                <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Créer'}
               </button>
             </div>
           </div>
@@ -1633,11 +1634,11 @@ export default function AppointmentsPage() {
         const crClient = compteRenduRdv.client_id ? state.clients.find(c => c.id === compteRenduRdv.client_id) : undefined;
         const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
           { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
-          { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
+          { value: 'mail_envoye', label: 'Mail envoyé', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
           { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
-          { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
-          { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
-          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
+          { value: 'a_relancer', label: 'À relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
+          { value: 'pas_interesse', label: 'Pas intéressé', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV décalé', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
         ];
         return (
           <div className="modal-backdrop">
@@ -1656,7 +1657,7 @@ export default function AppointmentsPage() {
               <div className="p-5 space-y-4">
                 {/* Result selection */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Resultat du rendez-vous</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Résultat du rendez-vous</label>
                   <div className="grid grid-cols-2 gap-2">
                     {resultOptions.map(opt => {
                       const Icon = opt.icon;
@@ -1675,22 +1676,22 @@ export default function AppointmentsPage() {
                     })}
                   </div>
                   {compteRenduResult === 'client' && (
-                    <p className="text-[10px] text-green-600 mt-1 italic">Le prospect sera deplace dans l'etape "Gagne"</p>
+                    <p className="text-[10px] text-green-600 mt-1 italic">Le prospect sera déplacé dans l'etape "Gagne"</p>
                   )}
                   {compteRenduResult === 'pas_interesse' && (
-                    <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera deplace dans "Perdu"</p>
+                    <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
                   )}
                   {compteRenduResult === 'mail_envoye' && (
-                    <p className="text-[10px] text-blue-500 mt-1 italic">Prospect deplace vers "Negociation" + email propose + rappel programme</p>
+                    <p className="text-[10px] text-blue-500 mt-1 italic">Prospect déplacé vers "Negociation" + email propose + rappel programme</p>
                   )}
                   {compteRenduResult === 'a_relancer' && (
-                    <p className="text-[10px] text-purple-500 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
+                    <p className="text-[10px] text-purple-500 mt-1 italic">Prospect déplacé vers "Proposition" + rappel programme</p>
                   )}
                   {compteRenduResult === 'commande_plus_tard' && (
-                    <p className="text-[10px] text-amber-600 mt-1 italic">Prospect deplace vers "Proposition" + rappel programme</p>
+                    <p className="text-[10px] text-amber-600 mt-1 italic">Prospect déplacé vers "Proposition" + rappel programme</p>
                   )}
                   {compteRenduResult === 'decale' && (
-                    <p className="text-[10px] text-violet-600 mt-1 italic">Le RDV sera marque comme decale - pensez a replanifier un nouveau RDV</p>
+                    <p className="text-[10px] text-violet-600 mt-1 italic">Le RDV sera marqué comme décalé - pensez a replanifier un nouveau RDV</p>
                   )}
                 </div>
 
@@ -1820,7 +1821,7 @@ export default function AppointmentsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
                   <input
                     type="tel"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"

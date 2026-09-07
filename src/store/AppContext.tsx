@@ -7,6 +7,40 @@ import {
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, setApiErrorHandler } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
 
+// Périmètre d'affichage des clients. « moi » = mes clients + les fiches libres ; « equipe » =
+// toute l'équipe (remplacement d'un collègue). Appliqué ICI, une seule fois, il vaut pour
+// toutes les pages : accueil, retards, liste, semaine… Défaut : un commercial voit ses
+// clients, un admin ou un prospecteur voit l'équipe. Le choix est gardé pour la session.
+export type Perimetre = 'moi' | 'equipe';
+const CLE_PERIMETRE = 'suivipro_perimetre';
+function lirePerimetreChoisi(): Perimetre | null {
+  try {
+    const v = sessionStorage.getItem(CLE_PERIMETRE);
+    return v === 'moi' || v === 'equipe' ? v : null;
+  } catch { return null; }
+}
+export function perimetreParDefaut(role: string | undefined): Perimetre {
+  return role === 'commercial' ? 'moi' : 'equipe';
+}
+function sansCommercial(c: Client): boolean {
+  return !c.commercial_id;
+}
+/** Restreint l'état au périmètre : clients, et tout ce qui s'y rattache. La prospection reste commune. */
+export function appliquerPerimetre(state: AppState, perimetre: Perimetre): AppState {
+  const moi = state.currentUser?.id;
+  if (perimetre === 'equipe' || !moi) return state;
+  const clients = state.clients.filter(c => c.commercial_id === moi || sansCommercial(c));
+  const ids = new Set(clients.map(c => c.id));
+  return {
+    ...state,
+    clients,
+    interactions: state.interactions.filter(i => ids.has(i.client_id)),
+    commandes: state.commandes.filter(c => !c.client_id || ids.has(c.client_id)),
+    tasksClient: state.tasksClient.filter(t => t.commercial_id === moi || (!!t.client_id && ids.has(t.client_id))),
+  };
+}
+
+
 // ============================================
 // Actions
 // ============================================
@@ -214,7 +248,12 @@ const defaultPipelineColumns: PipelineColumn[] = ([
 // ============================================
 
 interface AppContextType {
+  /** État restreint au périmètre choisi (Mes clients / Toute l'équipe). */
   state: AppState;
+  /** État complet, pour ce qui doit voir au-delà du périmètre (fiche d'un client d'un collègue…). */
+  stateComplet: AppState;
+  perimetre: Perimetre;
+  setPerimetre: (p: Perimetre) => void;
   dispatch: React.Dispatch<Action>;
   dispatchLocal: React.Dispatch<Action>;
   login: (email: string, password: string) => Promise<void>;
@@ -261,8 +300,16 @@ const emptyState: AppState = {
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, rawDispatch] = useReducer(reducer, emptyState);
+  const [stateComplet, rawDispatch] = useReducer(reducer, emptyState);
   const [loading, setLoading] = useState(true);
+  const [perimetreChoisi, setPerimetreChoisi] = useState<Perimetre | null>(lirePerimetreChoisi);
+  const perimetre: Perimetre = perimetreChoisi ?? perimetreParDefaut(stateComplet.currentUser?.role);
+  const setPerimetre = useCallback((p: Perimetre) => {
+    setPerimetreChoisi(p);
+    try { sessionStorage.setItem(CLE_PERIMETRE, p); } catch { /* navigation privée */ }
+  }, []);
+  // L'état vu par les pages est l'état complet restreint au périmètre.
+  const state = useMemo(() => appliquerPerimetre(stateComplet, perimetre), [stateComplet, perimetre]);
   const [authError, setAuthError] = useState<string | null>(null);
   const currentUserRef = useRef<Commercial | null>(null);
   const pollPausedUntilRef = useRef<number>(0);
@@ -385,14 +432,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getProspectsForCommercial = useCallback((cid: string) => state.prospects.filter(p => p.commercial_id === cid), [state.prospects]);
   const getCommercial = useCallback((id: string) => state.commerciaux.find(c => c.id === id), [state.commerciaux]);
   const getTag = useCallback((id: string) => state.tags.find(t => t.id === id), [state.tags]);
-  const getClient = useCallback((id: string) => state.clients.find(c => c.id === id), [state.clients]);
+  const getClient = useCallback((id: string) => stateComplet.clients.find(c => c.id === id), [stateComplet.clients]);
   const getInteractionsForClient = useCallback((cid: string) => state.interactions.filter(i => i.client_id === cid), [state.interactions]);
   const getTasksForClient = useCallback((cid: string) => state.tasksClient.filter(t => t.client_id === cid), [state.tasksClient]);
-  const getClientsForCommercial = useCallback((cid: string) => state.clients.filter(c => c.commercial_id === cid), [state.clients]);
+  const getClientsForCommercial = useCallback((cid: string) => stateComplet.clients.filter(c => c.commercial_id === cid), [stateComplet.clients]);
   const getCommandesForClient = useCallback((cid: string) => state.commandes.filter(c => c.client_id === cid), [state.commandes]);
 
   const contextValue = useMemo(() => ({
     state,
+    stateComplet,
+    perimetre,
+    setPerimetre,
     dispatch,
     dispatchLocal: rawDispatch,
     login,
@@ -415,7 +465,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getClientsForCommercial,
     getCommandesForClient,
     pausePolling,
-  }), [state, dispatch, rawDispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient, pausePolling]);
+  }), [state, stateComplet, perimetre, setPerimetre, dispatch, rawDispatch, login, logout, loading, authError, getProspect, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCallsForCommercial, getAppointmentsForCommercial, getRemindersForCommercial, getProspectsForCommercial, getCommercial, getTag, getClient, getInteractionsForClient, getTasksForClient, getClientsForCommercial, getCommandesForClient, pausePolling]);
 
   return (
     <AppContext.Provider value={contextValue}>

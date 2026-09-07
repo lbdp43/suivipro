@@ -65,10 +65,10 @@ export function getSeedData() {
     { id: 'tag-1', nom: 'Budget limite', couleur: '#ef4444' },
     { id: 'tag-2', nom: 'Gros potentiel', couleur: '#22c55e' },
     { id: 'tag-3', nom: 'Decideur absent', couleur: '#eab308' },
-    { id: 'tag-4', nom: 'Interesse bio', couleur: '#3b82f6' },
-    { id: 'tag-5', nom: 'Deja client concurrent', couleur: '#a855f7' },
-    { id: 'tag-6', nom: 'Evenement prevu', couleur: '#f97316' },
-    { id: 'tag-7', nom: 'A rappeler', couleur: '#6b7280' },
+    { id: 'tag-4', nom: 'Intéressé bio', couleur: '#3b82f6' },
+    { id: 'tag-5', nom: 'Déjà client concurrent', couleur: '#a855f7' },
+    { id: 'tag-6', nom: 'Événement prévu', couleur: '#f97316' },
+    { id: 'tag-7', nom: 'À rappeler', couleur: '#6b7280' },
   ];
 
   const prospects: Prospect[] = [
@@ -77,7 +77,7 @@ export function getSeedData() {
       nom_contact: 'Jean Martin', telephone: '04 71 61 12 34', email: 'contact@cavemartin.fr',
       adresse: '12 Rue du Commerce', ville: 'Saint-Etienne', code_postal: '42000', departement: 'Loire', secteur: 'Loire',
       latitude: 45.4397, longitude: 4.3872, etape_pipeline: 'gagne' as PipelineStage,
-      tags: ['tag-2', 'tag-4'], commercial_id: 'com-1', notes: 'Tres interesse par la gamme bio',
+      tags: ['tag-2', 'tag-4'], commercial_id: 'com-1', notes: 'Très intéressé par la gamme bio',
       date_creation: '2026-01-10T09:00:00Z', date_modification: '2026-02-10T14:30:00Z', score: 85,
     },
     {
@@ -85,7 +85,7 @@ export function getSeedData() {
       nom_contact: 'Marie Dupont', telephone: '04 71 66 55 44', email: 'bistrot@marche.fr',
       adresse: '5 Place du Marche', ville: 'Le Puy-en-Velay', code_postal: '43000', departement: 'Haute-Loire', secteur: 'Haute-Loire',
       latitude: 45.0435, longitude: 3.8853, etape_pipeline: 'contacte' as PipelineStage,
-      tags: ['tag-7'], commercial_id: 'com-1', notes: 'Rappeler apres le 15 fevrier',
+      tags: ['tag-7'], commercial_id: 'com-1', notes: 'Rappeler après le 15 février',
       date_creation: '2026-01-15T10:00:00Z', date_modification: '2026-02-08T16:00:00Z', score: 60,
     },
     {
@@ -93,7 +93,7 @@ export function getSeedData() {
       nom_contact: 'Pierre Roche', telephone: '04 71 59 88 77', email: 'epicerie@velay.fr',
       adresse: '8 Rue Nationale', ville: 'Saint-Didier-en-Velay', code_postal: '43140', departement: 'Haute-Loire', secteur: 'Haute-Loire',
       latitude: 45.3003, longitude: 4.2789, etape_pipeline: 'proposition' as PipelineStage,
-      tags: ['tag-2'], commercial_id: 'com-2', notes: 'Proposition envoyee, attente retour',
+      tags: ['tag-2'], commercial_id: 'com-2', notes: 'Proposition envoyée, attente retour',
       date_creation: '2026-01-05T08:00:00Z', date_modification: '2026-02-12T11:00:00Z', score: 75,
     },
     {
@@ -125,7 +125,7 @@ export function getSeedData() {
       nom_contact: 'Isabelle Faure', telephone: '04 77 55 66 77', email: 'cave@saintjust.fr',
       adresse: '11 Place Saint-Just', ville: 'Lyon', code_postal: '69005', departement: 'Rhone', secteur: 'Rhone',
       latitude: 45.7600, longitude: 4.8200, etape_pipeline: 'negociation' as PipelineStage,
-      tags: ['tag-5', 'tag-2'], commercial_id: 'com-2', notes: 'Actuellement chez un concurrent, interesse par nos prix',
+      tags: ['tag-5', 'tag-2'], commercial_id: 'com-2', notes: 'Actuellement chez un concurrent, intéressé par nos prix',
       date_creation: '2026-01-20T14:00:00Z', date_modification: '2026-02-11T15:00:00Z', score: 70,
     },
     {
@@ -157,7 +157,7 @@ export function getSeedData() {
       nom_contact: 'Lucie Bernard', telephone: '04 73 44 55 66', email: 'clermont@bioandco.fr',
       adresse: '25 Rue Blatin', ville: 'Clermont-Ferrand', code_postal: '63000', departement: 'Puy-de-Dome', secteur: 'Puy-de-Dome',
       latitude: 45.7772, longitude: 3.0870, etape_pipeline: 'a_contacter' as PipelineStage,
-      tags: ['tag-4'], commercial_id: 'com-2', notes: 'Magasin bio, fort interet potentiel',
+      tags: ['tag-4'], commercial_id: 'com-2', notes: 'Magasin bio, fort intérêt potentiel',
       date_creation: '2026-02-10T09:00:00Z', date_modification: '2026-02-10T09:00:00Z', score: 65,
     },
     {
@@ -172,18 +172,18 @@ export function getSeedData() {
 
   const now = new Date();
   const calls: Call[] = [
-    { id: 'call-1', prospect_id: 'p-1', commercial_id: 'com-2', date: '2026-02-10T10:30:00Z', duree: 180, resultat: 'repondu' as CallResult, notes: 'RDV pris pour le 18 fevrier' },
-    { id: 'call-2', prospect_id: 'p-1', commercial_id: 'com-2', date: '2026-01-28T14:00:00Z', duree: 120, resultat: 'repondu' as CallResult, notes: 'Interesse, demande rappel' },
+    { id: 'call-1', prospect_id: 'p-1', commercial_id: 'com-2', date: '2026-02-10T10:30:00Z', duree: 180, resultat: 'repondu' as CallResult, notes: 'RDV pris pour le 18 février' },
+    { id: 'call-2', prospect_id: 'p-1', commercial_id: 'com-2', date: '2026-01-28T14:00:00Z', duree: 120, resultat: 'repondu' as CallResult, notes: 'Intéressé, demande rappel' },
     { id: 'call-3', prospect_id: 'p-2', commercial_id: 'com-2', date: '2026-02-08T09:15:00Z', duree: 0, resultat: 'messagerie' as CallResult, notes: 'Message laisse' },
-    { id: 'call-4', prospect_id: 'p-2', commercial_id: 'com-2', date: '2026-02-06T11:00:00Z', duree: 90, resultat: 'repondu' as CallResult, notes: 'Rappeler apres le 15' },
-    { id: 'call-5', prospect_id: 'p-3', commercial_id: 'com-2', date: '2026-02-12T10:00:00Z', duree: 300, resultat: 'repondu' as CallResult, notes: 'Proposition envoyee par email' },
+    { id: 'call-4', prospect_id: 'p-2', commercial_id: 'com-2', date: '2026-02-06T11:00:00Z', duree: 90, resultat: 'repondu' as CallResult, notes: 'Rappeler après le 15' },
+    { id: 'call-5', prospect_id: 'p-3', commercial_id: 'com-2', date: '2026-02-12T10:00:00Z', duree: 300, resultat: 'repondu' as CallResult, notes: 'Proposition envoyée par email' },
     { id: 'call-6', prospect_id: 'p-5', commercial_id: 'com-2', date: '2026-02-05T15:00:00Z', duree: 0, resultat: 'pas_de_reponse' as CallResult, notes: '' },
     { id: 'call-7', prospect_id: 'p-7', commercial_id: 'com-2', date: '2026-02-11T11:30:00Z', duree: 420, resultat: 'repondu' as CallResult, notes: 'Negociation en cours, demande tarifs volume' },
-    { id: 'call-8', prospect_id: 'p-8', commercial_id: 'com-2', date: '2026-02-06T08:30:00Z', duree: 150, resultat: 'repondu' as CallResult, notes: 'Interesse pour stand au marche' },
-    { id: 'call-9', prospect_id: 'p-9', commercial_id: 'com-2', date: '2026-02-13T09:00:00Z', duree: 240, resultat: 'repondu' as CallResult, notes: 'RDV pris pour presentation gamme' },
+    { id: 'call-8', prospect_id: 'p-8', commercial_id: 'com-2', date: '2026-02-06T08:30:00Z', duree: 150, resultat: 'repondu' as CallResult, notes: 'Intéressé pour stand au marche' },
+    { id: 'call-9', prospect_id: 'p-9', commercial_id: 'com-2', date: '2026-02-13T09:00:00Z', duree: 240, resultat: 'repondu' as CallResult, notes: 'RDV pris pour présentation gamme' },
     { id: 'call-10', prospect_id: 'p-10', commercial_id: 'com-2', date: '2026-01-20T14:00:00Z', duree: 60, resultat: 'repondu' as CallResult, notes: 'Refus definitif, budget' },
-    { id: 'call-11', prospect_id: 'p-6', commercial_id: 'com-2', date: '2026-02-01T10:00:00Z', duree: 180, resultat: 'repondu' as CallResult, notes: 'Commande mensuelle confirmee' },
-    { id: 'call-12', prospect_id: 'p-4', commercial_id: 'com-2', date: '2026-02-14T09:00:00Z', duree: 0, resultat: 'injoignable' as CallResult, notes: 'Numero hors service' },
+    { id: 'call-11', prospect_id: 'p-6', commercial_id: 'com-2', date: '2026-02-01T10:00:00Z', duree: 180, resultat: 'repondu' as CallResult, notes: 'Commande mensuelle confirmée' },
+    { id: 'call-12', prospect_id: 'p-4', commercial_id: 'com-2', date: '2026-02-14T09:00:00Z', duree: 0, resultat: 'injoignable' as CallResult, notes: 'Numéro hors service' },
     // Extra calls for stats
     { id: 'call-13', prospect_id: 'p-11', commercial_id: 'com-2', date: '2026-02-13T14:00:00Z', duree: 0, resultat: 'pas_de_reponse' as CallResult, notes: '' },
     { id: 'call-14', prospect_id: 'p-12', commercial_id: 'com-2', date: '2026-02-13T16:00:00Z', duree: 0, resultat: 'messagerie' as CallResult, notes: 'Message laisse' },
@@ -194,19 +194,19 @@ export function getSeedData() {
       id: 'rdv-1', prospect_id: 'p-1', commercial_id: 'com-2',
       date: '2026-02-18', heure_debut: '10:00', heure_fin: '11:00',
       lieu: 'Cave Martin, 12 Rue du Commerce, Saint-Etienne',
-      notes: 'Presentation gamme bio + degustation', statut: 'confirme' as AppointmentStatus,
+      notes: 'Présentation gamme bio + degustation', statut: 'confirme' as AppointmentStatus,
     },
     {
       id: 'rdv-2', prospect_id: 'p-9', commercial_id: 'com-2',
       date: '2026-02-20', heure_debut: '14:00', heure_fin: '15:30',
       lieu: 'Distrib Boissons 42, ZI La Plaine, Andrezieux-Boutheon',
-      notes: 'Presentation gamme complete + tarifs distributeur', statut: 'planifie' as AppointmentStatus,
+      notes: 'Présentation gamme complète + tarifs distributeur', statut: 'planifie' as AppointmentStatus,
     },
     {
       id: 'rdv-3', prospect_id: 'p-6', commercial_id: 'com-2',
       date: '2026-02-10', heure_debut: '11:00', heure_fin: '12:00',
       lieu: 'Le Comptoir des Saveurs, Monistrol-sur-Loire',
-      notes: 'Suivi commande + presentation nouveautes', statut: 'termine' as AppointmentStatus,
+      notes: 'Suivi commande + présentation nouveautes', statut: 'termine' as AppointmentStatus,
     },
     {
       id: 'rdv-4', prospect_id: 'p-7', commercial_id: 'com-2',
@@ -333,8 +333,8 @@ www.labrasseriedesplantes.fr
 Artisanalement votre`,
     },
     {
-      id: 'et-4', nom: 'Relance insistante (derniere tentative)', type: 'relance',
-      sujet: 'Derniere proposition – Degustation La Brasserie des Plantes',
+      id: 'et-4', nom: 'Relance insistante (dernière tentative)', type: 'relance',
+      sujet: 'Dernière proposition – Degustation La Brasserie des Plantes',
       corps: `Bonjour {{nom_contact}},
 
 Je vous ai contacte il y a quelques semaines concernant nos liqueurs artisanales de Haute-Loire.
@@ -447,7 +447,7 @@ Artisanalement votre
 P.J. : Catalogue professionnel La Brasserie des Plantes`,
     },
     {
-      id: 'et-8', nom: 'Annonce nouveaute / medaille', type: 'nouveaute',
+      id: 'et-8', nom: 'Annonce nouveaute / médaille', type: 'nouveaute',
       sujet: 'Nouveaute – La Brasserie des Plantes',
       corps: `Bonjour {{nom_contact}},
 

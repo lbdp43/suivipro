@@ -109,7 +109,7 @@ function put(path: string, body: unknown) {
   return withRetry(() => request(path, { method: 'PUT', body: JSON.stringify(body) }))
     .catch(err => {
       console.error('API PUT error:', err);
-      if (onApiError) onApiError(`Erreur de mise a jour: ${err.message}`);
+      if (onApiError) onApiError(`Erreur de mise à jour: ${err.message}`);
     });
 }
 
@@ -117,7 +117,7 @@ function patch(path: string, body: unknown) {
   return withRetry(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }))
     .catch(err => {
       console.error('API PATCH error:', err);
-      if (onApiError) onApiError(`Erreur de mise a jour: ${err.message}`);
+      if (onApiError) onApiError(`Erreur de mise à jour: ${err.message}`);
     });
 }
 

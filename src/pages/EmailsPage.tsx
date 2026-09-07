@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { EmailTemplate, Prospect } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
+import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function EmailsPage() {
   const { state, dispatch, dispatchLocal } = useApp();
@@ -37,12 +38,12 @@ export default function EmailsPage() {
         const updated = { ...editing, ...formData } as EmailTemplate;
         await apiPut(`/email-templates/${editing.id}`, updated);
         dispatchLocal({ type: 'UPDATE_EMAIL_TEMPLATE', payload: updated });
-        toast.success('Template modifie');
+        toast.success('Template modifié');
       } else {
         const newTemplate = { ...formData, id: generateId('et') } as EmailTemplate;
         await apiPost('/email-templates', newTemplate);
         dispatchLocal({ type: 'ADD_EMAIL_TEMPLATE', payload: newTemplate });
-        toast.success('Template cree');
+        toast.success('Template créé');
       }
       setShowForm(false);
     } catch {
@@ -55,7 +56,7 @@ export default function EmailsPage() {
       try {
         await apiDelete(`/email-templates/${id}`);
         dispatchLocal({ type: 'DELETE_EMAIL_TEMPLATE', payload: id });
-        toast.success('Template supprime');
+        toast.success('Template supprimé');
       } catch {
         toast.error('Erreur suppression');
       }
@@ -76,7 +77,7 @@ export default function EmailsPage() {
     return processEmailTemplate(selectedTemplate, prospect, {
       prenom: commercial.prenom,
       telephone: commercial.telephone,
-    }, { date_rdv: 'Mardi 18 fevrier 2026 a 10h30' });
+    }, { date_rdv: 'Mardi 18 février 2026 a 10h30' });
   };
 
   const sendEmail = async () => {
@@ -84,7 +85,7 @@ export default function EmailsPage() {
     const prospect = state.prospects.find(p => p.id === selectedProspectId);
     if (!prospect) return;
 
-    // Auto-transition: "A contacter" / "Nouveau" → "Contacte" when email is sent
+    // Auto-transition: "À contacter" / "Nouveau" → "Contacte" when email is sent
     if (['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
       try {
         await apiPatch(`/prospects/${prospect.id}/stage`, {
@@ -94,6 +95,9 @@ export default function EmailsPage() {
         dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'contacte' } });
       } catch { /* secondary */ }
     }
+
+    // Le clic vaut envoi : tag « Mail envoyé » + trace dans l'historique du prospect.
+    marquerMailEnvoye(state, dispatchLocal, prospect, preview.sujet).catch(() => toast.error('Mail non tracé dans l\'historique'));
 
     // Open mailto link
     const mailto = `mailto:${prospect.email}?subject=${encodeURIComponent(preview.sujet)}&body=${encodeURIComponent(preview.corps)}`;
@@ -114,16 +118,16 @@ export default function EmailsPage() {
     { var: '{{nom_etablissement}}', desc: 'Nom du prospect (ex : Cave Martin, Le Suffren)' },
     { var: '{{nom_contact}}', desc: 'Nom du contact (ex : Nathalie, M. Bauchart)' },
     { var: '{{commercial}}', desc: 'Prenom du commercial (ex : Guillaume, Alban, Loic)' },
-    { var: '{{telephone_commercial}}', desc: 'Telephone du commercial (ex : 06 84 44 40 44)' },
-    { var: '{{date_rdv}}', desc: 'Date du RDV (ex : Mardi 18 fevrier 2026 a 10h30)' },
+    { var: '{{telephone_commercial}}', desc: 'Téléphone du commercial (ex : 06 84 44 40 44)' },
+    { var: '{{date_rdv}}', desc: 'Date du RDV (ex : Mardi 18 février 2026 a 10h30)' },
   ];
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates d'emails</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Modeles d'emails personnalisables</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Emails</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Modèles d'emails personnalisables</p>
         </div>
         <button
           className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium self-start sm:self-auto"
@@ -154,9 +158,9 @@ export default function EmailsPage() {
         <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="bg-white rounded-lg p-3 border border-amber-100">
-              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Regles generales</h4>
+              <h4 className="text-xs font-bold text-amber-800 mb-1.5">Règles générales</h4>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>- Toujours personnaliser avec un element de la conversation telephonique</li>
+                <li>- Toujours personnaliser avec un élément de la conversation téléphonique</li>
                 <li>- Proposer 2 creneaux precis, jamais "quand vous voulez"</li>
                 <li>- Toujours proposer une degustation (c'est notre meilleur argument)</li>
                 <li>- Mentionner systematiquement les medailles et le titre mondial</li>
@@ -174,9 +178,9 @@ export default function EmailsPage() {
             <div className="bg-white rounded-lg p-3 border border-amber-100">
               <h4 className="text-xs font-bold text-amber-800 mb-1.5">Strategie de relance</h4>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>- 1ere relance (template 3) : 5 a 7 jours apres le premier envoi</li>
-                <li>- 2eme relance (template 4) : 10 a 15 jours apres la 1ere relance</li>
-                <li>- Apres 2 relances sans reponse : passer en "a recontacter dans 3 mois"</li>
+                <li>- 1ere relance (template 3) : 5 a 7 jours après le premier envoi</li>
+                <li>- 2eme relance (template 4) : 10 a 15 jours après la 1ere relance</li>
+                <li>- Après 2 relances sans réponse : passer en "a recontacter dans 3 mois"</li>
               </ul>
             </div>
             <div className="bg-white rounded-lg p-3 border border-amber-100">
@@ -189,12 +193,12 @@ export default function EmailsPage() {
             </div>
           </div>
           <div className="bg-white rounded-lg p-3 border border-amber-100">
-            <h4 className="text-xs font-bold text-amber-800 mb-1.5">Apres chaque envoi</h4>
+            <h4 className="text-xs font-bold text-amber-800 mb-1.5">Après chaque envoi</h4>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
-              <span>- Creer une tache de relance dans le CRM (5 a 7 jours)</span>
-              <span>- Noter le contenu de l'echange telephonique</span>
-              <span>- Indiquer les produits qui ont interesse le prospect</span>
-              <span>- "Je passe dans le secteur" cree une urgence douce</span>
+              <span>- Créer une tâche de relance dans le CRM (5 a 7 jours)</span>
+              <span>- Noter le contenu de l'echange téléphonique</span>
+              <span>- Indiquer les produits qui ont intéressé le prospect</span>
+              <span>- "Je passe dans le secteur" créé une urgence douce</span>
             </div>
           </div>
         </div>
@@ -250,7 +254,7 @@ export default function EmailsPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="presentation, relance, etc." value={formData.type} onChange={e => setFormData(prev => ({ ...prev, type: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="présentation, relance, etc." value={formData.type} onChange={e => setFormData(prev => ({ ...prev, type: e.target.value }))} />
                 </div>
               </div>
               <div>
@@ -265,7 +269,7 @@ export default function EmailsPage() {
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
               <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveTemplate}>
-                <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Creer'}
+                <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Créer'}
               </button>
             </div>
           </div>

@@ -22,11 +22,13 @@ import {
 import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { scoreDepuisTags, baremeActif } from '../../shared/score';
+import { marquerMailEnvoye } from '../utils/mailEnvoye';
 
 export default function ProspectsPage() {
   const { state, dispatch, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
   const toast = useToast();
-  const { startCall } = useCallModal();
+  const { startCall, startSession } = useCallModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -141,7 +143,7 @@ export default function ProspectsPage() {
         await apiPut(`/tags/${editingTag.id}`, payload);
         dispatchLocal({ type: 'UPDATE_TAG', payload });
       } catch (err) {
-        toast.error(`Erreur mise a jour tag: ${(err as Error).message}`);
+        toast.error(`Erreur mise à jour tag: ${(err as Error).message}`);
         return;
       }
       setEditingTag(null);
@@ -214,7 +216,7 @@ export default function ProspectsPage() {
       await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
       dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updatedRdv });
     } catch (err) {
-      toast.error(`Erreur mise a jour RDV: ${(err as Error).message}`);
+      toast.error(`Erreur mise à jour RDV: ${(err as Error).message}`);
       return;
     }
     const prospect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
@@ -302,7 +304,7 @@ export default function ProspectsPage() {
         } catch { errors++; }
       }
     }
-    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis à jour`);
     setShowBulkAction('none');
     exitSelectionMode();
   };
@@ -321,7 +323,7 @@ export default function ProspectsPage() {
         } catch { errors++; }
       }
     }
-    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis à jour`);
     setBulkSecteur('');
     setShowBulkAction('none');
     exitSelectionMode();
@@ -341,14 +343,14 @@ export default function ProspectsPage() {
         const newTags = allHaveTag
           ? prospect.tags.filter(t => t !== tagId)
           : prospect.tags.includes(tagId) ? prospect.tags : [...prospect.tags, tagId];
-        const payload = { ...prospect, tags: newTags, date_modification: now };
+        const payload = { ...prospect, tags: newTags, score: scoreDepuisTags(newTags, state.tags, prospect.score), date_modification: now };
         try {
           await apiPut(`/prospects/${id}`, payload);
           dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
         } catch { errors++; }
       }
     }
-    if (errors > 0) toast.error(`${errors} prospect(s) non mis a jour`);
+    if (errors > 0) toast.error(`${errors} prospect(s) non mis à jour`);
   };
 
   const bulkDelete = async () => {
@@ -360,7 +362,7 @@ export default function ProspectsPage() {
         dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
       } catch { errors++; }
     }
-    if (errors > 0) toast.error(`${errors} prospect(s) non supprimes`);
+    if (errors > 0) toast.error(`${errors} prospect(s) non supprimés`);
     exitSelectionMode();
   };
 
@@ -692,7 +694,7 @@ export default function ProspectsPage() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
               onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
-              title={selectionMode ? 'Quitter la selection' : 'Selection multiple'}
+              title={selectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
             >
               <CheckSquare className="w-5 h-5" />
             </button>
@@ -715,7 +717,7 @@ export default function ProspectsPage() {
               color="brewery"
             />
             <MultiSelectDropdown
-              label="Etape"
+              label="Étape"
               options={state.pipelineColumns.map(col => ({
                 value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id],
               }))}
@@ -871,7 +873,7 @@ export default function ProspectsPage() {
                   setSortScore(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none');
                   if (sortScore === 'none') setSortDate('none');
                 }}
-                title={sortScore === 'none' ? 'Trier par score' : sortScore === 'desc' ? 'Score decroissant' : 'Score croissant'}
+                title={sortScore === 'none' ? 'Trier par score' : sortScore === 'desc' ? 'Score décroissant' : 'Score croissant'}
               >
                 <ArrowUpDown className="w-3 h-3" />
                 Score {sortScore === 'desc' ? '↓' : sortScore === 'asc' ? '↑' : ''}
@@ -887,15 +889,24 @@ export default function ProspectsPage() {
               className="text-[10px] font-medium text-brewery-700 hover:text-brewery-900 underline"
               onClick={selectedIds.size === filteredProspects.length ? deselectAll : selectAll}
             >
-              {selectedIds.size === filteredProspects.length ? 'Tout deselectionner' : 'Tout selectionner'}
+              {selectedIds.size === filteredProspects.length ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
             <span className="text-[10px] text-brewery-600 ml-auto">
               {selectedIds.size} selectionne(s)
             </span>
+            {selectedIds.size > 0 && (
+              <button
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-[10px] font-semibold hover:bg-brewery-700"
+                onClick={() => startSession(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
+                title="Appeler les prospects sélectionnés l'un après l'autre"
+              >
+                <Phone className="w-3 h-3" /> Session d'appels ({selectedIds.size})
+              </button>
+            )}
             <button
               className="p-1 text-gray-400 hover:text-gray-600"
               onClick={exitSelectionMode}
-              title="Quitter la selection"
+              title="Quitter la sélection"
             >
               <XCircle className="w-4 h-4" />
             </button>
@@ -1046,7 +1057,7 @@ export default function ProspectsPage() {
                   className="flex-1 px-3 py-2 text-[11px] font-medium bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
                   onClick={() => setShowBulkAction('etape')}
                 >
-                  Changer etape
+                  Changer étape
                 </button>
                 <button
                   className="flex-1 px-3 py-2 text-[11px] font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
@@ -1058,7 +1069,7 @@ export default function ProspectsPage() {
                   className="flex-1 px-3 py-2 text-[11px] font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
                   onClick={() => setShowBulkAction('tags')}
                 >
-                  Gerer tags
+                  Gérer tags
                 </button>
                 <button
                   className="px-3 py-2 text-[11px] font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
@@ -1159,7 +1170,7 @@ export default function ProspectsPage() {
                         }`}
                         style={allHave ? { backgroundColor: tag.couleur } : someHave ? { color: tag.couleur } : {}}
                         onClick={() => bulkToggleTag(tag.id)}
-                        title={allHave ? `Retirer "${tag.nom}" de tous` : `Ajouter "${tag.nom}" a tous`}
+                        title={allHave ? `Retirer "${tag.nom}" de tous` : `Ajouter "${tag.nom}" à tous`}
                       >
                         {allHave ? '✓ ' : someHave ? '~ ' : '+ '}{tag.nom}
                       </button>
@@ -1170,7 +1181,7 @@ export default function ProspectsPage() {
                   className="w-full px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
                   onClick={() => setShowBulkAction('none')}
                 >
-                  Termine
+                  Terminé
                 </button>
               </div>
             )}
@@ -1259,7 +1270,12 @@ export default function ProspectsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="w-4 h-4 text-gray-400" />
-                  <a href={`mailto:${selectedProspect.email}`} className="text-brewery-600 hover:underline">
+                  <a
+                    href={`mailto:${selectedProspect.email}`}
+                    className="text-brewery-600 hover:underline"
+                    title="Ouvre votre messagerie ; le mail est compté comme envoyé"
+                    onClick={() => { marquerMailEnvoye(state, dispatchLocal, selectedProspect, '').catch(() => toast.error('Mail non tracé dans l\'historique')); }}
+                  >
                     {selectedProspect.email}
                   </a>
                 </div>
@@ -1317,7 +1333,7 @@ export default function ProspectsPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">Aucun appel enregistre</p>
+                <p className="text-sm text-gray-400">Aucun appel enregistré</p>
               )}
             </div>
 
@@ -1402,7 +1418,7 @@ export default function ProspectsPage() {
         <div className="hidden lg:flex flex-1 items-center justify-center bg-gray-50">
           <div className="text-center text-gray-400">
             <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Selectionnez un prospect pour voir ses details</p>
+            <p className="text-sm">Sélectionnez un prospect pour voir ses détails</p>
           </div>
         </div>
       )}
@@ -1437,7 +1453,7 @@ export default function ProspectsPage() {
                       {family.types.map(t => (
                         <option key={t} value={t}>
                           {CLIENT_TYPE_LABELS[t]}
-                          {CLIENT_VISIT_FREQUENCIES[t] ? ` (visite tous les ${CLIENT_VISIT_FREQUENCIES[t]}j)` : ' (pas de recurrence)'}
+                          {CLIENT_VISIT_FREQUENCIES[t] ? ` (visite tous les ${CLIENT_VISIT_FREQUENCIES[t]}j)` : ' (pas de récurrence)'}
                         </option>
                       ))}
                     </optgroup>
@@ -1446,7 +1462,7 @@ export default function ProspectsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Tournee</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tournée</label>
                 <input
                   type="text"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
@@ -1458,14 +1474,14 @@ export default function ProspectsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Recurrence personnalisee (jours)
+                  Récurrence personnalisee (jours)
                   <span className="text-gray-400 font-normal ml-1">- laissez vide pour utiliser la valeur par defaut</span>
                 </label>
                 <input
                   type="number"
                   min="1"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
-                  placeholder={CLIENT_VISIT_FREQUENCIES[convertType] ? `${CLIENT_VISIT_FREQUENCIES[convertType]} jours (par defaut)` : 'Aucune recurrence'}
+                  placeholder={CLIENT_VISIT_FREQUENCIES[convertType] ? `${CLIENT_VISIT_FREQUENCIES[convertType]} jours (par defaut)` : 'Aucune récurrence'}
                   value={convertCustomRecurrence ?? ''}
                   onChange={e => setConvertCustomRecurrence(e.target.value ? parseInt(e.target.value) : null)}
                 />
@@ -1628,7 +1644,7 @@ export default function ProspectsPage() {
                   }
                 }}
               >
-                <Bell className="w-3.5 h-3.5" /> Creer le rappel
+                <Bell className="w-3.5 h-3.5" /> Créer le rappel
               </button>
             </div>
           </div>
@@ -1726,7 +1742,7 @@ export default function ProspectsPage() {
               {!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0) && (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
                   <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1">
-                    ⚠️ Doublons potentiels detectes
+                    ⚠️ Doublons potentiels détectés
                   </p>
                   <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
                     {liveDuplicates.slice(0, 5).map(dup => (
@@ -1765,7 +1781,7 @@ export default function ProspectsPage() {
                     className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700"
                     onClick={() => setForceCreate(true)}
                   >
-                    Creer quand meme
+                    Créer quand même
                   </button>
                 </div>
               )}
@@ -1780,7 +1796,7 @@ export default function ProspectsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Etape</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Étape</label>
                   <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.etape_pipeline || 'nouveau'} onChange={e => setFormData(prev => ({ ...prev, etape_pipeline: e.target.value as PipelineStage }))}>
                     {state.pipelineColumns.map(col => (
                       <option key={col.id} value={col.id}>{col.label}</option>
@@ -1794,7 +1810,7 @@ export default function ProspectsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
                   <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.telephone || ''} onChange={e => { setFormData(prev => ({ ...prev, telephone: e.target.value })); setForceCreate(false); }} />
                 </div>
                 <div>
@@ -1845,7 +1861,7 @@ export default function ProspectsPage() {
                     className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium flex items-center gap-0.5"
                     onClick={() => { setShowTagManager(!showTagManager); setEditingTag(null); setNewTagName(''); }}
                   >
-                    <Settings className="w-3 h-3" /> Gerer les tags
+                    <Settings className="w-3 h-3" /> Gérer les tags
                   </button>
                 </div>
 
@@ -1871,14 +1887,14 @@ export default function ProspectsPage() {
                     </button>
                   ))}
                   {state.tags.length === 0 && (
-                    <p className="text-[10px] text-gray-400">Aucun tag. Cliquez "Gerer les tags" pour en creer.</p>
+                    <p className="text-[10px] text-gray-400">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
                   )}
                 </div>
 
                 {/* Tag manager panel */}
                 {showTagManager && (
                   <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
-                    <p className="text-[11px] font-semibold text-gray-700">{editingTag ? 'Modifier le tag' : 'Creer un nouveau tag'}</p>
+                    <p className="text-[11px] font-semibold text-gray-700">{editingTag ? 'Modifier le tag' : 'Créer un nouveau tag'}</p>
 
                     {/* New/Edit tag form */}
                     <div className="flex items-center gap-2">
@@ -1896,7 +1912,7 @@ export default function ProspectsPage() {
                         onClick={saveNewTag}
                         disabled={!newTagName.trim()}
                       >
-                        {editingTag ? 'Modifier' : 'Creer'}
+                        {editingTag ? 'Modifier' : 'Créer'}
                       </button>
                       {editingTag && (
                         <button
@@ -1968,7 +1984,13 @@ export default function ProspectsPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
-                <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
+                {baremeActif(state.tags) ? (
+                  <p className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· calculé d'après les tags</span>
+                  </p>
+                ) : (
+                  <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
+                )}
               </div>
 
             </div>
@@ -1976,9 +1998,9 @@ export default function ProspectsPage() {
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
               <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving}>
                 {saving ? (
-                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Geocodage...</>
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Géocodage...</>
                 ) : (
-                  <><Save className="w-4 h-4" /> {editingProspect ? 'Modifier' : 'Creer'}</>
+                  <><Save className="w-4 h-4" /> {editingProspect ? 'Modifier' : 'Créer'}</>
                 )}
               </button>
             </div>
@@ -1991,11 +2013,11 @@ export default function ProspectsPage() {
         const crProspect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
         const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
           { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
-          { value: 'mail_envoye', label: 'Mail envoye', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
+          { value: 'mail_envoye', label: 'Mail envoyé', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
           { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
-          { value: 'a_relancer', label: 'A relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
-          { value: 'pas_interesse', label: 'Pas interesse', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
-          { value: 'decale', label: 'RDV decale', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
+          { value: 'a_relancer', label: 'À relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
+          { value: 'pas_interesse', label: 'Pas intéressé', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
+          { value: 'decale', label: 'RDV décalé', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
         ];
         return (
           <div className="modal-backdrop">
@@ -2013,7 +2035,7 @@ export default function ProspectsPage() {
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Resultat du rendez-vous</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">Résultat du rendez-vous</label>
                   <div className="grid grid-cols-2 gap-2">
                     {resultOptions.map(opt => {
                       const Icon = opt.icon;

@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
+import compression from 'compression';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -41,13 +43,25 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting global
-app.use(rateLimit({
+// Rate limiting global — PAR UTILISATEUR, sur l'API seulement.
+// Toute l'équipe au bureau sort par la même adresse IP : un quota par IP se partageait
+// entre tous, et les fichiers statiques (écrans, polices) le consommaient aussi.
+// Un utilisateur identifié a son propre compteur ; un anonyme garde le compteur par IP.
+function cleQuota(req) {
+  const auth = req.headers.authorization || '';
+  if (auth.startsWith('Bearer ')) {
+    const decode = jwt.decode(auth.slice(7));
+    if (decode && decode.id) return `u:${decode.id}`;
+  }
+  return ipKeyGenerator(req.ip);
+}
+app.use('/api', rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: 600,
+  keyGenerator: cleQuota,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Trop de requetes, reessayez dans une minute' },
+  message: { error: 'Trop de requêtes, réessayez dans une minute' },
 }));
 
 // Rate limiting strict sur le login
@@ -76,6 +90,8 @@ app.use('/api/prospects/import', rateLimit({
 }));
 
 // Body parser — 10mb pour les uploads de documents
+// /state pèse plusieurs Mo en JSON : compressé, il en fait dix fois moins sur la 4G.
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
 // API routes

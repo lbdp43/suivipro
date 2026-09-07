@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { apiPost, apiPut, apiDelete } from '../api/client';
-import { Commercial, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
+import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import { Commercial, Objectifs, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
+import { objectifsDuRole, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -95,19 +96,23 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
   );
 }
 
-export default function AdminPage() {
+// section="easybeer" : la page EasyBeer (menu Administration → EasyBeer), avec ses trois
+// onglets — Connexion, Synchronisation, Contrôle. Sans section : l'administration classique.
+export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>('team');
+  const pageEasybeer = section === 'easybeer';
+  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>(pageEasybeer ? 'easybeer' : 'team');
+  const [ebOnglet, setEbOnglet] = useState<'connexion' | 'synchronisation' | 'controle'>('connexion');
 
   // Tag state
   const [showTagForm, setShowTagForm] = useState(false);
   const [editingTag, setEditingTag] = useState<TagType | null>(null);
-  const [tagForm, setTagForm] = useState({ nom: '', couleur: '#22c55e' });
+  const [tagForm, setTagForm] = useState<{ nom: string; couleur: string; points: number }>({ nom: '', couleur: '#22c55e', points: 0 });
 
   // Objectives state
   const [editingObjectives, setEditingObjectives] = useState<string | null>(null);
-  const [objectivesForm, setObjectivesForm] = useState({ appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 });
+  const [objectivesForm, setObjectivesForm] = useState<Objectifs>({});
 
   // Team management state
   const [showUserForm, setShowUserForm] = useState(false);
@@ -124,6 +129,38 @@ export default function AdminPage() {
   const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; affichees?: number; par_score?: Record<string, number>; identifiants_partages?: { emails: { valeur: string; clients: number }[]; telephones: { valeur: string; clients: number }[] }; paires: any[] } | null>(null);
   const [doublonsRecherche, setDoublonsRecherche] = useState('');
   const [doublonsFaibles, setDoublonsFaibles] = useState(false);
+  // Doublons prospects <-> clients : un prospect qu'on appelle encore alors qu'il est déjà client.
+  const [doublonsPC, setDoublonsPC] = useState<{ total_prospects: number; total_clients: number; total_paires: number; certains: number; paires: any[] } | null>(null);
+  const [doublonsPCLoading, setDoublonsPCLoading] = useState(false);
+  const chargerDoublonsPC = async () => {
+    setDoublonsPCLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
+      const res = await fetch('/api/prospects/doublons-clients', { headers });
+      if (res.ok) setDoublonsPC(await res.json());
+      else toast.error('Erreur lors de la détection des doublons prospects/clients');
+    } catch { toast.error('Erreur réseau'); }
+    setDoublonsPCLoading(false);
+  };
+  const retirerPaireDoublonPC = (prospectId: string) => setDoublonsPC(prev => prev ? { ...prev, paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId), total_paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId).length } : prev);
+  const prospectGagne = async (paire: any) => {
+    if (!confirm(`Passer le prospect « ${paire.prospect.nom} » en « Gagné » ? Il sort de la prospection ; le client « ${paire.client.nom} » reste la fiche de référence.`)) return;
+    try {
+      await apiPatch(`/prospects/${paire.prospect.id}/stage`, { etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() });
+      dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: paire.prospect.id, stage: 'client_gagne' } });
+      retirerPaireDoublonPC(paire.prospect.id);
+      toast.success('Prospect passé en « Gagné »');
+    } catch { toast.error('Impossible de modifier le prospect'); }
+  };
+  const prospectSupprime = async (paire: any) => {
+    if (!confirm(`Supprimer le prospect « ${paire.prospect.nom} » (${paire.prospect.nb_appels} appel(s), ${paire.prospect.nb_rdv} RDV) ? Ses appels et rendez-vous seront supprimés avec lui.`)) return;
+    try {
+      await apiDelete(`/prospects/${paire.prospect.id}`);
+      dispatchLocal({ type: 'DELETE_PROSPECT', payload: paire.prospect.id });
+      retirerPaireDoublonPC(paire.prospect.id);
+      toast.success('Prospect supprimé');
+    } catch { toast.error('Impossible de supprimer le prospect'); }
+  };
   const [doublonsLoading, setDoublonsLoading] = useState(false);
   const [fusionEnCours, setFusionEnCours] = useState<string | null>(null);
   const [ebRelierChoix, setEbRelierChoix] = useState<Record<string, string>>({});
@@ -195,7 +232,7 @@ export default function AdminPage() {
       });
       if (res.ok) setActivityLog(await res.json());
     } catch (err) {
-      console.error('Erreur chargement activite:', err);
+      console.error('Erreur chargement activité:', err);
     } finally {
       setActivityLoading(false);
     }
@@ -246,7 +283,7 @@ export default function AdminPage() {
         setTourneeConfigs(configs);
       }
     } catch (err) {
-      console.error('Erreur chargement tournees:', err);
+      console.error('Erreur chargement tournées:', err);
     }
   }, []);
 
@@ -265,7 +302,7 @@ export default function AdminPage() {
         setFrequencyConfig(config);
       }
     } catch (err) {
-      console.error('Erreur chargement frequences:', err);
+      console.error('Erreur chargement fréquences:', err);
     }
   }, []);
 
@@ -311,9 +348,9 @@ export default function AdminPage() {
         },
       }));
       setTourneeEditing(null);
-      toast.success('Tournees sauvegardees');
+      toast.success('Tournées sauvegardees');
     } catch (err) {
-      toast.error('Erreur sauvegarde tournees');
+      toast.error('Erreur sauvegarde tournées');
     } finally {
       setTourneeSaving(false);
     }
@@ -375,9 +412,9 @@ export default function AdminPage() {
       });
       setFrequencyConfig(frequencies);
       setFrequencyEditing(false);
-      toast.success(applyToExisting ? 'Recurrences sauvegardees et appliquees aux clients existants' : 'Recurrences sauvegardees');
+      toast.success(applyToExisting ? 'Récurrences sauvegardees et appliquees aux clients existants' : 'Récurrences sauvegardees');
     } catch {
-      toast.error('Erreur sauvegarde recurrences');
+      toast.error('Erreur sauvegarde récurrences');
     } finally {
       setFrequencySaving(false);
     }
@@ -399,7 +436,7 @@ export default function AdminPage() {
       const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
       const res = await fetch('/api/clients/doublons', { headers });
       if (res.ok) setDoublons(await res.json());
-      else toast.error('Erreur lors de la detection des doublons');
+      else toast.error('Erreur lors de la détection des doublons');
     } catch { toast.error('Erreur reseau'); }
     setDoublonsLoading(false);
   };
@@ -407,7 +444,7 @@ export default function AdminPage() {
   const fusionnerClients = async (garder: any, supprimer: any) => {
     const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
       + `${supprimer.nb_commandes} commande(s), ${supprimer.nb_interactions} interaction(s) et l'historique de « ${supprimer.nom} » `
-      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimee.\n\nCette action est definitive.`;
+      + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimée.\n\nCette action est definitive.`;
     if (!confirm(message)) return;
     setFusionEnCours(`${garder.id}|${supprimer.id}`);
     try {
@@ -426,7 +463,7 @@ export default function AdminPage() {
         } : prev);
         // La liste clients de l'app se rafraichit toute seule (polling 30 s).
       } else {
-        toast.error(data.error || data.message || 'Echec de la fusion');
+        toast.error(data.error || data.message || 'Échec de la fusion');
       }
     } catch { toast.error('Erreur reseau'); }
     setFusionEnCours(null);
@@ -519,7 +556,7 @@ export default function AdminPage() {
       });
       if (res.ok) {
         setEbPending(prev => prev.filter(c => c.id !== ebId));
-        toast.success('Client importe avec succes');
+        toast.success('Client importé avec succes');
         // Reload to get new client in state
         window.location.reload();
       }
@@ -535,10 +572,10 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Synchronise: ${data.name || 'OK'}`);
+        toast.success(`Synchronisé: ${data.name || 'OK'}`);
         loadEasyBeerData();
       } else {
-        toast.error(data.message || 'Echec de la synchronisation');
+        toast.error(data.message || 'Échec de la synchronisation');
       }
     } catch { toast.error('Erreur de synchronisation'); }
   };
@@ -567,7 +604,7 @@ export default function AdminPage() {
         if (data.resultat) {
           setSyncAllResult(data.resultat);
           if (data.resultat.ok && (data.resultat.total_imported || 0) > 0) {
-            toast.success(`${data.resultat.total_imported} commandes importees pour ${data.resultat.details?.length || 0} clients`);
+            toast.success(`${data.resultat.total_imported} commandes importées pour ${data.resultat.details?.length || 0} clients`);
           } else if (data.resultat.ok) {
             toast.success(data.resultat.message || 'Aucune nouvelle commande');
           } else {
@@ -645,7 +682,7 @@ export default function AdminPage() {
       if (res.ok && data.ok !== false) {
         toast.success(data.message || 'Synchronisation des clients lancee');
         setTimeout(loadEbSyncLogs, 1500);
-      } else { toast.error(data.message || data.error || 'Echec du lancement'); }
+      } else { toast.error(data.message || data.error || 'Échec du lancement'); }
     } catch { toast.error('Erreur reseau'); }
     setSyncingClients(false);
   };
@@ -654,8 +691,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/easybeer/generer-visites', { method: 'POST', headers: ebHeaders(), body: JSON.stringify({ sinceDays: 365 }) });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites creees depuis les commandes`);
-      else toast.error(data.message || 'Echec');
+      if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites créées depuis les commandes`);
+      else toast.error(data.message || 'Échec');
     } catch { toast.error('Erreur reseau'); }
     setGenVisites(false);
   };
@@ -719,13 +756,17 @@ export default function AdminPage() {
   };
 
   const tabs = [
-    { id: 'team' as const, label: 'Equipe', icon: Users },
+    { id: 'team' as const, label: 'Équipe', icon: Users },
     { id: 'objectives' as const, label: 'Objectifs', icon: Target },
     { id: 'tags' as const, label: 'Tags', icon: Tag },
     { id: 'commercials' as const, label: 'Statistiques', icon: BarChart3 },
-    { id: 'easybeer' as const, label: 'EasyBeer', icon: Link2 },
-    { id: 'tournees' as const, label: 'Tournees', icon: MapPin },
-    { id: 'activity' as const, label: 'Activite', icon: Activity },
+    { id: 'tournees' as const, label: 'Tournées', icon: MapPin },
+    { id: 'activity' as const, label: 'Activité', icon: Activity },
+  ];
+  const ebOnglets = [
+    { id: 'connexion' as const, label: 'Connexion', aide: 'Identifiants API, règles d\'affectation, exploration' },
+    { id: 'synchronisation' as const, label: 'Synchronisation', aide: 'Clients, commandes, fiches en attente, liens' },
+    { id: 'controle' as const, label: 'Contrôle', aide: 'Commandes orphelines, doublons, journal des webhooks' },
   ];
 
   // ============================================
@@ -779,7 +820,7 @@ export default function AdminPage() {
           telephone: userForm.telephone,
           role: userForm.role,
           password: userForm.password,
-          objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+          objectifs: objectifsParDefaut(userForm.role),
         };
         await apiPost('/commerciaux', newUser);
         dispatchLocal({ type: 'ADD_COMMERCIAL', payload: newUser });
@@ -816,7 +857,10 @@ export default function AdminPage() {
 
   const startEditObjectives = (commercial: Commercial) => {
     setEditingObjectives(commercial.id);
-    setObjectivesForm({ ...commercial.objectifs });
+    // Les clés du rôle, pré-remplies avec l'existant ou la valeur proposée.
+    const f: Objectifs = { ...commercial.objectifs };
+    for (const def of objectifsDuRole(commercial.role)) if (f[def.cle] === undefined) f[def.cle] = def.defaut;
+    setObjectivesForm(f);
   };
 
   const saveObjectives = async () => {
@@ -842,13 +886,13 @@ export default function AdminPage() {
   // ============================================
 
   const openNewTag = () => {
-    setTagForm({ nom: '', couleur: '#22c55e' });
+    setTagForm({ nom: '', couleur: '#22c55e', points: 0 });
     setEditingTag(null);
     setShowTagForm(true);
   };
 
   const openEditTag = (tag: TagType) => {
-    setTagForm({ nom: tag.nom, couleur: tag.couleur });
+    setTagForm({ nom: tag.nom, couleur: tag.couleur, points: tag.points || 0 });
     setEditingTag(tag);
     setShowTagForm(true);
   };
@@ -901,8 +945,10 @@ export default function AdminPage() {
       const avgDuration = getAverageCallDuration(comCalls);
       const conversionRate = getConversionRate(comProspects);
 
-      const callsProgress = commercial.objectifs.appels_semaine > 0 ? Math.round((weekCalls / commercial.objectifs.appels_semaine) * 100) : 0;
-      const rdvProgress = commercial.objectifs.rdv_mois > 0 ? Math.round((monthRdv / commercial.objectifs.rdv_mois) * 100) : 0;
+      const objAppelsSemaine = objectifAppels(commercial, 'semaine');
+      const objRdvMois = Number(commercial.objectifs?.rdv_realises_mois ?? commercial.objectifs?.rdv_pris_mois ?? commercial.objectifs?.rdv_mois ?? 0);
+      const callsProgress = objAppelsSemaine > 0 ? Math.round((weekCalls / objAppelsSemaine) * 100) : 0;
+      const rdvProgress = objRdvMois > 0 ? Math.round((monthRdv / objRdvMois) * 100) : 0;
 
       return {
         commercial,
@@ -933,13 +979,27 @@ export default function AdminPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Administration</h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion de l'equipe, objectifs, tags et statistiques</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{pageEasybeer ? 'EasyBeer' : 'Administration'}</h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          {pageEasybeer ? 'Connexion, synchronisation et contrôle des données EasyBeer' : 'Gestion de l\'équipe, objectifs, tags et statistiques'}
+        </p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap overflow-x-auto">
-        {tabs.map(tab => (
+        {pageEasybeer && ebOnglets.map(tab => (
+          <button
+            key={tab.id}
+            title={tab.aide}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              ebOnglet === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setEbOnglet(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+        {!pageEasybeer && tabs.map(tab => (
           <button
             key={tab.id}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1064,7 +1124,7 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Telephone</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
                     <input
                       type="tel"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1075,7 +1135,7 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rôle</label>
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -1145,7 +1205,7 @@ export default function AdminPage() {
                     className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2"
                     onClick={saveUser}
                   >
-                    <Save className="w-4 h-4" /> {editingUser ? 'Modifier' : 'Creer'}
+                    <Save className="w-4 h-4" /> {editingUser ? 'Modifier' : 'Créer'}
                   </button>
                 </div>
               </div>
@@ -1159,9 +1219,17 @@ export default function AdminPage() {
       {/* ============================================ */}
       {activeTab === 'objectives' && (
         <div className="space-y-4">
+          <div className="bg-brewery-50 border border-brewery-100 rounded-xl p-4 text-sm text-brewery-800">
+            <p className="font-semibold">Objectifs mensuels, adaptés au rôle.</p>
+            <p className="text-xs mt-1 text-brewery-700">
+              Prospection : appels et rendez-vous pris. Commercial : rendez-vous réalisés, clients vus, commandes.
+              Chacun voit ses jauges sur son accueil ; « dans le rythme » compare à ce qui devrait être atteint à cette date du mois.
+            </p>
+          </div>
           {state.commerciaux.map(commercial => {
-            const stats = commercialStats.find(s => s.commercial.id === commercial.id)!;
             const isEditing = editingObjectives === commercial.id;
+            const mesures = mesurerObjectifs(state, commercial);
+            const defs = objectifsDuRole(commercial.role);
             return (
               <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -1173,80 +1241,52 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{commercial.prenom} {commercial.nom}</h3>
-                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'}</p>
+                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'} · objectifs du mois</p>
                     </div>
                   </div>
                   {isEditing ? (
                     <div className="flex gap-2">
                       <button className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setEditingObjectives(null)}>Annuler</button>
                       <button className="px-3 py-1.5 text-xs bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-1" onClick={saveObjectives}>
-                        <Save className="w-3 h-3" /> Sauver
+                        <Save className="w-3 h-3" /> Enregistrer
                       </button>
                     </div>
                   ) : (
-                    <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => startEditObjectives(commercial)}>
+                    <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => startEditObjectives(commercial)} title="Modifier les objectifs">
                       <Edit2 className="w-4 h-4 text-gray-600" />
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">Appels / semaine</span>
-                      <div className={`w-2 h-2 rounded-full ${progressDot(stats.callsProgress)}`} />
-                    </div>
-                    {isEditing ? (
-                      <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.appels_semaine} onChange={e => setObjectivesForm(prev => ({ ...prev, appels_semaine: parseInt(e.target.value) || 0 }))} />
-                    ) : (
-                      <>
-                        <p className="text-lg font-bold text-gray-900">{stats.weekCalls} / {commercial.objectifs.appels_semaine}</p>
-                        <div className="bg-gray-200 rounded-full h-2">
-                          <div className={`h-2 rounded-full progress-bar ${progressColor(stats.callsProgress)}`} style={{ width: `${Math.min(stats.callsProgress, 100)}%` }} />
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${defs.length > 2 ? 'lg:grid-cols-3' : ''} gap-4`}>
+                  {mesures.map(m => {
+                    const couleur = COULEUR_ETAT[m.etat];
+                    return (
+                      <div key={m.cle} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500" title={m.aide}>{m.label} / mois</span>
+                          {!isEditing && <span className={`text-[10px] font-medium ${couleur.texte}`}>{couleur.label}</span>}
                         </div>
-                        <p className="text-[10px] text-gray-400">{stats.callsProgress}% - {progressLabel(stats.callsProgress)}</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">RDV / mois</span>
-                      <div className={`w-2 h-2 rounded-full ${progressDot(stats.rdvProgress)}`} />
-                    </div>
-                    {isEditing ? (
-                      <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.rdv_mois} onChange={e => setObjectivesForm(prev => ({ ...prev, rdv_mois: parseInt(e.target.value) || 0 }))} />
-                    ) : (
-                      <>
-                        <p className="text-lg font-bold text-gray-900">{stats.monthRdv} / {commercial.objectifs.rdv_mois}</p>
-                        <div className="bg-gray-200 rounded-full h-2">
-                          <div className={`h-2 rounded-full progress-bar ${progressColor(stats.rdvProgress)}`} style={{ width: `${Math.min(stats.rdvProgress, 100)}%` }} />
-                        </div>
-                        <p className="text-[10px] text-gray-400">{stats.rdvProgress}% - {progressLabel(stats.rdvProgress)}</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-xs text-gray-500">Prospects</span>
-                    {isEditing ? (
-                      <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.prospects_mois} onChange={e => setObjectivesForm(prev => ({ ...prev, prospects_mois: parseInt(e.target.value) || 0 }))} />
-                    ) : (
-                      <p className="text-lg font-bold text-gray-900">{stats.totalProspects}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-xs text-gray-500">Objectif conversion</span>
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.taux_conversion} onChange={e => setObjectivesForm(prev => ({ ...prev, taux_conversion: parseInt(e.target.value) || 0 }))} />
-                        <span className="text-sm text-gray-500">%</span>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                            value={objectivesForm[m.cle] ?? 0}
+                            onChange={e => setObjectivesForm(prev => ({ ...prev, [m.cle]: parseInt(e.target.value) || 0 }))}
+                          />
+                        ) : (
+                          <>
+                            <p className="text-lg font-bold text-gray-900">{m.valeur} <span className="text-sm font-normal text-gray-400">/ {m.objectif || '—'}</span></p>
+                            <div className="bg-gray-200 rounded-full h-2">
+                              <div className={`h-2 rounded-full progress-bar ${couleur.barre}`} style={{ width: `${Math.min(m.pct, 100)}%` }} />
+                            </div>
+                            <p className="text-[10px] text-gray-400">{m.objectif > 0 ? `${m.pct} % · attendu à ce jour : ${m.attendu}` : 'Fixez un objectif pour suivre l\'avancement'}</p>
+                          </>
+                        )}
                       </div>
-                    ) : (
-                      <p className="text-lg font-bold text-gray-900">{stats.conversionRate}% / {commercial.objectifs.taux_conversion}%</p>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -1277,6 +1317,9 @@ export default function AdminPage() {
                       <p className="font-medium text-sm text-gray-900">{tag.nom}</p>
                       <p className="text-xs text-gray-500">{prospectCount} prospect(s) - {convertedCount} converti(s)</p>
                     </div>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${(tag.points || 0) > 0 ? 'bg-green-100 text-green-700' : (tag.points || 0) < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`} title="Points apportés au score">
+                      {(tag.points || 0) > 0 ? '+' : ''}{tag.points || 0} pts
+                    </span>
                     <div className="flex gap-2">
                       <button className="p-1.5 rounded bg-gray-100 hover:bg-gray-200" onClick={() => openEditTag(tag)}>
                         <Edit2 className="w-3.5 h-3.5 text-gray-600" />
@@ -1317,17 +1360,22 @@ export default function AdminPage() {
                       ))}
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Points pour le score</label>
+                    <input type="number" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={tagForm.points} onChange={e => setTagForm(prev => ({ ...prev, points: parseInt(e.target.value) || 0 }))} />
+                    <p className="text-[11px] text-gray-400 mt-1">Le score d'un prospect est la somme des points de ses tags, de 0 à 100. Tant qu'aucun tag n'a de points, le score reste saisi à la main.</p>
+                  </div>
                   <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <span className="badge text-white text-xs" style={{ backgroundColor: tagForm.couleur }}>
-                      {tagForm.nom || 'Apercu'}
+                      {tagForm.nom || 'Aperçu'}
                     </span>
-                    <span className="text-xs text-gray-500">Apercu du tag</span>
+                    <span className="text-xs text-gray-500">Aperçu du tag</span>
                   </div>
                 </div>
                 <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
                   <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowTagForm(false)}>Annuler</button>
                   <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveTag}>
-                    <Save className="w-4 h-4" /> {editingTag ? 'Modifier' : 'Creer'}
+                    <Save className="w-4 h-4" /> {editingTag ? 'Modifier' : 'Créer'}
                   </button>
                 </div>
               </div>
@@ -1379,7 +1427,7 @@ export default function AdminPage() {
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <TrendingUp className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.responseRate}%</p>
-                  <p className="text-[10px] text-gray-500">Taux reponse</p>
+                  <p className="text-[10px] text-gray-500">Taux réponse</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Award className="w-4 h-4 text-gray-400 mx-auto mb-1" />
@@ -1389,7 +1437,7 @@ export default function AdminPage() {
               </div>
 
               <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-xs font-medium text-gray-600 mb-2">Duree moyenne des appels: {formatDuration(stats.avgDuration)}</p>
+                <p className="text-xs font-medium text-gray-600 mb-2">Durée moyenne des appels : {formatDuration(stats.avgDuration)}</p>
                 <p className="text-xs font-medium text-gray-600">Prospects geres: {stats.totalProspects}</p>
               </div>
             </div>
@@ -1402,6 +1450,7 @@ export default function AdminPage() {
           {/* Auto-load data when tab opens */}
           {!ebConfigLoaded && (() => { loadEasyBeerData(); return null; })()}
 
+          {ebOnglet === 'connexion' && (<>
           {/* Configuration */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1481,6 +1530,8 @@ export default function AdminPage() {
             </div>
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Audit des liens Easybeer <-> clients */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
@@ -1545,22 +1596,24 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
           {/* Doublons de clients */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
               <Users className="w-4 h-4" /> Doublons de clients
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              Repere les fiches qui designent probablement le meme etablissement (SIRET, email ou telephone
-              partage, nom identique ou tres proche). La fusion transfere commandes, visites et rendez-vous
-              sur la fiche gardee, complete ses champs vides, puis supprime le doublon.
+              Repère les fiches qui désignent probablement le même etablissement (SIRET, email ou téléphone
+              partage, nom identique ou très proche). La fusion transfère commandes, visites et rendez-vous
+              sur la fiche gardée, complète ses champs vides, puis supprimé le doublon.
             </p>
             <button
               className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 mb-3"
               onClick={chargerDoublons}
               disabled={doublonsLoading}
             >
-              {doublonsLoading ? 'Analyse…' : doublons ? 'Relancer la detection' : 'Detecter les doublons'}
+              {doublonsLoading ? 'Analyse…' : doublons ? 'Relancer la détection' : 'Détecter les doublons'}
             </button>
 
             {doublons && (
@@ -1584,8 +1637,8 @@ export default function AdminPage() {
                   <div className="mb-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-900">
                     <p className="font-medium mb-1">Contacts ignores comme preuve d'identite</p>
                     <p className="text-blue-800 mb-1">
-                      Portes par 3 fiches ou plus, ce sont des contacts partages (boite mail de la brasserie,
-                      standard telephonique) : deux clients qui les partagent ne sont pas pour autant un doublon.
+                      Portes par 3 fiches ou plus, ce sont des contacts partagés (boite mail de la brasserie,
+                      standard téléphonique) : deux clients qui les partagent ne sont pas pour autant un doublon.
                       Ils restent comparés sur leur nom.
                     </p>
                     <p className="text-blue-700">
@@ -1617,7 +1670,7 @@ export default function AdminPage() {
                   );
                   return visibles.length === 0 ? (
                   <p className="text-sm text-gray-600">
-                    {doublons.paires.length === 0 ? 'Aucun doublon detecte ✓' : 'Aucune paire ne correspond a ce filtre.'}
+                    {doublons.paires.length === 0 ? 'Aucun doublon détecté ✓' : 'Aucune paire ne correspond a ce filtre.'}
                   </p>
                 ) : (
                   <div className="space-y-3 max-h-[32rem] overflow-y-auto">
@@ -1666,13 +1719,73 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
+          {/* Doublons prospects <-> clients */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <Users className="w-4 h-4" /> Doublons entre prospects et clients
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Repère les prospects encore en prospection qui sont déjà clients (même SIRET, email ou téléphone,
+              nom identique ou très proche). Pour chaque paire : passer le prospect en « Gagné », ou le supprimer.
+            </p>
+            <button
+              className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 mb-3"
+              onClick={chargerDoublonsPC}
+              disabled={doublonsPCLoading}
+            >
+              {doublonsPCLoading ? 'Analyse…' : doublonsPC ? 'Relancer la détection' : 'Détecter les doublons prospects / clients'}
+            </button>
+            {doublonsPC && (
+              <div>
+                <div className="flex gap-3 mb-3 text-sm flex-wrap">
+                  <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{doublonsPC.total_prospects} prospect(s) · {doublonsPC.total_clients} client(s)</span>
+                  <span className={`px-2 py-1 rounded ${doublonsPC.total_paires ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{doublonsPC.total_paires} paire(s) suspecte(s)</span>
+                  {doublonsPC.certains > 0 && <span className="px-2 py-1 rounded bg-red-100 text-red-700">{doublonsPC.certains} certaine(s)</span>}
+                </div>
+                {doublonsPC.paires.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aucun prospect ne ressemble à un client ✓</p>
+                ) : (
+                  <div className="space-y-2 max-h-[32rem] overflow-y-auto">
+                    {doublonsPC.paires.map((paire: any) => (
+                      <div key={paire.prospect.id + paire.client.id}
+                        className={`p-3 rounded-lg border ${paire.score === 100 ? 'border-red-200 bg-red-50' : paire.score >= 80 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <p className="text-xs font-medium text-gray-600 mb-2">{paire.motif}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div className="bg-white rounded-lg border border-gray-200 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold mb-1">Prospect</p>
+                            <a href={`/prospects?id=${paire.prospect.id}`} className="font-semibold text-gray-900 hover:underline">{paire.prospect.nom}</a>
+                            <p className="text-gray-500">{[paire.prospect.ville, paire.prospect.telephone, paire.prospect.email].filter(Boolean).join(' · ')}</p>
+                            <p className="text-gray-400 mt-1">{PIPELINE_LABELS[paire.prospect.etape_pipeline as PipelineStage] || paire.prospect.etape_pipeline} · {paire.prospect.nb_appels} appel(s) · {paire.prospect.nb_rdv} RDV{paire.prospect.commercial ? ` · ${paire.prospect.commercial}` : ''}</p>
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-blue-700 font-semibold mb-1">Client</p>
+                            <a href={`/clients?id=${paire.client.id}`} className="font-semibold text-gray-900 hover:underline">{paire.client.nom}</a>
+                            <p className="text-gray-500">{[paire.client.ville, paire.client.telephone, paire.client.email].filter(Boolean).join(' · ')}</p>
+                            <p className="text-gray-400 mt-1">{paire.client.statut} · {paire.client.nb_commandes} commande(s){paire.client.easybeer_id ? ' · EasyBeer' : ''}{paire.client.commercial ? ` · ${paire.client.commercial}` : ''}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-2 justify-end">
+                          <button onClick={() => prospectGagne(paire)} className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg">Passer le prospect en « Gagné »</button>
+                          <button onClick={() => prospectSupprime(paire)} className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200">Supprimer le prospect</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          </>)}
+          {ebOnglet === 'connexion' && (<>
           {/* Regles d'affectation */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <Users className="w-4 h-4" /> Regles d'affectation automatique
+              <Users className="w-4 h-4" /> Règles d'affectation automatique
             </h3>
             <p className="text-xs text-gray-500 mb-4">
-              Quand un client arrive d'EasyBeer avec un email commercial, il est automatiquement assigne au bon commercial.
+              Quand un client arrive d'EasyBeer avec un email commercial, il est automatiquement assigné au bon commercial.
             </p>
 
             {assignmentRules.length > 0 && (
@@ -1727,6 +1840,8 @@ export default function AdminPage() {
             </div>
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Clients en attente */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
@@ -1760,7 +1875,7 @@ export default function AdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Commercial assigne</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Commercial assigné</label>
                   <select
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                     value={ebImportCommercial}
@@ -1808,7 +1923,7 @@ export default function AdminPage() {
                           <p className="text-[10px] text-gray-400">Contact: {client.contact_name}</p>
                         )}
                         {client.tournee && (
-                          <p className="text-[10px] text-indigo-500">Tournee: {client.tournee}</p>
+                          <p className="text-[10px] text-indigo-500">Tournée : {client.tournee}</p>
                         )}
                         {client.phone_mobile && (
                           <p className="text-[10px] text-gray-400">Mobile: {client.phone_mobile}</p>
@@ -1825,7 +1940,7 @@ export default function AdminPage() {
                       <button
                         className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium"
                         onClick={() => syncEbClient(client.id)}
-                        title="Recuperer les infos depuis EasyBeer"
+                        title="Récupérer les infos depuis EasyBeer"
                       >
                         Sync
                       </button>
@@ -1849,6 +1964,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Synchronisation des clients EasyBeer */}
           <div className="bg-white rounded-xl border border-emerald-200 p-5">
             <div className="flex items-center justify-between mb-3">
@@ -1873,7 +1990,7 @@ export default function AdminPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Importe tous les clients EasyBeer (rattaches au bon commercial par leur identifiant natif). Lance ensuite « Synchroniser les commandes » : chaque commande cree une visite avec son commentaire.
+              Importé tous les clients EasyBeer (rattachés au bon commercial par leur identifiant natif). Lance ensuite « Synchroniser les commandes » : chaque commande créé une visite avec son commentaire.
             </p>
             <div className="flex items-center gap-2 mb-3">
               <button
@@ -1881,7 +1998,7 @@ export default function AdminPage() {
                 onClick={genererVisites}
                 disabled={genVisites}
               >
-                {genVisites ? 'Generation...' : 'Generer les visites depuis les commandes'}
+                {genVisites ? 'Generation...' : 'Générer les visites depuis les commandes'}
               </button>
             </div>
             {ebSyncLogs.length > 0 && (
@@ -1897,6 +2014,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Synchronisation des commandes EasyBeer */}
           <div className="bg-white rounded-xl border border-blue-200 p-5">
             <div className="flex items-center justify-between mb-3">
@@ -1922,13 +2041,13 @@ export default function AdminPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Recupere la liste des clients depuis l'API EasyBeer, les matche par SIRET/nom/email, puis recupere toutes leurs commandes (en cours + livrees).
+              Récupéré la liste des clients depuis l'API EasyBeer, les matche par SIRET/nom/email, puis récupéré toutes leurs commandes (en cours + livrees).
             </p>
             {syncingAllCommandes && (
               <div className="p-3 rounded-lg text-sm bg-blue-50 text-blue-800">
                 <p className="font-medium">Synchronisation des commandes en cours...</p>
                 <p className="text-xs mt-1">{syncCommandesProgress || 'Recuperation des commandes EasyBeer'}</p>
-                <p className="text-xs mt-1 opacity-75">Elle continue cote serveur meme si vous quittez cette page.</p>
+                <p className="text-xs mt-1 opacity-75">Elle continue cote serveur même si vous quittez cette page.</p>
               </div>
             )}
             {syncAllResult && (
@@ -1938,18 +2057,18 @@ export default function AdminPage() {
                   <div className="mt-2 text-xs space-y-1">
                     <p>Clients API EasyBeer: <strong>{syncAllResult.api_clients || 0}</strong> — matches: <strong>{syncAllResult.clients_matched || 0}</strong>, non matches: {syncAllResult.clients_unmatched || 0}</p>
                     <p>Commandes trouvees: <strong>{syncAllResult.total_orders_found || 0}</strong></p>
-                    <p>Nouvelles importees: <strong>{syncAllResult.total_imported || 0}</strong></p>
-                    <p>Deja existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
+                    <p>Nouvelles importées: <strong>{syncAllResult.total_imported || 0}</strong></p>
+                    <p>Déjà existantes (ignorees): <strong>{syncAllResult.total_skipped || 0}</strong></p>
                     {(syncAllResult.clients_importes_commande || 0) > 0 && (
-                      <p>Clients crees depuis leurs commandes: <strong>{syncAllResult.clients_importes_commande}</strong></p>
+                      <p>Clients créés depuis leurs commandes: <strong>{syncAllResult.clients_importes_commande}</strong></p>
                     )}
                     {(syncAllResult.total_echecs || 0) > 0 && (
                       <p>Non recuperees (API surchargee): <strong>{syncAllResult.total_echecs}</strong> — relancez la synchro pour les rattraper</p>
                     )}
-                    {(syncAllResult.total_orphans || 0) > 0 && <p>Orphelines (client non importe): <strong>{syncAllResult.total_orphans}</strong></p>}
+                    {(syncAllResult.total_orphans || 0) > 0 && <p>Orphelines (client non importé): <strong>{syncAllResult.total_orphans}</strong></p>}
                     {syncAllResult.details && syncAllResult.details.length > 0 && (
                       <div className="mt-2 border-t pt-2">
-                        <p className="font-medium mb-1">Detail par client:</p>
+                        <p className="font-medium mb-1">Détail par client:</p>
                         {syncAllResult.details.map((d: any, i: number) => (
                           <p key={i}>{d.nom}: {d.commandes_importees} commande{d.commandes_importees > 1 ? 's' : ''} ({d.total_ttc}€ TTC)</p>
                         ))}
@@ -1994,6 +2113,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'connexion' && (<>
           {/* Explorer API EasyBeer */}
           <div className="bg-white rounded-xl border border-purple-200 p-5">
             <div className="flex items-center justify-between mb-3">
@@ -2002,11 +2123,11 @@ export default function AdminPage() {
               </h3>
               <div className="flex flex-wrap gap-1">
                 {[
-                  { round: 7, label: 'document + commande detail' },
+                  { round: 7, label: 'document + commande détail' },
                   { round: 6, label: 'Swagger (documents/commandes)' },
                   { round: 4, label: 'commande/document/facture' },
                   { round: 5, label: 'bl/tournee/commercial' },
-                  { round: 3, label: 'parametres POST' },
+                  { round: 3, label: 'paramètres POST' },
                 ].map(({ round, label }) => (
                   <button
                     key={round}
@@ -2027,7 +2148,7 @@ export default function AdminPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Teste differentes approches pour trouver les commandes: detail client, formats alternatifs, endpoints racine. Maximum 5 appels API avec delai de 500ms.
+              Teste différentes approches pour trouver les commandes: détail client, formats alternatifs, endpoints racine. Maximum 5 appels API avec delai de 500ms.
             </p>
             {exploreResult && (
               <div className="p-3 rounded-lg text-sm bg-purple-50 text-purple-900">
@@ -2053,6 +2174,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
           {/* Commandes orphelines (sans client) */}
           {orphanCommandes.length > 0 && (
           <div className="bg-white rounded-xl border border-orange-200 p-5">
@@ -2067,7 +2190,7 @@ export default function AdminPage() {
                 <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
               </button>
             </div>
-            <p className="text-xs text-gray-500 mb-4">Ces commandes ont ete recues par webhook EasyBeer mais n'ont pas pu etre associees automatiquement a un client.</p>
+            <p className="text-xs text-gray-500 mb-4">Ces commandes ont ete recues par webhook EasyBeer mais n'ont pas pu être associees automatiquement a un client.</p>
             <div className="space-y-3">
               {orphanCommandes.map(cmd => {
                 const lignes = cmd.lignes || [];
@@ -2093,7 +2216,7 @@ export default function AdminPage() {
                             cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
                             'bg-yellow-100 text-yellow-700'
                           }`}>
-                            {cmd.statut === 'livree' ? 'Livree' : cmd.statut === 'annulee' ? 'Annulee' : 'En cours'}
+                            {cmd.statut === 'livree' ? 'Livrée' : cmd.statut === 'annulee' ? 'Annulée' : 'En cours'}
                           </span>
                         </div>
                         {cmd.client_name && (
@@ -2108,7 +2231,7 @@ export default function AdminPage() {
                             headers: { Authorization: `Bearer ${token}` },
                           });
                           setOrphanCommandes(prev => prev.filter(c => c.id !== cmd.id));
-                          toast.success('Commande supprimee');
+                          toast.success('Commande supprimée');
                         }}
                         className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
                         title="Supprimer"
@@ -2175,7 +2298,7 @@ export default function AdminPage() {
                         return (
                           <details className="pt-2 border-t border-gray-100">
                             <summary className="cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium">
-                              Voir les donnees brutes EasyBeer
+                              Voir les données brutes EasyBeer
                             </summary>
                             <pre className="mt-1.5 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600 max-h-60 overflow-y-auto">
                               {JSON.stringify(rawObj, null, 2)}
@@ -2212,7 +2335,7 @@ export default function AdminPage() {
                                     const data = await resp.json();
                                     if (data.ok) {
                                       setOrphanCommandes(prev => prev.filter(c => c.id !== cmd.id));
-                                      toast.success(`Commande #${cmd.numero || ''} assignee a ${client.nom}`);
+                                      toast.success(`Commande #${cmd.numero || ''} assignée a ${client.nom}`);
                                     } else {
                                       toast.error(data.error || 'Erreur');
                                     }
@@ -2255,6 +2378,8 @@ export default function AdminPage() {
           </div>
           )}
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
           {/* Journal des webhooks */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
@@ -2309,7 +2434,7 @@ export default function AdminPage() {
               </div>
             </div>
             {webhookLogs.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-6">Aucun webhook recu</p>
+              <p className="text-sm text-gray-500 text-center py-6">Aucun webhook reçu</p>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {webhookLogs.map(log => {
@@ -2349,6 +2474,7 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+          </>)}
         </div>
       )}
 
@@ -2362,7 +2488,7 @@ export default function AdminPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
               <div>
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4" /> Recurrence des visites par type de client
+                  <RefreshCw className="w-4 h-4" /> Récurrence des visites par type de client
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">Nombre de jours entre chaque visite (vide = pas de recurrence)</p>
               </div>
@@ -2449,7 +2575,7 @@ export default function AdminPage() {
 
           {/* Tournées par commercial */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-3">Tournees par commercial</h3>
+            <h3 className="font-semibold text-gray-900 mb-3">Tournées par commercial</h3>
           </div>
 
           {state.commerciaux.filter(c => c.role !== 'prospection').map(commercial => {
@@ -2500,7 +2626,7 @@ export default function AdminPage() {
                   <div className="space-y-3">
                     {/* Week pattern */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Frequence</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Fréquence</label>
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(WEEK_PATTERN_LABELS).map(([key, label]) => (
                           <button
@@ -2541,7 +2667,7 @@ export default function AdminPage() {
                       ))}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Info tournee (visible par l'equipe)</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Info tournée (visible par l'equipe)</label>
                       <textarea
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                         rows={2}
@@ -2610,7 +2736,7 @@ export default function AdminPage() {
                         </div>
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400 italic">Aucune tournee configuree</p>
+                      <p className="text-sm text-gray-400 italic">Aucune tournée configurée</p>
                     )}
                     {config?.notes && (
                       <p className="mt-2 text-xs text-gray-500 italic">{config.notes}</p>
@@ -2624,7 +2750,7 @@ export default function AdminPage() {
           {state.commerciaux.filter(c => c.role !== 'prospection').length === 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
               <p className="text-sm text-gray-500">Aucun commercial dans l'equipe</p>
-              <p className="text-xs text-gray-400 mt-1">Ajoutez des membres dans l'onglet Equipe</p>
+              <p className="text-xs text-gray-400 mt-1">Ajoutez des membres dans l'onglet Équipe</p>
             </div>
           )}
         </div>
@@ -2639,7 +2765,7 @@ export default function AdminPage() {
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
               <Clock className="w-5 h-5 text-gray-500" />
-              Derniere connexion
+              Dernière connexion
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {lastSeenData.map(u => {
@@ -2685,7 +2811,7 @@ export default function AdminPage() {
               </div>
             ) : activityLog.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                <p className="text-sm text-gray-500">Aucune activite enregistree</p>
+                <p className="text-sm text-gray-500">Aucune activité enregistrée</p>
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-[600px] overflow-y-auto">

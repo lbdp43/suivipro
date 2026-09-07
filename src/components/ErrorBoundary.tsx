@@ -44,7 +44,7 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
             </div>
             <h2 className="text-lg font-semibold text-gray-900 mb-2">Une erreur est survenue</h2>
             <p className="text-sm text-gray-500 mb-6">
-              L'application a rencontre un probleme inattendu. Rechargez la page pour continuer.
+              L'application a rencontre un problème inattendu. Rechargez la page pour continuer.
             </p>
             {this.state.error && (
               <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 mb-2 font-mono break-all">
@@ -53,7 +53,7 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
             )}
             {this.details() && (
               <details className="text-left mb-4">
-                <summary className="text-xs text-gray-500 cursor-pointer">Details techniques (a transmettre en cas de blocage)</summary>
+                <summary className="text-xs text-gray-500 cursor-pointer">Détails techniques (a transmettre en cas de blocage)</summary>
                 <pre className="text-[10px] text-gray-500 bg-gray-50 rounded-lg p-3 mt-2 overflow-x-auto whitespace-pre-wrap break-all">{this.details()}</pre>
               </details>
             )}

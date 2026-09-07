@@ -13,6 +13,8 @@ import {
   getResponseRate, getAverageCallDuration,
   formatDuration, formatDate, isLastMonth, toLocalDateStr,
 } from '../utils/helpers';
+import { estEnRetard, joursDeRetard } from '../../shared/regles';
+import { objectifAppels } from '../utils/objectifs';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
@@ -72,7 +74,7 @@ type TimePeriod = 'week' | 'week-1' | 'week-2' | 'week-3' | 'month' | 'month-1' 
 
 const PERIOD_OPTIONS: { value: TimePeriod; label: string }[] = [
   { value: 'week', label: 'Cette semaine' },
-  { value: 'week-1', label: 'Semaine derniere' },
+  { value: 'week-1', label: 'Semaine dernière' },
   { value: 'week-2', label: 'Il y a 2 sem.' },
   { value: 'week-3', label: 'Il y a 3 sem.' },
   { value: 'month', label: 'Ce mois' },
@@ -111,7 +113,7 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
   }
 }
 
-// Charge les compteurs d'activite de l'equipe pour une periode et les range par
+// Charge les compteurs d'activité de l'equipe pour une periode et les range par
 // commercial_id. Renvoie la fonction d'annulation attendue par useEffect.
 function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) => void) {
   const range = getPeriodRange(periode);
@@ -135,7 +137,7 @@ function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) =
 }
 
 export default function DashboardPage() {
-  const { state } = useApp();
+  const { state, perimetre: perimetreChoisi } = useApp();
   const [monthOffset, setMonthOffset] = useState(0);
   const [crFilterResult, setCrFilterResult] = useState<string>('');
   const [crFilterUser, setCrFilterUser] = useState<string>('');
@@ -144,13 +146,15 @@ export default function DashboardPage() {
   const [comparePeriod, setComparePeriod] = useState<TimePeriod | ''>('');
   const [pipelineFilterUser, setPipelineFilterUser] = useState<string>('');
   const isAdmin = state.currentUser?.role === 'admin';
+  // Périmètre : « equipe » = tout le monde (défaut admin/prospecteur, ou remplacement).
+  const vueEquipe = perimetreChoisi === 'equipe';
   // La section Prospection represente plus de la moitie de la page : on la replie par
   // defaut et on retient le choix, pour que le haut du dashboard reste lisible.
   const [prospectionOuverte, setProspectionOuverte] = useState(() => {
     try { return localStorage.getItem('suivipro_dashboard_prospection') === 'ouvert'; } catch { return false; }
   });
   // Activite de prospection de toute l'equipe. /state etant cloisonne, ces compteurs
-  // viennent d'un endpoint dedie qui ne renvoie que de l'activite (ni client, ni CA).
+  // viennent d'un endpoint dédié qui ne renvoie que de l'activite (ni client, ni CA).
   // Le classement et le tableau de performance ont chacun leur periode : deux jeux.
   const [activitesEquipe, setActivitesEquipe] = useState<Record<string, any>>({});
   const [activitesClassement, setActivitesClassement] = useState<Record<string, any>>({});
@@ -177,7 +181,8 @@ export default function DashboardPage() {
   // RDV pris en prospection (prospecteur_id) : ce ne sont pas les memes personnes.
   const perimetre = useMemo(() => {
     const moi = state.currentUser?.id || '';
-    if (isAdmin) {
+    // state.clients / commandes sont déjà restreints au périmètre par le contexte.
+    if (vueEquipe) {
       return {
         clients: state.clients,
         commandes: state.commandes,
@@ -187,17 +192,15 @@ export default function DashboardPage() {
         rdvPris: state.appointments,
       };
     }
-    const clients = state.clients.filter(c => c.commercial_id === moi);
-    const idsClients = new Set(clients.map(c => c.id));
     return {
-      clients,
-      commandes: state.commandes.filter(c => c.client_id && idsClients.has(c.client_id)),
+      clients: state.clients,
+      commandes: state.commandes,
       prospects: state.prospects.filter(p => p.commercial_id === moi),
       calls: state.calls.filter(c => c.commercial_id === moi),
       appointments: state.appointments.filter(a => a.commercial_id === moi),
       rdvPris: state.appointments.filter(a => a.prospecteur_id === moi),
     };
-  }, [isAdmin, state.currentUser, state.clients, state.commandes, state.prospects, state.calls, state.appointments]);
+  }, [vueEquipe, state.currentUser, state.clients, state.commandes, state.prospects, state.calls, state.appointments]);
 
   // Une commande annulee n'est pas du chiffre d'affaires : elle etait pourtant comptee.
   const commandesCA = useMemo(
@@ -329,7 +332,7 @@ export default function DashboardPage() {
         } catch { return false; }
       }).length;
 
-      const objective = user.objectifs.appels_semaine;
+      const objective = objectifAppels(user, 'semaine');
       const progress = objective > 0 ? Math.round((weekCalls.length / objective) * 100) : 0;
 
       return {
@@ -398,8 +401,8 @@ export default function DashboardPage() {
       // Visit coverage: clients visited in time vs late
       const today = toLocalDateStr(new Date());
       const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
-      const clientsOnTime = activeClients.filter(c => c.next_visit! >= today).length;
-      const clientsLate = activeClients.filter(c => c.next_visit! < today).length;
+      const clientsLate = activeClients.filter(c => estEnRetard(c, today)).length;
+      const clientsOnTime = activeClients.length - clientsLate;
 
       return {
         user,
@@ -468,7 +471,7 @@ export default function DashboardPage() {
       // propres chiffres et des zeros pour ses collegues.
       const equipe = activitesEquipe[user.id];
       const nbAppels = equipe ? equipe.appels : periodCalls.length;
-      const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
+      const objective = objectifAppels(user, isMonthPeriod ? 'mois' : 'semaine');
       const progress = objective > 0 ? Math.round((nbAppels / objective) * 100) : 0;
 
       return {
@@ -510,7 +513,7 @@ export default function DashboardPage() {
         ? Math.round((periodCalls.filter(c => c.resultat === 'repondu').length / periodCalls.length) * 100)
         : 0;
       const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
-      const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
+      const objective = objectifAppels(user, isMonthPeriod ? 'mois' : 'semaine');
       const progress = objective > 0 ? Math.round((periodCalls.length / objective) * 100) : 0;
 
       return {
@@ -613,18 +616,16 @@ export default function DashboardPage() {
     const activeClients = perimetre.clients.filter(c => c.statut === 'ACTIF');
     const weekEnd = toLocalDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
 
-    const lateClients = activeClients.filter(c => c.next_visit && c.next_visit < today);
+    // Règle 1 : en retard = visite prévue dépassée d'au moins un jour.
+    const lateClients = activeClients.filter(c => estEnRetard(c, today));
     const todayClients = activeClients.filter(c => c.next_visit && c.next_visit === today);
     const weekClients = activeClients.filter(c => c.next_visit && c.next_visit >= today && c.next_visit <= weekEnd);
     const withRecurrence = activeClients.filter(c => c.next_visit);
-    const onTime = withRecurrence.filter(c => c.next_visit! >= today);
-    const coverageRate = withRecurrence.length > 0 ? Math.round((onTime.length / withRecurrence.length) * 100) : 100;
+    const onTime = withRecurrence.length - lateClients.length;
+    const coverageRate = withRecurrence.length > 0 ? Math.round((onTime / withRecurrence.length) * 100) : 100;
 
     const avgDelay = lateClients.length > 0
-      ? Math.round(lateClients.reduce((sum, c) => {
-          const diff = Math.floor((new Date(today).getTime() - new Date(c.next_visit!).getTime()) / 86400000);
-          return sum + diff;
-        }, 0) / lateClients.length)
+      ? Math.round(lateClients.reduce((sum, c) => sum + joursDeRetard(c, today), 0) / lateClients.length)
       : 0;
 
     return { lateCount: lateClients.length, todayCount: todayClients.length, weekCount: weekClients.length, coverageRate, avgDelay, totalActive: activeClients.length };
@@ -724,10 +725,10 @@ export default function DashboardPage() {
     const taches = ((state as any).tasksClient || []) as any[];
     const overdueTasks = taches.filter((t) =>
       t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < toLocalDateStr(new Date())
-      && (isAdmin || t.commercial_id === moi)
+      && (vueEquipe || t.commercial_id === moi)
     ).length;
     return { lateVisits: visitHealth.lateCount, stagnantProspects: funnelData.stagnantCount, orphanCommandes, overdueTasks };
-  }, [visitHealth, funnelData, state, isAdmin]);
+  }, [visitHealth, funnelData, state, isAdmin, vueEquipe]);
 
   // Chart: Prospects by pipeline stage (only active columns)
   const pipelineChartData = {
@@ -833,13 +834,13 @@ export default function DashboardPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       {/* Page header */}
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Statistiques</h1>
 
       {/* Bandeau alertes */}
       {totalAlerts > 0 && (
         <div className="flex flex-wrap gap-2">
           {alerts.lateVisits > 0 && (
-            <Link to="/visites" className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 hover:bg-red-100 transition-colors">
+            <Link to="/semaine" className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 hover:bg-red-100 transition-colors">
               <AlertTriangle className="w-3.5 h-3.5" /> {alerts.lateVisits} clients en retard de visite
             </Link>
           )}
@@ -879,7 +880,7 @@ export default function DashboardPage() {
           <p className="text-[10px] text-gray-400">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
           <p className="text-[10px] text-gray-400">
             Mois prec. {caStats.caHtPrecedent.toFixed(0)} EUR HT
-            {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulee(s) exclue(s)`}
+            {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulée(s) exclue(s)`}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-indigo-100 p-3 sm:p-4">
@@ -909,7 +910,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-amber-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-amber-100 p-1.5 rounded-lg"><Clock className="w-3.5 h-3.5 text-amber-600" /></div>
-            <p className="text-[10px] text-gray-500">Taux reponse</p>
+            <p className="text-[10px] text-gray-500">Taux réponse</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.responseRate}%</p>
           <p className="text-[10px] text-gray-400">Duree moy. {formatDuration(stats.avgDuration)}</p>
@@ -941,7 +942,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
           <MapPin className="w-4 h-4 text-indigo-500" />
-          Sante des visites
+          Santé des visites
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className={`rounded-lg p-3 text-center ${visitHealth.lateCount > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
@@ -994,7 +995,7 @@ export default function DashboardPage() {
                 },
               }} />
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucune commande sur la periode</div>
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucune commande sur la période</div>
             )}
           </div>
         </div>
@@ -1139,7 +1140,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <h3 className="font-semibold text-gray-900 text-sm sm:text-base flex items-center gap-2 mb-4">
             <ShoppingCart className="w-4 h-4 text-emerald-500" />
-            Dernieres commandes
+            Dernières commandes
           </h3>
           {topClientsData.recentOrders.length > 0 ? (
             <div className="space-y-2">
@@ -1219,7 +1220,7 @@ export default function DashboardPage() {
             {/* Activite par membre : chiffres de toute l'equipe, donc admin uniquement */}
             {isAdmin && (
             <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-              <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Activite par membre</h3>
+              <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Activité par membre</h3>
               <div className="h-52 sm:h-64">
                 {allUsers.length > 0 ? (
                   <Bar
@@ -1241,7 +1242,7 @@ export default function DashboardPage() {
 
           {/* Pipeline breakdown - only active columns */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-            <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Prospects par etape</h3>
+            <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-4">Prospects par étape</h3>
             <div className={`grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-${Math.min(activeColumns.length, 8)} gap-2 sm:gap-3`}>
               {stats.prospectsByStage.map(s => (
                 <div key={s.stage} className="text-center p-3 rounded-lg bg-gray-50">
@@ -1414,7 +1415,7 @@ export default function DashboardPage() {
                     <th className="text-center py-3 px-2 font-medium text-gray-500">RDV</th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">RDV prosp.</span><span className="sm:hidden">Prosp.</span></th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Rep.</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Duree</span><span className="sm:hidden">Dur.</span></th>
+                    <th className="text-center py-3 px-2 font-medium text-gray-500"><span className="hidden sm:inline">Durée</span><span className="sm:hidden">Dur.</span></th>
                     <th className="text-center py-3 px-2 font-medium text-gray-500">Visites</th>
                     {isAdmin && <th className="text-center py-3 px-2 font-medium text-gray-500">CA</th>}
                     {isAdmin && <th className="text-center py-3 px-2 font-medium text-gray-500">Couv.</th>}
@@ -1507,7 +1508,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-amber-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-amber-700">{monthlyHistory.totalProspects}</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">Prospects crees</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">Prospects créés</p>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-blue-700">{monthlyHistory.totalRdv}</p>
@@ -1519,7 +1520,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-gray-700">{monthlyHistory.responseRate}%</p>
-                <p className="text-[10px] text-gray-600 mt-0.5">Taux reponse</p>
+                <p className="text-[10px] text-gray-600 mt-0.5">Taux réponse</p>
               </div>
             </div>
 

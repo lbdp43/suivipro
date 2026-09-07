@@ -5,12 +5,12 @@ import {
   Phone, PhoneCall, PhoneOff, Search,
   MessageSquare, PhoneMissed, CheckCircle,
   Edit2, X, Save, Trash2, Filter,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Mail,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPut, apiDelete } from '../api/client';
-import { Call, CallResult, CALL_RESULT_LABELS } from '../types';
+import { Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } from '../types';
 import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 
 export default function CallsPage() {
@@ -57,6 +57,7 @@ export default function CallsPage() {
     repondu: CheckCircle,
     pas_de_reponse: PhoneMissed,
     messagerie: MessageSquare,
+    email_envoye: Mail,
     injoignable: PhoneOff,
   };
 
@@ -64,6 +65,7 @@ export default function CallsPage() {
     repondu: 'text-green-600 bg-green-50',
     pas_de_reponse: 'text-red-600 bg-red-50',
     messagerie: 'text-amber-600 bg-amber-50',
+    email_envoye: 'text-blue-600 bg-blue-50',
     injoignable: 'text-gray-600 bg-gray-100',
   };
 
@@ -78,10 +80,10 @@ export default function CallsPage() {
     try {
       await apiPut(`/calls/${editingCall.id}`, payload);
       dispatchLocal({ type: 'UPDATE_CALL', payload });
-      toast.success('Appel mis a jour');
+      toast.success('Appel mis à jour');
       setEditingCall(null);
     } catch (err: unknown) {
-      toast.error(`Erreur mise a jour appel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+      toast.error(`Erreur mise à jour appel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
   };
 
@@ -90,7 +92,7 @@ export default function CallsPage() {
       try {
         await apiDelete(`/calls/${id}`);
         dispatchLocal({ type: 'DELETE_CALL', payload: id });
-        toast.success('Appel supprime');
+        toast.success('Appel supprimé');
       } catch (err: unknown) {
         toast.error(`Erreur suppression appel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
       }
@@ -102,7 +104,7 @@ export default function CallsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Appels</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des appels telephoniques</p>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des appels téléphoniques</p>
         </div>
       </div>
 
@@ -125,7 +127,7 @@ export default function CallsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3">
           <div className="bg-purple-50 p-2 sm:p-3 rounded-lg"><PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" /></div>
           <div>
-            <p className="text-[10px] sm:text-sm text-gray-500">Taux reponse</p>
+            <p className="text-[10px] sm:text-sm text-gray-500">Taux réponse</p>
             <p className="text-lg sm:text-2xl font-bold text-gray-900">{responseRate}%</p>
           </div>
         </div>
@@ -227,7 +229,7 @@ export default function CallsPage() {
             );
           })}
           {filteredCalls.length === 0 && (
-            <div className="p-8 text-center text-sm text-gray-400">Aucun appel enregistre</div>
+            <div className="p-8 text-center text-sm text-gray-400">Aucun appel enregistré</div>
           )}
         </div>
 
@@ -300,19 +302,19 @@ export default function CallsPage() {
                 <p className="text-[10px] text-gray-400">{formatTimeAgo(editingCall.date)}</p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Resultat</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Résultat</label>
                 <select
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   value={editForm.resultat}
                   onChange={e => setEditForm(prev => ({ ...prev, resultat: e.target.value as CallResult }))}
                 >
-                  {(Object.keys(CALL_RESULT_LABELS) as CallResult[]).map(r => (
+                  {RESULTATS_APPEL_SAISISSABLES.map(r => (
                     <option key={r} value={r}>{CALL_RESULT_LABELS[r]}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Duree (secondes)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Durée (secondes)</label>
                 <input
                   type="number"
                   min="0"

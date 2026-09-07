@@ -30,7 +30,7 @@ export default function ImportPage() {
       const data = state.prospects.map(p => ({
         'Date de création': p.date_creation?.split('T')[0] || '',
         'Dénomination': p.nom_etablissement,
-        'Etat du contact/ Etapes': state.pipelineColumns.find(c => c.id === p.etape_pipeline)?.label || PIPELINE_LABELS[p.etape_pipeline] || p.etape_pipeline,
+        'État du contact/ Étapes': state.pipelineColumns.find(c => c.id === p.etape_pipeline)?.label || PIPELINE_LABELS[p.etape_pipeline] || p.etape_pipeline,
         'Type de prospect': ESTABLISHMENT_LABELS[p.type_etablissement] || p.type_etablissement,
         'Tournée / Secteur': p.secteur || '',
         'Nom': p.nom_contact?.split(' ').slice(1).join(' ') || p.nom_contact,
@@ -185,7 +185,7 @@ export default function ImportPage() {
 
         // Check duplicate against existing prospects
         if (existingNames.has(nomLower)) {
-          errors.push(`Ligne ${index + 2}: "${nom}" existe deja (doublon nom)`);
+          errors.push(`Ligne ${index + 2}: "${nom}" existe déjà (doublon nom)`);
           return;
         }
 
@@ -211,12 +211,12 @@ export default function ImportPage() {
 
         // Telephone: tel fixe + tel mobile
         const telFixe = getVal(row,
-          'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Telephone fixe',
-          'Telephone', 'telephone', 'Tel', 'tel',
-          'Numero', 'numero'
+          'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Téléphone fixe',
+          'Téléphone', 'telephone', 'Tel', 'tel',
+          'Numéro', 'numero'
         );
         const telMobile = getVal(row,
-          'Tél. mobile', 'Tel. mobile', 'Tel mobile', 'Telephone mobile',
+          'Tél. mobile', 'Tel. mobile', 'Tel mobile', 'Téléphone mobile',
           'Mobile', 'mobile', 'Portable', 'portable'
         );
         const telephone = telMobile || telFixe;
@@ -225,11 +225,11 @@ export default function ImportPage() {
         const normPhone = normalizePhone(telephone);
         if (normPhone.length >= 6) {
           if (existingPhones.has(normPhone)) {
-            errors.push(`Ligne ${index + 2}: "${nom}" - telephone ${telephone} deja existant (doublon tel)`);
+            errors.push(`Ligne ${index + 2}: "${nom}" - téléphone ${telephone} déjà existant (doublon tel)`);
             return;
           }
           if (importedPhones.has(normPhone)) {
-            errors.push(`Ligne ${index + 2}: "${nom}" - telephone ${telephone} en double dans le fichier`);
+            errors.push(`Ligne ${index + 2}: "${nom}" - téléphone ${telephone} en double dans le fichier`);
             return;
           }
         }
@@ -242,7 +242,7 @@ export default function ImportPage() {
 
         // Adresse
         const adresse = getVal(row,
-          'Adresse', 'adresse', 'Adresse complete', 'Adresse Notes'
+          'Adresse', 'adresse', 'Adresse complète', 'Adresse Notes'
         );
 
         // Type de prospect
@@ -254,16 +254,16 @@ export default function ImportPage() {
 
         // Etape / Etat du contact
         const etapeStr = getVal(row,
-          'Etat du contact/ Etapes', 'Etat du contact/Etapes',
-          'Etat du contact', 'Etapes', 'Etape', 'etape',
+          'État du contact/ Étapes', 'État du contact/Étapes',
+          'État du contact', 'Étapes', 'Étape', 'etape',
           'etape_pipeline', 'Pipeline', 'Statut'
         );
         const etape = etapeStr ? detectStage(etapeStr) : 'a_contacter';
 
         // Secteur / Tournee
         const secteur = getVal(row,
-          'Tournée / Secteur', 'Tournee / Secteur', 'Tournée/Secteur',
-          'Tournee/Secteur', 'Secteur', 'secteur', 'Tournée', 'Tournee'
+          'Tournée / Secteur', 'Tournée / Secteur', 'Tournée/Secteur',
+          'Tournee/Secteur', 'Secteur', 'secteur', 'Tournée', 'Tournée'
         ) || importSecteur;
 
         // Notes
@@ -271,7 +271,7 @@ export default function ImportPage() {
 
         // Score
         const rawScore = getVal(row,
-          'Score', 'score', 'Notes/qualite', 'Qualite', 'qualite', 'Note'
+          'Score', 'score', 'Notes/qualite', 'Qualité', 'qualite', 'Note'
         );
         const scoreNum = parseInt(rawScore, 10);
         const score = !isNaN(scoreNum) && scoreNum >= 0 && scoreNum <= 100 ? scoreNum : 50;
@@ -383,7 +383,7 @@ export default function ImportPage() {
       const template = [{
         'Date de création': '2025-01-15',
         'Dénomination': 'Exemple Cafe',
-        'Etat du contact/ Etapes': 'Nouveau',
+        'État du contact/ Étapes': 'Nouveau',
         'Type de prospect': 'Bar / Restaurant',
         'Tournée / Secteur': 'Loire',
         'Nom': 'Dupont',
@@ -609,7 +609,7 @@ export default function ImportPage() {
         const type = typeStr ? detectClientType(typeStr) : ((clientImportType || 'BAR_RESTAURANT_GENERAL') as ClientType);
 
         // Tournée / Zone
-        const tournee = getVal(row, 'Tournée / Zone', 'Tournee / Zone', 'Tournée/Zone', 'Tournée', 'Tournee', 'Secteur', 'Zone', 'tournee');
+        const tournee = getVal(row, 'Tournée / Zone', 'Tournée / Zone', 'Tournée/Zone', 'Tournée', 'Tournée', 'Secteur', 'Zone', 'tournee');
 
         // Contact: combine Nom + Prénom
         const contactNom = getVal(row, 'Nom');
@@ -617,7 +617,7 @@ export default function ImportPage() {
         const contact = [contactPrenom, contactNom].filter(Boolean).join(' ') ||
           getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom', 'Type contact');
 
-        const telephone = getVal(row, 'Tél. fixe', 'Tel. fixe', 'Telephone', 'Tel', 'tel', 'Numero');
+        const telephone = getVal(row, 'Tél. fixe', 'Tel. fixe', 'Téléphone', 'Tel', 'tel', 'Numéro');
         const telMobile = getVal(row, 'Tél. mobile', 'Tel. mobile', 'Mobile', 'Portable');
         const email = getVal(row, 'E-mail', 'Email', 'email', 'Mail', 'mail');
 
@@ -634,7 +634,7 @@ export default function ImportPage() {
         }
 
         // GPS
-        const latLngStr = getVal(row, 'Lat/Lng', 'Lat/Lng ', 'lat/lng', 'Coordonnées', 'Coordonnees', 'GPS');
+        const latLngStr = getVal(row, 'Lat/Lng', 'Lat/Lng ', 'lat/lng', 'Coordonnées', 'Coordonnées', 'GPS');
         const gps = parseLatLng(latLngStr);
 
         // Extra EasyBeer columns → append to notes
@@ -642,7 +642,7 @@ export default function ImportPage() {
         const siret = getVal(row, 'SIRET', 'siret');
         const siren = getVal(row, 'SIREN', 'siren');
         const codeApe = getVal(row, 'Code APE', 'code ape', 'NAF');
-        const tva = getVal(row, 'Numéro TVA intracom.', 'Numero TVA', 'TVA');
+        const tva = getVal(row, 'Numéro TVA intracom.', 'Numéro TVA', 'TVA');
         const tags = getVal(row, 'Tags (mots-clés)', 'Tags', 'tags', 'Mots-cles');
         const delaiPaiement = getVal(row, 'Délai de paiement (en jours)', 'Delai paiement', 'Delai de paiement');
         const modesPaiement = getVal(row, 'Modes de paiement', 'Mode de paiement', 'Paiement');
@@ -652,7 +652,7 @@ export default function ImportPage() {
         const distributeur2 = getVal(row, 'Distributeur 2', 'distributeur2');
         const infosLivraison = getVal(row, 'Informations de livraison', 'Info livraison');
         const rappel = getVal(row, 'Rappel', 'rappel');
-        const numeroClient = getVal(row, 'Numéro client', 'Numero client', 'N° client');
+        const numeroClient = getVal(row, 'Numéro client', 'Numéro client', 'N° client');
 
         // Build extended notes from extra columns
         const extraNotes: string[] = [];
@@ -678,11 +678,11 @@ export default function ImportPage() {
           return null;
         };
 
-        const lastVisitStr = getVal(row, 'Dernière commande', 'Derniere commande', 'Derniere livraison', 'Dernière livraison');
+        const lastVisitStr = getVal(row, 'Dernière commande', 'Dernière commande', 'Dernière livraison', 'Dernière livraison');
         const lastVisit = parseDate(lastVisitStr);
 
         // Commercial resolution
-        const commercialEmail = getVal(row, 'Commercial rattaché (email)', 'Commercial rattache (email)', 'Commercial rattaché', 'Commercial rattache');
+        const commercialEmail = getVal(row, 'Commercial rattaché (email)', 'Commercial rattaché (email)', 'Commercial rattaché', 'Commercial rattaché');
         const commercialPrincipal = getVal(row, 'Commercial principal', 'Commercial', 'commercial');
         const commercialSecondaire = getVal(row, 'Commercial secondaire');
         const emailOrName = commercialEmail || commercialPrincipal;
@@ -912,7 +912,7 @@ export default function ImportPage() {
                 });
                 dispatchLocal({ type: 'UPDATE_CLIENT', payload: { ...dupe.existing, ...resolved, id: dupe.existing.id, date_modification: now } as any });
               } catch {
-                errors.push(`Erreur mise a jour: ${resolved.nom}`);
+                errors.push(`Erreur mise à jour: ${resolved.nom}`);
               }
             }
           }
@@ -1064,9 +1064,9 @@ export default function ImportPage() {
         return sample.length > 2 && !/^\d+$/.test(sample);
       }) || headers[0] || Object.keys(rows[0])[0];
 
-      const colTelFixe = findCol(['tél. fixe', 'tel. fixe', 'tel fixe', 'telephone fixe', 'fixe', 'tel.', 'téléphone', 'telephone', 'tel']);
+      const colTelFixe = findCol(['tél. fixe', 'tel. fixe', 'tel fixe', 'téléphone fixe', 'fixe', 'tel.', 'téléphone', 'telephone', 'tel']);
       const colTelMobile = findCol(['tél. mobile', 'tel. mobile', 'tel mobile', 'mobile', 'portable', 'gsm', 'cellulaire']);
-      const colAdresse = findCol(['adresse', 'address', 'adresse postale', 'adresse complete', 'rue']);
+      const colAdresse = findCol(['adresse', 'address', 'adresse postale', 'adresse complète', 'rue']);
 
       setCrossDetectedCols({
         denomination: colDenomFinal,
@@ -1206,7 +1206,7 @@ export default function ImportPage() {
               payload: updated,
             });
           } catch (err) {
-            toast.error('Erreur lors de la mise a jour du prospect');
+            toast.error('Erreur lors de la mise à jour du prospect');
           }
         }
       }
@@ -1220,7 +1220,7 @@ export default function ImportPage() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Import / Export</h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des donnees prospects et clients</p>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion des données prospects et clients</p>
       </div>
 
       {/* Export section */}
@@ -1269,7 +1269,7 @@ export default function ImportPage() {
               ))}
             </datalist>
           )}
-          <p className="text-xs text-gray-500 mt-1">Tous les prospects importes seront assignes a ce secteur</p>
+          <p className="text-xs text-gray-500 mt-1">Tous les prospects importés seront assignés a ce secteur</p>
         </div>
 
         {/* Skip geocoding option */}
@@ -1282,7 +1282,7 @@ export default function ImportPage() {
             className="rounded border-gray-300 text-brewery-600 focus:ring-brewery-500"
           />
           <label htmlFor="skip-geocoding" className="text-sm text-gray-600">
-            Passer le geocodage des adresses (import plus rapide, sans coordonnees GPS)
+            Passer le géocodage des adresses (import plus rapide, sans coordonnées GPS)
           </label>
         </div>
 
@@ -1290,7 +1290,7 @@ export default function ImportPage() {
           {geocoding ? (
             <div className="space-y-3">
               <Loader2 className="w-10 h-10 text-brewery-500 mx-auto animate-spin" />
-              <p className="text-sm font-medium text-gray-700">Geocodage des adresses en cours...</p>
+              <p className="text-sm font-medium text-gray-700">Géocodage des adresses en cours...</p>
               <div className="w-64 mx-auto bg-gray-200 rounded-full h-2.5">
                 <div
                   className="bg-brewery-600 h-2.5 rounded-full transition-all duration-300"
@@ -1299,8 +1299,8 @@ export default function ImportPage() {
               </div>
               <p className="text-xs text-gray-500">
                 {geocodeProgress.done === 0
-                  ? `Envoi de ${geocodeProgress.total} adresses au service de geocodage...`
-                  : `${geocodeProgress.done} / ${geocodeProgress.total} adresses traitees`
+                  ? `Envoi de ${geocodeProgress.total} adresses au service de géocodage...`
+                  : `${geocodeProgress.done} / ${geocodeProgress.total} adresses traitées`
                 }
               </p>
             </div>
@@ -1308,7 +1308,7 @@ export default function ImportPage() {
             <>
               <Upload className="w-10 h-10 text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-600 mb-3">
-                Glissez un fichier ou cliquez pour selectionner
+                Glissez un fichier ou cliquez pour sélectionner
               </p>
               <input
                 ref={fileInputRef}
@@ -1343,19 +1343,19 @@ export default function ImportPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <p><span className="font-medium text-gray-700">Date de creation</span> - date (optionnel)</p>
             <p><span className="font-medium text-gray-700">Denomination</span> - nom de l'etablissement *</p>
-            <p><span className="font-medium text-gray-700">Etat du contact/ Etapes</span> - etape pipeline</p>
+            <p><span className="font-medium text-gray-700">État du contact/ Étapes</span> - étape pipeline</p>
             <p><span className="font-medium text-gray-700">Type de prospect</span> - type d'etablissement</p>
-            <p><span className="font-medium text-gray-700">Tournee / Secteur</span> - secteur geographique</p>
+            <p><span className="font-medium text-gray-700">Tournée / Secteur</span> - secteur geographique</p>
             <p><span className="font-medium text-gray-700">Nom</span> - nom du contact</p>
             <p><span className="font-medium text-gray-700">Prenom</span> - prenom du contact</p>
             <p><span className="font-medium text-gray-700">E-mail</span> - adresse email</p>
-            <p><span className="font-medium text-gray-700">Tel. fixe</span> - telephone fixe</p>
-            <p><span className="font-medium text-gray-700">Tel. mobile</span> - telephone mobile (prioritaire)</p>
-            <p><span className="font-medium text-gray-700">Adresse</span> - adresse complete</p>
+            <p><span className="font-medium text-gray-700">Tel. fixe</span> - téléphone fixe</p>
+            <p><span className="font-medium text-gray-700">Tel. mobile</span> - téléphone mobile (prioritaire)</p>
+            <p><span className="font-medium text-gray-700">Adresse</span> - adresse complète</p>
             <p><span className="font-medium text-gray-700">Notes</span> - notes / commentaires</p>
             <p><span className="font-medium text-gray-700">Score</span> - score de 0 a 100</p>
           </div>
-          <p className="mt-2 text-gray-500">* Seule la denomination est obligatoire. Les types de prospect et etapes sont detectes automatiquement.</p>
+          <p className="mt-2 text-gray-500">* Seule la denomination est obligatoire. Les types de prospect et étapes sont détectés automatiquement.</p>
           <p className="text-gray-500">Les adresses seront geocodees automatiquement pour la carte (via OpenStreetMap).</p>
           <p className="text-gray-500">Si le secteur est renseigne dans le fichier, il sera prioritaire sur le champ ci-dessus.</p>
         </div>
@@ -1365,11 +1365,11 @@ export default function ImportPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <h3 className="font-semibold text-gray-900 text-sm sm:text-base mb-1 flex items-center gap-2">
           <Search className="w-4 h-4 text-brewery-600" />
-          Croisement base clients (detection doublons)
+          Croisement base clients (détection doublons)
         </h3>
         <p className="text-xs sm:text-sm text-gray-500 mb-4">
-          Importez votre fichier clients pour detecter les prospects qui sont deja clients.
-          Colonnes utilisees : <strong>Denomination</strong>, <strong>Tel. fixe</strong>, <strong>Tel. mobile</strong>, <strong>Adresse</strong>.
+          Importez votre fichier clients pour détecter les prospects qui sont déjà clients.
+          Colonnes utilisées : <strong>Denomination</strong>, <strong>Tel. fixe</strong>, <strong>Tel. mobile</strong>, <strong>Adresse</strong>.
         </p>
 
         <div className="border-2 border-dashed border-amber-300 rounded-xl p-6 sm:p-8 text-center hover:border-amber-500 transition-colors bg-amber-50/30">
@@ -1406,7 +1406,7 @@ export default function ImportPage() {
           <div className="mt-4 space-y-3">
             {/* Detected columns info */}
             <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-600 space-y-1">
-              <p className="font-medium text-gray-700">Colonnes detectees dans le fichier :</p>
+              <p className="font-medium text-gray-700">Colonnes détectées dans le fichier :</p>
               <div className="flex flex-wrap gap-x-4 gap-y-1">
                 <p>Denomination : <span className={crossDetectedCols.denomination ? 'font-medium text-green-700' : 'text-red-500'}>{crossDetectedCols.denomination || 'Non trouvee'}</span></p>
                 <p>Tel. fixe : <span className={crossDetectedCols.telFixe ? 'font-medium text-green-700' : 'text-gray-400'}>{crossDetectedCols.telFixe || 'Non trouvee'}</span></p>
@@ -1420,7 +1420,7 @@ export default function ImportPage() {
                   {crossMatches.length} doublon(s) trouve(s) sur {crossTotalRows} clients analyses
                 </p>
                 {crossMatches.length === 0 && (
-                  <p className="text-xs text-green-600 mt-1">Aucun doublon detecte — votre base est propre !</p>
+                  <p className="text-xs text-green-600 mt-1">Aucun doublon détecté — votre base est propre !</p>
                 )}
               </div>
               {crossMatches.length > 0 && (
@@ -1458,7 +1458,7 @@ export default function ImportPage() {
                   <span className="w-1/4 min-w-0">Client (fichier)</span>
                   <span className="w-1/4 min-w-0">Prospect (existant)</span>
                   <span className="w-1/6 min-w-0">Tel prospect</span>
-                  <span className="w-1/6 min-w-0">Etape actuelle</span>
+                  <span className="w-1/6 min-w-0">Étape actuelle</span>
                   <span className="w-1/6 min-w-0">Match</span>
                 </div>
                 {/* Rows */}
@@ -1502,7 +1502,7 @@ export default function ImportPage() {
                           ) : m.matchType.includes('nom') ? (
                             <span className="badge bg-amber-100 text-amber-700 text-[9px]">Nom</span>
                           ) : (
-                            <span className="badge bg-blue-100 text-blue-700 text-[9px]">Telephone</span>
+                            <span className="badge bg-blue-100 text-blue-700 text-[9px]">Téléphone</span>
                           )}
                         </div>
                       </div>
@@ -1522,16 +1522,16 @@ export default function ImportPage() {
           Importer des clients (format EasyBeer)
         </h3>
         <p className="text-xs sm:text-sm text-gray-500 mb-4">
-          Importez vos clients en masse depuis un export EasyBeer. L'import detecte automatiquement les doublons, les commerciaux et vous permet de tout verifier avant validation.
+          Importez vos clients en masse depuis un export EasyBeer. L'import détecté automatiquement les doublons, les commerciaux et vous permet de tout vérifier avant validation.
         </p>
 
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-4 text-xs">
           <span className={`px-2 py-1 rounded-full font-medium ${clientImportStep === 'upload' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>1. Upload</span>
           <span className="text-gray-300">→</span>
-          <span className={`px-2 py-1 rounded-full font-medium ${clientImportStep === 'preview' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>2. Verification</span>
+          <span className={`px-2 py-1 rounded-full font-medium ${clientImportStep === 'preview' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>2. Vérification</span>
           <span className="text-gray-300">→</span>
-          <span className={`px-2 py-1 rounded-full font-medium ${clientImportStep === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>3. Resultats</span>
+          <span className={`px-2 py-1 rounded-full font-medium ${clientImportStep === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>3. Résultats</span>
         </div>
 
         {/* ===== Step 1: Upload ===== */}
@@ -1539,13 +1539,13 @@ export default function ImportPage() {
           <>
             <div className="mb-4 flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
               <span className="font-semibold flex-shrink-0">Info :</span>
-              <span>Le <strong>type</strong>, la <strong>tournee</strong> et le <strong>commercial</strong> sont lus depuis le fichier. Les champs ci-dessous ne s'appliquent que si la colonne est absente.</span>
+              <span>Le <strong>type</strong>, la <strong>tournée</strong> et le <strong>commercial</strong> sont lus depuis le fichier. Les champs ci-dessous ne s'appliquent que si la colonne est absente.</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Type par defaut <span className="ml-1 text-gray-400 font-normal">(si non detecte)</span>
+                  Type par defaut <span className="ml-1 text-gray-400 font-normal">(si non détecté)</span>
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
@@ -1563,7 +1563,7 @@ export default function ImportPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Commercial par defaut <span className="ml-1 text-gray-400 font-normal">(si non detecte)</span></label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Commercial par defaut <span className="ml-1 text-gray-400 font-normal">(si non détecté)</span></label>
                 <select
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400"
                   value={clientImportCommercial}
@@ -1620,9 +1620,9 @@ export default function ImportPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5">
                 <p>Denomination *</p>
                 <p>Raison sociale</p>
-                <p>Numero client</p>
+                <p>Numéro client</p>
                 <p>Type de client</p>
-                <p>Tournee / Zone</p>
+                <p>Tournée / Zone</p>
                 <p>Nom / Prenom</p>
                 <p>E-mail</p>
                 <p>Tel. fixe / Tel. mobile</p>
@@ -1634,11 +1634,11 @@ export default function ImportPage() {
                 <p>Notes</p>
                 <p>Delai de paiement</p>
                 <p>Modes de paiement</p>
-                <p><strong>Commercial rattache (email)</strong></p>
+                <p><strong>Commercial rattaché (email)</strong></p>
                 <p>Tags (mots-cles)</p>
                 <p>Remise speciale</p>
                 <p>Code postal facturation</p>
-                <p>Derniere commande/livraison</p>
+                <p>Dernière commande/livraison</p>
                 <p>Type de distribution</p>
                 <p>Distributeurs 1 & 2</p>
                 <p>Infos livraison</p>
@@ -1692,7 +1692,7 @@ export default function ImportPage() {
               <div className="border border-blue-200 rounded-lg overflow-hidden">
                 <div className="bg-blue-50 px-4 py-3">
                   <h4 className="font-semibold text-blue-800 text-sm">Commerciaux non trouves dans la base</h4>
-                  <p className="text-xs text-blue-600 mt-0.5">Cochez ceux a creer automatiquement (mot de passe: Changeme1)</p>
+                  <p className="text-xs text-blue-600 mt-0.5">Cochez ceux a créer automatiquement (mot de passe: Changeme1)</p>
                 </div>
                 <div className="divide-y divide-blue-100">
                   {unknownCommerciaux.map((uc, i) => (
@@ -1708,7 +1708,7 @@ export default function ImportPage() {
                         {uc.name && uc.name !== uc.email && <p className="text-xs text-gray-500">Nom: {uc.name}</p>}
                       </div>
                       {uc.create ? (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Sera cree</span>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Sera créé</span>
                       ) : (
                         <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Ignore → commercial par defaut</span>
                       )}
@@ -1743,7 +1743,7 @@ export default function ImportPage() {
                       className="text-xs px-2 py-1 bg-emerald-200 text-emerald-800 rounded hover:bg-emerald-300 font-medium"
                       onClick={() => setAllDuplicateAction('import')}
                     >
-                      Tout importer quand meme
+                      Tout importer quand même
                     </button>
                   </div>
                 </div>
@@ -1792,7 +1792,7 @@ export default function ImportPage() {
                           className={`px-2 py-1 rounded text-[10px] font-medium ${d.action === 'import' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
                           onClick={() => setDuplicateAction(i, 'import')}
                         >
-                          Importer quand meme
+                          Importer quand même
                         </button>
                       </div>
                     </div>
@@ -1820,7 +1820,7 @@ export default function ImportPage() {
             {parsedClients.length > 0 && (
               <details className="border border-gray-200 rounded-lg">
                 <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  Apercu des {parsedClients.length} nouveaux clients a importer
+                  Aperçu des {parsedClients.length} nouveaux clients à importer
                 </summary>
                 <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 border-t">
                   {parsedClients.slice(0, 50).map((c, i) => {
@@ -1851,23 +1851,23 @@ export default function ImportPage() {
 
             {/* Import summary before validation */}
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-              <h4 className="font-semibold text-gray-800 text-sm mb-2">Resume de l'import a valider :</h4>
+              <h4 className="font-semibold text-gray-800 text-sm mb-2">Résumé de l'import à valider :</h4>
               <ul className="text-sm text-gray-600 space-y-1">
-                <li>• <strong>{parsedClients.length}</strong> nouveaux clients seront crees</li>
+                <li>• <strong>{parsedClients.length}</strong> nouveaux clients seront créés</li>
                 {[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length > 0 && (
-                  <li className="text-purple-700">• <strong>{[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length}</strong> seront enrichis depuis les prospects (l'import predomine, le prospect complete les champs vides)</li>
+                  <li className="text-purple-700">• <strong>{[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length}</strong> seront enrichis depuis les prospects (l'import predomine, le prospect complète les champs vides)</li>
                 )}
                 {duplicates.filter(d => d.action === 'overwrite').length > 0 && (
                   <li>• <strong>{duplicates.filter(d => d.action === 'overwrite').length}</strong> client(s) existant(s) seront ecrases</li>
                 )}
                 {duplicates.filter(d => d.action === 'import').length > 0 && (
-                  <li>• <strong>{duplicates.filter(d => d.action === 'import').length}</strong> doublon(s) seront importes quand meme</li>
+                  <li>• <strong>{duplicates.filter(d => d.action === 'import').length}</strong> doublon(s) seront importés quand même</li>
                 )}
                 {duplicates.filter(d => d.action === 'skip').length > 0 && (
                   <li>• <strong>{duplicates.filter(d => d.action === 'skip').length}</strong> doublon(s) seront ignores</li>
                 )}
                 {unknownCommerciaux.filter(uc => uc.create).length > 0 && (
-                  <li>• <strong>{unknownCommerciaux.filter(uc => uc.create).length}</strong> commercial(aux) seront crees</li>
+                  <li>• <strong>{unknownCommerciaux.filter(uc => uc.create).length}</strong> commercial(aux) seront créés</li>
                 )}
               </ul>
             </div>
@@ -1907,7 +1907,7 @@ export default function ImportPage() {
           <div className="space-y-4">
             <div className={`p-4 rounded-lg border ${clientImportResults.success > 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
               <h4 className={`font-semibold text-sm mb-2 ${clientImportResults.success > 0 ? 'text-green-800' : 'text-red-800'}`}>
-                Resultats de l'import
+                Résultats de l'import
               </h4>
               <div className="space-y-1.5 text-sm">
                 {clientImportResults.success > 0 && (
@@ -1963,7 +1963,7 @@ export default function ImportPage() {
       {importResults && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-900">Resultats de l'import</h3>
+            <h3 className="font-semibold text-gray-900">Résultats de l'import</h3>
             <button className="p-1 rounded hover:bg-gray-100" onClick={() => setImportResults(null)}>
               <X className="w-4 h-4 text-gray-400" />
             </button>

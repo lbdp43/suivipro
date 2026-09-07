@@ -6,6 +6,8 @@ import { createWorker } from 'tesseract.js';
 import * as eb from './easybeer-client.js';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
+import * as regles from '../shared/regles.js';
+import { scoreDepuisTags, baremeActif } from '../shared/score.js';
 
 
 const router = Router();
@@ -205,23 +207,12 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
-  // Cloisonnement par commercial : chacun ne recoit que son portefeuille CLIENT (ses clients,
-  // leurs interactions, commandes et taches). Un admin recoit l'ensemble.
-  // Le filtre est fait ICI et non dans les ecrans : c'est la seule facon qu'il s'applique
-  // partout, y compris aux pages qu'on ne touche pas — retards de visite compris.
-  // La PROSPECTION est commune a toute l'equipe : prospects, appels, rendez-vous et rappels
-  // sont visibles de tous (le prospecteur prend les RDV, le commercial les tient, chacun
-  // doit voir la fiche et l'historique de l'autre). Restent communs aussi : l'equipe, les
-  // tags, les modeles d'email, les colonnes de pipeline, les documents et les tournees.
-  const admin = req.user.role === 'admin';
-  const moi = req.user.id;
-  const params = admin ? [] : [moi];
-  // Les fiches sans commercial restent visibles de tous : sinon personne ne peut plus les
-  // reprendre, et elles disparaissent du radar. Chacun voit donc son portefeuille + les
-  // fiches libres, et peut s'affecter celles-ci.
-  const SANS_COMMERCIAL = "(commercial_id IS NULL OR commercial_id = '')";
-  const clientsVisibles = `SELECT id FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL}`;
-
+  // Tout le monde reçoit tout : la prospection est commune, et les clients des collègues
+  // sont consultables (remplacements, appels de dépannage). Le PÉRIMÈTRE affiché
+  // (« Mes clients » / « Toute l'équipe ») est une bascule d'écran, appliquée une seule
+  // fois dans le contexte de l'application, donc partout — accueil et retards compris.
+  // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
+  // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
@@ -232,15 +223,13 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
     db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
-    db.query(admin ? 'SELECT * FROM clients ORDER BY date_modification DESC'
-      : `SELECT * FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL} ORDER BY date_modification DESC`, params),
-    db.query(admin ? 'SELECT * FROM interactions ORDER BY date DESC'
-      : `SELECT * FROM interactions WHERE client_id IN (${clientsVisibles}) ORDER BY date DESC`, params),
-    db.query(admin ? 'SELECT * FROM tasks_client ORDER BY date_echeance ASC'
-      : 'SELECT * FROM tasks_client WHERE commercial_id = $1 OR created_by = $1 ORDER BY date_echeance ASC', params),
+    db.query('SELECT * FROM clients ORDER BY date_modification DESC'),
+    db.query('SELECT * FROM interactions ORDER BY date DESC'),
+    db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
     db.query('SELECT * FROM tournee_config'),
-    db.query(admin ? 'SELECT * FROM commandes ORDER BY date_commande DESC'
-      : `SELECT * FROM commandes WHERE client_id IN (${clientsVisibles}) ORDER BY date_commande DESC`, params),
+    db.query(`SELECT id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc,
+                     lignes, notes, source, client_name, date_creation
+              FROM commandes ORDER BY date_commande DESC`),
   ]);
 
   res.json({
@@ -278,10 +267,11 @@ router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
   // Force commercial_id to current user if not admin
   const commercialId = isAdmin(req) ? (p.commercial_id || req.user.id) : req.user.id;
 
+  const scoreCreation = await scoreProspect(p.tags, p.score || 50);
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, p.score || 50]
+    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, scoreCreation]
   );
   await logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
   res.json({ ok: true });
@@ -292,9 +282,10 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateProspect(p);
   if (errors.length > 0) return validationError(res, errors);
 
+  const scoreMaj = await scoreProspect(p.tags, p.score || 50);
   await db.query(
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
-    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, p.score || 50, req.params.id]
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id]
   );
   await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
   res.json({ ok: true });
@@ -511,22 +502,48 @@ router.get('/tags', authMiddleware, asyncHandler(async (req, res) => {
   res.json(result.rows);
 }));
 
+// Score par tags : quand le barème change, on recalcule le score de tous les prospects.
+async function recalculerScores() {
+  const tags = (await db.query('SELECT id, points FROM tags')).rows;
+  if (!baremeActif(tags)) return 0;
+  const prospects = (await db.query('SELECT id, tags, score FROM prospects')).rows;
+  let modifies = 0;
+  for (const p of prospects) {
+    const liste = parseProspect(p).tags;
+    const score = scoreDepuisTags(liste, tags, p.score);
+    if (score !== p.score) {
+      await db.query('UPDATE prospects SET score = $1 WHERE id = $2', [score, p.id]);
+      modifies++;
+    }
+  }
+  return modifies;
+}
+
+/** Score d'un prospect d'après ses tags si le barème est actif, sinon celui fourni. */
+async function scoreProspect(tagsDuProspect, scoreFourni) {
+  const tags = (await db.query('SELECT id, points FROM tags')).rows;
+  return scoreDepuisTags(tagsDuProspect || [], tags, Number(scoreFourni) || 50);
+}
+
 router.post('/tags', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
-  await db.query('INSERT INTO tags (id, nom, couleur) VALUES ($1,$2,$3)', [t.id, t.nom, t.couleur]);
-  res.json({ ok: true });
+  await db.query('INSERT INTO tags (id, nom, couleur, points) VALUES ($1,$2,$3,$4)', [t.id, t.nom, t.couleur, Number(t.points) || 0]);
+  const scores_recalcules = await recalculerScores();
+  res.json({ ok: true, scores_recalcules });
 }));
 
 router.put('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   const t = req.body;
   if (!t.nom || !t.couleur) return res.status(400).json({ error: 'nom et couleur sont requis' });
-  await db.query('UPDATE tags SET nom=$1, couleur=$2 WHERE id=$3', [t.nom, t.couleur, req.params.id]);
-  res.json({ ok: true });
+  await db.query('UPDATE tags SET nom=$1, couleur=$2, points=$3 WHERE id=$4', [t.nom, t.couleur, Number(t.points) || 0, req.params.id]);
+  const scores_recalcules = await recalculerScores();
+  res.json({ ok: true, scores_recalcules });
 }));
 
 router.delete('/tags/:id', authMiddleware, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM tags WHERE id = $1', [req.params.id]);
+  await recalculerScores();
   res.json({ ok: true });
 }));
 
@@ -951,12 +968,8 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
   const actuel = (await db.query('SELECT commercial_id FROM clients WHERE id = $1', [req.params.id])).rows[0];
   if (!actuel) return res.status(404).json({ error: 'Client introuvable' });
 
-  // Un commercial ne modifie que son portefeuille ou une fiche libre (qu'il peut donc
-  // s'affecter). Le portefeuille d'un collegue reste intouchable.
-  const proprietaire = actuel.commercial_id || '';
-  if (req.user.role !== 'admin' && proprietaire && proprietaire !== req.user.id) {
-    return res.status(403).json({ error: 'Ce client est suivi par un autre commercial' });
-  }
+  // Toute l'équipe peut corriger n'importe quelle fiche (remplacements, dépannage) : le
+  // client reste rattaché à son commercial tant qu'on ne change pas explicitement ce champ.
 
   // commercial_id absent du corps -> on garde celui en place. Sans ce garde-fou, une
   // simple modification de fiche transferait silencieusement le client a celui qui edite.
@@ -1621,6 +1634,7 @@ async function runCommandesSync(options = {}) {
     derniereSyncCommandes = { ok: false, message: err.message, finished_at: new Date().toISOString() };
     await db.query("UPDATE easybeer_sync_logs SET status='error', message=$2, finished_at=$3 WHERE id=$1",
       [logId, err.message, new Date().toISOString()]).catch(() => {});
+    await notifyAdmins('sync_erreur', 'Synchronisation des commandes en erreur', err.message, { kind: 'commandes' }).catch(() => {});
     return { ok: false, message: err.message };
   } finally {
     commandesSyncRunning = false;
@@ -1771,16 +1785,7 @@ router.post('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {
      now, null, t.categorie || 'general', req.user.id]
   );
 
-  // Notify the assigned commercial (if different from creator)
-  const assignedId = t.commercial_id || req.user.id;
-  if (assignedId !== req.user.id) {
-    const creator = await db.query('SELECT prenom FROM commerciaux WHERE id = $1', [req.user.id]);
-    const creatorName = creator.rows[0]?.prenom || 'Un administrateur';
-    createNotification(assignedId, 'TASK_ASSIGNED', 'Nouvelle tache assignee',
-      `${creatorName}: ${t.titre}${t.date_echeance ? ` — Echeance: ${t.date_echeance}` : ''}`,
-      { task_id: id, client_id: t.client_id }
-    ).catch(err => console.error('Notification error:', err.message));
-  }
+  // Pas de notification d'affectation : la tâche apparaît dans « Rappels et tâches » et sur l'accueil.
 
   // Return the full task with joins
   const result = await db.query(
@@ -1812,25 +1817,7 @@ router.put('/tasks-client/:id', authMiddleware, asyncHandler(async (req, res) =>
      completedAt, t.categorie || 'general', req.params.id]
   );
 
-  // Notify creator when task is completed by assignee
-  if (wasNotDone && isNowDone && oldTask.rows[0].created_by && oldTask.rows[0].created_by !== req.user.id) {
-    const completer = await db.query('SELECT prenom FROM commerciaux WHERE id = $1', [req.user.id]);
-    const completerName = completer.rows[0]?.prenom || 'Un commercial';
-    createNotification(oldTask.rows[0].created_by, 'TASK_COMPLETED', 'Tache terminee',
-      `${completerName} a termine: ${t.titre}`,
-      { task_id: req.params.id }
-    ).catch(err => console.error('Notification error:', err.message));
-  }
-
-  // Notify new assignee if reassigned
-  if (t.commercial_id && oldTask.rows[0] && t.commercial_id !== oldTask.rows[0].commercial_id && t.commercial_id !== req.user.id) {
-    const reassigner = await db.query('SELECT prenom FROM commerciaux WHERE id = $1', [req.user.id]);
-    const reassignerName = reassigner.rows[0]?.prenom || 'Un administrateur';
-    createNotification(t.commercial_id, 'TASK_ASSIGNED', 'Tache reassignee',
-      `${reassignerName}: ${t.titre}${t.date_echeance ? ` — Echeance: ${t.date_echeance}` : ''}`,
-      { task_id: req.params.id }
-    ).catch(err => console.error('Notification error:', err.message));
-  }
+  // Ni « tâche terminée » ni « tâche réaffectée » : rien à régler, donc pas de notification.
 
   const result = await db.query(
     `SELECT t.*, c.nom as client_nom, com.prenom as commercial_prenom, com.nom as commercial_nom
@@ -2511,6 +2498,7 @@ async function runClientSync() {
     return { ok: true, created, updated, skipped, errors };
   } catch (err) {
     await db.query("UPDATE easybeer_sync_logs SET status='error', message=$2, finished_at=$3 WHERE id=$1", [logId, err.message, new Date().toISOString()]);
+    await notifyAdmins('sync_erreur', 'Synchronisation des clients en erreur', err.message, { kind: 'clients' }).catch(() => {});
     return { ok: false, message: err.message };
   } finally { clientSyncRunning = false; }
 }
@@ -2944,29 +2932,9 @@ async function handleEasyBeerWebhook(req, res) {
         console.log(`[EasyBeer Webhook] Commande importee: #${numero} -> client ${clientId}, ${montantHt.toFixed(2)}€ HT / ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} lignes (${lignesStr})${visiteCreee ? ' + visite creee' : ''}`);
         await updateWebhookResult(`OK: #${numero} -> client ${clientId}, ${montantTtc.toFixed(2)}€ TTC, ${lignes.length} produits${visiteCreee ? ', visite creee' : ''}, fetched=${fetchedFrom || 'payload brut'}`);
 
-        // Create notification for the commercial
-        try {
-          const clientData = await db.query('SELECT nom, commercial_id FROM clients WHERE id = $1', [clientId]);
-          if (clientData.rows.length > 0) {
-            const notifId = `notif-${crypto.randomUUID()}`;
-            await db.query(
-              `INSERT INTO notifications (id, user_id, type, title, message, data, created_at)
-              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-              [notifId, clientData.rows[0].commercial_id, 'commande',
-               `Nouvelle commande #${numero}`,
-               `${clientData.rows[0].nom} - ${montantTtc.toFixed(2)}€ TTC${lignes.length > 0 ? ` (${lignes.length} produits)` : ''}`,
-               JSON.stringify({ client_id: clientId, commande_id: cmdId, montant_ttc: montantTtc }),
-               now]
-            );
-          }
-        } catch (err) { console.error('[EasyBeer Webhook] Notification error:', err.message); }
+        // Pas de notification « nouvelle commande » : ce n'est pas un problème à régler
+        // (décision : les notifications ne servent qu'aux anomalies).
 
-        // Notify admins about auto-imported order
-        await notifyAdmins('commande_auto',
-          `Commande #${numero} importee`,
-          `${cmdClientName || 'Client'} - ${montantTtc.toFixed(2)}€ TTC${lignes.length > 0 ? ` (${lignes.length} produits)` : ''} - Rattachee automatiquement`,
-          { client_id: clientId, commande_id: cmdId, numero, montant_ttc: montantTtc }
-        );
 
       } catch (err) {
         console.error(`[EasyBeer Webhook] Erreur traitement commande id=${id}:`, err.message);
@@ -3155,12 +3123,6 @@ async function handleEasyBeerWebhook(req, res) {
             console.log(`[EasyBeer Webhook] Client existant lie (${match.matchType}): ${f.name} (${existingClient.id}) <- easybeer_id=${id}`);
             await updateClientWebhookResult(`OK CLIENT LIE: ${f.name} -> client existant ${existingClient.id} (via ${match.matchType})`);
 
-            // Notify admin about auto-linked client
-            await notifyAdmins('easybeer_client_linked',
-              `Client EasyBeer lie automatiquement`,
-              `"${f.name}" lie au client existant "${existingClient.nom}" (via ${match.matchType})`,
-              { easybeer_id: id, existing_client_id: existingClient.id, match_type: match.matchType }
-            );
           } else if (match) {
             // Correspondance par nom (exacte ou floue) : suggestion seulement
             console.log(`[EasyBeer Webhook] Match non auto (${match.matchType}, ${match.confidence}): "${f.name}" ~ "${match.client.nom}" -> a valider par admin`);
@@ -3264,12 +3226,6 @@ async function handleEasyBeerWebhook(req, res) {
               console.log(`[EasyBeer Webhook] Nouveau client cree: ${f.name} -> commercial ${commercialId}`);
               await updateClientWebhookResult(`OK CLIENT CREE: ${f.name} -> commercial ${commercialId}`);
 
-              // Notify admin about auto-created client
-              await notifyAdmins('easybeer_client_created',
-                `Nouveau client cree automatiquement`,
-                `"${f.name}" (${f.city || 'ville inconnue'}) cree et assigne au commercial ${commercialId}`,
-                { easybeer_id: id, client_id: clientId, client_name: f.name, commercial_id: commercialId }
-              );
             } else {
               console.log(`[EasyBeer Webhook] Client ${f.name} en attente: aucun commercial trouve (email="${f.commercial_email}", nom="${f.commercial_name}")`);
               await updateClientWebhookResult(`EN ATTENTE: ${f.name}, pas de commercial (email="${f.commercial_email}", nom="${f.commercial_name}")`);
@@ -3965,6 +3921,57 @@ function comparerClients(a, b) {
 }
 
 // Paires de clients susceptibles d'etre le meme etablissement.
+// Doublons entre PROSPECTS et CLIENTS : un prospect qu'on continue d'appeler alors qu'il
+// est déjà client (importé d'EasyBeer, converti à la main…). Mêmes règles que les doublons
+// de clients (SIRET / email / téléphone identique, nom identique ou proche), contacts
+// partagés ignorés comme preuve.
+router.get('/prospects/doublons-clients', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const prospects = (await db.query(
+    `SELECT p.id, p.nom_etablissement AS nom, p.ville, p.code_postal, p.email, p.telephone, p.siret, p.etape_pipeline,
+            p.commercial_id, p.date_creation, com.prenom AS commercial_prenom, com.nom AS commercial_nom,
+            (SELECT COUNT(*) FROM calls c WHERE c.prospect_id = p.id) AS nb_appels,
+            (SELECT COUNT(*) FROM appointments a WHERE a.prospect_id = p.id) AS nb_rdv
+     FROM prospects p LEFT JOIN commerciaux com ON com.id = p.commercial_id
+     WHERE p.etape_pipeline <> 'client_gagne'
+     ORDER BY p.nom_etablissement`
+  )).rows;
+  const clients = (await db.query(
+    `SELECT c.id, c.nom, c.ville, c.code_postal, c.email, c.telephone, c.siret, c.easybeer_id, c.statut,
+            c.commercial_id, c.date_creation, com.prenom AS commercial_prenom, com.nom AS commercial_nom,
+            (SELECT COUNT(*) FROM commandes cm WHERE cm.client_id = c.id) AS nb_commandes
+     FROM clients c LEFT JOIN commerciaux com ON com.id = c.commercial_id
+     WHERE c.id <> $1 ORDER BY c.nom`,
+    [SITE_INTERNET_CLIENT_ID]
+  )).rows;
+
+  const prepP = prospects.map(preparerComparaison);
+  const prepC = clients.map(preparerComparaison);
+  const SEUIL_PARTAGE = 3;
+  const freq = (vals) => { const m = new Map(); for (const v of vals) if (v) m.set(v, (m.get(v) || 0) + 1); return m; };
+  const tous = [...prepP, ...prepC];
+  const fe = freq(tous.map(c => c._email)), ft = freq(tous.map(c => c._tel));
+  for (const c of tous) {
+    c._emailPartage = !!c._email && (fe.get(c._email) || 0) >= SEUIL_PARTAGE;
+    c._telPartage = !!c._tel && (ft.get(c._tel) || 0) >= SEUIL_PARTAGE;
+  }
+  const commercial = (x) => [x.commercial_prenom, x.commercial_nom].filter(Boolean).join(' ');
+  const paires = [];
+  for (let i = 0; i < prepP.length; i++) {
+    for (let j = 0; j < prepC.length; j++) {
+      const r = comparerClients(prepP[i], prepC[j]);
+      if (!r) continue;
+      const p = prospects[i], c = clients[j];
+      paires.push({
+        score: r.score, motif: r.motif,
+        prospect: { id: p.id, nom: p.nom, ville: p.ville || '', email: p.email || '', telephone: p.telephone || '', etape_pipeline: p.etape_pipeline, commercial: commercial(p), nb_appels: Number(p.nb_appels) || 0, nb_rdv: Number(p.nb_rdv) || 0 },
+        client: { id: c.id, nom: c.nom, ville: c.ville || '', email: c.email || '', telephone: c.telephone || '', statut: c.statut, easybeer_id: c.easybeer_id || '', commercial: commercial(c), nb_commandes: Number(c.nb_commandes) || 0 },
+      });
+    }
+  }
+  paires.sort((x, y) => y.score - x.score || x.prospect.nom.localeCompare(y.prospect.nom));
+  res.json({ total_prospects: prospects.length, total_clients: clients.length, total_paires: paires.length, certains: paires.filter(p => p.score === 100).length, paires: paires.slice(0, 2000) });
+}));
+
 router.get('/clients/doublons', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const clients = (await db.query(
     `SELECT c.id, c.nom, c.ville, c.code_postal, c.email, c.telephone, c.siret, c.easybeer_id,
@@ -4887,185 +4894,6 @@ function lireConfigTournee(texte) {
   }
 }
 
-router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) => {
-  const weekOffset = parseInt(req.query.week_offset) || 0;
-  // Allow viewing another commercial's visites (for admins/prospection)
-  const targetId = req.query.commercial_id || req.user.id;
-  const viewAll = req.query.view === 'all';
-  const now = new Date();
-  const today = toLocalDateStr(now);
-
-  // Get Monday of target week (current + offset)
-  const dayOfWeek = now.getDay() || 7;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - dayOfWeek + 1 + (weekOffset * 7));
-  monday.setHours(0, 0, 0, 0);
-  const mondayStr = toLocalDateStr(monday);
-
-  // Week number for target week
-  const startOfYear = new Date(monday.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((monday - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
-  const isEvenWeek = weekNum % 2 === 0;
-
-  if (viewAll) {
-    // --- VIEW ALL commercials ---
-    const allCommerciaux = await db.query("SELECT id, prenom, nom, role FROM commerciaux WHERE role != 'prospection' ORDER BY prenom");
-    const allClients = await db.query("SELECT * FROM clients WHERE statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST");
-    const allConfigs = await db.query('SELECT * FROM tournee_config');
-
-    const commerciauxData = [];
-    let totalLate = 0;
-
-    for (const com of allCommerciaux.rows) {
-      const comClients = allClients.rows.filter(c => c.commercial_id === com.id);
-      const tcRow = allConfigs.rows.find(tc => tc.commercial_id === com.id);
-      const config = tcRow ? lireConfigTournee(tcRow.config) : {};
-      const wp = tcRow?.week_pattern || 'every';
-      const active = wp === 'every' || (wp === 'even' && isEvenWeek) || (wp === 'odd' && !isEvenWeek);
-
-      const sundayStr = toLocalDateStr(new Date(new Date(monday).setDate(monday.getDate() + 6)));
-      const weekDays = [];
-      for (let d = 0; d < 7; d++) {
-        const date = new Date(monday);
-        date.setDate(monday.getDate() + d);
-        const dateStr = toLocalDateStr(date);
-        const dayKey = String(d === 6 ? 0 : d + 1);
-        const tourneesForDay = active ? (config[dayKey] || []) : [];
-
-        // Only show clients who are late OR whose next_visit falls this week
-        const tourneeClients = comClients.filter(c => {
-          if (!tourneesForDay.length || !c.tournee || !tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())) return false;
-          // Late client: next_visit before today, show on the day their zone is configured
-          if (c.next_visit && c.next_visit < today) return true;
-          // Due this week: next_visit is within this week — show on the day their zone is scheduled
-          if (c.next_visit && c.next_visit >= mondayStr && c.next_visit <= sundayStr) return true;
-          return false;
-        });
-        // Only add clients without a configured zone, whose next_visit matches this exact date
-        const visitClients = comClients.filter(c => {
-          if (c.next_visit !== dateStr) return false;
-          if (tourneeClients.find(tc2 => tc2.id === c.id)) return false;
-          if (c.tournee) {
-            for (const [, zones] of Object.entries(config)) {
-              if (Array.isArray(zones) && zones.some(z => memeZone(z, c.tournee))) {
-                return false;
-              }
-            }
-          }
-          return true;
-        });
-
-        weekDays.push({
-          day_key: dayKey, date: dateStr,
-          day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][date.getDay()],
-          tournees: tourneesForDay,
-          clients: [...tourneeClients, ...visitClients],
-          is_today: dateStr === today, is_past: dateStr < today,
-        });
-      }
-
-      const lateClients = comClients.filter(c => c.next_visit && c.next_visit < mondayStr);
-      totalLate += lateClients.length;
-
-      commerciauxData.push({
-        commercial: { id: com.id, prenom: com.prenom, nom: com.nom, role: com.role },
-        week_days: weekDays,
-        late_clients: lateClients,
-        week_pattern: wp,
-        tournee_active: active,
-        total_active_clients: comClients.length,
-      });
-    }
-
-    return res.json({
-      view: 'all',
-      commerciaux: commerciauxData,
-      week_number: weekNum,
-      is_even_week: isEvenWeek,
-      week_offset: weekOffset,
-      week_start: mondayStr,
-      total_late: totalLate,
-    });
-  }
-
-  // --- SINGLE commercial view ---
-  const clients = await db.query(
-    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
-    [targetId]
-  );
-
-  const tourneeConfig = await db.query(
-    'SELECT * FROM tournee_config WHERE commercial_id = $1',
-    [targetId]
-  );
-  const tc = tourneeConfig.rows[0] || null;
-  const config = tc ? lireConfigTournee(tc.config) : {};
-  const weekPattern = tc?.week_pattern || 'every';
-
-  const isTourneeActive = weekPattern === 'every' ||
-    (weekPattern === 'even' && isEvenWeek) ||
-    (weekPattern === 'odd' && !isEvenWeek);
-
-  const sundayStr = toLocalDateStr(new Date(new Date(monday).setDate(monday.getDate() + 6)));
-  const weekDays = [];
-  for (let d = 0; d < 7; d++) {
-    const date = new Date(monday);
-    date.setDate(monday.getDate() + d);
-    const dateStr = toLocalDateStr(date);
-    const dayKey = String(d === 6 ? 0 : d + 1);
-    const tourneesForDay = isTourneeActive ? (config[dayKey] || []) : [];
-
-    // Only show clients who are late OR whose next_visit falls this week
-    const tourneeClients = clients.rows.filter(c => {
-      if (!tourneesForDay.length || !c.tournee || !tourneesForDay.some(t => t.toLowerCase() === c.tournee.toLowerCase())) return false;
-      // Late client: next_visit before today, show on the day their zone is configured
-      if (c.next_visit && c.next_visit < today) return true;
-      // Due this week: next_visit is within this week — show on the day their zone is scheduled
-      if (c.next_visit && c.next_visit >= mondayStr && c.next_visit <= sundayStr) return true;
-      return false;
-    });
-    // Only add clients without a configured zone/tournee, whose next_visit matches this exact date
-    // Clients WITH a zone should only appear on their zone's day (handled by tourneeClients above)
-    const visitClients = clients.rows.filter(c => {
-      if (c.next_visit !== dateStr) return false;
-      if (tourneeClients.find(tc2 => tc2.id === c.id)) return false;
-      // If client has a zone that exists in ANY day of the week config, skip — they'll be shown on that day
-      if (c.tournee) {
-        for (const [, zones] of Object.entries(config)) {
-          if (Array.isArray(zones) && zones.some(z => memeZone(z, c.tournee))) {
-            return false; // Zone is configured, client will appear on the correct day
-          }
-        }
-      }
-      return true;
-    });
-
-    weekDays.push({
-      day_key: dayKey, date: dateStr,
-      day_name: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][date.getDay()],
-      tournees: tourneesForDay,
-      clients: [...tourneeClients, ...visitClients],
-      is_today: dateStr === today, is_past: dateStr < today,
-    });
-  }
-
-  const lateClients = clients.rows.filter(c =>
-    c.next_visit && c.next_visit < mondayStr
-  );
-
-  res.json({
-    view: 'single',
-    week_days: weekDays,
-    late_clients: lateClients,
-    week_number: weekNum,
-    is_even_week: isEvenWeek,
-    week_pattern: weekPattern,
-    week_offset: weekOffset,
-    week_start: mondayStr,
-    tournee_active: isTourneeActive,
-    total_active_clients: clients.rows.length,
-  });
-}));
 
 // ============================================
 // Commercial Dashboard Data (tournée-based weekly view)
@@ -5073,6 +4901,9 @@ router.get('/commercial/visites', authMiddleware, asyncHandler(async (req, res) 
 
 router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res) => {
   const userId = req.user.id;
+  // ?perimetre=equipe : vue d'ensemble (remplacement d'un collègue) — les clients, retards
+  // et visites du jour de toute l'équipe. Par défaut : mes clients + les fiches libres.
+  const equipe = req.query.perimetre === 'equipe';
   const now = new Date();
   const today = toLocalDateStr(now);
 
@@ -5085,10 +4916,12 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
   weekEnd.setDate(monday.getDate() + 6);
   const weekEndStr = toLocalDateStr(weekEnd);
 
-  // My clients
+  // My clients (+ fiches libres), ou toute l'équipe
   const clients = await db.query(
-    "SELECT * FROM clients WHERE commercial_id = $1 AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
-    [userId]
+    equipe
+      ? "SELECT * FROM clients WHERE statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST"
+      : "SELECT * FROM clients WHERE (commercial_id = $1 OR commercial_id IS NULL OR commercial_id = '') AND statut = 'ACTIF' ORDER BY next_visit ASC NULLS LAST",
+    equipe ? [] : [userId]
   );
 
   // My tournée config
@@ -5136,8 +4969,8 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     };
   }
 
-  // Late clients
-  const lateClients = clients.rows.filter(c => c.next_visit && c.next_visit < today);
+  // Late clients : règle 1
+  const lateClients = clients.rows.filter(c => regles.estEnRetard(c, today));
 
   // Today's clients
   const todayClients = clients.rows.filter(c => c.next_visit === today);
@@ -5235,7 +5068,8 @@ router.get('/commercial/dashboard', authMiddleware, asyncHandler(async (req, res
     total_clients: clients.rows.length,
     interactions_semaine_par_type: weekByType,
     interactions_mois_par_type: monthByType,
-    rdv_sans_compte_rendu: rdvSansCR.rows,
+    // Règle 3 : un RDV de cet après-midi n'est pas « sans compte rendu », il est à venir.
+    rdv_sans_compte_rendu: rdvSansCR.rows.filter(a => regles.rdvSansCompteRendu(a, now)),
   });
 }));
 
