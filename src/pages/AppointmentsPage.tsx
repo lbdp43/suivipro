@@ -1,19 +1,20 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
-  Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Check, Navigation, Phone,
-  AlertTriangle, Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
-  ClipboardCheck, Bell, Mail, ShoppingCart, UserCheck, Ban, RefreshCw, CalendarClock,
+  Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Navigation, Phone,
+   Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
+  ClipboardCheck, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS, PipelineStage, ReminderStatus } from '../types';
-import { generateId, formatDate, downloadICS, downloadICSBatch, detectConflicts, toLocalDateStr } from '../utils/helpers';
+import CompteRenduModal from '../components/CompteRenduModal';
+import { useConflitsRdv, ConflitsRdv } from '../components/ChampsRdv';
+import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
+import { generateId, formatDate, downloadICS, downloadICSBatch, toLocalDateStr } from '../utils/helpers';
 import { rdvSansCompteRendu } from '../../shared/regles';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
-import EmailTemplateModal from '../components/EmailTemplateModal';
-import { getAllGoogleCalendarEvents, getGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
+import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
   const { state, dispatchLocal, getProspect } = useApp();
@@ -36,22 +37,8 @@ export default function AppointmentsPage() {
   const [googleEventsMap, setGoogleEventsMap] = useState<Record<string, { events: GoogleCalendarEvent[]; calendar_email?: string }>>({});
 
   // Compte-rendu modal state
-  const [showCompteRendu, setShowCompteRendu] = useState(false);
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
-  const [compteRenduResult, setCompteRenduResult] = useState<AppointmentResult>('');
-  const [compteRenduNotes, setCompteRenduNotes] = useState('');
-  const [compteRenduRappel, setCompteRenduRappel] = useState(false);
-  const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
-  const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
-  const [compteRenduEmailProspect, setCompteRenduEmailProspect] = useState<Prospect | null>(null);
 
-  // Reschedule modal state (for decale result)
-  const [showReschedule, setShowReschedule] = useState(false);
-  const [rescheduleRdv, setRescheduleRdv] = useState<Appointment | null>(null);
-  const [rescheduleDate, setRescheduleDate] = useState('');
-  const [rescheduleHeureDebut, setRescheduleHeureDebut] = useState('');
-  const [rescheduleHeureFin, setRescheduleHeureFin] = useState('');
-  const [rescheduleNotes, setRescheduleNotes] = useState('');
 
   // Edit prospect inline modal
   const [editProspectData, setEditProspectData] = useState<Prospect | null>(null);
@@ -152,44 +139,8 @@ export default function AppointmentsPage() {
   const upcoming = appointments.filter(a => a.date >= toLocalDateStr(new Date()) && a.statut !== 'annule' && a.statut !== 'termine');
   const past = appointments.filter(a => a.date < toLocalDateStr(new Date()) || a.statut === 'termine' || a.statut === 'annule');
 
-  // Detection conflits dans le formulaire
-  const formConflicts = useMemo(() => {
-    if (!formData.commercial_id || !formData.date || !formData.heure_debut || !formData.heure_fin) return [];
-    return detectConflicts(
-      state.appointments,
-      formData.commercial_id,
-      formData.date,
-      formData.heure_debut,
-      formData.heure_fin,
-      editing?.id,
-    );
-  }, [state.appointments, formData.commercial_id, formData.date, formData.heure_debut, formData.heure_fin, editing]);
-
-  // Google Calendar conflict detection for the form
-  const [formGoogleEvents, setFormGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
-
-  useEffect(() => {
-    if (!showForm || !formData.commercial_id || !formData.date) {
-      setFormGoogleEvents([]);
-      return;
-    }
-    const dayStart = new Date(formData.date + 'T00:00:00').toISOString();
-    const dayEnd = new Date(formData.date + 'T23:59:59').toISOString();
-    getGoogleCalendarEvents(formData.commercial_id, dayStart, dayEnd)
-      .then(res => setFormGoogleEvents(res.connected ? res.events : []))
-      .catch(() => setFormGoogleEvents([]));
-  }, [showForm, formData.commercial_id, formData.date]);
-
-  const formGoogleConflicts = useMemo(() => {
-    if (!formData.heure_debut || !formData.heure_fin || formGoogleEvents.length === 0) return [];
-    return formGoogleEvents.filter(evt => {
-      if (evt.allDay) return true;
-      const evtStart = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
-      const evtEnd = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
-      if (!evtStart || !evtEnd) return false;
-      return formData.heure_debut < evtEnd && evtStart < formData.heure_fin;
-    });
-  }, [formGoogleEvents, formData.heure_debut, formData.heure_fin]);
+  // Conflits du formulaire : rendez-vous internes du commercial et agenda Google.
+  const { conflits: formConflicts, conflitsGoogle: formGoogleConflicts } = useConflitsRdv(showForm, formData.commercial_id, formData.date, formData.heure_debut, formData.heure_fin, editing?.id);
 
   const openNewForm = () => {
     setFormData({
@@ -330,162 +281,7 @@ export default function AppointmentsPage() {
     }
   };
 
-  const openCompteRendu = (rdv: Appointment) => {
-    setCompteRenduRdv(rdv);
-    setCompteRenduResult((rdv.compte_rendu as AppointmentResult) || '');
-    setCompteRenduNotes(rdv.notes_compte_rendu || '');
-    setCompteRenduRappel(false);
-    const in7days = new Date();
-    in7days.setDate(in7days.getDate() + 7);
-    setCompteRenduRappelDate(toLocalDateStr(in7days));
-    setCompteRenduRappelMessage('');
-    setShowCompteRendu(true);
-  };
-
-  // Auto-enable rappel when selecting results that require it
-  const handleCompteRenduResultChange = (value: AppointmentResult) => {
-    const newValue = compteRenduResult === value ? '' : value;
-    setCompteRenduResult(newValue);
-    // Auto-enable rappel for a_relancer, commande_plus_tard, mail_envoye
-    if (newValue === 'a_relancer' || newValue === 'commande_plus_tard' || newValue === 'mail_envoye') {
-      setCompteRenduRappel(true);
-    }
-  };
-
-  // Rappel is required for certain results
-  const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
-
-  // Validation: notes required + rappel date required when rappel is forced
-  const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
-
-  const saveCompteRendu = async () => {
-    if (!compteRenduRdv || !compteRenduValid) return;
-
-    try {
-      // Update the appointment with compte_rendu and mark as termine
-      // notes_compte_rendu is separate from the original appointment notes
-      const updatedRdv = {
-        ...compteRenduRdv,
-        statut: 'termine' as AppointmentStatus,
-        compte_rendu: compteRenduResult,
-        notes_compte_rendu: compteRenduNotes,
-      };
-      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
-      dispatchLocal({
-        type: 'UPDATE_APPOINTMENT',
-        payload: updatedRdv,
-      });
-
-      // Update prospect pipeline based on result
-      const prospect = getProspect(compteRenduRdv.prospect_id);
-      if (prospect) {
-        const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
-        let newStage: PipelineStage | null = null;
-        if (compteRenduResult === 'client') {
-          newStage = 'client_gagne';
-        } else if (compteRenduResult === 'pas_interesse') {
-          newStage = 'perdu';
-        } else if (compteRenduResult === 'mail_envoye') {
-          if (!terminal.includes(prospect.etape_pipeline)) {
-            newStage = 'negociation';
-          }
-        } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
-          if (!terminal.includes(prospect.etape_pipeline)) {
-            newStage = 'proposition';
-          }
-        }
-        if (newStage) {
-          await apiPatch(`/prospects/${prospect.id}/stage`, {
-            etape_pipeline: newStage,
-            date_modification: new Date().toISOString(),
-          });
-          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
-        }
-      }
-
-      // Create reminder if rappel is active
-      if (compteRenduRappel && compteRenduRappelDate) {
-        const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
-        const reminderPayload = {
-          id: generateId('rem'),
-          prospect_id: compteRenduRdv.prospect_id,
-          commercial_id: compteRenduRdv.commercial_id,
-          date: compteRenduRappelDate,
-          heure: '09:00',
-          message: autoMessage,
-          statut: 'actif' as ReminderStatus,
-        };
-        await apiPost('/reminders', reminderPayload);
-        dispatchLocal({
-          type: 'ADD_REMINDER',
-          payload: reminderPayload,
-        });
-      }
-
-      // If mail_envoye: open email modal after saving
-      if (compteRenduResult === 'mail_envoye' && prospect) {
-        setCompteRenduEmailProspect(prospect);
-      }
-
-      // If decale: open reschedule modal
-      if (compteRenduResult === 'decale') {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 7);
-        setRescheduleRdv(compteRenduRdv);
-        setRescheduleDate(toLocalDateStr(tomorrow));
-        setRescheduleHeureDebut(compteRenduRdv.heure_debut || '09:00');
-        setRescheduleHeureFin(compteRenduRdv.heure_fin || '10:00');
-        setRescheduleNotes('');
-        setShowReschedule(true);
-      }
-
-      setShowCompteRendu(false);
-      toast.success('Compte-rendu enregistré');
-    } catch (err: unknown) {
-      toast.error(`Erreur compte-rendu: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
-    }
-  };
-
-  const confirmReschedule = async () => {
-    if (!rescheduleRdv || !rescheduleDate) return;
-
-    try {
-      // Update old appointment notes
-      const updatedOldApt = {
-        ...rescheduleRdv,
-        notes_compte_rendu: (rescheduleRdv.notes_compte_rendu || '') + (rescheduleNotes ? `\nDecale: ${rescheduleNotes}` : ''),
-      };
-      await apiPut(`/appointments/${rescheduleRdv.id}`, updatedOldApt);
-      dispatchLocal({
-        type: 'UPDATE_APPOINTMENT',
-        payload: updatedOldApt,
-      });
-
-      // Create new appointment
-      const newApt: Appointment = {
-        id: generateId('apt'),
-        prospect_id: rescheduleRdv.prospect_id,
-        client_id: rescheduleRdv.client_id,
-        commercial_id: rescheduleRdv.commercial_id,
-        prospecteur_id: rescheduleRdv.prospecteur_id,
-        date: rescheduleDate,
-        heure_debut: rescheduleHeureDebut,
-        heure_fin: rescheduleHeureFin,
-        lieu: rescheduleRdv.lieu,
-        notes: rescheduleNotes || rescheduleRdv.notes,
-        statut: 'planifie',
-        event_type: 'rdv',
-      };
-      await apiPost('/appointments', newApt);
-      dispatchLocal({ type: 'ADD_APPOINTMENT', payload: newApt });
-
-      toast.success(`Nouveau RDV créé pour le ${rescheduleDate}`);
-      setShowReschedule(false);
-      setRescheduleRdv(null);
-    } catch (err: unknown) {
-      toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
-    }
-  };
+  const openCompteRendu = (rdv: Appointment) => setCompteRenduRdv(rdv);
 
   // Ouvrir la modale d'export avec les filtres pre-remplis
   const openExportModal = () => {
@@ -1565,45 +1361,7 @@ export default function AppointmentsPage() {
                 </div>
               )}
 
-              {/* Alerte conflit */}
-              {formConflicts.length > 0 && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-700 font-medium flex items-center gap-1">
-                    <AlertTriangle className="w-4 h-4" /> Conflit horaire pour ce commercial !
-                  </p>
-                  {formConflicts.map(c => {
-                    const cp = c.prospect_id ? getProspect(c.prospect_id) : undefined;
-                    const cc = c.client_id ? state.clients.find(cl => cl.id === c.client_id) : undefined;
-                    return (
-                      <p key={c.id} className="text-[11px] text-red-600 mt-1">
-                        {formatDate(c.date)} {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
-                      </p>
-                    );
-                  })}
-                  <p className="text-[10px] text-red-500 mt-1 italic">
-                    Ce commercial a déjà un RDV sur ce creneau.
-                  </p>
-                </div>
-              )}
-              {formGoogleConflicts.length > 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
-                    <AlertTriangle className="w-4 h-4" /> Attention — événement(s) Google Agenda sur ce creneau
-                  </p>
-                  {formGoogleConflicts.map(evt => {
-                    const start = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
-                    const end = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
-                    return (
-                      <p key={evt.id} className="text-[11px] text-amber-600 mt-1">
-                        {evt.allDay ? 'Journee entiere' : `${start}-${end}`} : {evt.summary}
-                      </p>
-                    );
-                  })}
-                  <p className="text-[10px] text-amber-500 mt-1 italic">
-                    Ce commercial a un événement Google Agenda sur ce creneau.
-                  </p>
-                </div>
-              )}
+              <ConflitsRdv conflits={formConflicts} conflitsGoogle={formGoogleConflicts} />
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Lieu</label>
                 <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.lieu} onChange={e => setFormData(prev => ({ ...prev, lieu: e.target.value }))} />
@@ -1631,152 +1389,7 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Compte-rendu modal */}
-      {showCompteRendu && compteRenduRdv && (() => {
-        const crProspect = compteRenduRdv.prospect_id ? getProspect(compteRenduRdv.prospect_id) : undefined;
-        const crClient = compteRenduRdv.client_id ? state.clients.find(c => c.id === compteRenduRdv.client_id) : undefined;
-        const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
-          { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
-          { value: 'mail_envoye', label: 'Mail envoyé', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
-          { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
-          { value: 'a_relancer', label: 'À relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
-          { value: 'pas_interesse', label: 'Pas intéressé', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
-          { value: 'decale', label: 'RDV décalé', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
-        ];
-        return (
-          <div className="modal-backdrop">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-0.5">{crClient?.nom || crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
-                </div>
-                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                {/* Result selection */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Résultat du rendez-vous</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {resultOptions.map(opt => {
-                      const Icon = opt.icon;
-                      return (
-                        <button
-                          key={opt.value}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
-                            compteRenduResult === opt.value ? opt.color : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                          }`}
-                          onClick={() => handleCompteRenduResultChange(opt.value)}
-                        >
-                          <Icon className="w-4 h-4" />
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {compteRenduResult === 'client' && (
-                    <p className="text-[10px] text-green-600 mt-1 italic">Le prospect sera déplacé dans l'etape "Gagne"</p>
-                  )}
-                  {compteRenduResult === 'pas_interesse' && (
-                    <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
-                  )}
-                  {compteRenduResult === 'mail_envoye' && (
-                    <p className="text-[10px] text-blue-500 mt-1 italic">Prospect déplacé vers "Negociation" + email propose + rappel programme</p>
-                  )}
-                  {compteRenduResult === 'a_relancer' && (
-                    <p className="text-[10px] text-purple-500 mt-1 italic">Prospect déplacé vers "Proposition" + rappel programme</p>
-                  )}
-                  {compteRenduResult === 'commande_plus_tard' && (
-                    <p className="text-[10px] text-amber-600 mt-1 italic">Prospect déplacé vers "Proposition" + rappel programme</p>
-                  )}
-                  {compteRenduResult === 'decale' && (
-                    <p className="text-[10px] text-violet-600 mt-1 italic">Le RDV sera marqué comme décalé - pensez a replanifier un nouveau RDV</p>
-                  )}
-                </div>
-
-                {/* Notes - obligatoires */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Notes du compte-rendu <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${
-                      compteRenduNotes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
-                    }`}
-                    placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
-                    value={compteRenduNotes}
-                    onChange={e => setCompteRenduNotes(e.target.value)}
-                  />
-                  {compteRenduNotes.trim() === '' && (
-                    <p className="text-[10px] text-red-500 mt-0.5">Les notes sont obligatoires pour valider le compte-rendu</p>
-                  )}
-                </div>
-
-                {/* Rappel - forced for a_relancer / commande_plus_tard / mail_envoye, optional for others */}
-                {!compteRenduRappel && !rappelRequired ? (
-                  <button
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
-                    onClick={() => setCompteRenduRappel(true)}
-                  >
-                    <Bell className="w-4 h-4" /> Programmer un rappel
-                  </button>
-                ) : compteRenduRappel ? (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
-                        <Bell className="w-3 h-3" /> Rappel de relance {rappelRequired && <span className="text-red-500">*</span>}
-                      </label>
-                      {!rappelRequired && (
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelRequired && <span className="text-red-500">*</span>}</label>
-                      <input
-                        type="date"
-                        className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${
-                          rappelRequired && !compteRenduRappelDate ? 'border-red-300' : 'border-amber-200'
-                        }`}
-                        value={compteRenduRappelDate}
-                        onChange={e => setCompteRenduRappelDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-amber-600 mb-0.5">Message (optionnel)</label>
-                      <input
-                        type="text"
-                        className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
-                        placeholder="Ex: Relancer pour devis..."
-                        value={compteRenduRappelMessage}
-                        onChange={e => setCompteRenduRappelMessage(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
-                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCompteRendu(false)}>
-                  Annuler
-                </button>
-                <button
-                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={saveCompteRendu}
-                  disabled={!compteRenduValid}
-                >
-                  <ClipboardCheck className="w-4 h-4" />
-                  {compteRenduResult === 'mail_envoye' ? 'Valider et envoyer un mail' : 'Valider le compte-rendu'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
 
       {/* Edit prospect inline modal */}
       {editProspectData && (
@@ -1902,61 +1515,7 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Email modal after compte-rendu with mail_envoye */}
-      {compteRenduEmailProspect && (
-        <EmailTemplateModal
-          prospect={compteRenduEmailProspect}
-          onClose={() => setCompteRenduEmailProspect(null)}
-        />
-      )}
 
-      {/* Reschedule modal after compte-rendu with decale */}
-      {showReschedule && rescheduleRdv && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                <CalendarClock className="w-5 h-5 text-violet-500" />
-                Decaler le RDV
-              </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500">RDV actuel</p>
-                <p className="font-semibold text-sm text-gray-900">{getProspect(rescheduleRdv.prospect_id)?.nom_etablissement || 'RDV'}</p>
-                <p className="text-xs text-gray-500 mt-1">{formatDate(rescheduleRdv.date)}{rescheduleRdv.heure_debut && ` - ${rescheduleRdv.heure_debut}`}</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nouvelle date *</label>
-                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Heure debut</label>
-                  <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleHeureDebut} onChange={e => setRescheduleHeureDebut(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Heure fin</label>
-                  <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={rescheduleHeureFin} onChange={e => setRescheduleHeureFin(e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Raison / Notes</label>
-                <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Pourquoi ce report ?" value={rescheduleNotes} onChange={e => setRescheduleNotes(e.target.value)} />
-              </div>
-            </div>
-            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
-              <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => { setShowReschedule(false); setRescheduleRdv(null); }}>Annuler</button>
-              <button className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50" onClick={confirmReschedule} disabled={!rescheduleDate}>
-                <CalendarClock className="w-4 h-4" /> Confirmer le report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

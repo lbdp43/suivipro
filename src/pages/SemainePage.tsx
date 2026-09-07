@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CalendarDays, ClipboardCheck } from 'lucide-react';
-import ClientsPlanningPage from './ClientsPlanningPage';
-import CompteRenduPage from './CompteRenduPage';
+// Chaque volet est lourd (1 500 lignes chacun) : on ne charge que celui qu'on ouvre.
+const ClientsPlanningPage = lazy(() => import('./ClientsPlanningPage'));
+const CompteRenduPage = lazy(() => import('./CompteRenduPage'));
 
 // Une seule page pour la semaine, deux volets :
 //  - « À préparer » : ce qui est prévu (rendez-vous, clients à visiter par jour et par secteur, retards) ;
@@ -52,7 +53,9 @@ export default function SemainePage() {
           </div>
         </div>
       </div>
-      {volet === 'preparer' ? <ClientsPlanningPage embarque /> : <CompteRenduPage embarque />}
+      <Suspense fallback={<div className="p-6 text-sm text-gray-400">Chargement…</div>}>
+        {volet === 'preparer' ? <ClientsPlanningPage embarque /> : <CompteRenduPage embarque />}
+      </Suspense>
     </div>
   );
 }
