@@ -1,6 +1,6 @@
 import {
   Users, Kanban, Phone, Calendar, Mail, Map, Building2, CalendarDays, GitBranch,
-  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3,
+  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3, Share2,
 } from 'lucide-react';
 
 // Le menu : quatre groupes, les mêmes pour tout le monde. Seul l'ordre dépend du rôle —
@@ -28,6 +28,7 @@ const PROSPECTION: GroupeMenu = {
   entrees: [
     { to: '/prospects', icon: Users, label: 'Prospects' },
     { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
+    { to: '/partage', icon: Share2, label: 'Partager une fiche' },
     { to: '/appels', icon: Phone, label: 'Appels' },
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous' },
     { to: '/emails', icon: Mail, label: 'Emails' },

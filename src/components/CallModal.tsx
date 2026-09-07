@@ -5,6 +5,7 @@ import { useToast } from './Toast';
 import { CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, detectConflicts, formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
+import FicheProspect from './FicheProspect';
 import { getGoogleCalendarEvents, apiPost, apiPut, type GoogleCalendarEvent } from '../api/client';
 
 // ============================================
@@ -74,6 +75,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const callStartTimeRef = useRef<number>(0);
   // Session d'appels : file de prospects (ceux qui ont un téléphone) et position courante.
   const [session, setSession] = useState<{ ids: string[]; index: number } | null>(null);
+  // Entre deux appels d'une session, on montre la fiche de l'établissement avant de composer.
+  const [fiche, setFiche] = useState(false);
 
   // Timer logic - uses Date.now() diff to avoid drift/freeze issues
   useEffect(() => {
@@ -96,12 +99,19 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [callActive]);
 
-  const startCall = (pid: string) => {
+  const composer = (telephone: string) => {
+    if (telephone) window.location.href = `tel:${telephone.replace(/\s/g, '')}`;
+  };
+
+  /** Ouvre l'appel d'un prospect. Avec `avecFiche`, on montre d'abord sa fiche et on compose sur « Appeler ». */
+  const startCall = (pid: string, avecFiche = false) => {
     const prospect = state.prospects.find(p => p.id === pid);
     if (!prospect) return;
 
     setProspectId(pid);
-    setCallActive(true);
+    setFiche(avecFiche);
+    setCallActive(!avecFiche);
+    callStartTimeRef.current = 0;
     setCallTimer(0);
     setCallResult('repondu');
     setCallNotes('');
@@ -133,9 +143,18 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowModal(true);
 
     // Trigger native phone dialer
-    if (prospect.telephone) {
-      window.location.href = `tel:${prospect.telephone.replace(/\s/g, '')}`;
-    }
+    if (!avecFiche) composer(prospect.telephone);
+  };
+
+  /** Depuis la fiche : on compose et le chrono démarre. */
+  const appelerDepuisFiche = () => {
+    const p = state.prospects.find(x => x.id === prospectId);
+    if (!p) return;
+    setFiche(false);
+    callStartTimeRef.current = 0;
+    setCallTimer(0);
+    setCallActive(true);
+    composer(p.telephone);
   };
 
   const endCall = () => {
@@ -146,7 +165,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     const ids = prospectIds.filter(id => { const p = state.prospects.find(x => x.id === id); return p && p.telephone; });
     if (ids.length === 0) { toast.error('Aucun prospect avec un numéro de téléphone dans la sélection.'); return; }
     setSession({ ids, index: 0 });
-    startCall(ids[0]);
+    startCall(ids[0], true);
     if (ids.length < prospectIds.length) toast.info(`${prospectIds.length - ids.length} prospect(s) sans téléphone ignoré(s)`);
   };
 
@@ -160,7 +179,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       return false;
     }
     setSession({ ids: session.ids, index });
-    startCall(session.ids[index]);
+    startCall(session.ids[index], true);
     return true;
   };
 
@@ -309,6 +328,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     if (callActive) {
       setCallActive(false);
     }
+    setFiche(false);
     setShowModal(false);
     setCallTimer(0);
     setSession(null);
@@ -317,6 +337,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   /** Passer ce prospect sans enregistrer d'appel (session). */
   const passerCeProspect = () => {
     setCallActive(false);
+    setFiche(false);
     setCallTimer(0);
     if (!suivantDeSession()) setShowModal(false);
   };
@@ -384,7 +405,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
               <div className="p-5 border-b border-gray-200 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-gray-900">
-                    {callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
+                    {fiche ? 'Prochain appel' : callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
                     {session && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-brewery-100 text-brewery-700">Session {session.index + 1} / {session.ids.length}</span>}
                   </h3>
                   <p className="text-sm text-gray-500 mt-0.5">{prospect.nom_etablissement}</p>
@@ -405,6 +426,27 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
             )}
 
             {!showConfirmation && <div className="p-5 space-y-4">
+              {/* Session : la fiche de l'établissement avant de composer */}
+              {fiche && (
+                <>
+                  <FicheProspect prospect={prospect} />
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50"
+                      onClick={appelerDepuisFiche}
+                      disabled={!prospect.telephone}
+                    >
+                      <Phone className="w-5 h-5" /> Appeler
+                    </button>
+                    {session && (
+                      <button className="px-4 py-3 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200" onClick={passerCeProspect}>
+                        Passer →
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
               {/* Active call: timer */}
               {callActive && (
                 <div className="text-center py-6">
@@ -428,7 +470,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
               )}
 
               {/* After call: result + tags + notes + rdv + memo */}
-              {!callActive && (
+              {!callActive && !fiche && (
                 <>
                   {callTimer > 0 && (
                     <div className="text-center text-sm text-gray-500">
@@ -806,7 +848,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
             </div>}
 
             {/* Footer */}
-            {!callActive && !showConfirmation && (
+            {!callActive && !fiche && !showConfirmation && (
               <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
                 <button
                   className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"

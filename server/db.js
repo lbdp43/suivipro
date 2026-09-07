@@ -430,6 +430,31 @@ async function initDatabase(attempt = 1) {
       await client.query("ALTER TABLE tags ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0");
     } catch { /* column may already exist */ }
 
+    // Étape « Partagé » en tête du pipeline : une fiche Google Maps partagée (WhatsApp)
+    // y attend d'être complétée. Sur une base neuve, c'est le jeu de départ qui la crée.
+    try {
+      const cols = await client.query("SELECT id FROM pipeline_columns");
+      if (cols.rows.length > 0 && !cols.rows.some(r => r.id === 'partage')) {
+        await client.query("UPDATE pipeline_columns SET sort_order = sort_order + 1");
+        await client.query("INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ('partage', 'Partagé', '#a855f7', 0)");
+        console.log('Étape « Partagé » ajoutée au pipeline.');
+      }
+    } catch (err) { console.log('Migration étape Partagé :', err.message); }
+    // Lien de la fiche Google Maps d'où vient le prospect.
+    try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_url TEXT DEFAULT ''"); } catch { /* déjà là */ }
+    // « Ma session d'appel du jour » : une liste par personne et par jour.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sessions_appel (
+        id TEXT PRIMARY KEY,
+        commercial_id TEXT NOT NULL REFERENCES commerciaux(id) ON DELETE CASCADE,
+        jour TEXT NOT NULL,
+        prospect_ids TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (commercial_id, jour)
+      )
+    `);
+
     // ============================================
     // Migrations for existing databases
     // ============================================
@@ -854,16 +879,17 @@ async function initDatabase(attempt = 1) {
 
       // Pipeline columns
       const cols = [
-        ['nouveau_datagouv', 'Importe Datagouv', '#0ea5e9', 0],
-        ['nouveau', 'Nouveau', '#6b7280', 1],
-        ['a_contacter', 'A contacter', '#3b82f6', 2],
-        ['contacte', 'Contacte', '#8b5cf6', 3],
-        ['proposition', 'Proposition', '#f97316', 4],
-        ['negociation', 'Negociation', '#ef4444', 5],
-        ['gagne', 'RDV', '#22c55e', 6],
-        ['client_gagne', 'Gagne', '#16a34a', 7],
-        ['perdu', 'Perdu', '#dc2626', 8],
-        ['ne_pas_contacter', 'Ne pas contacter', '#991b1b', 9],
+        ['partage', 'Partagé', '#a855f7', 0],
+        ['nouveau_datagouv', 'Importe Datagouv', '#0ea5e9', 1],
+        ['nouveau', 'Nouveau', '#6b7280', 2],
+        ['a_contacter', 'A contacter', '#3b82f6', 3],
+        ['contacte', 'Contacte', '#8b5cf6', 4],
+        ['proposition', 'Proposition', '#f97316', 5],
+        ['negociation', 'Negociation', '#ef4444', 6],
+        ['gagne', 'RDV', '#22c55e', 7],
+        ['client_gagne', 'Gagne', '#16a34a', 8],
+        ['perdu', 'Perdu', '#dc2626', 9],
+        ['ne_pas_contacter', 'Ne pas contacter', '#991b1b', 10],
       ];
       for (const c of cols) {
         await client.query('INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ($1,$2,$3,$4)', c);

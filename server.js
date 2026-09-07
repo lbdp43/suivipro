@@ -105,6 +105,10 @@ if (existsSync(DIST)) {
     maxAge: '1y',
     immutable: true,
     index: false, // Don't auto-serve index.html for /
+    // Le service worker et le manifeste changent sans changer de nom : jamais mis en cache un an.
+    setHeaders: (res, chemin) => {
+      if (/\/(sw\.js|manifest\.webmanifest)$/.test(chemin)) res.setHeader('Cache-Control', 'no-cache');
+    },
   }));
 
   // SPA fallback: all non-API routes serve index.html

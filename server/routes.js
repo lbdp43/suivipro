@@ -8,6 +8,7 @@ import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import * as regles from '../shared/regles.js';
 import { scoreDepuisTags, baremeActif } from '../shared/score.js';
+import { ficheDepuisPartage } from './partage.js';
 
 
 const router = Router();
@@ -148,6 +149,13 @@ function validationError(res, errors) {
 // Helper: parse JSON fields
 // ============================================
 
+function parseSessionAppel(s) {
+  if (!s) return s;
+  let ids = s.prospect_ids;
+  if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
+  return { ...s, prospect_ids: Array.isArray(ids) ? ids : [] };
+}
+
 function parseProspect(p) {
   if (!p) return p;
   let tags = p.tags;
@@ -213,7 +221,8 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // fois dans le contexte de l'application, donc partout — accueil et retards compris.
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
+  const hier = toLocalDateStr(new Date(Date.now() - 86400000));
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -230,6 +239,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query(`SELECT id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc,
                      lignes, notes, source, client_name, date_creation
               FROM commandes ORDER BY date_commande DESC`),
+    db.query('SELECT * FROM sessions_appel WHERE jour >= $1', [hier]),
   ]);
 
   res.json({
@@ -247,6 +257,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     tasksClient: tasksClient.rows,
     tourneeConfigs: tourneeConfigs.rows,
     commandes: commandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
+    sessionsAppel: sessionsAppel.rows.map(parseSessionAppel),
   });
 }));
 
@@ -294,6 +305,110 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
 router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ============================================
+// Fiche Google Maps partagée → prospect en étape « Partagé »
+// ============================================
+// Corps : { texte, forcer }. `texte` est le message WhatsApp tel quel (nom, adresse, lien)
+// ou le lien seul. Sans `forcer`, un doublon probable bloque la création et est renvoyé
+// pour que la personne choisisse : ouvrir l'existant, ou créer quand même.
+function chiffresTel(t) { return String(t || '').replace(/\D/g, '').slice(-9); }
+
+async function doublonsDeFiche(fiche) {
+  const nom = normaliserNomClient(fiche.nom_etablissement);
+  const tel = chiffresTel(fiche.telephone);
+  const ville = normaliserNomClient(fiche.ville);
+  const [p, c] = await Promise.all([
+    db.query('SELECT id, nom_etablissement AS nom, ville, telephone, etape_pipeline FROM prospects'),
+    db.query('SELECT id, nom, ville, telephone FROM clients'),
+  ]);
+  const ressemble = (r) => {
+    const n = normaliserNomClient(r.nom);
+    if (!n) return false;
+    if (nom && n === nom) return true;
+    if (tel && chiffresTel(r.telephone) === tel) return true;
+    if (nom.length < 6) return false;
+    const v = normaliserNomClient(r.ville);
+    const memeVille = !ville || !v || v === ville;
+    return memeVille && (n.includes(nom) || nom.includes(n));
+  };
+  const out = [];
+  for (const r of p.rows) if (ressemble(r)) out.push({ genre: 'prospect', id: r.id, nom: r.nom, ville: r.ville || '', etape: r.etape_pipeline });
+  for (const r of c.rows) if (ressemble(r)) out.push({ genre: 'client', id: r.id, nom: r.nom, ville: r.ville || '' });
+  return out.slice(0, 6);
+}
+
+router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) => {
+  const texte = String(req.body.texte || '').trim().slice(0, 4000);
+  if (!texte) return validationError(res, ['Collez le message WhatsApp ou le lien Google Maps']);
+  const { fiche, sources } = await ficheDepuisPartage(texte);
+  if (!fiche.nom_etablissement) {
+    return res.status(422).json({ error: "Impossible de trouver le nom de l'établissement. Écrivez-le sur la première ligne, au-dessus du lien, puis réessayez." });
+  }
+  const doublons = await doublonsDeFiche(fiche);
+  if (doublons.length > 0 && !req.body.forcer) return res.json({ ok: false, doublons, fiche, sources });
+
+  const now = new Date().toISOString();
+  const id = `prospect-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const auteur = await db.query('SELECT prenom, nom FROM commerciaux WHERE id = $1', [req.user.id]);
+  const qui = auteur.rows[0] ? `${auteur.rows[0].prenom} ${auteur.rows[0].nom}`.trim() : req.user.id;
+  const notes = [`Fiche partagée par ${qui} le ${toLocalDateStr(new Date())}.`, fiche.categorie_google ? `Catégorie Google : ${fiche.categorie_google}.` : '']
+    .filter(Boolean).join('\n');
+  await db.query(
+    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, source_url)
+     VALUES ($1,$2,$3,'',$4,'',$5,$6,$7,$8,'',$9,$10,'partage','[]',$11,$12,$13,$13,$14,$15)`,
+    [id, fiche.nom_etablissement.slice(0, 200), fiche.type_etablissement, fiche.telephone || '', fiche.adresse || '', fiche.ville || '', fiche.code_postal || '', fiche.departement || '',
+      fiche.latitude || 0, fiche.longitude || 0, req.user.id, notes, now, await scoreProspect([], 50), fiche.source_url || '']
+  );
+  await logActivity(req.user.id, 'creation_prospect', `${fiche.nom_etablissement} (fiche partagée)`, 'prospect', id);
+  const cree = await db.query('SELECT * FROM prospects WHERE id = $1', [id]);
+  res.json({ ok: true, prospect: parseProspect(cree.rows[0]), sources, doublons });
+}));
+
+// ============================================
+// « Ma session d'appel du jour »
+// ============================================
+// La liste que chacun se choisit dans Prospects ou dans le Pipeline. Le jour vient de
+// l'écran (heure de Paris) ; les prospects appelés se déduisent des appels du jour.
+function jourValide(j) { return /^\d{4}-\d{2}-\d{2}$/.test(String(j || '')) ? j : toLocalDateStr(new Date()); }
+
+router.put('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res) => {
+  const jour = jourValide(req.body.jour);
+  const mode = req.body.mode === 'remplacer' ? 'remplacer' : 'ajouter';
+  const demandes = [...new Set((Array.isArray(req.body.prospect_ids) ? req.body.prospect_ids : []).filter(x => typeof x === 'string' && x))];
+  if (demandes.length === 0 && mode === 'ajouter') return validationError(res, ['Aucun prospect sélectionné']);
+  // Seuls les prospects existants, avec un numéro, valent la peine d'être dans une session.
+  const valides = demandes.length
+    ? (await db.query(`SELECT id FROM prospects WHERE id = ANY($1) AND telephone <> ''`, [demandes])).rows.map(r => r.id)
+    : [];
+  const existante = await db.query('SELECT * FROM sessions_appel WHERE commercial_id = $1 AND jour = $2', [req.user.id, jour]);
+  const avant = existante.rows[0] ? parseSessionAppel(existante.rows[0]).prospect_ids : [];
+  const liste = mode === 'ajouter' ? [...new Set([...avant, ...valides])] : demandes.filter(d => valides.includes(d));
+  const now = new Date().toISOString();
+  const row = await db.query(
+    `INSERT INTO sessions_appel (id, commercial_id, jour, prospect_ids, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $5)
+     ON CONFLICT (commercial_id, jour) DO UPDATE SET prospect_ids = EXCLUDED.prospect_ids, updated_at = EXCLUDED.updated_at
+     RETURNING *`,
+    [`session-${req.user.id}-${jour}`, req.user.id, jour, JSON.stringify(liste), now]
+  );
+  res.json({ ok: true, session: parseSessionAppel(row.rows[0]), ajoutes: liste.length - avant.length, sans_telephone: demandes.length - valides.length });
+}));
+
+router.delete('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res) => {
+  const jour = jourValide(req.query.jour);
+  await db.query('DELETE FROM sessions_appel WHERE commercial_id = $1 AND jour = $2', [req.user.id, jour]);
+  res.json({ ok: true });
+}));
+
+router.delete('/sessions-appel/jour/:prospectId', authMiddleware, asyncHandler(async (req, res) => {
+  const jour = jourValide(req.query.jour);
+  const existante = await db.query('SELECT * FROM sessions_appel WHERE commercial_id = $1 AND jour = $2', [req.user.id, jour]);
+  if (!existante.rows[0]) return res.json({ ok: true, session: null });
+  const liste = parseSessionAppel(existante.rows[0]).prospect_ids.filter(id => id !== req.params.prospectId);
+  const row = await db.query('UPDATE sessions_appel SET prospect_ids = $1, updated_at = $2 WHERE id = $3 RETURNING *', [JSON.stringify(liste), new Date().toISOString(), existante.rows[0].id]);
+  res.json({ ok: true, session: parseSessionAppel(row.rows[0]) });
 }));
 
 // Move prospect to a different pipeline stage (partial update)

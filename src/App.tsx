@@ -11,6 +11,7 @@ const AccueilPage = lazy(() => import('./pages/AccueilPage'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const PipelinePage = lazy(() => import('./pages/PipelinePage'));
 const ProspectsPage = lazy(() => import('./pages/ProspectsPage'));
+const PartagePage = lazy(() => import('./pages/PartagePage'));
 const CallsPage = lazy(() => import('./pages/CallsPage'));
 const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'));
 const EmailsPage = lazy(() => import('./pages/EmailsPage'));
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/carte" element={<MapPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/prospects" element={<ProspectsPage />} />
+          <Route path="/partage" element={<PartagePage />} />
           <Route path="/appels" element={<CallsPage />} />
           <Route path="/rdv" element={<AppointmentsPage />} />
           <Route path="/rappels" element={<RappelsTachesPage />} />

@@ -8,6 +8,13 @@ import ErrorBoundary from './components/ErrorBoundary';
 import App from './App';
 import './index.css';
 
+// Application installable (écran d'accueil du téléphone) : c'est ce qui fait apparaître
+// SuiviPro dans le menu « Partager » de Google Maps et WhatsApp. Le service worker ne
+// garde rien en cache : il laisse tout passer au réseau.
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* navigateur sans service worker */ }); });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

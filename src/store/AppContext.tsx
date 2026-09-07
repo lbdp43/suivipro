@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo, useRef } from 'react';
 import {
-  AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate,
+  AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
   Client, Interaction, TaskClient, TourneeConfig, Commande,
 } from '../types';
@@ -47,6 +47,8 @@ export function appliquerPerimetre(state: AppState, perimetre: Perimetre): AppSt
 
 type Action =
   | { type: 'SET_STATE'; payload: AppState }
+  | { type: 'SET_SESSION_APPEL'; payload: SessionAppel }
+  | { type: 'RETIRER_SESSION_APPEL'; payload: { commercial_id: string; jour: string } }
   | { type: 'ADD_PROSPECT'; payload: Prospect }
   | { type: 'UPDATE_PROSPECT'; payload: Prospect }
   | { type: 'DELETE_PROSPECT'; payload: string }
@@ -98,7 +100,12 @@ function reducer(state: AppState, action: Action): AppState {
           ...p,
           tags: Array.isArray(p.tags) ? p.tags : [],
         })),
+        sessionsAppel: action.payload.sessionsAppel || [],
       };
+    case 'SET_SESSION_APPEL':
+      return { ...state, sessionsAppel: [...state.sessionsAppel.filter(s => s.id !== action.payload.id), action.payload] };
+    case 'RETIRER_SESSION_APPEL':
+      return { ...state, sessionsAppel: state.sessionsAppel.filter(s => !(s.commercial_id === action.payload.commercial_id && s.jour === action.payload.jour)) };
     case 'ADD_PROSPECT':
       return { ...state, prospects: [...state.prospects, { ...action.payload, tags: Array.isArray(action.payload.tags) ? action.payload.tags : [] }] };
     case 'UPDATE_PROSPECT':
@@ -236,7 +243,7 @@ function reducer(state: AppState, action: Action): AppState {
 // ============================================
 
 const defaultPipelineColumns: PipelineColumn[] = ([
-  'nouveau_datagouv', 'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
+  'partage', 'nouveau_datagouv', 'nouveau', 'a_contacter', 'contacte', 'proposition', 'negociation', 'gagne', 'client_gagne', 'perdu', 'ne_pas_contacter',
 ] as PipelineStage[]).map(key => ({
   id: key,
   label: PIPELINE_LABELS[key],
@@ -297,6 +304,7 @@ const emptyState: AppState = {
   tasksClient: [],
   tourneeConfigs: [],
   commandes: [],
+  sessionsAppel: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
