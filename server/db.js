@@ -436,9 +436,10 @@ async function initDatabase(attempt = 1) {
       const cols = await client.query("SELECT id FROM pipeline_columns");
       if (cols.rows.length > 0 && !cols.rows.some(r => r.id === 'partage')) {
         await client.query("UPDATE pipeline_columns SET sort_order = sort_order + 1");
-        await client.query("INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ('partage', 'Partagé', '#a855f7', 0)");
-        console.log('Étape « Partagé » ajoutée au pipeline.');
+        await client.query("INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ('partage', 'Nouveau partagé', '#a855f7', 0)");
+        console.log('Étape « Nouveau partagé » ajoutée au pipeline.');
       }
+      await client.query("UPDATE pipeline_columns SET label = 'Nouveau partagé' WHERE id = 'partage' AND label = 'Partagé'");
     } catch (err) { console.log('Migration étape Partagé :', err.message); }
     // Lien de la fiche Google Maps d'où vient le prospect.
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_url TEXT DEFAULT ''"); } catch { /* déjà là */ }
@@ -879,7 +880,7 @@ async function initDatabase(attempt = 1) {
 
       // Pipeline columns
       const cols = [
-        ['partage', 'Partagé', '#a855f7', 0],
+        ['partage', 'Nouveau partagé', '#a855f7', 0],
         ['nouveau_datagouv', 'Importe Datagouv', '#0ea5e9', 1],
         ['nouveau', 'Nouveau', '#6b7280', 2],
         ['a_contacter', 'A contacter', '#3b82f6', 3],

@@ -64,7 +64,7 @@ export type PipelineStage =
   | 'ne_pas_contacter';
 
 export const PIPELINE_LABELS: Record<PipelineStage, string> = {
-  partage: 'Partagé',
+  partage: 'Nouveau partagé',
   nouveau_datagouv: 'Importé Datagouv',
   nouveau: 'Nouveau',
   a_contacter: 'À contacter',
@@ -95,7 +95,7 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
 // Only the original built-in stages have a known rule - custom
 // admin-created stages have no entry here (nothing to show).
 export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
-  partage: 'fiche Google Maps partagée, à compléter',
+  partage: 'fiche Google partagée depuis le téléphone, à compléter',
   nouveau_datagouv: 'importé automatiquement depuis data.gouv',
   nouveau: 'créé manuellement, pas encore contacte',
   a_contacter: 'en attente du premier appel/visite',
