@@ -4,13 +4,15 @@ import {
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
   Client, Interaction, TaskClient, TourneeConfig, Commande,
 } from '../types';
+import { faitDeLaProspection } from '../utils/roles';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
 import { toLocalDateStr } from '../utils/helpers';
 
 // Périmètre d'affichage des clients. « moi » = mes clients + les fiches libres ; « equipe » =
 // toute l'équipe (remplacement d'un collègue). Appliqué ICI, une seule fois, il vaut pour
-// toutes les pages : accueil, retards, liste, semaine… Défaut : un commercial voit ses
-// clients, un admin ou un prospecteur voit l'équipe. Le choix est gardé pour la session.
+// toutes les pages : accueil, retards, liste, semaine… Défaut : chacun voit ses clients
+// (commercial comme admin) ; qui fait de la prospection voit l'équipe. Le choix est gardé
+// pour la session.
 export type Perimetre = 'moi' | 'equipe';
 const CLE_PERIMETRE = 'suivipro_perimetre';
 function lirePerimetreChoisi(): Perimetre | null {
@@ -19,8 +21,8 @@ function lirePerimetreChoisi(): Perimetre | null {
     return v === 'moi' || v === 'equipe' ? v : null;
   } catch { return null; }
 }
-export function perimetreParDefaut(role: string | undefined): Perimetre {
-  return role === 'commercial' ? 'moi' : 'equipe';
+export function perimetreParDefaut(personne: Pick<Commercial, 'role' | 'prospection'> | null | undefined): Perimetre {
+  return faitDeLaProspection(personne) ? 'equipe' : 'moi';
 }
 function sansCommercial(c: Client): boolean {
   return !c.commercial_id;
@@ -311,7 +313,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [stateComplet, rawDispatch] = useReducer(reducer, emptyState);
   const [loading, setLoading] = useState(true);
   const [perimetreChoisi, setPerimetreChoisi] = useState<Perimetre | null>(lirePerimetreChoisi);
-  const perimetre: Perimetre = perimetreChoisi ?? perimetreParDefaut(stateComplet.currentUser?.role);
+  const perimetre: Perimetre = perimetreChoisi ?? perimetreParDefaut(stateComplet.currentUser);
   const setPerimetre = useCallback((p: Perimetre) => {
     setPerimetreChoisi(p);
     try { sessionStorage.setItem(CLE_PERIMETRE, p); } catch { /* navigation privée */ }

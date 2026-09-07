@@ -12,6 +12,8 @@ export interface EntreeMenu {
   label: string;
   /** Autres adresses qui allument cette entrée (ex. /taches pour « Rappels et tâches »). */
   alias?: string[];
+  /** Rôles qui ne voient pas cette entrée (ex. Statistiques, réservées aux commerciaux et admins). */
+  masquePour?: string[];
 }
 export interface GroupeMenu {
   id: 'prospection' | 'commercial' | 'commun' | 'admin';
@@ -48,7 +50,7 @@ const COMMUN: GroupeMenu = {
   id: 'commun', titre: 'Pour tous', icon: Bell, roles: [],
   entrees: [
     { to: '/rappels', icon: Bell, label: 'Rappels et tâches', alias: ['/taches'] },
-    { to: '/statistiques', icon: BarChart3, label: 'Statistiques' },
+    { to: '/statistiques', icon: BarChart3, label: 'Statistiques', masquePour: ['prospection'] },
     { to: '/documents', icon: FileText, label: 'Documents' },
     { to: '/annuaire', icon: Contact, label: 'Annuaire' },
     { to: '/guide', icon: BookOpen, label: 'Guide' },
@@ -65,9 +67,15 @@ const ADMIN: GroupeMenu = {
 };
 
 export function groupesDuMenu(role: string | undefined): GroupeMenu[] {
-  if (role === 'prospection') return [PROSPECTION, COMMERCIAL, COMMUN];
-  if (role === 'admin') return [COMMERCIAL, PROSPECTION, COMMUN, ADMIN];
-  return [COMMERCIAL, PROSPECTION, COMMUN];
+  const groupes = role === 'prospection' ? [PROSPECTION, COMMERCIAL, COMMUN]
+    : role === 'admin' ? [COMMERCIAL, PROSPECTION, COMMUN, ADMIN]
+    : [COMMERCIAL, PROSPECTION, COMMUN];
+  return groupes.map(g => ({ ...g, entrees: g.entrees.filter(e => !e.masquePour || !role || !e.masquePour.includes(role)) }));
+}
+
+/** La page Statistiques n'est pas pour la prospection : les chiffres de vente ne la concernent pas. */
+export function peutVoirLesStatistiques(role: string | undefined): boolean {
+  return role !== 'prospection';
 }
 
 export function groupesOuvertsParDefaut(role: string | undefined, prospection = false): Set<string> {
