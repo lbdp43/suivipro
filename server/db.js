@@ -408,6 +408,10 @@ async function initDatabase(attempt = 1) {
     try {
       await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ");
     } catch { /* column may already exist */ }
+    // Un commercial peut aussi faire de la prospection (deux casquettes).
+    try {
+      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS prospection BOOLEAN DEFAULT FALSE");
+    } catch { /* column may already exist */ }
     // Points par tag : le score d'un prospect est la somme des points de ses tags.
     try {
       await client.query("ALTER TABLE tags ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0");

@@ -8,7 +8,8 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { Commercial, Objectifs, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
-import { objectifsDuRole, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
+import { objectifsDe, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
+import { libelleRole } from '../utils/roles';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -118,7 +119,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<Commercial | null>(null);
   const [userForm, setUserForm] = useState({
-    prenom: '', nom: '', email: '', telephone: '', role: 'commercial' as UserRole, password: '',
+    prenom: '', nom: '', email: '', telephone: '', role: 'commercial' as UserRole, password: '', prospection: false,
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -260,6 +261,42 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const DAY_LABELS: Record<string, string> = { '1': 'Lundi', '2': 'Mardi', '3': 'Mercredi', '4': 'Jeudi', '5': 'Vendredi', '6': 'Samedi', '0': 'Dimanche' };
   const DAY_KEYS = ['1', '2', '3', '4', '5', '6', '0'];
   const WEEK_PATTERN_LABELS: Record<string, string> = { every: 'Chaque semaine', even: 'Semaines paires', odd: 'Semaines impaires' };
+
+  // Secteurs et tournées vides : analyse puis suppression (recomptée côté serveur).
+  interface SecteurAnalyse { cle: string; nom: string; clients: number; prospects: number; meme_ville: number; dans_polygone: number; vide: boolean; configs: { commercial: string; jour: string }[]; zones: { id: string; commercial: string; points: number }[] }
+  const [secteursAnalyse, setSecteursAnalyse] = useState<{ secteurs: SecteurAnalyse[]; vides: number; total: number } | null>(null);
+  const [secteursLoading, setSecteursLoading] = useState(false);
+  const [secteursCoches, setSecteursCoches] = useState<Set<string>>(new Set());
+  const analyserSecteurs = async () => {
+    setSecteursLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
+      const res = await fetch('/api/tournees/vides', { headers });
+      if (!res.ok) { toast.error('Erreur lors de l\'analyse des secteurs'); return; }
+      const data = await res.json();
+      setSecteursAnalyse(data);
+      setSecteursCoches(new Set(data.secteurs.filter((s: SecteurAnalyse) => s.vide).map((s: SecteurAnalyse) => s.cle)));
+    } catch { toast.error('Erreur réseau'); }
+    finally { setSecteursLoading(false); }
+  };
+  const supprimerSecteursVides = async () => {
+    if (!secteursAnalyse) return;
+    const choisis = secteursAnalyse.secteurs.filter(s => s.vide && secteursCoches.has(s.cle));
+    if (choisis.length === 0) return;
+    if (!confirm(`Supprimer ${choisis.length} secteur(s) vide(s) ?\n\n${choisis.map(s => `• ${s.nom}`).join('\n')}\n\nIls seront retirés des tournées et les zones dessinées correspondantes effacées. Aucun client ni prospect n'est touché (il n'y en a aucun dedans, c'est revérifié au moment de supprimer).`)) return;
+    try {
+      const res = await fetch('/api/tournees/vides/supprimer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` },
+        body: JSON.stringify({ cles: choisis.map(s => s.cle) }),
+      });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(r.error || 'Suppression impossible'); return; }
+      toast.success(`${r.supprimes.length} secteur(s) supprimé(s)${r.refuses?.length ? ` · ${r.refuses.length} refusé(s) (plus vide)` : ''}`);
+      await loadTourneeConfigs();
+      await analyserSecteurs();
+    } catch { toast.error('Erreur réseau'); }
+  };
 
   const loadTourneeConfigs = useCallback(async () => {
     try {
@@ -774,7 +811,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   // ============================================
 
   const openNewUser = () => {
-    setUserForm({ prenom: '', nom: '', email: '', telephone: '', role: 'commercial', password: '' });
+    setUserForm({ prenom: '', nom: '', email: '', telephone: '', role: 'commercial', password: '', prospection: false });
     setEditingUser(null);
     setShowUserForm(true);
     setShowPassword(false);
@@ -788,6 +825,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       telephone: user.telephone,
       role: user.role,
       password: '',
+      prospection: !!user.prospection,
     });
     setEditingUser(user);
     setShowUserForm(true);
@@ -806,6 +844,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           email: userForm.email,
           telephone: userForm.telephone,
           role: userForm.role,
+          prospection: userForm.role !== 'prospection' && userForm.prospection,
           password: userForm.password || editingUser.password,
         };
         await apiPut(`/commerciaux/${editingUser.id}`, updated);
@@ -819,8 +858,9 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           email: userForm.email,
           telephone: userForm.telephone,
           role: userForm.role,
+          prospection: userForm.role !== 'prospection' && userForm.prospection,
           password: userForm.password,
-          objectifs: objectifsParDefaut(userForm.role),
+          objectifs: objectifsParDefaut(userForm.role, userForm.role !== 'prospection' && userForm.prospection),
         };
         await apiPost('/commerciaux', newUser);
         dispatchLocal({ type: 'ADD_COMMERCIAL', payload: newUser });
@@ -859,7 +899,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     setEditingObjectives(commercial.id);
     // Les clés du rôle, pré-remplies avec l'existant ou la valeur proposée.
     const f: Objectifs = { ...commercial.objectifs };
-    for (const def of objectifsDuRole(commercial.role)) if (f[def.cle] === undefined) f[def.cle] = def.defaut;
+    for (const def of objectifsDe(commercial)) if (f[def.cle] === undefined) f[def.cle] = def.defaut;
     setObjectivesForm(f);
   };
 
@@ -1055,6 +1095,11 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                           <User className="w-3 h-3" /> Commercial
                         </span>
                       )}
+                      {user.role !== 'prospection' && user.prospection && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                          <Users className="w-3 h-3" /> + prospection
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-500 mt-2">{user.email}</p>
                     <p className="text-xs text-gray-500">{user.telephone}</p>
@@ -1168,6 +1213,12 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                         <Users className="w-4 h-4" /> Prospection
                       </button>
                     </div>
+                    {userForm.role !== 'prospection' && (
+                      <label className="mt-2 flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5" checked={userForm.prospection} onChange={e => setUserForm(prev => ({ ...prev, prospection: e.target.checked }))} />
+                        <span><b>Fait aussi de la prospection</b> — appels et rendez-vous pris pour les autres. Il aura les deux accueils, les deux jeux d'objectifs, et comptera dans les deux vues d'équipe.</span>
+                      </label>
+                    )}
                   </div>
 
                   <div>
@@ -1229,7 +1280,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           {state.commerciaux.map(commercial => {
             const isEditing = editingObjectives === commercial.id;
             const mesures = mesurerObjectifs(state, commercial);
-            const defs = objectifsDuRole(commercial.role);
+            const defs = objectifsDe(commercial);
             return (
               <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -1241,7 +1292,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{commercial.prenom} {commercial.nom}</h3>
-                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'} · objectifs du mois</p>
+                      <p className="text-xs text-gray-500">{libelleRole(commercial)} · objectifs du mois</p>
                     </div>
                   </div>
                   {isEditing ? (
@@ -2483,6 +2534,63 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       {/* ============================================ */}
       {activeTab === 'tournees' && (
         <div className="space-y-4 sm:space-y-6">
+          {/* Secteurs vides */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <MapPin className="w-4 h-4" /> Secteurs et tournées vides
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Passe en revue tous les secteurs connus (jours de tournée, zones de prospection, zones dessinées sur la carte)
+              et compte pour chacun les clients (champ tournée), les prospects (champ secteur), les fiches dont la ville porte
+              ce nom, et les fiches géolocalisées dans la zone. Un secteur sans rien peut être supprimé : il est retiré des tournées et sa zone effacée.
+              Les clients et prospects ne sont jamais touchés.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <button onClick={analyserSecteurs} disabled={secteursLoading} className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50">
+                {secteursLoading ? 'Analyse…' : secteursAnalyse ? 'Relancer l\'analyse' : 'Analyser les secteurs'}
+              </button>
+              {secteursAnalyse && secteursAnalyse.vides > 0 && (
+                <button onClick={supprimerSecteursVides} disabled={[...secteursCoches].length === 0} className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm disabled:opacity-50 flex items-center gap-1">
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer les secteurs vides cochés ({secteursAnalyse.secteurs.filter(s => s.vide && secteursCoches.has(s.cle)).length})
+                </button>
+              )}
+            </div>
+            {secteursAnalyse && (
+              <div>
+                <div className="flex gap-3 mb-3 text-sm flex-wrap">
+                  <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{secteursAnalyse.total} secteur(s) connu(s)</span>
+                  <span className={`px-2 py-1 rounded ${secteursAnalyse.vides ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{secteursAnalyse.vides} vide(s)</span>
+                </div>
+                {secteursAnalyse.total === 0 ? <p className="text-sm text-gray-500">Aucun secteur configuré.</p> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs min-w-[640px]">
+                      <thead><tr className="text-left text-gray-500 border-b border-gray-100">
+                        <th className="py-2 pr-2 w-6"></th><th className="py-2 pr-2 font-medium">Secteur</th><th className="py-2 px-2 font-medium text-center">Clients</th><th className="py-2 px-2 font-medium text-center">Prospects</th><th className="py-2 px-2 font-medium text-center">Même ville</th><th className="py-2 px-2 font-medium text-center">Dans la zone</th><th className="py-2 px-2 font-medium">Où il est utilisé</th>
+                      </tr></thead>
+                      <tbody>
+                        {secteursAnalyse.secteurs.map(s => (
+                          <tr key={s.cle} className={`border-b border-gray-50 last:border-0 ${s.vide ? 'bg-amber-50/50' : ''}`}>
+                            <td className="py-2 pr-2">{s.vide && <input type="checkbox" checked={secteursCoches.has(s.cle)} onChange={e => setSecteursCoches(prev => { const n = new Set(prev); if (e.target.checked) n.add(s.cle); else n.delete(s.cle); return n; })} />}</td>
+                            <td className="py-2 pr-2 font-semibold text-gray-800">{s.nom}{s.vide && <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">vide</span>}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums ${s.clients ? 'text-gray-800' : 'text-gray-400'}`}>{s.clients}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums ${s.prospects ? 'text-gray-800' : 'text-gray-400'}`}>{s.prospects}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums ${s.meme_ville ? 'text-gray-800' : 'text-gray-400'}`} title="Fiches dont la ville porte ce nom : par prudence, le secteur n'est pas considéré vide">{s.meme_ville}</td>
+                            <td className={`py-2 px-2 text-center tabular-nums ${s.dans_polygone ? 'text-gray-800' : 'text-gray-400'}`}>{s.zones.length ? s.dans_polygone : '—'}</td>
+                            <td className="py-2 px-2 text-gray-500">
+                              {s.configs.map((c, i) => <span key={i} className="inline-block mr-1.5">{c.commercial} · {c.jour}</span>)}
+                              {s.zones.map(z => <span key={z.id} className="inline-block mr-1.5">zone carte de {z.commercial}</span>)}
+                              {s.configs.length === 0 && s.zones.length === 0 && <span className="italic">nulle part (seulement sur des fiches)</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Recurrence config */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">

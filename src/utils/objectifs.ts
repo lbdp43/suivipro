@@ -1,5 +1,6 @@
 import { AppState, Commercial, Objectifs } from '../types';
 import { jourDe, rdvAnnule, rdvSansCompteRendu } from '../../shared/regles';
+import { faitDeLaProspection, estCommercial } from './roles';
 
 // ============================================================================
 // Objectifs mensuels par rôle, et leur mesure à partir de l'état de l'application.
@@ -27,6 +28,14 @@ export const OBJECTIFS_COMMERCIAL: DefinitionObjectif[] = [
 
 export function objectifsDuRole(role: string | undefined): DefinitionObjectif[] {
   return role === 'prospection' ? OBJECTIFS_PROSPECTION : OBJECTIFS_COMMERCIAL;
+}
+
+/** Les objectifs d'une personne : ceux de ses casquettes (un commercial-prospecteur a les deux). */
+export function objectifsDe(personne: Pick<Commercial, 'role' | 'prospection'>): DefinitionObjectif[] {
+  return [
+    ...(estCommercial(personne) ? OBJECTIFS_COMMERCIAL : []),
+    ...(faitDeLaProspection(personne) ? OBJECTIFS_PROSPECTION : []),
+  ];
 }
 
 export interface MesureObjectif extends DefinitionObjectif {
@@ -75,7 +84,7 @@ export function mesurerObjectifs(state: AppState, personne: Commercial, maintena
   const mois = mesurerLeMois(state, personne, maintenant);
   const joursDuMois = new Date(maintenant.getFullYear(), maintenant.getMonth() + 1, 0).getDate();
   const avancementDuMois = maintenant.getDate() / joursDuMois;
-  return objectifsDuRole(personne.role).map(def => {
+  return objectifsDe(personne).map(def => {
     const valeur = mois[def.cle as keyof typeof mois] ?? 0;
     const objectif = Number(personne.objectifs?.[def.cle] ?? 0);
     const attendu = Math.round(objectif * avancementDuMois);
@@ -104,8 +113,8 @@ export function objectifAppels(personne: Commercial, periode: 'semaine' | 'mois'
 }
 
 /** Objectifs proposés à la création d'une fiche, selon le rôle. */
-export function objectifsParDefaut(role: string | undefined): Objectifs {
+export function objectifsParDefaut(role: string | undefined, prospection = false): Objectifs {
   const o: Objectifs = {};
-  for (const def of objectifsDuRole(role)) o[def.cle] = def.defaut;
+  for (const def of objectifsDe({ role: role as Commercial['role'], prospection })) o[def.cle] = def.defaut;
   return o;
 }

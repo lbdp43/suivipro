@@ -76,6 +76,7 @@ const sections: GuideSection[] = [
           '**Commercial** : Gère ses prospects et clients, passe des appels, prend des rendez-vous, planifié ses tournées.',
           '**Admin** : Supervise tous les commerciaux, voit toutes les données, configuré le système et les intégrations.',
           '**Prospection** : Appelle les prospects, prend les rendez-vous pour les commerciaux, gère ses rappels. Voit aussi les clients pour dépanner.',
+          '**Commercial + prospection** : un commercial peut aussi faire de la prospection (case à cocher sur sa fiche, dans Administration → Équipe) : il a alors les deux accueils, les deux jeux d\'objectifs, et compte dans les deux vues d\'équipe.',
         ],
       },
       {

@@ -8,6 +8,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
+import { libelleRole, faitDeLaProspection } from '../utils/roles';
 import { isToday, toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
 
@@ -108,7 +109,7 @@ export default function Layout() {
   // un commercial peut aller dans la prospection et inversement, seul l'ordre change.
   const role = state.currentUser?.role;
   const groupes = groupesDuMenu(role);
-  const ouverts = openSections ?? groupesOuvertsParDefaut(role);
+  const ouverts = openSections ?? groupesOuvertsParDefaut(role, faitDeLaProspection(state.currentUser));
   const toggleSection = (id: string) => {
     setOpenSections(() => {
       const next = new Set(ouverts);
@@ -200,7 +201,7 @@ export default function Layout() {
 
           {groupes.filter(g => !g.adminOnly || isAdmin).map(groupe => {
             const isOpen = ouverts.has(groupe.id);
-            const estMonGroupe = groupe.roles.includes(role || '');
+            const estMonGroupe = groupe.roles.includes(role || '') || (groupe.id === 'prospection' && faitDeLaProspection(state.currentUser));
             return (
               <div key={groupe.id} className="pt-2">
                 <button
@@ -301,7 +302,7 @@ export default function Layout() {
                   {state.currentUser?.prenom} {state.currentUser?.nom}
                 </p>
                 <p className="text-[10px] text-gray-500">
-                  {isAdmin ? 'Administrateur' : state.currentUser?.role === 'prospection' ? 'Prospection' : 'Commercial'}
+                  {libelleRole(state.currentUser)}
                 </p>
               </div>
             </Link>
@@ -427,7 +428,7 @@ export default function Layout() {
             <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               isAdmin ? 'bg-amber-100 text-amber-700' : state.currentUser?.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
             }`}>
-              {isAdmin ? 'Admin' : state.currentUser?.role === 'prospection' ? 'Prospection' : 'Commercial'}
+              {isAdmin ? 'Admin' : state.currentUser?.role === 'prospection' ? 'Prospection' : state.currentUser?.prospection ? 'Commercial + prospection' : 'Commercial'}
             </div>
             <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors">{state.currentUser?.prenom}</Link>
           </div>

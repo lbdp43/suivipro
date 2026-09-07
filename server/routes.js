@@ -654,8 +654,8 @@ router.post('/commerciaux', authMiddleware, adminOnly, asyncHandler(async (req, 
   }
   const hashedPwd = bcrypt.hashSync(c.password, 10);
   await db.query(
-    'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {})]
+    'INSERT INTO commerciaux (id, prenom, nom, email, telephone, role, password, objectifs, prospection) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [c.id, c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), !!c.prospection]
   );
   res.json({ ok: true });
 }));
@@ -669,9 +669,15 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
     if (targetId !== req.user.id) {
       return res.status(403).json({ error: 'Vous ne pouvez modifier que votre propre profil' });
     }
-    // Prevent role escalation
+    // Prevent role escalation (la casquette prospection se règle aussi par l'admin)
     delete c.role;
+    delete c.prospection;
   }
+  // Rôle : celui envoyé par un admin, sinon celui en place (un prospecteur qui change son
+  // mot de passe ne doit pas devenir « commercial » par défaut).
+  if (!c.role) c.role = (await db.query('SELECT role FROM commerciaux WHERE id = $1', [targetId])).rows[0]?.role || 'commercial';
+  // Hors admin, on garde la casquette en place ; un admin envoie la valeur voulue.
+  const prospection = isAdmin(req) ? !!c.prospection : (await db.query('SELECT prospection FROM commerciaux WHERE id = $1', [targetId])).rows[0]?.prospection === true;
 
   // Password policy
   if (c.password && c.password.length > 0) {
@@ -680,13 +686,13 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
     }
     const hashedPwd = bcrypt.hashSync(c.password, 10);
     await db.query(
-      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7 WHERE id=$8',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId]
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7, prospection=$9 WHERE id=$8',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId, prospection]
     );
   } else {
     await db.query(
-      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6 WHERE id=$7',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId]
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6, prospection=$8 WHERE id=$7',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId, prospection]
     );
   }
   res.json({ ok: true });
@@ -1866,6 +1872,126 @@ router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async 
 // ============================================
 // Commercial Zones (hand-drawn map territories)
 // ============================================
+
+// ============================================
+// Secteurs et tournées vides
+// Un secteur (nom de zone dans une config de tournée, ou zone dessinée sur la carte) qui
+// n'a AUCUN client (champ tournée) ni AUCUN prospect (champ secteur), ni aucun point
+// géolocalisé dans son polygone, ne sert à rien : l'admin peut le supprimer. On recompte
+// toujours au moment de supprimer — jamais sur la foi de l'analyse précédente.
+// ============================================
+function normaliserNomSecteur(v) {
+  return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function pointDansPolygone(lat, lng, polygone) {
+  // Ray casting ; polygone = [[lat, lng], ...]
+  let dedans = false;
+  for (let i = 0, j = polygone.length - 1; i < polygone.length; j = i++) {
+    const [yi, xi] = polygone[i], [yj, xj] = polygone[j];
+    const coupe = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (coupe) dedans = !dedans;
+  }
+  return dedans;
+}
+async function analyserSecteurs() {
+  const [configs, zones, clients, prospects, commerciaux] = await Promise.all([
+    db.query('SELECT commercial_id, config FROM tournee_config'),
+    db.query('SELECT id, commercial_id, nom, coordinates FROM commercial_zones'),
+    db.query('SELECT id, nom, tournee, ville, latitude, longitude, statut FROM clients'),
+    db.query('SELECT id, nom_etablissement AS nom, secteur, ville, latitude, longitude FROM prospects'),
+    db.query('SELECT id, prenom, nom FROM commerciaux'),
+  ]);
+  const nomCommercial = new Map(commerciaux.rows.map(c => [c.id, `${c.prenom} ${c.nom}`.trim()]));
+  const clientsParNom = new Map(), prospectsParNom = new Map(), parVille = new Map();
+  for (const c of clients.rows) { const k = normaliserNomSecteur(c.tournee); if (k) clientsParNom.set(k, (clientsParNom.get(k) || 0) + 1); }
+  for (const p of prospects.rows) { const k = normaliserNomSecteur(p.secteur); if (k) prospectsParNom.set(k, (prospectsParNom.get(k) || 0) + 1); }
+  // Prudence : un secteur qui porte le nom d'une ville où se trouvent des fiches (champ
+  // ville) n'est pas considéré vide, même si personne n'y est « attitré » par le champ.
+  for (const c of clients.rows) { const k = normaliserNomSecteur(c.ville); if (k) parVille.set(k, (parVille.get(k) || 0) + 1); }
+  for (const p of prospects.rows) { const k = normaliserNomSecteur(p.ville); if (k) parVille.set(k, (parVille.get(k) || 0) + 1); }
+
+  const secteurs = new Map(); // clé normalisée -> fiche
+  const fiche = (nom) => {
+    const k = normaliserNomSecteur(nom);
+    if (!secteurs.has(k)) secteurs.set(k, { cle: k, nom: String(nom).trim(), clients: clientsParNom.get(k) || 0, prospects: prospectsParNom.get(k) || 0, meme_ville: parVille.get(k) || 0, dans_polygone: 0, configs: [], zones: [] });
+    return secteurs.get(k);
+  };
+  const JOURS = { '1': 'lundi', '2': 'mardi', '3': 'mercredi', '4': 'jeudi', '5': 'vendredi', '6': 'samedi', '0': 'dimanche' };
+  for (const row of configs.rows) {
+    const cfg = lireConfigTournee(row.config);
+    for (const [jour, liste] of Object.entries(cfg)) {
+      if (!Array.isArray(liste)) continue;
+      for (const z of liste) {
+        const nom = nomZone(z);
+        if (!nom) continue;
+        const f = fiche(nom);
+        f.configs.push({ commercial_id: row.commercial_id, commercial: nomCommercial.get(row.commercial_id) || row.commercial_id, jour: jour === 'prospection' ? 'prospection' : (JOURS[jour] || jour) });
+      }
+    }
+  }
+  for (const z of zones.rows) {
+    let coords = [];
+    try { coords = JSON.parse(z.coordinates || '[]'); } catch { coords = []; }
+    const f = fiche(z.nom || `zone sans nom (${nomCommercial.get(z.commercial_id) || z.commercial_id})`);
+    let dedans = 0;
+    if (Array.isArray(coords) && coords.length >= 3) {
+      for (const c of clients.rows) if (c.latitude && c.longitude && pointDansPolygone(Number(c.latitude), Number(c.longitude), coords)) dedans++;
+      for (const p of prospects.rows) if (p.latitude && p.longitude && pointDansPolygone(Number(p.latitude), Number(p.longitude), coords)) dedans++;
+    }
+    f.dans_polygone += dedans;
+    f.zones.push({ id: z.id, commercial_id: z.commercial_id, commercial: nomCommercial.get(z.commercial_id) || z.commercial_id, points: dedans });
+  }
+  const liste = [...secteurs.values()].map(f => ({ ...f, vide: f.clients === 0 && f.prospects === 0 && f.meme_ville === 0 && f.dans_polygone === 0 }))
+    .sort((a, b) => Number(b.vide) - Number(a.vide) || a.nom.localeCompare(b.nom));
+  return { secteurs: liste, vides: liste.filter(f => f.vide).length, total: liste.length };
+}
+
+router.get('/tournees/vides', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  res.json(await analyserSecteurs());
+}));
+
+router.post('/tournees/vides/supprimer', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const demandes = new Set((Array.isArray(req.body?.cles) ? req.body.cles : []).map(normaliserNomSecteur).filter(Boolean));
+  if (demandes.size === 0) return res.status(400).json({ error: 'Aucun secteur demandé' });
+  // Recompte au moment de supprimer : on ne supprime que ce qui est ENCORE vide.
+  const analyse = await analyserSecteurs();
+  const aSupprimer = analyse.secteurs.filter(f => demandes.has(f.cle) && f.vide);
+  const refuses = analyse.secteurs.filter(f => demandes.has(f.cle) && !f.vide).map(f => f.nom);
+  const cles = new Set(aSupprimer.map(f => f.cle));
+  let configsModifiees = 0, zonesSupprimees = 0;
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const configs = (await client.query('SELECT commercial_id, config FROM tournee_config')).rows;
+    for (const row of configs) {
+      const cfg = lireConfigTournee(row.config);
+      let change = false;
+      for (const [jour, liste] of Object.entries(cfg)) {
+        if (!Array.isArray(liste)) continue;
+        const filtre = liste.filter(z => !cles.has(normaliserNomSecteur(nomZone(z))));
+        if (filtre.length !== liste.length) { cfg[jour] = filtre; change = true; }
+        if (jour !== 'prospection' && filtre.length === 0) delete cfg[jour];
+      }
+      if (change) {
+        await client.query('UPDATE tournee_config SET config = $1, updated_at = $2 WHERE commercial_id = $3', [JSON.stringify(cfg), new Date().toISOString(), row.commercial_id]);
+        configsModifiees++;
+      }
+    }
+    const ids = aSupprimer.flatMap(f => f.zones.map(z => z.id));
+    if (ids.length) {
+      const r = await client.query('DELETE FROM commercial_zones WHERE id = ANY($1::text[])', [ids]);
+      zonesSupprimees = r.rowCount || 0;
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  await logActivity(req.user.id, 'suppression_secteurs', `${aSupprimer.length} secteur(s) vide(s) : ${aSupprimer.map(f => f.nom).join(', ')}`, 'tournee', '');
+  res.json({ ok: true, supprimes: aSupprimer.map(f => f.nom), refuses, configs_modifiees: configsModifiees, zones_supprimees: zonesSupprimees });
+}));
 
 router.get('/commercial-zones', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC');
