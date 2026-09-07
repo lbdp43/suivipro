@@ -205,15 +205,16 @@ router.get('/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 // ============================================
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
-  // Cloisonnement par commercial : chacun ne recoit que son portefeuille (ses clients et
-  // tout ce qui s'y rattache, ses prospects, son activite). Un admin recoit l'ensemble.
+  // Cloisonnement par commercial : chacun ne recoit que son portefeuille CLIENT (ses clients,
+  // leurs interactions, commandes et taches). Un admin recoit l'ensemble.
   // Le filtre est fait ICI et non dans les ecrans : c'est la seule facon qu'il s'applique
   // partout, y compris aux pages qu'on ne touche pas — retards de visite compris.
-  // Restent communs a tous : l'equipe, les tags, les modeles d'email, les colonnes de
-  // pipeline, les documents et les tournees (parametrage partage, aucune donnee client).
+  // La PROSPECTION est commune a toute l'equipe : prospects, appels, rendez-vous et rappels
+  // sont visibles de tous (le prospecteur prend les RDV, le commercial les tient, chacun
+  // doit voir la fiche et l'historique de l'autre). Restent communs aussi : l'equipe, les
+  // tags, les modeles d'email, les colonnes de pipeline, les documents et les tournees.
   const admin = req.user.role === 'admin';
   const moi = req.user.id;
-  const filtreCommercial = admin ? '' : ' WHERE commercial_id = $1';
   const params = admin ? [] : [moi];
   // Les fiches sans commercial restent visibles de tous : sinon personne ne peut plus les
   // reprendre, et elles disparaissent du radar. Chacun voit donc son portefeuille + les
@@ -222,11 +223,10 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   const clientsVisibles = `SELECT id FROM clients WHERE commercial_id = $1 OR ${SANS_COMMERCIAL}`;
 
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes] = await Promise.all([
-    db.query(`SELECT * FROM prospects${filtreCommercial}`, params),
-    db.query(`SELECT * FROM calls${filtreCommercial}`, params),
-    // Un prospecteur ne tient pas les rendez-vous qu'il prend : il doit voir les deux.
-    db.query(admin ? 'SELECT * FROM appointments' : 'SELECT * FROM appointments WHERE commercial_id = $1 OR prospecteur_id = $1', params),
-    db.query(`SELECT * FROM reminders${filtreCommercial}`, params),
+    db.query('SELECT * FROM prospects'),
+    db.query('SELECT * FROM calls'),
+    db.query('SELECT * FROM appointments'),
+    db.query('SELECT * FROM reminders'),
     db.query('SELECT * FROM commerciaux'),
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
