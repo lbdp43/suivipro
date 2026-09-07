@@ -2,18 +2,19 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
-  Edit2, Trash2, Save, Filter, User, Eye, EyeOff,
-  Calendar, CheckCircle2, AlertTriangle, PhoneCall, Navigation,
-  Download, ListTodo, Check, CheckSquare, Square, XCircle,
+  Edit2, Trash2, Save, Filter, User,
+  Calendar, CheckCircle2, AlertTriangle, Navigation,
+  Download, ListTodo, CheckSquare, Square, XCircle,
   Users, CalendarPlus, StickyNote, CalendarDays, Link2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import ChampsRdv, { type ValeurRdv } from '../components/ChampsRdv';
+import FicheClient from '../components/FicheClient';
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType, ClientStatus, Client, InteractionType,
-  INTERACTION_TYPE_LABELS, TaskClient, 
+  INTERACTION_TYPE_LABELS, 
 } from '../types';
 import { generateId, formatDate, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api/client';
@@ -46,7 +47,7 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getTasksForClient, getClient, getCommandesForClient, pausePolling } = useApp();
+  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getClient, getCommandesForClient, pausePolling } = useApp();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -670,33 +671,7 @@ export default function ClientsPage() {
     setShowForm(false);
   };
 
-  const deleteClient = async (id: string) => {
-    if (!confirm('Supprimer ce client ? Cette action est irreversible.')) return;
-    try {
-      await apiDelete(`/clients/${id}`);
-      dispatchLocal({ type: 'DELETE_CLIENT', payload: id });
-      if (selectedId === id) setSearchParams({});
-    } catch {
-      toast.error('Erreur lors de la suppression du client');
-    }
-  };
 
-  const toggleStatus = async (client: Client) => {
-    const updated = {
-      ...client,
-      statut: client.statut === 'ACTIF' ? 'INACTIF' as ClientStatus : 'ACTIF' as ClientStatus,
-      date_modification: new Date().toISOString(),
-    };
-    if (updated.statut === 'INACTIF') {
-      updated.next_visit = null;
-    }
-    try {
-      await apiPut(`/clients/${client.id}`, updated);
-      dispatchLocal({ type: 'UPDATE_CLIENT', payload: updated });
-    } catch {
-      toast.error('Erreur lors du changement de statut');
-    }
-  };
 
   // Mark visit
   const submitInteraction = async () => {
@@ -819,20 +794,6 @@ export default function ClientsPage() {
     }
   };
 
-  const toggleTask = async (task: TaskClient) => {
-    const isComplete = task.statut === 'TERMINEE';
-    const payload = {
-      ...task,
-      statut: (isComplete ? 'A_FAIRE' : 'TERMINEE') as TaskClient['statut'],
-      completed_at: isComplete ? null : new Date().toISOString(),
-    };
-    try {
-      await apiPut(`/tasks-client/${task.id}`, payload);
-      dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload });
-    } catch {
-      toast.error('Erreur lors de la mise à jour de la tâche');
-    }
-  };
 
   // Filter & sort
   const filtered = useMemo(() => {
@@ -926,22 +887,6 @@ export default function ClientsPage() {
 
   // Selected client detail
   const selectedClient = selectedId ? state.clients.find(c => c.id === selectedId) : null;
-  const selectedInteractions = selectedClient ? getInteractionsForClient(selectedClient.id) : [];
-  const selectedTasks = selectedClient ? getTasksForClient(selectedClient.id) : [];
-  const selectedCommandes = selectedClient ? getCommandesForClient(selectedClient.id) : [];
-  const selectedTopProduits = (() => {
-    const agg: Record<string, number> = {};
-    for (const cmd of selectedCommandes) {
-      if (cmd.statut === 'annulee') continue;
-      for (const l of (cmd.lignes || [])) {
-        const key = (l.nom_produit || l.produit || '').trim();
-        if (!key) continue;
-        agg[key] = (agg[key] || 0) + (Number(l.quantite) || 0);
-      }
-    }
-    return Object.entries(agg).map(([produit, quantite]) => ({ produit, quantite }))
-      .sort((a, b) => b.quantite - a.quantite).slice(0, 5);
-  })();
 
   return (
     <div className="flex h-full">
@@ -1682,286 +1627,16 @@ export default function ClientsPage() {
       {/* Detail panel */}
       {selectedClient && (
         <div className="w-full md:w-[420px] border-l border-gray-200 bg-white flex flex-col h-full overflow-hidden">
-          {/* Detail header */}
-          <div className="p-4 border-b border-gray-200 flex-shrink-0">
-            <div className="flex items-center justify-between mb-2">
-              <button onClick={() => setSearchParams({})} className="md:hidden p-1 rounded hover:bg-gray-100">
-                <ChevronLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              <h2 className="text-lg font-bold text-gray-900 flex-1 truncate">{selectedClient.nom}</h2>
-              {(() => { const d = selectedClient.statut === 'ACTIF' ? decrocheDuClient(selectedCommandes) : null; return d ? (
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 mr-2" title={`Dernière commande le ${formatDate(d.derniere)} — il commandait, il ne commande plus : à relancer`}>
-                  Décroche · {d.libelle}
-                </span>
-              ) : null; })()}
-              <div className="flex gap-1">
-                <button onClick={() => openEditForm(selectedClient)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="Modifier">
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button onClick={() => toggleStatus(selectedClient)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title={selectedClient.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}>
-                  {selectedClient.statut === 'ACTIF' ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                <button onClick={() => deleteClient(selectedClient.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Supprimer">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Status badges */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${selectedClient.statut === 'ACTIF' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                {selectedClient.statut}
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                {CLIENT_TYPE_LABELS[selectedClient.type_client]}
-              </span>
-              {selectedClient.tournee && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-brewery-50 text-brewery-700">
-                  {selectedClient.tournee}
-                </span>
-              )}
-            </div>
-
-            {/* Contact info */}
-            <div className="space-y-1.5 text-sm">
-              {selectedClient.contact && (
-                <div className="flex items-center gap-2 text-gray-600">
-                  <User className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{selectedClient.contact}</span>
-                </div>
-              )}
-              {selectedClient.telephone && (
-                <a href={`tel:${selectedClient.telephone}`} className="flex items-center gap-2 text-blue-600 hover:text-blue-700">
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>{selectedClient.telephone}</span>
-                </a>
-              )}
-              {selectedClient.telephone_mobile && (
-                <a href={`tel:${selectedClient.telephone_mobile}`} className="flex items-center gap-2 text-blue-600 hover:text-blue-700">
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>{selectedClient.telephone_mobile} (mobile)</span>
-                </a>
-              )}
-              {selectedClient.email && (
-                <button onClick={() => setEmailClient(selectedClient)} className="flex items-center gap-2 text-blue-600 hover:text-blue-700">
-                  <Mail className="w-3.5 h-3.5" />
-                  <span className="truncate">{selectedClient.email}</span>
-                </button>
-              )}
-              {(selectedClient.adresse || selectedClient.ville) && (
-                <div className="flex items-center gap-2 text-gray-600">
-                  <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{[selectedClient.adresse, selectedClient.code_postal, selectedClient.ville].filter(Boolean).join(', ')}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Visit info - personal when available, global otherwise */}
-            {(() => {
-              const pInfo = getPersonalVisitInfo(selectedClient);
-              const pStatus = getVisitStatus(selectedClient);
-              const daysLate = joursDeRetard(selectedClient);
-              return (
-                <div className={`mt-3 p-3 rounded-lg ${pStatus === 'LATE' ? 'bg-red-50' : 'bg-gray-50'}`}>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <span className="text-gray-500">{pInfo.isPersonal ? 'Ma dernière visite' : 'Dernière visite'}</span>
-                      <p className="font-medium text-gray-900">{pInfo.lastVisit ? formatDate(pInfo.lastVisit) : 'Jamais'}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Prochaine visite</span>
-                      <p className={`font-medium ${pStatus === 'LATE' ? 'text-red-600' : 'text-gray-900'}`}>
-                        {selectedClient.next_visit ? formatDate(selectedClient.next_visit) : 'Non planifiée'}
-                        {pStatus === 'LATE' && daysLate > 0 && <span className="ml-1">({daysLate}j retard)</span>}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Fréquence</span>
-                      <p className="font-medium text-gray-900">
-                        {selectedClient.custom_recurrence
-                          ? `${selectedClient.custom_recurrence}j (perso)`
-                          : getEffectiveFrequency(selectedClient.type_client, null) != null
-                            ? `${getEffectiveFrequency(selectedClient.type_client, null)}j`
-                            : 'Aucune'}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Commercial</span>
-                      <p className="font-medium text-gray-900">{getCommercial(selectedClient.commercial_id)?.prenom || '-'}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Quick action buttons */}
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={() => { setInteractionClient(selectedClient); setInteractionType('VISITE'); }}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Visite
-              </button>
-              <button
-                onClick={() => { setInteractionClient(selectedClient); setInteractionType('APPEL'); }}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
-              >
-                <PhoneCall className="w-3.5 h-3.5" />
-                Appel
-              </button>
-              <button
-                onClick={() => { setInteractionClient(selectedClient); setInteractionType('RDV_PLANIFIE'); setInteractionDate(toLocalDateStr(new Date())); }}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                RDV
-              </button>
-            </div>
-
-            {/* Notes */}
-            {selectedClient.notes && (
-              <div className="mt-3 p-3 bg-yellow-50 rounded-lg text-xs text-gray-700 border border-yellow-200">
-                <p className="font-medium text-yellow-800 mb-1">Notes</p>
-                <p className="whitespace-pre-wrap">{selectedClient.notes}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Scrollable content: Tasks, Commandes, Historique */}
-          <div className="flex-1 overflow-y-auto">
-
-          {/* Tasks */}
-          <div className="px-4 pt-3 pb-1">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                <ListTodo className="w-4 h-4" /> Taches ({selectedTasks.filter(t => t.statut !== 'TERMINEE').length})
-              </h3>
-              <button
-                onClick={() => { setTaskClientId(selectedClient!.id); setTaskTitle(''); setTaskDate(''); setShowTaskForm(true); }}
-                className="text-xs text-brewery-600 hover:text-brewery-700 font-medium flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> Ajouter
-              </button>
-            </div>
-            {selectedTasks.length > 0 && (
-              <div className="space-y-1 mb-2">
-                {selectedTasks
-                  .sort((a, b) => (a.statut === 'TERMINEE' ? 1 : 0) - (b.statut === 'TERMINEE' ? 1 : 0))
-                  .slice(0, 5)
-                  .map(task => (
-                    <div key={task.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-xs">
-                      <button onClick={() => toggleTask(task)} className="flex-shrink-0">
-                        {task.statut === 'TERMINEE'
-                          ? <Check className="w-4 h-4 text-green-500" />
-                          : <div className="w-4 h-4 border-2 border-gray-300 rounded" />}
-                      </button>
-                      <span className={`flex-1 truncate ${task.statut === 'TERMINEE' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                        {task.titre}
-                      </span>
-                      {task.date_echeance && (
-                        <span className={`text-[10px] flex-shrink-0 ${task.date_echeance < toLocalDateStr(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>
-                          {formatDate(task.date_echeance)}
-                        </span>
-                      )}
-                      <button onClick={async () => { try { await apiDelete(`/tasks-client/${task.id}`); dispatchLocal({ type: 'DELETE_TASK_CLIENT', payload: task.id }); } catch { toast.error('Erreur lors de la suppression de la tâche'); } }} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50">
-                        <X className="w-3 h-3 text-gray-400 hover:text-red-500" />
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-
-          {/* Commandes */}
-          {selectedCommandes.length > 0 && (
-          <div className="p-4 border-t border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Commandes ({selectedCommandes.length})</h3>
-            {selectedTopProduits.length > 0 && (
-              <div className="mb-3 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-                <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">Produits les plus commandes</p>
-                <div className="space-y-1">
-                  {selectedTopProduits.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="truncate flex-1 text-gray-700">{i + 1}. {p.produit}</span>
-                      <span className="flex-shrink-0 ml-2 font-semibold text-emerald-700">x{p.quantite}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="space-y-2">
-              {selectedCommandes.slice(0, 10).map(cmd => (
-                <div key={cmd.id} className="p-2.5 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-900">
-                      {cmd.numero ? `#${cmd.numero}` : 'Commande'}
-                    </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      cmd.statut === 'livree' ? 'bg-green-100 text-green-700' :
-                      cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {cmd.statut === 'livree' ? 'Livrée' : cmd.statut === 'annulee' ? 'Annulée' : 'En cours'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500">
-                    <span>{cmd.date_commande ? formatDate(cmd.date_commande) : ''}</span>
-                    {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
-                  </div>
-                  {cmd.lignes && cmd.lignes.length > 0 && (
-                    <div className="mt-1.5 space-y-0.5">
-                      {cmd.lignes.slice(0, 5).map((l, i) => (
-                        <div key={i} className="flex justify-between text-[10px] text-gray-500">
-                          <span className="truncate flex-1">{l.produit}</span>
-                          <span className="flex-shrink-0 ml-2">x{l.quantite}</span>
-                        </div>
-                      ))}
-                      {cmd.lignes.length > 5 && <p className="text-[10px] text-gray-400">+{cmd.lignes.length - 5} autres</p>}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-          )}
-
-          {/* Interaction history */}
-          <div className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Historique ({selectedInteractions.length})</h3>
-            {selectedInteractions.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Aucune interaction enregistrée</p>
-            ) : (
-              <div className="space-y-2">
-                {selectedInteractions.slice(0, 20).map(interaction => {
-                  const comm = getCommercial(interaction.commercial_id);
-                  return (
-                    <div key={interaction.id} className="flex gap-3 p-2.5 bg-gray-50 rounded-lg">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        interaction.type === 'VISITE' ? 'bg-green-100' : interaction.type === 'APPEL' ? 'bg-blue-100' : 'bg-purple-100'
-                      }`}>
-                        {interaction.type === 'VISITE' ? <Navigation className="w-4 h-4 text-green-600" /> :
-                         interaction.type === 'APPEL' ? <PhoneCall className="w-4 h-4 text-blue-600" /> :
-                         <Calendar className="w-4 h-4 text-purple-600" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-gray-900">
-                            {INTERACTION_TYPE_LABELS[interaction.type]}
-                          </span>
-                          <span className="text-[10px] text-gray-400">{formatDate(interaction.date)}</span>
-                        </div>
-                        {comm && <p className="text-[10px] text-gray-500">{comm.prenom} {comm.nom}</p>}
-                        {interaction.comment && <p className="text-xs text-gray-600 mt-1">{interaction.comment}</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          </div>{/* end scrollable content */}
+          <FicheClient
+            client={selectedClient}
+            variante="panneau"
+            onFermer={() => setSearchParams({})}
+            onModifier={openEditForm}
+            onInteraction={(c, type) => { setInteractionClient(c); setInteractionType(type); if (type === 'RDV_PLANIFIE') setInteractionDate(toLocalDateStr(new Date())); }}
+            onEmail={setEmailClient}
+            onAjouterTache={c => { setTaskClientId(c.id); setTaskTitle(''); setTaskDate(''); setShowTaskForm(true); }}
+            frequence={c => getEffectiveFrequency(c.type_client, null)}
+          />
         </div>
       )}
 
