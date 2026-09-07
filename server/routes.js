@@ -1993,6 +1993,63 @@ router.post('/tournees/vides/supprimer', authMiddleware, adminOnly, asyncHandler
   res.json({ ok: true, supprimes: aSupprimer.map(f => f.nom), refuses, configs_modifiees: configsModifiees, zones_supprimees: zonesSupprimees });
 }));
 
+// Fusionner des secteurs : tout ce qui portait un des noms « sources » porte désormais le
+// nom « cible » — champ tournée des clients, champ secteur des prospects, jours et zones de
+// prospection des configs de tournée, nom des zones dessinées. Rien n'est supprimé : les
+// zones dessinées gardent leur tracé, seul leur nom change.
+router.post('/tournees/fusionner', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const cible = String(req.body?.cible || '').trim();
+  const sources = new Set((Array.isArray(req.body?.sources) ? req.body.sources : []).map(normaliserNomSecteur).filter(Boolean));
+  if (!cible) return res.status(400).json({ error: 'Nom du secteur cible requis' });
+  sources.delete(normaliserNomSecteur(cible));
+  if (sources.size === 0) return res.status(400).json({ error: 'Aucun secteur source (différent de la cible)' });
+  const estSource = (v) => sources.has(normaliserNomSecteur(v));
+
+  const client = await db.connect();
+  const bilan = { clients: 0, prospects: 0, configs: 0, zones: 0 };
+  try {
+    await client.query('BEGIN');
+    const now = new Date().toISOString();
+    const cl = (await client.query('SELECT id, tournee FROM clients')).rows.filter(c => estSource(c.tournee)).map(c => c.id);
+    if (cl.length) bilan.clients = (await client.query('UPDATE clients SET tournee = $1, date_modification = $2 WHERE id = ANY($3::text[])', [cible, now, cl])).rowCount || 0;
+    const pr = (await client.query('SELECT id, secteur FROM prospects')).rows.filter(p => estSource(p.secteur)).map(p => p.id);
+    if (pr.length) bilan.prospects = (await client.query('UPDATE prospects SET secteur = $1, date_modification = $2 WHERE id = ANY($3::text[])', [cible, now, pr])).rowCount || 0;
+    for (const row of (await client.query('SELECT commercial_id, config FROM tournee_config')).rows) {
+      const cfg = lireConfigTournee(row.config);
+      let change = false;
+      for (const [jour, liste] of Object.entries(cfg)) {
+        if (!Array.isArray(liste)) continue;
+        const vus = new Set();
+        const neuf = [];
+        for (const z of liste) {
+          const nom = nomZone(z);
+          const remplace = estSource(nom) ? cible : nom;
+          const k = normaliserNomSecteur(remplace);
+          if (vus.has(k)) { change = true; continue; } // doublon dans la même journée après fusion
+          vus.add(k);
+          if (remplace !== nom) { change = true; neuf.push(typeof z === 'string' ? cible : { ...z, zone: cible }); }
+          else neuf.push(z);
+        }
+        cfg[jour] = neuf;
+      }
+      if (change) {
+        await client.query('UPDATE tournee_config SET config = $1, updated_at = $2 WHERE commercial_id = $3', [JSON.stringify(cfg), now, row.commercial_id]);
+        bilan.configs++;
+      }
+    }
+    const zo = (await client.query('SELECT id, nom FROM commercial_zones')).rows.filter(z => estSource(z.nom)).map(z => z.id);
+    if (zo.length) bilan.zones = (await client.query('UPDATE commercial_zones SET nom = $1, updated_at = $2 WHERE id = ANY($3::text[])', [cible, now, zo])).rowCount || 0;
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  await logActivity(req.user.id, 'fusion_secteurs', `${[...sources].join(', ')} → ${cible} (${bilan.clients} clients, ${bilan.prospects} prospects)`, 'tournee', '');
+  res.json({ ok: true, cible, ...bilan });
+}));
+
 router.get('/commercial-zones', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC');
   res.json(result.rows.map(z => ({ ...z, coordinates: JSON.parse(z.coordinates) })));
