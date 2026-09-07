@@ -3,7 +3,8 @@ import {
   Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3,
 } from 'lucide-react';
 
-// Le menu : quatre groupes, les mêmes pour tout le monde. Seul l'ordre dépend du rôle —
+// Le menu : « Accueil » et « Rappels et tâches » toujours visibles en tête, puis quatre
+// groupes, les mêmes pour tout le monde. Seul l'ordre dépend du rôle —
 // son propre groupe en premier, ouvert ; les autres suivent, repliés sauf « Pour tous ».
 // Les libellés sont LE vocabulaire de l'application : une page, un mot.
 export interface EntreeMenu {
@@ -48,7 +49,6 @@ const COMMERCIAL: GroupeMenu = {
 const COMMUN: GroupeMenu = {
   id: 'commun', titre: 'Pour tous', icon: Bell, roles: [],
   entrees: [
-    { to: '/rappels', icon: Bell, label: 'Rappels et tâches', alias: ['/taches'] },
     { to: '/statistiques', icon: BarChart3, label: 'Statistiques', masquePour: ['prospection'] },
     { to: '/documents', icon: FileText, label: 'Documents' },
     { to: '/annuaire', icon: Contact, label: 'Annuaire' },

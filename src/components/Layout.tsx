@@ -194,6 +194,24 @@ export default function Layout() {
             <LayoutDashboard className="w-5 h-5 flex-shrink-0" />
             <span>Accueil</span>
           </NavLink>
+          {/* Rappels et tâches : pour tout le monde, toujours visible, jamais replié dans un groupe. */}
+          <NavLink
+            to="/rappels"
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive || location.pathname.startsWith('/taches') ? 'bg-brewery-50 text-brewery-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`
+            }
+          >
+            <Bell className="w-5 h-5 flex-shrink-0" />
+            <span>Rappels et tâches</span>
+            {urgentReminders > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {urgentReminders}
+              </span>
+            )}
+          </NavLink>
 
           {groupes.filter(g => !g.adminOnly || isAdmin).map(groupe => {
             const isOpen = ouverts.has(groupe.id);
@@ -227,11 +245,6 @@ export default function Layout() {
                       >
                         <entree.icon className="w-5 h-5 flex-shrink-0" />
                         <span>{entree.label}</span>
-                        {entree.to === '/rappels' && urgentReminders > 0 && (
-                          <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                            {urgentReminders}
-                          </span>
-                        )}
                       </NavLink>
                     ))}
                   </div>
