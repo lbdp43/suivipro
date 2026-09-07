@@ -1,6 +1,6 @@
 import {
   Users, Kanban, Phone, Calendar, Mail, Map, Building2, CalendarDays, GitBranch,
-  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine,
+  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3,
 } from 'lucide-react';
 
 // Le menu : quatre groupes, les mêmes pour tout le monde. Seul l'ordre dépend du rôle —
@@ -47,6 +47,7 @@ const COMMUN: GroupeMenu = {
   id: 'commun', titre: 'Pour tous', icon: Bell, roles: [],
   entrees: [
     { to: '/rappels', icon: Bell, label: 'Rappels et tâches', alias: ['/taches'] },
+    { to: '/statistiques', icon: BarChart3, label: 'Statistiques' },
     { to: '/documents', icon: FileText, label: 'Documents' },
     { to: '/annuaire', icon: Contact, label: 'Annuaire' },
     { to: '/guide', icon: BookOpen, label: 'Guide' },

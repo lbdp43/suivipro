@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 
 // Lazy-loaded pages
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AccueilPage = lazy(() => import('./pages/AccueilPage'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const PipelinePage = lazy(() => import('./pages/PipelinePage'));
 const ProspectsPage = lazy(() => import('./pages/ProspectsPage'));
@@ -67,7 +68,8 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<AccueilPage />} />
+          <Route path="/statistiques" element={<DashboardPage />} />
           <Route path="/carte" element={<MapPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/prospects" element={<ProspectsPage />} />

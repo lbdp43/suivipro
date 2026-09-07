@@ -14,6 +14,7 @@ import {
   formatDuration, formatDate, isLastMonth, toLocalDateStr,
 } from '../utils/helpers';
 import { estEnRetard, joursDeRetard } from '../../shared/regles';
+import { objectifAppels } from '../utils/objectifs';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
@@ -331,7 +332,7 @@ export default function DashboardPage() {
         } catch { return false; }
       }).length;
 
-      const objective = user.objectifs.appels_semaine;
+      const objective = objectifAppels(user, 'semaine');
       const progress = objective > 0 ? Math.round((weekCalls.length / objective) * 100) : 0;
 
       return {
@@ -470,7 +471,7 @@ export default function DashboardPage() {
       // propres chiffres et des zeros pour ses collegues.
       const equipe = activitesEquipe[user.id];
       const nbAppels = equipe ? equipe.appels : periodCalls.length;
-      const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
+      const objective = objectifAppels(user, isMonthPeriod ? 'mois' : 'semaine');
       const progress = objective > 0 ? Math.round((nbAppels / objective) * 100) : 0;
 
       return {
@@ -512,7 +513,7 @@ export default function DashboardPage() {
         ? Math.round((periodCalls.filter(c => c.resultat === 'repondu').length / periodCalls.length) * 100)
         : 0;
       const wonProspects = userProspects.filter(p => p.etape_pipeline === 'client_gagne').length;
-      const objective = isMonthPeriod ? (user.objectifs.appels_semaine * 4) : user.objectifs.appels_semaine;
+      const objective = objectifAppels(user, isMonthPeriod ? 'mois' : 'semaine');
       const progress = objective > 0 ? Math.round((periodCalls.length / objective) * 100) : 0;
 
       return {
@@ -833,7 +834,7 @@ export default function DashboardPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       {/* Page header */}
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Statistiques</h1>
 
       {/* Bandeau alertes */}
       {totalAlerts > 0 && (

@@ -7,7 +7,8 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete } from '../api/client';
-import { Commercial, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
+import { Commercial, Objectifs, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
+import { objectifsDuRole, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
 import {
   generateId, getCallsThisWeek, getCallsThisMonth, getCallsToday,
   getAppointmentsThisWeek, getAppointmentsThisMonth,
@@ -111,7 +112,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
 
   // Objectives state
   const [editingObjectives, setEditingObjectives] = useState<string | null>(null);
-  const [objectivesForm, setObjectivesForm] = useState({ appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 });
+  const [objectivesForm, setObjectivesForm] = useState<Objectifs>({});
 
   // Team management state
   const [showUserForm, setShowUserForm] = useState(false);
@@ -787,7 +788,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
           telephone: userForm.telephone,
           role: userForm.role,
           password: userForm.password,
-          objectifs: { appels_semaine: 50, rdv_mois: 10, prospects_mois: 30, taux_conversion: 20 },
+          objectifs: objectifsParDefaut(userForm.role),
         };
         await apiPost('/commerciaux', newUser);
         dispatchLocal({ type: 'ADD_COMMERCIAL', payload: newUser });
@@ -824,7 +825,10 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
 
   const startEditObjectives = (commercial: Commercial) => {
     setEditingObjectives(commercial.id);
-    setObjectivesForm({ ...commercial.objectifs });
+    // Les clés du rôle, pré-remplies avec l'existant ou la valeur proposée.
+    const f: Objectifs = { ...commercial.objectifs };
+    for (const def of objectifsDuRole(commercial.role)) if (f[def.cle] === undefined) f[def.cle] = def.defaut;
+    setObjectivesForm(f);
   };
 
   const saveObjectives = async () => {
@@ -909,8 +913,10 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       const avgDuration = getAverageCallDuration(comCalls);
       const conversionRate = getConversionRate(comProspects);
 
-      const callsProgress = commercial.objectifs.appels_semaine > 0 ? Math.round((weekCalls / commercial.objectifs.appels_semaine) * 100) : 0;
-      const rdvProgress = commercial.objectifs.rdv_mois > 0 ? Math.round((monthRdv / commercial.objectifs.rdv_mois) * 100) : 0;
+      const objAppelsSemaine = objectifAppels(commercial, 'semaine');
+      const objRdvMois = Number(commercial.objectifs?.rdv_realises_mois ?? commercial.objectifs?.rdv_pris_mois ?? commercial.objectifs?.rdv_mois ?? 0);
+      const callsProgress = objAppelsSemaine > 0 ? Math.round((weekCalls / objAppelsSemaine) * 100) : 0;
+      const rdvProgress = objRdvMois > 0 ? Math.round((monthRdv / objRdvMois) * 100) : 0;
 
       return {
         commercial,
@@ -1181,9 +1187,17 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       {/* ============================================ */}
       {activeTab === 'objectives' && (
         <div className="space-y-4">
+          <div className="bg-brewery-50 border border-brewery-100 rounded-xl p-4 text-sm text-brewery-800">
+            <p className="font-semibold">Objectifs mensuels, adaptés au rôle.</p>
+            <p className="text-xs mt-1 text-brewery-700">
+              Prospection : appels et rendez-vous pris. Commercial : rendez-vous réalisés, clients vus, commandes.
+              Chacun voit ses jauges sur son accueil ; « dans le rythme » compare à ce qui devrait être atteint à cette date du mois.
+            </p>
+          </div>
           {state.commerciaux.map(commercial => {
-            const stats = commercialStats.find(s => s.commercial.id === commercial.id)!;
             const isEditing = editingObjectives === commercial.id;
+            const mesures = mesurerObjectifs(state, commercial);
+            const defs = objectifsDuRole(commercial.role);
             return (
               <div key={commercial.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -1195,80 +1209,52 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{commercial.prenom} {commercial.nom}</h3>
-                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'}</p>
+                      <p className="text-xs text-gray-500">{commercial.role === 'admin' ? 'Administrateur' : commercial.role === 'prospection' ? 'Prospection' : 'Commercial'} · objectifs du mois</p>
                     </div>
                   </div>
                   {isEditing ? (
                     <div className="flex gap-2">
                       <button className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setEditingObjectives(null)}>Annuler</button>
                       <button className="px-3 py-1.5 text-xs bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-1" onClick={saveObjectives}>
-                        <Save className="w-3 h-3" /> Sauver
+                        <Save className="w-3 h-3" /> Enregistrer
                       </button>
                     </div>
                   ) : (
-                    <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => startEditObjectives(commercial)}>
+                    <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => startEditObjectives(commercial)} title="Modifier les objectifs">
                       <Edit2 className="w-4 h-4 text-gray-600" />
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">Appels / semaine</span>
-                      <div className={`w-2 h-2 rounded-full ${progressDot(stats.callsProgress)}`} />
-                    </div>
-                    {isEditing ? (
-                      <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.appels_semaine} onChange={e => setObjectivesForm(prev => ({ ...prev, appels_semaine: parseInt(e.target.value) || 0 }))} />
-                    ) : (
-                      <>
-                        <p className="text-lg font-bold text-gray-900">{stats.weekCalls} / {commercial.objectifs.appels_semaine}</p>
-                        <div className="bg-gray-200 rounded-full h-2">
-                          <div className={`h-2 rounded-full progress-bar ${progressColor(stats.callsProgress)}`} style={{ width: `${Math.min(stats.callsProgress, 100)}%` }} />
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${defs.length > 2 ? 'lg:grid-cols-3' : ''} gap-4`}>
+                  {mesures.map(m => {
+                    const couleur = COULEUR_ETAT[m.etat];
+                    return (
+                      <div key={m.cle} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500" title={m.aide}>{m.label} / mois</span>
+                          {!isEditing && <span className={`text-[10px] font-medium ${couleur.texte}`}>{couleur.label}</span>}
                         </div>
-                        <p className="text-[10px] text-gray-400">{stats.callsProgress}% - {progressLabel(stats.callsProgress)}</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">RDV / mois</span>
-                      <div className={`w-2 h-2 rounded-full ${progressDot(stats.rdvProgress)}`} />
-                    </div>
-                    {isEditing ? (
-                      <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.rdv_mois} onChange={e => setObjectivesForm(prev => ({ ...prev, rdv_mois: parseInt(e.target.value) || 0 }))} />
-                    ) : (
-                      <>
-                        <p className="text-lg font-bold text-gray-900">{stats.monthRdv} / {commercial.objectifs.rdv_mois}</p>
-                        <div className="bg-gray-200 rounded-full h-2">
-                          <div className={`h-2 rounded-full progress-bar ${progressColor(stats.rdvProgress)}`} style={{ width: `${Math.min(stats.rdvProgress, 100)}%` }} />
-                        </div>
-                        <p className="text-[10px] text-gray-400">{stats.rdvProgress}% - {progressLabel(stats.rdvProgress)}</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-xs text-gray-500">Prospects</span>
-                    {isEditing ? (
-                      <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.prospects_mois} onChange={e => setObjectivesForm(prev => ({ ...prev, prospects_mois: parseInt(e.target.value) || 0 }))} />
-                    ) : (
-                      <p className="text-lg font-bold text-gray-900">{stats.totalProspects}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-xs text-gray-500">Objectif conversion</span>
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <input type="number" className="w-full px-2 py-1 border border-gray-200 rounded text-sm" value={objectivesForm.taux_conversion} onChange={e => setObjectivesForm(prev => ({ ...prev, taux_conversion: parseInt(e.target.value) || 0 }))} />
-                        <span className="text-sm text-gray-500">%</span>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                            value={objectivesForm[m.cle] ?? 0}
+                            onChange={e => setObjectivesForm(prev => ({ ...prev, [m.cle]: parseInt(e.target.value) || 0 }))}
+                          />
+                        ) : (
+                          <>
+                            <p className="text-lg font-bold text-gray-900">{m.valeur} <span className="text-sm font-normal text-gray-400">/ {m.objectif || '—'}</span></p>
+                            <div className="bg-gray-200 rounded-full h-2">
+                              <div className={`h-2 rounded-full progress-bar ${couleur.barre}`} style={{ width: `${Math.min(m.pct, 100)}%` }} />
+                            </div>
+                            <p className="text-[10px] text-gray-400">{m.objectif > 0 ? `${m.pct} % · attendu à ce jour : ${m.attendu}` : 'Fixez un objectif pour suivre l\'avancement'}</p>
+                          </>
+                        )}
                       </div>
-                    ) : (
-                      <p className="text-lg font-bold text-gray-900">{stats.conversionRate}% / {commercial.objectifs.taux_conversion}%</p>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             );

@@ -389,12 +389,23 @@ export interface Commercial {
   telephone: string;
   role: UserRole;
   password: string;
-  objectifs: {
-    appels_semaine: number;
-    rdv_mois: number;
-    prospects_mois: number;
-    taux_conversion: number;
-  };
+  objectifs: Objectifs;
+}
+
+// Objectifs MENSUELS, adaptés au rôle (voir utils/objectifs.ts pour la liste par rôle).
+// Prospection : appels, RDV pris. Commercial : RDV réalisés, clients vus, commandes.
+// Les anciennes clés (appels_semaine, rdv_mois…) restent lisibles mais ne sont plus proposées.
+export interface Objectifs {
+  appels_mois?: number;
+  rdv_pris_mois?: number;
+  rdv_realises_mois?: number;
+  clients_vus_mois?: number;
+  commandes_mois?: number;
+  /** @deprecated anciens objectifs, conservés pour les fiches existantes */
+  appels_semaine?: number;
+  rdv_mois?: number;
+  prospects_mois?: number;
+  taux_conversion?: number;
 }
 
 export interface Tag {
