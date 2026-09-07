@@ -1,0 +1,24 @@
+// Helpers partagés (parse) — déplacés tels quels depuis routes.js.
+
+export function parseSessionAppel(s) {
+  if (!s) return s;
+  let ids = s.prospect_ids;
+  if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
+  return { ...s, prospect_ids: Array.isArray(ids) ? ids : [] };
+}
+
+export function parseProspect(p) {
+  if (!p) return p;
+  let tags = p.tags;
+  if (typeof tags === 'string') {
+    try { tags = JSON.parse(tags); } catch { tags = []; }
+  }
+  if (!Array.isArray(tags)) tags = [];
+  return { ...p, tags };
+}
+
+export function parseCommercial(c) {
+  if (!c) return c;
+  const { password: _, hub_password: __, hub_email: ___, ...u } = c;
+  return { ...u, objectifs: JSON.parse(u.objectifs || '{}') };
+}
