@@ -65,7 +65,8 @@ function getDaysInRange(start: string, end: string): string[] {
   return dates;
 }
 
-export default function CompteRenduPage() {
+// embarque : rendu dans la page Semaine (volet « Bilan »), qui porte déjà le titre.
+export default function CompteRenduPage({ embarque = false }: { embarque?: boolean } = {}) {
   const { state, dispatch, dispatchLocal, getClient } = useApp();
   const toast = useToast();
   const todayStr = toDateStr(new Date());
@@ -844,10 +845,12 @@ export default function CompteRenduPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ClipboardCheck className="w-7 h-7 text-brewery-600" />
-            Rapport Journalier
-          </h1>
+          {!embarque && (
+            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <ClipboardCheck className="w-7 h-7 text-brewery-600" />
+              Bilan
+            </h1>
+          )}
           <p className="text-sm text-gray-500 mt-1">
             {isAdmin && selectedCommercialId === 'all'
               ? 'Vue globale de toute l\'equipe'

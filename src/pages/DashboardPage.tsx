@@ -839,7 +839,7 @@ export default function DashboardPage() {
       {totalAlerts > 0 && (
         <div className="flex flex-wrap gap-2">
           {alerts.lateVisits > 0 && (
-            <Link to="/visites" className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 hover:bg-red-100 transition-colors">
+            <Link to="/semaine" className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 hover:bg-red-100 transition-colors">
               <AlertTriangle className="w-3.5 h-3.5" /> {alerts.lateVisits} clients en retard de visite
             </Link>
           )}

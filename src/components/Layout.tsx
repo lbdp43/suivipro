@@ -3,9 +3,10 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Kanban, Users, Phone, Calendar,
   Bell, Mail, Upload, Settings, Menu, X, Beer, LogOut, Shield, User, ExternalLink, Clock, BookOpen, FileText, ScanLine,
-  Building2, CheckCheck, ClipboardCheck, ListTodo, GitBranch, Contact, ChevronDown,
+  Building2, CheckCheck, GitBranch, Contact, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import { isToday, toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
 
@@ -55,7 +56,7 @@ export default function Layout() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [openSections, setOpenSections] = useState<Set<string> | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -102,32 +103,25 @@ export default function Layout() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
-  // Auto-open sidebar section when navigating to a child route
-  useEffect(() => {
-    const navItems_all = [
-      { to: '/prospects', children: ['/pipeline', '/appels'] },
-      { to: '/guide', children: ['/documents', '/emails'] },
-      { to: '/admin', children: ['/import', '/sirene'] },
-    ];
-    for (const item of navItems_all) {
-      if (item.children.some(c => location.pathname === c || location.pathname.startsWith(c + '/'))) {
-        setOpenSections(prev => {
-          const next = new Set(prev);
-          next.add(item.to);
-          return next;
-        });
-      }
-    }
-  }, [location.pathname]);
-
-  const toggleSection = (to: string) => {
-    setOpenSections(prev => {
-      const next = new Set(prev);
-      if (next.has(to)) next.delete(to);
-      else next.add(to);
+  // Groupes du menu, dans l'ordre du rôle (le sien d'abord). Tout le monde voit tout :
+  // un commercial peut aller dans la prospection et inversement, seul l'ordre change.
+  const role = state.currentUser?.role;
+  const groupes = groupesDuMenu(role);
+  const ouverts = openSections ?? groupesOuvertsParDefaut(role);
+  const toggleSection = (id: string) => {
+    setOpenSections(() => {
+      const next = new Set(ouverts);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
+  // Un groupe replié s'ouvre quand on arrive sur une de ses pages (lien direct, retour arrière).
+  useEffect(() => {
+    const g = groupes.find(gr => gr.entrees.some(e => location.pathname === e.to || location.pathname.startsWith(e.to + '/') || (e.alias || []).some(a => location.pathname.startsWith(a))));
+    if (g && !ouverts.has(g.id)) setOpenSections(new Set([...ouverts, g.id]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   // Close on outside click
   useEffect(() => {
@@ -153,39 +147,6 @@ export default function Layout() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadCount(0);
   };
-
-  const navItems: {
-    to: string;
-    icon: any;
-    label: string;
-    adminOnly: boolean;
-    children?: { to: string; icon: any; label: string; adminOnly?: boolean }[];
-  }[] = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: false },
-    { to: '/taches', icon: ListTodo, label: 'Taches', adminOnly: false },
-    { to: '/rappels', icon: Bell, label: 'Rappels', adminOnly: false },
-    { to: '/prospects', icon: Users, label: 'Prospects', adminOnly: false, children: [
-      { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
-      { to: '/appels', icon: Phone, label: 'Appels' },
-    ]},
-    { to: '/rdv', icon: Calendar, label: 'Prospects & RDV', adminOnly: false },
-    { to: '/pipeline-cr', icon: GitBranch, label: 'Pipeline CR', adminOnly: false },
-    { to: '/clients', icon: Building2, label: 'Clients', adminOnly: false },
-    { to: '/clients/planning', icon: Calendar, label: 'Planning semaine', adminOnly: false },
-    { to: '/compte-rendu', icon: CheckCheck, label: 'Visites et CR', adminOnly: false },
-    { to: '/tournees', icon: Map, label: 'Tournees', adminOnly: false },
-    { to: '/guide', icon: BookOpen, label: 'Guide', adminOnly: false, children: [
-      { to: '/documents', icon: FileText, label: 'Documents' },
-      { to: '/emails', icon: Mail, label: 'Emails' },
-    ]},
-    { to: '/admin', icon: Settings, label: 'Administration', adminOnly: true, children: [
-      { to: '/import', icon: Upload, label: 'Import/Export' },
-      { to: '/sirene', icon: ScanLine, label: 'SIRENE / Datagouv' },
-    ]},
-    { to: '/annuaire', icon: Contact, label: 'Annuaire', adminOnly: false },
-  ];
-
-  const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   const handleLogout = () => {
     logout();
@@ -221,103 +182,63 @@ export default function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {visibleNavItems.map(item => {
-            const hasChildren = item.children && item.children.length > 0;
-            const isOpen = openSections.has(item.to);
-            const isParentActive = location.pathname === item.to ||
-              (hasChildren && item.children!.some(c => location.pathname === c.to || location.pathname.startsWith(c.to + '/')));
-
-            if (hasChildren) {
-              return (
-                <div key={item.to}>
-                  {/* Parent item */}
-                  <div className="flex items-center">
-                    <NavLink
-                      to={item.to}
-                      end
-                      onClick={() => {
-                        if (!isOpen) toggleSection(item.to);
-                        setSidebarOpen(false);
-                      }}
-                      className={() =>
-                        `flex-1 flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium transition-colors ${
-                          isParentActive
-                            ? 'bg-brewery-50 text-brewery-700'
-                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`
-                      }
-                    >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
-                      <span>{item.label}</span>
-                    </NavLink>
-                    <button
-                      onClick={() => toggleSection(item.to)}
-                      className={`p-2.5 rounded-r-lg transition-colors ${
-                        isParentActive
-                          ? 'bg-brewery-50 text-brewery-700'
-                          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-                      }`}
-                      aria-label={isOpen ? 'Replier' : 'Deplier'}
-                    >
-                      <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-                    </button>
-                  </div>
-                  {/* Children */}
-                  {isOpen && (
-                    <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-gray-100 pl-2">
-                      {item.children!
-                        .filter(child => !child.adminOnly || isAdmin)
-                        .map(child => (
-                        <NavLink
-                          key={child.to}
-                          to={child.to}
-                          onClick={() => setSidebarOpen(false)}
-                          className={({ isActive }) =>
-                            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                              isActive
-                                ? 'bg-brewery-50 text-brewery-700'
-                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                            }`
-                          }
-                        >
-                          <child.icon className="w-4 h-4 flex-shrink-0" />
-                          <span>{child.label}</span>
-                          {child.to === '/rappels' && urgentReminders > 0 && (
-                            <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                              {urgentReminders}
-                            </span>
-                          )}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          <NavLink
+            to="/"
+            end
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive ? 'bg-brewery-50 text-brewery-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`
             }
+          >
+            <LayoutDashboard className="w-5 h-5 flex-shrink-0" />
+            <span>Accueil</span>
+          </NavLink>
 
-            // Standalone item
+          {groupes.filter(g => !g.adminOnly || isAdmin).map(groupe => {
+            const isOpen = ouverts.has(groupe.id);
+            const estMonGroupe = groupe.roles.includes(role || '');
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-brewery-50 text-brewery-700'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`
-                }
-              >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                <span>{item.label}</span>
-                {item.to === '/rappels' && urgentReminders > 0 && (
-                  <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {urgentReminders}
-                  </span>
+              <div key={groupe.id} className="pt-2">
+                <button
+                  onClick={() => toggleSection(groupe.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide rounded-lg transition-colors ${
+                    estMonGroupe ? 'text-brewery-700 hover:bg-brewery-50' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                  }`}
+                  aria-expanded={isOpen}
+                >
+                  <groupe.icon className="w-3.5 h-3.5" />
+                  <span className="flex-1 text-left">{groupe.titre}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                </button>
+                {isOpen && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {groupe.entrees.map(entree => (
+                      <NavLink
+                        key={entree.to}
+                        to={entree.to}
+                        onClick={() => setSidebarOpen(false)}
+                        className={({ isActive }) => {
+                          const actif = isActive || (entree.alias || []).some(a => location.pathname.startsWith(a));
+                          return `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            actif ? 'bg-brewery-50 text-brewery-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                          }`;
+                        }}
+                      >
+                        <entree.icon className="w-5 h-5 flex-shrink-0" />
+                        <span>{entree.label}</span>
+                        {entree.to === '/rappels' && urgentReminders > 0 && (
+                          <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                            {urgentReminders}
+                          </span>
+                        )}
+                      </NavLink>
+                    ))}
+                  </div>
                 )}
-              </NavLink>
+              </div>
             );
           })}
         </nav>

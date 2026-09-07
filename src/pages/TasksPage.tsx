@@ -71,7 +71,9 @@ const emptyForm = {
   client_id: '',
 };
 
-export default function TasksPage() {
+// embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
+// idsVisibles : responsables à afficher (null = tout le monde) ; une tâche non affectée reste visible.
+export default function TasksPage({ embarque = false, idsVisibles = null }: { embarque?: boolean; idsVisibles?: Set<string> | null } = {}) {
   const { state } = useApp();
   const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -282,6 +284,7 @@ export default function TasksPage() {
     if (filterStatut !== 'all') result = result.filter(t => t.statut === filterStatut);
     if (filterPriorite !== 'all') result = result.filter(t => t.priorite === filterPriorite);
 
+    if (idsVisibles) result = result.filter(t => !t.commercial_id || idsVisibles.has(t.commercial_id));
     if (filterAssignee === 'me') result = result.filter(t => t.commercial_id === currentUserId);
     else if (filterAssignee === 'unassigned') result = result.filter(t => !t.commercial_id);
     else if (filterAssignee !== 'all') result = result.filter(t => t.commercial_id === filterAssignee);
@@ -297,23 +300,25 @@ export default function TasksPage() {
     }
 
     return result;
-  }, [tasks, filterStatut, filterAssignee, filterPriorite, showCompleted, search, currentUserId]);
+  }, [tasks, filterStatut, filterAssignee, filterPriorite, showCompleted, search, currentUserId, idsVisibles]);
 
-  // Stats
+  // Stats — sur la même base que la liste (vue d'équipe appliquée), sinon les chiffres
+  // du haut ne correspondent pas à ce qu'on voit dessous.
   const stats = useMemo(() => {
     const today = toLocalDateStr(new Date());
-    const myTasks = tasks.filter(t => t.commercial_id === currentUserId);
+    const base = idsVisibles ? tasks.filter(t => !t.commercial_id || idsVisibles.has(t.commercial_id)) : tasks;
+    const myTasks = base.filter(t => t.commercial_id === currentUserId);
     return {
-      total: tasks.filter(t => t.statut !== 'TERMINEE').length,
+      total: base.filter(t => t.statut !== 'TERMINEE').length,
       myPending: myTasks.filter(t => t.statut !== 'TERMINEE').length,
-      overdue: tasks.filter(t => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < today).length,
-      completedThisMonth: tasks.filter(t => {
+      overdue: base.filter(t => t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < today).length,
+      completedThisMonth: base.filter(t => {
         if (t.statut !== 'TERMINEE' || !t.completed_at) return false;
         const month = new Date().toISOString().slice(0, 7);
         return t.completed_at.startsWith(month);
       }).length,
     };
-  }, [tasks, currentUserId]);
+  }, [tasks, currentUserId, idsVisibles]);
 
   const formatDate = (d: string | null) => {
     if (!d) return '-';
@@ -338,15 +343,18 @@ export default function TasksPage() {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 fade-in max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ListTodo className="w-5 h-5 sm:w-6 sm:h-6" />
-            Taches
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            Gestion des taches de l'equipe
-          </p>
-        </div>
+        {!embarque && (
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <ListTodo className="w-5 h-5 sm:w-6 sm:h-6" />
+              Tâches
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+              Gestion des tâches de l'équipe
+            </p>
+          </div>
+        )}
+        {embarque && <div />}
         <div className="flex items-center gap-2">
           <button onClick={loadTasks} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <RefreshCw className="w-4 h-4" />

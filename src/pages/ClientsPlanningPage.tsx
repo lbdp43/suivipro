@@ -15,7 +15,9 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { estEnRetard, semaineIso, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
 import ClientDetailModal from '../components/ClientDetailModal';
 
-export default function ClientsPlanningPage() {
+// embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
+// est alors dans le volet Bilan, on ne l'affiche pas deux fois.
+export default function ClientsPlanningPage({ embarque = false }: { embarque?: boolean } = {}) {
   const { state, dispatchLocal, getCommercial } = useApp();
   const toast = useToast();
   const isAdmin = state.currentUser?.role === 'admin';
@@ -509,10 +511,18 @@ export default function ClientsPlanningPage() {
         }
       }
 
+      // Ordre dans un secteur : jamais vus en tête, puis du plus ancien au plus récent —
+      // ceux qu'on vient de voir ferment la liste.
+      const parAnciennete = (a: Client, b: Client) => {
+        if (!a.last_visit && !b.last_visit) return a.nom.localeCompare(b.nom);
+        if (!a.last_visit) return -1;
+        if (!b.last_visit) return 1;
+        return a.last_visit.localeCompare(b.last_visit) || a.nom.localeCompare(b.nom);
+      };
       const sectors = Array.from(zonesToShow).sort().map(zone => {
         const zoneClients = clientsBase.filter(c =>
           c.tournee && c.tournee.toLowerCase() === zone.toLowerCase()
-        );
+        ).sort(parAnciennete);
         const visitDueClients = zoneClients.filter(c =>
           c.next_visit && c.next_visit <= day.dateStr
         );
@@ -640,7 +650,7 @@ export default function ClientsPlanningPage() {
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
       {/* Resultats des RDV - interactive card with period selector */}
-      {resultsData.totalRdv > 0 && (
+      {!embarque && resultsData.totalRdv > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           {/* Header with period selector */}
           <div className="flex items-center justify-between mb-3">

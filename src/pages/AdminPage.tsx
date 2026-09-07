@@ -95,10 +95,14 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
   );
 }
 
-export default function AdminPage() {
+// section="easybeer" : la page EasyBeer (menu Administration → EasyBeer), avec ses trois
+// onglets — Connexion, Synchronisation, Contrôle. Sans section : l'administration classique.
+export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>('team');
+  const pageEasybeer = section === 'easybeer';
+  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>(pageEasybeer ? 'easybeer' : 'team');
+  const [ebOnglet, setEbOnglet] = useState<'connexion' | 'synchronisation' | 'controle'>('connexion');
 
   // Tag state
   const [showTagForm, setShowTagForm] = useState(false);
@@ -719,13 +723,17 @@ export default function AdminPage() {
   };
 
   const tabs = [
-    { id: 'team' as const, label: 'Equipe', icon: Users },
+    { id: 'team' as const, label: 'Équipe', icon: Users },
     { id: 'objectives' as const, label: 'Objectifs', icon: Target },
     { id: 'tags' as const, label: 'Tags', icon: Tag },
     { id: 'commercials' as const, label: 'Statistiques', icon: BarChart3 },
-    { id: 'easybeer' as const, label: 'EasyBeer', icon: Link2 },
-    { id: 'tournees' as const, label: 'Tournees', icon: MapPin },
-    { id: 'activity' as const, label: 'Activite', icon: Activity },
+    { id: 'tournees' as const, label: 'Tournées', icon: MapPin },
+    { id: 'activity' as const, label: 'Activité', icon: Activity },
+  ];
+  const ebOnglets = [
+    { id: 'connexion' as const, label: 'Connexion', aide: 'Identifiants API, règles d\'affectation, exploration' },
+    { id: 'synchronisation' as const, label: 'Synchronisation', aide: 'Clients, commandes, fiches en attente, liens' },
+    { id: 'controle' as const, label: 'Contrôle', aide: 'Commandes orphelines, doublons, journal des webhooks' },
   ];
 
   // ============================================
@@ -933,13 +941,27 @@ export default function AdminPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 fade-in">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Administration</h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Gestion de l'equipe, objectifs, tags et statistiques</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{pageEasybeer ? 'EasyBeer' : 'Administration'}</h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          {pageEasybeer ? 'Connexion, synchronisation et contrôle des données EasyBeer' : 'Gestion de l\'équipe, objectifs, tags et statistiques'}
+        </p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit flex-wrap overflow-x-auto">
-        {tabs.map(tab => (
+        {pageEasybeer && ebOnglets.map(tab => (
+          <button
+            key={tab.id}
+            title={tab.aide}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              ebOnglet === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setEbOnglet(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+        {!pageEasybeer && tabs.map(tab => (
           <button
             key={tab.id}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1402,6 +1424,7 @@ export default function AdminPage() {
           {/* Auto-load data when tab opens */}
           {!ebConfigLoaded && (() => { loadEasyBeerData(); return null; })()}
 
+          {ebOnglet === 'connexion' && (<>
           {/* Configuration */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1481,6 +1504,8 @@ export default function AdminPage() {
             </div>
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Audit des liens Easybeer <-> clients */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
@@ -1545,6 +1570,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
           {/* Doublons de clients */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
@@ -1666,6 +1693,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'connexion' && (<>
           {/* Regles d'affectation */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -1727,6 +1756,8 @@ export default function AdminPage() {
             </div>
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Clients en attente */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
@@ -1849,6 +1880,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Synchronisation des clients EasyBeer */}
           <div className="bg-white rounded-xl border border-emerald-200 p-5">
             <div className="flex items-center justify-between mb-3">
@@ -1897,6 +1930,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'synchronisation' && (<>
           {/* Synchronisation des commandes EasyBeer */}
           <div className="bg-white rounded-xl border border-blue-200 p-5">
             <div className="flex items-center justify-between mb-3">
@@ -1994,6 +2029,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'connexion' && (<>
           {/* Explorer API EasyBeer */}
           <div className="bg-white rounded-xl border border-purple-200 p-5">
             <div className="flex items-center justify-between mb-3">
@@ -2053,6 +2090,8 @@ export default function AdminPage() {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
           {/* Commandes orphelines (sans client) */}
           {orphanCommandes.length > 0 && (
           <div className="bg-white rounded-xl border border-orange-200 p-5">
@@ -2255,6 +2294,8 @@ export default function AdminPage() {
           </div>
           )}
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
           {/* Journal des webhooks */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
@@ -2349,6 +2390,7 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+          </>)}
         </div>
       )}
 
