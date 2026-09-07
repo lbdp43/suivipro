@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
+import BlocErreur from './BlocErreur';
 import { isToday, toLocalDateStr } from '../utils/helpers';
 import { Link } from 'react-router-dom';
 
@@ -434,7 +435,10 @@ export default function Layout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-auto">
-          <Outlet />
+          {/* Une page qui casse sur une donnée inattendue n'emporte ni le menu ni l'en-tête. */}
+          <BlocErreur key={location.pathname} titre="cette page">
+            <Outlet />
+          </BlocErreur>
         </main>
       </div>
 

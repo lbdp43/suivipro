@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
-import { apiPost, apiPut, apiDelete } from '../api/client';
+import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { Commercial, Objectifs, Tag as TagType, UserRole, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType, CLIENT_VISIT_FREQUENCIES } from '../types';
 import { objectifsDuRole, objectifsParDefaut, mesurerObjectifs, objectifAppels, COULEUR_ETAT } from '../utils/objectifs';
 import {
@@ -129,6 +129,38 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; affichees?: number; par_score?: Record<string, number>; identifiants_partages?: { emails: { valeur: string; clients: number }[]; telephones: { valeur: string; clients: number }[] }; paires: any[] } | null>(null);
   const [doublonsRecherche, setDoublonsRecherche] = useState('');
   const [doublonsFaibles, setDoublonsFaibles] = useState(false);
+  // Doublons prospects <-> clients : un prospect qu'on appelle encore alors qu'il est déjà client.
+  const [doublonsPC, setDoublonsPC] = useState<{ total_prospects: number; total_clients: number; total_paires: number; certains: number; paires: any[] } | null>(null);
+  const [doublonsPCLoading, setDoublonsPCLoading] = useState(false);
+  const chargerDoublonsPC = async () => {
+    setDoublonsPCLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` };
+      const res = await fetch('/api/prospects/doublons-clients', { headers });
+      if (res.ok) setDoublonsPC(await res.json());
+      else toast.error('Erreur lors de la détection des doublons prospects/clients');
+    } catch { toast.error('Erreur réseau'); }
+    setDoublonsPCLoading(false);
+  };
+  const retirerPaireDoublonPC = (prospectId: string) => setDoublonsPC(prev => prev ? { ...prev, paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId), total_paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId).length } : prev);
+  const prospectGagne = async (paire: any) => {
+    if (!confirm(`Passer le prospect « ${paire.prospect.nom} » en « Gagné » ? Il sort de la prospection ; le client « ${paire.client.nom} » reste la fiche de référence.`)) return;
+    try {
+      await apiPatch(`/prospects/${paire.prospect.id}/stage`, { etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() });
+      dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: paire.prospect.id, stage: 'client_gagne' } });
+      retirerPaireDoublonPC(paire.prospect.id);
+      toast.success('Prospect passé en « Gagné »');
+    } catch { toast.error('Impossible de modifier le prospect'); }
+  };
+  const prospectSupprime = async (paire: any) => {
+    if (!confirm(`Supprimer le prospect « ${paire.prospect.nom} » (${paire.prospect.nb_appels} appel(s), ${paire.prospect.nb_rdv} RDV) ? Ses appels et rendez-vous seront supprimés avec lui.`)) return;
+    try {
+      await apiDelete(`/prospects/${paire.prospect.id}`);
+      dispatchLocal({ type: 'DELETE_PROSPECT', payload: paire.prospect.id });
+      retirerPaireDoublonPC(paire.prospect.id);
+      toast.success('Prospect supprimé');
+    } catch { toast.error('Impossible de supprimer le prospect'); }
+  };
   const [doublonsLoading, setDoublonsLoading] = useState(false);
   const [fusionEnCours, setFusionEnCours] = useState<string | null>(null);
   const [ebRelierChoix, setEbRelierChoix] = useState<Record<string, string>>({});
@@ -1687,6 +1719,64 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
             )}
           </div>
 
+          </>)}
+          {ebOnglet === 'controle' && (<>
+          {/* Doublons prospects <-> clients */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <Users className="w-4 h-4" /> Doublons entre prospects et clients
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Repère les prospects encore en prospection qui sont déjà clients (même SIRET, email ou téléphone,
+              nom identique ou très proche). Pour chaque paire : passer le prospect en « Gagné », ou le supprimer.
+            </p>
+            <button
+              className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 mb-3"
+              onClick={chargerDoublonsPC}
+              disabled={doublonsPCLoading}
+            >
+              {doublonsPCLoading ? 'Analyse…' : doublonsPC ? 'Relancer la détection' : 'Détecter les doublons prospects / clients'}
+            </button>
+            {doublonsPC && (
+              <div>
+                <div className="flex gap-3 mb-3 text-sm flex-wrap">
+                  <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">{doublonsPC.total_prospects} prospect(s) · {doublonsPC.total_clients} client(s)</span>
+                  <span className={`px-2 py-1 rounded ${doublonsPC.total_paires ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{doublonsPC.total_paires} paire(s) suspecte(s)</span>
+                  {doublonsPC.certains > 0 && <span className="px-2 py-1 rounded bg-red-100 text-red-700">{doublonsPC.certains} certaine(s)</span>}
+                </div>
+                {doublonsPC.paires.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aucun prospect ne ressemble à un client ✓</p>
+                ) : (
+                  <div className="space-y-2 max-h-[32rem] overflow-y-auto">
+                    {doublonsPC.paires.map((paire: any) => (
+                      <div key={paire.prospect.id + paire.client.id}
+                        className={`p-3 rounded-lg border ${paire.score === 100 ? 'border-red-200 bg-red-50' : paire.score >= 80 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <p className="text-xs font-medium text-gray-600 mb-2">{paire.motif}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div className="bg-white rounded-lg border border-gray-200 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold mb-1">Prospect</p>
+                            <a href={`/prospects?id=${paire.prospect.id}`} className="font-semibold text-gray-900 hover:underline">{paire.prospect.nom}</a>
+                            <p className="text-gray-500">{[paire.prospect.ville, paire.prospect.telephone, paire.prospect.email].filter(Boolean).join(' · ')}</p>
+                            <p className="text-gray-400 mt-1">{PIPELINE_LABELS[paire.prospect.etape_pipeline as PipelineStage] || paire.prospect.etape_pipeline} · {paire.prospect.nb_appels} appel(s) · {paire.prospect.nb_rdv} RDV{paire.prospect.commercial ? ` · ${paire.prospect.commercial}` : ''}</p>
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-blue-700 font-semibold mb-1">Client</p>
+                            <a href={`/clients?id=${paire.client.id}`} className="font-semibold text-gray-900 hover:underline">{paire.client.nom}</a>
+                            <p className="text-gray-500">{[paire.client.ville, paire.client.telephone, paire.client.email].filter(Boolean).join(' · ')}</p>
+                            <p className="text-gray-400 mt-1">{paire.client.statut} · {paire.client.nb_commandes} commande(s){paire.client.easybeer_id ? ' · EasyBeer' : ''}{paire.client.commercial ? ` · ${paire.client.commercial}` : ''}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-2 justify-end">
+                          <button onClick={() => prospectGagne(paire)} className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg">Passer le prospect en « Gagné »</button>
+                          <button onClick={() => prospectSupprime(paire)} className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200">Supprimer le prospect</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           </>)}
           {ebOnglet === 'connexion' && (<>
           {/* Regles d'affectation */}

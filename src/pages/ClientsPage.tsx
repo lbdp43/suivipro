@@ -20,6 +20,7 @@ import { getGoogleCalendarEvents, apiPost, apiPut, apiDelete, type GoogleCalenda
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
+import { decrocheDuClient } from '../utils/commandes';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -141,6 +142,7 @@ export default function ClientsPage() {
 
   // Multi-select
   const [selectionMode, setSelectionMode] = useState(false);
+  const [menuMobileId, setMenuMobileId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [fusionOuverte, setFusionOuverte] = useState(false);
   const [fusionEnCours, setFusionEnCours] = useState(false);
@@ -1504,6 +1506,7 @@ export default function ClientsPage() {
                 const statusConfig = VISIT_STATUS_CONFIG[visitStatus];
                 const commercial = getCommercial(client.commercial_id);
                 const isSelected = selectedId === client.id;
+                const decroche = client.statut === 'ACTIF' ? decrocheDuClient(getCommandesForClient(client.id)) : null;
 
                 return (
                   <div
@@ -1532,6 +1535,11 @@ export default function ClientsPage() {
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusConfig.color}`}>
                             {statusConfig.label}
                           </span>
+                          {decroche && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title={`Dernière commande le ${formatDate(decroche.derniere)}`}>
+                              Décroche · {decroche.libelle}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
                           {client.contact && <span className="text-gray-500">{client.contact}</span>}
@@ -1578,8 +1586,39 @@ export default function ClientsPage() {
                       </div>
 
                     </div>
-                    {/* Quick actions - horizontal */}
-                    <div className="flex items-center gap-3 sm:gap-1.5 mt-2 pl-5">
+                    {/* Sur mobile : deux boutons lisibles (Appel, Visite) et le reste sous « ⋯ ».
+                        Sur ordinateur : la rangée d'icônes, chacune avec son libellé au survol. */}
+                    <div className="sm:hidden flex items-center gap-2 mt-2 pl-5">
+                      {(client.telephone || client.telephone_mobile) && (
+                        <a href={`tel:${client.telephone_mobile || client.telephone}`} onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 text-green-700 text-xs font-medium">
+                          <Phone className="w-3.5 h-3.5" /> Appel
+                        </a>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); setInteractionClient(client); setInteractionType('VISITE'); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Visite
+                      </button>
+                      <div className="relative ml-auto">
+                        <button onClick={(e) => { e.stopPropagation(); setMenuMobileId(menuMobileId === client.id ? null : client.id); }}
+                          className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium" aria-label="Autres actions">⋯</button>
+                        {menuMobileId === client.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg border border-gray-200 shadow-lg z-20 py-1 text-xs" onClick={e => e.stopPropagation()}>
+                            {client.email && <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); setEmailClient(client); }}><Mail className="w-3.5 h-3.5 text-purple-600" /> Envoyer un e-mail</button>}
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); setInteractionClient(client); setInteractionType('RDV_PLANIFIE'); }}><Calendar className="w-3.5 h-3.5 text-purple-600" /> Planifier un RDV</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); openEditForm(client); }}><Edit2 className="w-3.5 h-3.5 text-gray-500" /> Modifier la fiche</button>
+                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" onClick={() => { setMenuMobileId(null); openQuickNote(client.id); }}><StickyNote className="w-3.5 h-3.5 text-yellow-600" /> Note rapide</button>
+                            {(client.latitude && client.longitude) ? (
+                              <a className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" href={`https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`} target="_blank" rel="noopener noreferrer"><Navigation className="w-3.5 h-3.5 text-amber-600" /> Itinéraire</a>
+                            ) : client.adresse ? (
+                              <a className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([client.adresse, client.ville].filter(Boolean).join(' '))}`} target="_blank" rel="noopener noreferrer"><Navigation className="w-3.5 h-3.5 text-amber-600" /> Voir sur la carte</a>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {/* Quick actions - horizontal (ordinateur) */}
+                    <div className="hidden sm:flex items-center gap-3 sm:gap-1.5 mt-2 pl-5">
                       {(client.telephone || client.telephone_mobile) && (
                         <a
                           href={`tel:${client.telephone_mobile || client.telephone}`}
@@ -1685,6 +1724,11 @@ export default function ClientsPage() {
                 <ChevronLeft className="w-5 h-5 text-gray-600" />
               </button>
               <h2 className="text-lg font-bold text-gray-900 flex-1 truncate">{selectedClient.nom}</h2>
+              {(() => { const d = selectedClient.statut === 'ACTIF' ? decrocheDuClient(selectedCommandes) : null; return d ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 mr-2" title={`Dernière commande le ${formatDate(d.derniere)} — il commandait, il ne commande plus : à relancer`}>
+                  Décroche · {d.libelle}
+                </span>
+              ) : null; })()}
               <div className="flex gap-1">
                 <button onClick={() => openEditForm(selectedClient)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="Modifier">
                   <Edit2 className="w-4 h-4" />

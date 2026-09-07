@@ -11,6 +11,7 @@ import {
   TaskClient,
 } from '../types';
 import { generateId, formatDate, toLocalDateStr } from '../utils/helpers';
+import { decrocheDuClient } from '../utils/commandes';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 
 interface Props {
@@ -272,6 +273,11 @@ export default function ClientDetailModal({ clientId, onClose }: Props) {
                 {client.tournee}
               </span>
             )}
+            {(() => { const d = client.statut === 'ACTIF' ? decrocheDuClient(commandes) : null; return d ? (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800" title={`Dernière commande le ${d.derniere} — il commandait, il ne commande plus : à relancer`}>
+                Décroche · {d.libelle}
+              </span>
+            ) : null; })()}
           </div>
 
           {/* Contact info */}
