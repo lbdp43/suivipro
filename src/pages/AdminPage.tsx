@@ -100,7 +100,7 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
 // section="easybeer" : la page EasyBeer (menu Administration → EasyBeer), avec ses trois
 // onglets — Connexion, Synchronisation, Contrôle. Sans section : l'administration classique.
 export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
-  const { state, dispatch, dispatchLocal } = useApp();
+  const { state, stateComplet, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
   const pageEasybeer = section === 'easybeer';
   const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>(pageEasybeer ? 'easybeer' : 'team');
@@ -166,6 +166,9 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const [fusionEnCours, setFusionEnCours] = useState<string | null>(null);
   const [ebRelierChoix, setEbRelierChoix] = useState<Record<string, string>>({});
   const [ebConfigLoaded, setEbConfigLoaded] = useState(false);
+  // Verrou : l'ancien appel « pendant le rendu » relançait les cinq requêtes à chaque rendu
+  // tant que la réponse n'était pas arrivée (25 requêtes inutiles par ouverture).
+  const ebChargementRef = useRef(false);
   const [ebSaving, setEbSaving] = useState(false);
   const [ebTesting, setEbTesting] = useState(false);
   const [ebTestResult, setEbTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -279,6 +282,35 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     } catch { toast.error('Erreur réseau'); }
     finally { setSecteursLoading(false); }
   };
+  const [fusionCible, setFusionCible] = useState('');
+  const fusionnerSecteurs = async () => {
+    if (!secteursAnalyse) return;
+    const cible = fusionCible.trim();
+    const sources = secteursAnalyse.secteurs.filter(s => secteursCoches.has(s.cle) && s.cle !== cible.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+    if (!cible || sources.length === 0) { toast.error('Cochez au moins un secteur à fusionner et choisissez le secteur cible'); return; }
+    const total = sources.reduce((n, s) => n + s.clients + s.prospects, 0);
+    if (!confirm(`Fusionner ${sources.map(s => `« ${s.nom} »`).join(', ')} dans « ${cible} » ?\n\n${total} fiche(s) (clients et prospects) changeront de secteur ; les jours de tournée et les zones dessinées seront renommés. Rien n'est supprimé.`)) return;
+    try {
+      const res = await fetch('/api/tournees/fusionner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('suivipro_token')}` },
+        body: JSON.stringify({ sources: sources.map(s => s.cle), cible }),
+      });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(r.error || 'Fusion impossible'); return; }
+      // Mise à jour immédiate de l'état local (le polling confirmera).
+      const normaliser = (v: string) => (v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const cles = new Set(sources.map(s => s.cle));
+      const maintenant = new Date().toISOString();
+      for (const c of stateComplet.clients) if (cles.has(normaliser(c.tournee))) dispatchLocal({ type: 'UPDATE_CLIENT', payload: { ...c, tournee: cible, date_modification: maintenant } });
+      for (const p of stateComplet.prospects) if (cles.has(normaliser(p.secteur))) dispatchLocal({ type: 'UPDATE_PROSPECT', payload: { ...p, secteur: cible, date_modification: maintenant } });
+      toast.success(`Fusion faite : ${r.clients} client(s), ${r.prospects} prospect(s), ${r.configs} tournée(s), ${r.zones} zone(s) renommée(s)`);
+      setFusionCible('');
+      await loadTourneeConfigs();
+      await analyserSecteurs();
+    } catch { toast.error('Erreur réseau'); }
+  };
+
   const supprimerSecteursVides = async () => {
     if (!secteursAnalyse) return;
     const choisis = secteursAnalyse.secteurs.filter(s => s.vide && secteursCoches.has(s.cle));
@@ -527,6 +559,13 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       chargerAuditLiens();
     } else toast.error('Échec de la liaison');
   };
+
+  useEffect(() => {
+    if (activeTab !== 'easybeer' || ebConfigLoaded || ebChargementRef.current) return;
+    ebChargementRef.current = true;
+    loadEasyBeerData().finally(() => { ebChargementRef.current = false; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, ebConfigLoaded]);
 
   const loadEasyBeerData = async () => {
     try {
@@ -1498,8 +1537,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
       {/* EasyBeer tab */}
       {activeTab === 'easybeer' && (
         <div className="space-y-6">
-          {/* Auto-load data when tab opens */}
-          {!ebConfigLoaded && (() => { loadEasyBeerData(); return null; })()}
+          {/* Chargement des données EasyBeer : dans un effet (voir ebChargementRef), plus au rendu. */}
 
           {ebOnglet === 'connexion' && (<>
           {/* Configuration */}
@@ -2542,19 +2580,29 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
             <p className="text-xs text-gray-500 mb-3">
               Passe en revue tous les secteurs connus (jours de tournée, zones de prospection, zones dessinées sur la carte)
               et compte pour chacun les clients (champ tournée), les prospects (champ secteur), les fiches dont la ville porte
-              ce nom, et les fiches géolocalisées dans la zone. Un secteur sans rien peut être supprimé : il est retiré des tournées et sa zone effacée.
-              Les clients et prospects ne sont jamais touchés.
+              ce nom, et les fiches géolocalisées dans la zone. Un secteur sans rien peut être supprimé : il est retiré des tournées et sa zone effacée,
+              sans toucher aux fiches. Cochez plusieurs secteurs et choisissez une cible pour les <b>fusionner</b> : toutes leurs fiches, jours de
+              tournée et zones dessinées prennent le nom de la cible.
             </p>
             <div className="flex items-center gap-2 flex-wrap mb-3">
               <button onClick={analyserSecteurs} disabled={secteursLoading} className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50">
                 {secteursLoading ? 'Analyse…' : secteursAnalyse ? 'Relancer l\'analyse' : 'Analyser les secteurs'}
               </button>
               {secteursAnalyse && secteursAnalyse.vides > 0 && (
-                <button onClick={supprimerSecteursVides} disabled={[...secteursCoches].length === 0} className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm disabled:opacity-50 flex items-center gap-1">
+                <button onClick={supprimerSecteursVides} disabled={secteursAnalyse.secteurs.filter(s => s.vide && secteursCoches.has(s.cle)).length === 0} className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm disabled:opacity-50 flex items-center gap-1">
                   <Trash2 className="w-3.5 h-3.5" /> Supprimer les secteurs vides cochés ({secteursAnalyse.secteurs.filter(s => s.vide && secteursCoches.has(s.cle)).length})
                 </button>
               )}
             </div>
+            {secteursAnalyse && secteursAnalyse.total > 1 && (
+              <div className="flex items-center gap-2 flex-wrap mb-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                <span className="text-xs font-medium text-gray-700">Fusionner les secteurs cochés ({secteursCoches.size}) dans :</span>
+                <input list="secteurs-cibles" value={fusionCible} onChange={e => setFusionCible(e.target.value)} placeholder="Nom du secteur cible…" className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white min-w-[200px]" />
+                <datalist id="secteurs-cibles">{secteursAnalyse.secteurs.map(s => <option key={s.cle} value={s.nom} />)}</datalist>
+                <button onClick={fusionnerSecteurs} disabled={secteursCoches.size === 0 || !fusionCible.trim()} className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50">Fusionner</button>
+                <span className="text-[11px] text-gray-400">La cible peut être un secteur existant ou un nouveau nom.</span>
+              </div>
+            )}
             {secteursAnalyse && (
               <div>
                 <div className="flex gap-3 mb-3 text-sm flex-wrap">
@@ -2570,7 +2618,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
                       <tbody>
                         {secteursAnalyse.secteurs.map(s => (
                           <tr key={s.cle} className={`border-b border-gray-50 last:border-0 ${s.vide ? 'bg-amber-50/50' : ''}`}>
-                            <td className="py-2 pr-2">{s.vide && <input type="checkbox" checked={secteursCoches.has(s.cle)} onChange={e => setSecteursCoches(prev => { const n = new Set(prev); if (e.target.checked) n.add(s.cle); else n.delete(s.cle); return n; })} />}</td>
+                            <td className="py-2 pr-2"><input type="checkbox" checked={secteursCoches.has(s.cle)} onChange={e => setSecteursCoches(prev => { const n = new Set(prev); if (e.target.checked) n.add(s.cle); else n.delete(s.cle); return n; })} title={s.vide ? 'Cocher pour supprimer ou fusionner' : 'Cocher pour fusionner'} /></td>
                             <td className="py-2 pr-2 font-semibold text-gray-800">{s.nom}{s.vide && <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">vide</span>}</td>
                             <td className={`py-2 px-2 text-center tabular-nums ${s.clients ? 'text-gray-800' : 'text-gray-400'}`}>{s.clients}</td>
                             <td className={`py-2 px-2 text-center tabular-nums ${s.prospects ? 'text-gray-800' : 'text-gray-400'}`}>{s.prospects}</td>
