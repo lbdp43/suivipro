@@ -12,6 +12,7 @@ import { dbReady } from './server/db.js';
 import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux } from './server/routes.js';
 import { rattacherTout } from './server/lib/zones.js';
 import googleCalendarRoutes from './server/google-calendar.js';
+import mcpRoutes from './server/mcp/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
@@ -21,6 +22,10 @@ const app = express();
 
 // Trust Railway's reverse proxy (fixes X-Forwarded-For / rate-limit)
 app.set('trust proxy', 1);
+
+// Le MCP (accès Claude) avant tout le reste : ce n'est pas un navigateur de l'application,
+// il lui faut sa propre origine autorisée et son propre quota. Lecture seule.
+app.use('/mcp', mcpRoutes);
 
 // Security headers
 app.use(helmet({

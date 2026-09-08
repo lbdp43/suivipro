@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import {  Users, Target, Tag, BarChart3, MapPin, Activity } from 'lucide-react';
+import {  Users, Target, Tag, BarChart3, MapPin, Activity, Bot } from 'lucide-react';
 
 
 // La page Administration : un onglet = un composant, chargé quand on l'ouvre.
@@ -10,12 +10,13 @@ const OngletStatistiques = lazy(() => import('./admin/OngletStatistiques'));
 const OngletEasyBeer = lazy(() => import('./admin/OngletEasyBeer'));
 const OngletTournees = lazy(() => import('./admin/OngletTournees'));
 const OngletActivite = lazy(() => import('./admin/OngletActivite'));
+const OngletAccesClaude = lazy(() => import('./admin/OngletAccesClaude'));
 
 export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
 
   const pageEasybeer = section === 'easybeer';
 
-  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity'>(pageEasybeer ? 'easybeer' : 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity' | 'claude'>(pageEasybeer ? 'easybeer' : 'team');
 
   const [ebOnglet, setEbOnglet] = useState<'connexion' | 'synchronisation' | 'controle'>('connexion');
 
@@ -26,6 +27,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     { id: 'commercials' as const, label: 'Statistiques', icon: BarChart3 },
     { id: 'tournees' as const, label: 'Tournées', icon: MapPin },
     { id: 'activity' as const, label: 'Activité', icon: Activity },
+    { id: 'claude' as const, label: 'Accès Claude', icon: Bot },
   ];
 
   const ebOnglets = [
@@ -82,6 +84,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         {activeTab === 'easybeer' && <OngletEasyBeer ebOnglet={ebOnglet} />}
         {activeTab === 'tournees' && <OngletTournees />}
         {activeTab === 'activity' && <OngletActivite />}
+        {activeTab === 'claude' && <OngletAccesClaude />}
       </Suspense>
     </div>
   );
