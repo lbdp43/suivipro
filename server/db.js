@@ -885,6 +885,26 @@ async function initDatabase(attempt = 1) {
       )`);
       await client.query('CREATE INDEX IF NOT EXISTS idx_signalements_statut ON signalements(statut)');
     } catch (err) { console.log('signalements migration:', err.message); }
+    // Les accès Claude (MCP) : un jeton par personne, portant son rôle. Le jeton lui-même
+    // n'est jamais stocké — seulement son empreinte, comme un mot de passe.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS mcp_jetons (
+        id TEXT PRIMARY KEY,
+        commercial_id TEXT NOT NULL,
+        nom TEXT NOT NULL DEFAULT '',
+        empreinte TEXT NOT NULL UNIQUE,
+        indice TEXT NOT NULL DEFAULT '',
+        cree_le TEXT NOT NULL,
+        cree_par TEXT DEFAULT '',
+        expire_le TEXT NOT NULL,
+        revoque_le TEXT,
+        derniere_utilisation TEXT,
+        appels INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (commercial_id) REFERENCES commerciaux(id) ON DELETE CASCADE
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_mcp_jetons_empreinte ON mcp_jetons(empreinte)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_mcp_jetons_commercial ON mcp_jetons(commercial_id)');
+    } catch (err) { console.log('mcp_jetons migration:', err.message); }
     // Les photos partagées avec un signalement, rangées comme les documents (base64).
     try {
       await client.query(`CREATE TABLE IF NOT EXISTS signalement_photos (

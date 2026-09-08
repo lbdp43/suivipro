@@ -1,0 +1,15 @@
+export declare function libelle(table: Record<string, string>, code: string | null | undefined): string;
+export declare const LIBELLES_TYPE_ETABLISSEMENT: Record<string, string>;
+export declare const LIBELLES_TYPE_CLIENT: Record<string, string>;
+export declare const FREQUENCES_VISITE: Record<string, number | null>;
+export declare const LIBELLES_ETAPE: Record<string, string>;
+export declare const LIBELLES_RESULTAT_APPEL: Record<string, string>;
+export declare const LIBELLES_STATUT_RDV: Record<string, string>;
+export declare const LIBELLES_RESULTAT_RDV: Record<string, string>;
+export declare const LIBELLES_INTERACTION: Record<string, string>;
+export declare const LIBELLES_STATUT_VISITE: Record<string, string>;
+export declare const LIBELLES_STATUT_TACHE: Record<string, string>;
+export declare const LIBELLES_PRIORITE_TACHE: Record<string, string>;
+export declare const LIBELLES_ROLE: Record<string, string>;
+export declare const LIBELLES_SOURCE_SIGNALEMENT: Record<string, string>;
+export declare const LIBELLES_STATUT_SIGNALEMENT: Record<string, string>;

@@ -1,23 +1,10 @@
 // Helpers partagés (visites) — déplacés tels quels depuis routes.js.
 import db from '../db.js';
 import { dateLocale } from '../../shared/regles.js';
+import { FREQUENCES_VISITE } from '../../shared/libelles.js';
 
-export const CLIENT_VISIT_FREQUENCIES = {
-  BAR_RESTAURANT_GENERAL: 15,
-  BAR_RESTAURANT_2024: 15,
-  CAVE_EPICERIE: 30,
-  CAVE_EPICERIE_2024: 30,
-  SOUCHON: 30,
-  SOUCHON_HORS_DROIT: 30,
-  CLIENT_SOUCHON: 30,
-  GRAND_PUBLIC: null,
-  GRAND_PUBLIC_2024: null,
-  COMITE_ENTREPRISE: 60,
-  DISTRIBUTEUR: 45,
-  EXPORT: 90,
-  MARIAGE: null,
-  PICOLOGIE: 30,
-};
+// Les fréquences vivent dans shared/libelles.js, avec les libellés : une seule définition.
+export const CLIENT_VISIT_FREQUENCIES = FREQUENCES_VISITE;
 
 export async function calculateNextVisit(typeClient, customRecurrence, lastVisitStr) {
   // customRecurrence === 0 means "no recurrence" explicitly

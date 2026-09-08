@@ -3,6 +3,14 @@
 // La Brasserie des Plantes
 // ============================================
 
+// Les libellés lisibles vivent dans shared/libelles.js : une seule définition pour les
+// écrans, le serveur et le MCP. Ici on ne fait que les typer.
+import {
+  LIBELLES_TYPE_ETABLISSEMENT, LIBELLES_TYPE_CLIENT, FREQUENCES_VISITE, LIBELLES_ETAPE,
+  LIBELLES_RESULTAT_APPEL, LIBELLES_STATUT_RDV, LIBELLES_RESULTAT_RDV, LIBELLES_INTERACTION,
+  LIBELLES_STATUT_TACHE, LIBELLES_PRIORITE_TACHE,
+} from '../../shared/libelles';
+
 export type EstablishmentType =
   | 'bar_restaurant'
   | 'cave'
@@ -18,21 +26,7 @@ export type EstablishmentType =
   | 'collectivite'
   | 'autre';
 
-export const ESTABLISHMENT_LABELS: Record<EstablishmentType, string> = {
-  bar_restaurant: 'Bar / Restaurant',
-  cave: 'Cave',
-  epicerie: 'Epicerie',
-  supermarche: 'Supermarche / GMS',
-  marche: 'Marche',
-  distributeur: 'Distributeur',
-  hotel: 'Hotel',
-  camping: 'Camping',
-  traiteur: 'Traiteur',
-  association: 'Association',
-  comite_entreprise: 'Comite d\'entreprise',
-  collectivite: 'Collectivite',
-  autre: 'Autre',
-};
+export const ESTABLISHMENT_LABELS = LIBELLES_TYPE_ETABLISSEMENT as Record<EstablishmentType, string>;
 
 export const ESTABLISHMENT_ICONS: Record<EstablishmentType, string> = {
   bar_restaurant: 'UtensilsCrossed',
@@ -63,19 +57,7 @@ export type PipelineStage =
   | 'perdu'
   | 'ne_pas_contacter';
 
-export const PIPELINE_LABELS: Record<PipelineStage, string> = {
-  partage: 'Nouveau partagé',
-  nouveau_datagouv: 'Importé Datagouv',
-  nouveau: 'Nouveau',
-  a_contacter: 'À contacter',
-  contacte: 'Contacte',
-  proposition: 'Proposition',
-  negociation: 'Negociation',
-  gagne: 'RDV',
-  client_gagne: 'Gagne',
-  perdu: 'Perdu',
-  ne_pas_contacter: 'Ne pas contacter',
-};
+export const PIPELINE_LABELS = LIBELLES_ETAPE as Record<PipelineStage, string>;
 
 export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   partage: '#a855f7',
@@ -110,13 +92,7 @@ export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
 
 export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoignable' | 'email_envoye';
 
-export const CALL_RESULT_LABELS: Record<CallResult, string> = {
-  repondu: 'Répondu',
-  pas_de_reponse: 'Pas de réponse',
-  messagerie: 'Messagerie',
-  injoignable: 'Injoignable',
-  email_envoye: 'Email envoyé',
-};
+export const CALL_RESULT_LABELS = LIBELLES_RESULTAT_APPEL as Record<CallResult, string>;
 /** Comment s'est passé un appel avec un CLIENT (enregistré comme interaction « APPEL »). */
 export type IssueAppelClient = 'commande' | 'interesse' | 'courtoisie' | 'probleme' | 'pas_de_reponse' | 'a_rappeler';
 export const ISSUES_APPEL_CLIENT: { value: IssueAppelClient; label: string; suite?: { titre: string; jours: number } }[] = [
@@ -134,12 +110,7 @@ export const RESULTATS_APPEL_SAISISSABLES: CallResult[] = ['repondu', 'pas_de_re
 
 export type AppointmentStatus = 'planifie' | 'confirme' | 'termine' | 'annule';
 
-export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
-  planifie: 'Planifié',
-  confirme: 'Confirmé',
-  termine: 'Terminé',
-  annule: 'Annulé',
-};
+export const APPOINTMENT_STATUS_LABELS = LIBELLES_STATUT_RDV as Record<AppointmentStatus, string>;
 
 export type EventType = 'rdv' | 'reunion' | 'boutique' | 'depot' | 'marche' | 'autre';
 
@@ -175,14 +146,7 @@ export const DAYS_OF_WEEK_LABELS: Record<number, string> = {
 
 export type AppointmentResult = 'client' | 'mail_envoye' | 'commande_plus_tard' | 'a_relancer' | 'pas_interesse' | 'decale' | '';
 
-export const APPOINTMENT_RESULT_LABELS: Record<string, string> = {
-  client: 'Client',
-  mail_envoye: 'Mail envoyé',
-  commande_plus_tard: 'Commande plus tard',
-  a_relancer: 'À relancer',
-  pas_interesse: 'Pas intéressé',
-  decale: 'RDV décalé',
-};
+export const APPOINTMENT_RESULT_LABELS = LIBELLES_RESULTAT_RDV as Record<string, string>;
 
 export type ReminderStatus = 'actif' | 'termine' | 'reporte';
 
@@ -494,22 +458,7 @@ export type ClientType =
   | 'MARIAGE'
   | 'PICOLOGIE';
 
-export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
-  BAR_RESTAURANT_GENERAL: 'Bar Restaurant',
-  BAR_RESTAURANT_2024: 'Bar Restaurant 2024',
-  CAVE_EPICERIE: 'Cave Epicerie',
-  CAVE_EPICERIE_2024: 'Cave Epicerie 2024',
-  SOUCHON: 'Souchon',
-  SOUCHON_HORS_DROIT: 'Hors Droit Souchon',
-  CLIENT_SOUCHON: 'Client Souchon',
-  GRAND_PUBLIC: 'Grand Public',
-  GRAND_PUBLIC_2024: 'Grand Public 2024',
-  COMITE_ENTREPRISE: 'Comite Entreprise',
-  DISTRIBUTEUR: 'Distributeur',
-  EXPORT: 'Export',
-  MARIAGE: 'Mariage',
-  PICOLOGIE: 'Picologie',
-};
+export const CLIENT_TYPE_LABELS = LIBELLES_TYPE_CLIENT as Record<ClientType, string>;
 
 export const CLIENT_TYPE_FAMILIES: Record<string, { label: string; icon: string; types: ClientType[] }> = {
   bar_restaurant: { label: 'Bar / Restaurant', icon: 'UtensilsCrossed', types: ['BAR_RESTAURANT_GENERAL', 'BAR_RESTAURANT_2024'] },
@@ -519,48 +468,21 @@ export const CLIENT_TYPE_FAMILIES: Record<string, { label: string; icon: string;
   autres: { label: 'Autres', icon: 'Package', types: ['COMITE_ENTREPRISE', 'DISTRIBUTEUR', 'EXPORT', 'MARIAGE', 'PICOLOGIE'] },
 };
 
-export const CLIENT_VISIT_FREQUENCIES: Record<ClientType, number | null> = {
-  BAR_RESTAURANT_GENERAL: 15,
-  BAR_RESTAURANT_2024: 15,
-  CAVE_EPICERIE: 30,
-  CAVE_EPICERIE_2024: 30,
-  SOUCHON: 30,
-  SOUCHON_HORS_DROIT: 30,
-  CLIENT_SOUCHON: 30,
-  GRAND_PUBLIC: null,
-  GRAND_PUBLIC_2024: null,
-  COMITE_ENTREPRISE: 60,
-  DISTRIBUTEUR: 45,
-  EXPORT: 90,
-  MARIAGE: null,
-  PICOLOGIE: 30,
-};
+export const CLIENT_VISIT_FREQUENCIES = FREQUENCES_VISITE as Record<ClientType, number | null>;
 
 export type ClientStatus = 'ACTIF' | 'INACTIF';
 
 export type InteractionType = 'VISITE' | 'APPEL' | 'RDV_PLANIFIE';
 
-export const INTERACTION_TYPE_LABELS: Record<InteractionType, string> = {
-  VISITE: 'Visite',
-  APPEL: 'Appel',
-  RDV_PLANIFIE: 'RDV planifié',
-};
+export const INTERACTION_TYPE_LABELS = LIBELLES_INTERACTION as Record<InteractionType, string>;
 
 export type TaskClientStatus = 'A_FAIRE' | 'EN_COURS' | 'TERMINEE';
 
-export const TASK_CLIENT_STATUS_LABELS: Record<TaskClientStatus, string> = {
-  A_FAIRE: 'À faire',
-  EN_COURS: 'En cours',
-  TERMINEE: 'Terminée',
-};
+export const TASK_CLIENT_STATUS_LABELS = LIBELLES_STATUT_TACHE as Record<TaskClientStatus, string>;
 
 export type TaskClientPriority = 'BASSE' | 'MOYENNE' | 'HAUTE';
 
-export const TASK_CLIENT_PRIORITY_LABELS: Record<TaskClientPriority, string> = {
-  BASSE: 'Basse',
-  MOYENNE: 'Moyenne',
-  HAUTE: 'Haute',
-};
+export const TASK_CLIENT_PRIORITY_LABELS = LIBELLES_PRIORITE_TACHE as Record<TaskClientPriority, string>;
 
 export interface Client {
   id: string;
