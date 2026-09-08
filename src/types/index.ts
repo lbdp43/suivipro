@@ -333,6 +333,8 @@ export interface Prospect {
   secteur: string;
   latitude: number;
   longitude: number;
+  /** Zone dessinée qui contient la fiche (calculé par le serveur), null si hors zone. */
+  zone_id?: string | null;
   etape_pipeline: PipelineStage;
   tags: string[];
   commercial_id: string;
@@ -548,6 +550,7 @@ export interface Client {
   custom_recurrence: number | null;
   latitude: number;
   longitude: number;
+  zone_id?: string | null;
   siret: string;
   tournee: string;
   prospect_id: string | null;
@@ -586,6 +589,9 @@ export interface CommercialZone {
   coordinates: [number, number][];
   created_at: string;
   updated_at: string;
+  /** Zone à travailler en premier, avec la consigne de l'admin ou du commercial. */
+  prioritaire: boolean;
+  consigne: string;
 }
 
 export const ZONE_COLOR_PALETTE = [
@@ -699,4 +705,5 @@ export interface AppState {
   tourneeConfigs: TourneeConfig[];
   commandes: Commande[];
   sessionsAppel: SessionAppel[];
+  commercialZones: CommercialZone[];
 }

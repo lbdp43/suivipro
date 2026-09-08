@@ -5,6 +5,7 @@ import db from '../db.js';
 import { sansAccents } from '../../shared/normalisation.js';
 import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { lireConfigTournee, nomZone } from '../lib/geo.js';
+import { pointDansPolygone, rattacherTout, etatGeocodage, geocoderManquants } from '../lib/zones.js';
 import { logActivity } from '../lib/journal.js';
 import { validationError } from '../lib/validation.js';
 
@@ -40,16 +41,6 @@ router.post('/tournee-config/:commercialId', authMiddleware, asyncHandler(async 
 }));
 
 
-function pointDansPolygone(lat, lng, polygone) {
-  // Ray casting ; polygone = [[lat, lng], ...]
-  let dedans = false;
-  for (let i = 0, j = polygone.length - 1; i < polygone.length; j = i++) {
-    const [yi, xi] = polygone[i], [yj, xj] = polygone[j];
-    const coupe = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
-    if (coupe) dedans = !dedans;
-  }
-  return dedans;
-}
 
 async function analyserSecteurs() {
   const [configs, zones, clients, prospects, commerciaux] = await Promise.all([
@@ -222,28 +213,47 @@ router.post('/commercial-zones', authMiddleware, asyncHandler(async (req, res) =
   }
   const now = new Date().toISOString();
   const id = z.id || `zone-${crypto.randomUUID()}`;
+  const prioritaire = !!z.prioritaire;
+  const consigne = typeof z.consigne === 'string' ? z.consigne : '';
   await db.query(
-    `INSERT INTO commercial_zones (id, commercial_id, nom, couleur, coordinates, created_at, updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [id, z.commercial_id, z.nom || '', z.couleur || '#6366f1', JSON.stringify(z.coordinates), now, now]
+    `INSERT INTO commercial_zones (id, commercial_id, nom, couleur, coordinates, created_at, updated_at, prioritaire, consigne)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [id, z.commercial_id, z.nom || '', z.couleur || '#6366f1', JSON.stringify(z.coordinates), now, now, prioritaire, consigne]
   );
-  res.json({ id, commercial_id: z.commercial_id, nom: z.nom || '', couleur: z.couleur || '#6366f1', coordinates: z.coordinates, created_at: now, updated_at: now });
+  await rattacherTout();
+  res.json({ id, commercial_id: z.commercial_id, nom: z.nom || '', couleur: z.couleur || '#6366f1', coordinates: z.coordinates, created_at: now, updated_at: now, prioritaire, consigne });
 }));
 
 router.put('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res) => {
   const z = req.body;
-  if (!Array.isArray(z.coordinates) || z.coordinates.length < 3) return validationError(res, ['coordinates doit contenir au moins 3 points']);
-  const existing = await db.query('SELECT commercial_id FROM commercial_zones WHERE id = $1', [req.params.id]);
+  if (z.coordinates !== undefined && (!Array.isArray(z.coordinates) || z.coordinates.length < 3)) return validationError(res, ['coordinates doit contenir au moins 3 points']);
+  const existing = await db.query('SELECT * FROM commercial_zones WHERE id = $1', [req.params.id]);
   if (existing.rows.length === 0) return res.status(404).json({ error: 'Zone introuvable' });
-  if (!isAdmin(req) && existing.rows[0].commercial_id !== req.user.id) {
+  const actuelle = existing.rows[0];
+  if (!isAdmin(req) && actuelle.commercial_id !== req.user.id) {
     return res.status(403).json({ error: 'Vous ne pouvez modifier que votre propre zone' });
   }
+  // Champ absent du corps → inchangé (le renommage depuis la carte n'envoie pas le tracé).
   const now = new Date().toISOString();
+  const nom = z.nom !== undefined ? (z.nom || '') : actuelle.nom;
+  const couleur = z.couleur !== undefined ? (z.couleur || '#6366f1') : actuelle.couleur;
+  const coordinates = z.coordinates !== undefined ? JSON.stringify(z.coordinates) : actuelle.coordinates;
+  const commercialId = isAdmin(req) && z.commercial_id ? z.commercial_id : actuelle.commercial_id;
+  const prioritaire = z.prioritaire !== undefined ? !!z.prioritaire : !!actuelle.prioritaire;
+  const consigne = z.consigne !== undefined ? String(z.consigne || '') : (actuelle.consigne || '');
   await db.query(
-    `UPDATE commercial_zones SET nom=$1, couleur=$2, coordinates=$3, updated_at=$4 WHERE id=$5`,
-    [z.nom || '', z.couleur || '#6366f1', JSON.stringify(z.coordinates), now, req.params.id]
+    `UPDATE commercial_zones SET nom=$1, couleur=$2, coordinates=$3, updated_at=$4, commercial_id=$5, prioritaire=$6, consigne=$7 WHERE id=$8`,
+    [nom, couleur, coordinates, now, commercialId, prioritaire, consigne, req.params.id]
   );
-  res.json({ ok: true });
+  // Les prospects qui portaient le nom de la zone comme secteur suivent le renommage.
+  if (nom !== actuelle.nom && actuelle.nom) {
+    await db.query('UPDATE prospects SET secteur = $1 WHERE zone_id = $2 AND secteur = $3', [nom, req.params.id, actuelle.nom]);
+  }
+  if (z.coordinates !== undefined || nom !== actuelle.nom) await rattacherTout();
+  if (prioritaire !== !!actuelle.prioritaire) {
+    await logActivity(req.user.id, 'zone_prioritaire', `${nom || 'Zone'} : ${prioritaire ? 'marquée prioritaire' : 'priorité retirée'}${consigne ? ` — ${consigne}` : ''}`, 'zone', req.params.id);
+  }
+  res.json({ ok: true, prioritaire, consigne, nom, commercial_id: commercialId });
 }));
 
 router.delete('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -253,7 +263,24 @@ router.delete('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, 
     return res.status(403).json({ error: 'Vous ne pouvez supprimer que votre propre zone' });
   }
   await db.query('DELETE FROM commercial_zones WHERE id = $1', [req.params.id]);
+  await rattacherTout();
   res.json({ ok: true });
+}));
+
+// État du placement des fiches : sans coordonnées, hors zone. Et les deux actions qui vont avec.
+router.get('/geo/etat', authMiddleware, adminOnly, asyncHandler(async (_req, res) => {
+  res.json(await etatGeocodage());
+}));
+
+router.post('/geo/geocoder-manquants', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const bilan = await geocoderManquants({ limite: Math.min(500, Math.max(1, Number(req.body?.limite) || 150)) });
+  await logActivity(req.user.id, 'geocodage', `${bilan.geocodes} fiche(s) placée(s), ${bilan.echecs} échec(s), ${bilan.restants} restante(s)`, 'geo', '');
+  res.json({ ...bilan, etat: await etatGeocodage() });
+}));
+
+router.post('/geo/rattacher', authMiddleware, adminOnly, asyncHandler(async (_req, res) => {
+  const bilan = await rattacherTout();
+  res.json({ ...bilan, etat: await etatGeocodage() });
 }));
 
 export default router;

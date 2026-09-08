@@ -2,7 +2,8 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { sansAccents } from '../../../shared/normalisation';
 import { lireConfigTournee } from '../../../shared/tournee';
-import { Plus, X, Save, Edit2, Trash2, User, RefreshCw, Loader2, MapPin } from 'lucide-react';
+import { Plus, X, Save, Edit2, Trash2, User, RefreshCw, Loader2, MapPin, Globe, Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES } from '../../types';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
@@ -108,6 +109,41 @@ export default function OngletTournees() {
   const DAY_KEYS = ['1', '2', '3', '4', '5', '6', '0'];
 
   const WEEK_PATTERN_LABELS: Record<string, string> = { every: 'Chaque semaine', even: 'Semaines paires', odd: 'Semaines impaires' };
+
+  // Placement des fiches : sans coordonnées, hors zone. Géocodage des manquantes à la demande.
+  interface CompteGeo { total: number; sans_coordonnees: number; hors_zone: number; sans_adresse: number }
+  interface EtatGeo { prospects: CompteGeo; clients: CompteGeo; zones: { n: number; prioritaires: number } }
+  const [etatGeo, setEtatGeo] = useState<EtatGeo | null>(null);
+  const [geoEnCours, setGeoEnCours] = useState<'' | 'geocoder' | 'rattacher'>('');
+  const [geoBilan, setGeoBilan] = useState<string>('');
+  const chargerEtatGeo = useCallback(async () => {
+    try { const r = await apiFetch('/geo/etat'); if (r.ok) setEtatGeo(await r.json()); } catch { /* silencieux */ }
+  }, []);
+  useEffect(() => { chargerEtatGeo(); }, [chargerEtatGeo]);
+  const geocoderManquants = async () => {
+    setGeoEnCours('geocoder'); setGeoBilan('');
+    try {
+      const r = await apiFetch('/geo/geocoder-manquants', { method: 'POST', body: JSON.stringify({ limite: 150 }) });
+      if (!r.ok) { toast.error('Erreur pendant le géocodage'); return; }
+      const b = await r.json();
+      setEtatGeo(b.etat);
+      setGeoBilan(`${b.geocodes} fiche(s) placée(s), ${b.echecs} adresse(s) introuvable(s)${b.restants ? `, ${b.restants} restante(s) : relancez` : ''}.`);
+      toast.success(`${b.geocodes} fiche(s) placée(s)`);
+    } catch { toast.error('Erreur réseau'); }
+    finally { setGeoEnCours(''); }
+  };
+  const rattacherZones = async () => {
+    setGeoEnCours('rattacher'); setGeoBilan('');
+    try {
+      const r = await apiFetch('/geo/rattacher', { method: 'POST' });
+      if (!r.ok) { toast.error('Erreur pendant le rattachement'); return; }
+      const b = await r.json();
+      setEtatGeo(b.etat);
+      setGeoBilan(`${b.prospects_modifies} prospect(s) et ${b.clients_modifies} client(s) mis à jour.`);
+      toast.success('Zones recalculées');
+    } catch { toast.error('Erreur réseau'); }
+    finally { setGeoEnCours(''); }
+  };
 
   // Secteurs et tournées vides : analyse puis suppression (recomptée côté serveur).
   interface SecteurAnalyse { cle: string; nom: string; clients: number; prospects: number; meme_ville: number; dans_polygone: number; vide: boolean; configs: { commercial: string; jour: string }[]; zones: { id: string; commercial: string; points: number }[] }
@@ -316,6 +352,41 @@ export default function OngletTournees() {
   return (
     <>
         <div className="space-y-4 sm:space-y-6">
+          {/* Géocodage et zones */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <Globe className="w-4 h-4" /> Placement des fiches et zones
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Une fiche sans coordonnées n'apparaît pas sur la carte et ne peut pas être rattachée à une zone. Le géocodage place les
+              fiches qui ont une adresse (150 par passage, service public api-adresse). Les zones se dessinent sur la <Link to="/carte" className="underline">Carte</Link> ;
+              chaque fiche géolocalisée est rattachée à la zone qui la contient, et le secteur d'un prospect prend le nom de sa zone s'il était vide.
+            </p>
+            {etatGeo ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                {(['prospects', 'clients'] as const).map(k => { const c = etatGeo[k]; return (
+                  <div key={k} className="rounded-lg border border-gray-100 p-3">
+                    <p className="text-xs font-semibold text-gray-700 capitalize mb-1">{k} · {c.total}</p>
+                    <p className={`text-sm ${c.sans_coordonnees ? 'text-amber-700' : 'text-green-700'}`}>{c.sans_coordonnees} sans coordonnées{c.sans_adresse ? <span className="text-[11px] text-gray-400"> (dont {c.sans_adresse} sans adresse)</span> : null}</p>
+                    <p className={`text-sm ${c.hors_zone ? 'text-amber-700' : 'text-gray-500'}`}>{c.hors_zone} hors zone</p>
+                  </div>); })}
+                <div className="rounded-lg border border-gray-100 p-3">
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Zones dessinées · {etatGeo.zones.n}</p>
+                  <p className="text-sm text-red-700 flex items-center gap-1"><Star className="w-3.5 h-3.5 fill-current" /> {etatGeo.zones.prioritaires} prioritaire(s)</p>
+                </div>
+              </div>
+            ) : <p className="text-sm text-gray-400 mb-3">Chargement…</p>}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={geocoderManquants} disabled={!!geoEnCours || !etatGeo || (etatGeo.prospects.sans_coordonnees - etatGeo.prospects.sans_adresse + etatGeo.clients.sans_coordonnees - etatGeo.clients.sans_adresse) === 0} className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50 flex items-center gap-1.5">
+                {geoEnCours === 'geocoder' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />} Géocoder les manquants
+              </button>
+              <button onClick={rattacherZones} disabled={!!geoEnCours} className="px-3 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50 flex items-center gap-1.5">
+                {geoEnCours === 'rattacher' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Recalculer les zones
+              </button>
+              {geoBilan && <span className="text-xs text-gray-600">{geoBilan}</span>}
+            </div>
+          </div>
+
           {/* Secteurs vides */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">

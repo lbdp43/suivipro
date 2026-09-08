@@ -1,12 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Polygon, Tooltip, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet-draw';
-import 'leaflet-draw/dist/leaflet.draw.css';
+import { useState } from 'react';
+import { MapContainer, TileLayer, Polygon, Tooltip } from 'react-leaflet';
 import { X, Info } from 'lucide-react';
 import { CommercialZone } from '../types';
-import { apiPost, apiPut, apiDelete } from '../api/client';
-import { useToast } from './Toast';
+import DessinZones from './DessinZones';
 
 interface Props {
   commercialId: string;
@@ -19,118 +15,6 @@ interface Props {
 }
 
 const DEFAULT_CENTER: [number, number] = [45.37, 4.27];
-
-function DrawController({ commercialId, color, initialZones, onChanged }: {
-  commercialId: string;
-  color: string;
-  initialZones: CommercialZone[];
-  onChanged: () => void;
-}) {
-  const map = useMap();
-  const toast = useToast();
-  const countRef = useRef(initialZones.length);
-
-  useEffect(() => {
-    const featureGroup = new L.FeatureGroup();
-    map.addLayer(featureGroup);
-
-    initialZones.forEach(z => {
-      const polygon = L.polygon(z.coordinates as L.LatLngExpression[], { color, fillOpacity: 0.25 });
-      (polygon as unknown as { _zoneId: string })._zoneId = z.id;
-      featureGroup.addLayer(polygon);
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const drawControl = new (L.Control as any).Draw({
-      position: 'topright',
-      draw: {
-        polygon: { shapeOptions: { color, fillOpacity: 0.25 }, allowIntersection: true, showArea: true },
-        polyline: false,
-        rectangle: false,
-        circle: false,
-        circlemarker: false,
-        marker: false,
-      },
-      edit: {
-        featureGroup,
-        remove: true,
-      },
-    });
-    map.addControl(drawControl);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleCreated = async (e: any) => {
-      const layer = e.layer;
-      featureGroup.addLayer(layer);
-      const latlngs = (layer.getLatLngs()[0] as L.LatLng[]).map(p => [p.lat, p.lng] as [number, number]);
-      countRef.current += 1;
-      try {
-        const created = await apiPost('/commercial-zones', {
-          commercial_id: commercialId,
-          nom: `Secteur ${countRef.current}`,
-          couleur: color,
-          coordinates: latlngs,
-        }) as { id: string };
-        layer._zoneId = created.id;
-        toast.success('Zone enregistrée');
-        onChanged();
-      } catch {
-        toast.error('Erreur enregistrement de la zone');
-      }
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleEdited = async (e: any) => {
-      const layers: L.Layer[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      e.layers.eachLayer((layer: any) => layers.push(layer));
-      for (const layer of layers as unknown as { _zoneId?: string; getLatLngs: () => L.LatLng[][] }[]) {
-        if (!layer._zoneId) continue;
-        const latlngs = layer.getLatLngs()[0].map(p => [p.lat, p.lng] as [number, number]);
-        try {
-          await apiPut(`/commercial-zones/${layer._zoneId}`, { couleur: color, coordinates: latlngs });
-        } catch {
-          toast.error('Erreur mise à jour de la zone');
-        }
-      }
-      toast.success('Zone(s) mise(s) à jour');
-      onChanged();
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleDeleted = async (e: any) => {
-      const ids: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      e.layers.eachLayer((layer: any) => { if (layer._zoneId) ids.push(layer._zoneId); });
-      for (const id of ids) {
-        try {
-          await apiDelete(`/commercial-zones/${id}`);
-        } catch {
-          toast.error('Erreur suppression de la zone');
-        }
-      }
-      if (ids.length > 0) toast.success('Zone(s) supprimée(s)');
-      onChanged();
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const L_ANY = L as any;
-    map.on(L_ANY.Draw.Event.CREATED, handleCreated);
-    map.on(L_ANY.Draw.Event.EDITED, handleEdited);
-    map.on(L_ANY.Draw.Event.DELETED, handleDeleted);
-
-    return () => {
-      map.off(L_ANY.Draw.Event.CREATED, handleCreated);
-      map.off(L_ANY.Draw.Event.EDITED, handleEdited);
-      map.off(L_ANY.Draw.Event.DELETED, handleDeleted);
-      map.removeControl(drawControl);
-      map.removeLayer(featureGroup);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map]);
-
-  return null;
-}
 
 export default function ZoneDrawModal({ commercialId, commercialName, color, initialZones, otherZones, onClose, onChanged }: Props) {
   const [center] = useState<[number, number]>(() => {
@@ -177,7 +61,7 @@ export default function ZoneDrawModal({ commercialId, commercialName, color, ini
                 <Tooltip sticky>{z.nom || 'Zone'}</Tooltip>
               </Polygon>
             ))}
-            <DrawController commercialId={commercialId} color={color} initialZones={initialZones} onChanged={onChanged} />
+            <DessinZones commercialId={commercialId} color={color} zones={initialZones} onChanged={onChanged} />
           </MapContainer>
         </div>
       </div>

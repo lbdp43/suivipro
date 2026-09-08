@@ -28,6 +28,7 @@ import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
+import { estEnZonePrioritaire } from '../utils/zones';
 
 export default function ProspectsPage() {
   const { state, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
@@ -106,6 +107,10 @@ export default function ProspectsPage() {
   const [sortScore, setSortScore] = usePersistedState<'none' | 'asc' | 'desc'>('prospects_sortScore', 'none');
   const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien'>('prospects_sortDate', 'none');
   const [filterAvecRdv, setFilterAvecRdv] = usePersistedState('prospects_filterAvecRdv', false);
+  // Zones dessinées sur la carte ; « __hors__ » = géolocalisé mais dans aucune zone.
+  const [filterZonesArr, setFilterZonesArr] = usePersistedState<string[]>('prospects_filterZones', []);
+  const filterZones = useMemo(() => new Set(filterZonesArr), [filterZonesArr]);
+  const setFilterZones = (v: Set<string>) => setFilterZonesArr([...v]);
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('prospects_filterCommercial', '');
   const [quickNoteId, setQuickNoteId] = useState<string | null>(null);
   const [quickNoteText, setQuickNoteText] = useState('');
@@ -456,8 +461,22 @@ export default function ProspectsPage() {
     return ids;
   }, [state.appointments]);
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '' || filterZones.size > 0;
+  const optionsZones = useMemo(() => {
+    const compte = new Map<string, number>();
+    let hors = 0; let nonPlaces = 0;
+    state.prospects.forEach(p => {
+      if (p.zone_id) compte.set(p.zone_id, (compte.get(p.zone_id) || 0) + 1);
+      else if (p.latitude && p.longitude) hors += 1;
+      else nonPlaces += 1;
+    });
+    const opts = state.commercialZones.map(z => ({ value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'} (${compte.get(z.id) || 0})` }));
+    opts.push({ value: '__hors__', label: `Hors zone (${hors})` });
+    opts.push({ value: '__nonplace__', label: `Sans coordonnées (${nonPlaces})` });
+    return opts;
+  }, [state.prospects, state.commercialZones]);
   const clearAllFilters = () => {
+    setFilterZones(new Set());
     setFilterTypes(new Set());
     setFilterStages(new Set());
     setFilterSecteurs(new Set());
@@ -493,6 +512,7 @@ export default function ProspectsPage() {
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (filterZones.size > 0 && !filterZones.has(p.zone_id || ((p.latitude && p.longitude) ? '__hors__' : '__nonplace__'))) return false;
       if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
@@ -511,7 +531,7 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
@@ -732,6 +752,15 @@ export default function ProspectsPage() {
                 options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
                 selected={filterSecteurs}
                 onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+                color="amber"
+              />
+            )}
+            {state.commercialZones.length > 0 && (
+              <MultiSelectDropdown
+                label="Zone"
+                options={optionsZones}
+                selected={filterZones}
+                onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
                 color="amber"
               />
             )}
@@ -963,6 +992,9 @@ export default function ProspectsPage() {
                     <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
                       {p.score}pts
                     </span>
+                    {estEnZonePrioritaire(state, p) && (
+                      <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium" title="Dans une zone prioritaire pour la prospection">★ Zone prioritaire</span>
+                    )}
                     {p.tags.slice(0, 2).map(tagId => {
                       const tag = state.tags.find(t => t.id === tagId);
                       return tag ? (

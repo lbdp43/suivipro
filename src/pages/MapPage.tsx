@@ -1,11 +1,14 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { dateLocale } from '../../shared/regles';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
-  ChevronLeft, ChevronRight, Users, Check, Building2, Layers,
+  ChevronLeft, ChevronRight, Users, Check, Building2, Layers, Pencil, Star,
 } from 'lucide-react';
+import DessinZones from '../components/DessinZones';
+import { prospectsAAppelerDansLaZone } from '../utils/zones';
+import { sessionDuJour } from '../utils/sessionAppel';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
@@ -79,13 +82,58 @@ export default function MapPage() {
   const [showProspects, setShowProspects] = usePersistedState<boolean>('map_show_prospects', true);
   const [mapFilterCommercial, setMapFilterCommercial] = usePersistedState<string>('map_filter_commercial', '');
   const [showZones, setShowZones] = usePersistedState<boolean>('map_show_zones', true);
-  const [zones, setZones] = useState<CommercialZone[]>([]);
-
-  useEffect(() => {
-    apiGet<CommercialZone[]>('/commercial-zones')
-      .then(setZones)
-      .catch(err => console.error('Erreur chargement zones:', err));
-  }, []);
+  // Filtre par zone dessinée ; « __hors__ » = fiches géolocalisées mais dans aucune zone.
+  const [selectedZones, setSelectedZones] = usePersistedState<string[]>('map_zones', []);
+  const zones = state.commercialZones;
+  const { startSession } = useCallModal();
+  const moi = state.currentUser;
+  const admin = moi?.role === 'admin';
+  // Mode dessin : polygone point par point directement sur la carte. L'admin dessine pour
+  // n'importe qui, un commercial pour lui-même.
+  const [modeDessin, setModeDessin] = useState(false);
+  const [dessinPour, setDessinPour] = useState<string>(moi?.id || '');
+  const [dessinPrioritaire, setDessinPrioritaire] = useState(false);
+  const [dessinConsigne, setDessinConsigne] = useState('');
+  // Consigne en cours de saisie dans la bulle d'une zone.
+  const [consigneSaisie, setConsigneSaisie] = useState<Record<string, string>>({});
+  const rechargerZones = async () => {
+    try { dispatchLocal({ type: 'SET_ZONES', payload: await apiGet<CommercialZone[]>('/commercial-zones') }); }
+    catch (err) { console.error('Erreur chargement zones:', err); }
+  };
+  const peutModifierZone = (z: CommercialZone) => admin || z.commercial_id === moi?.id;
+  const zonesModifiables = useMemo(() => zones.filter(z => admin ? z.commercial_id === dessinPour : z.commercial_id === moi?.id), [zones, admin, dessinPour, moi?.id]);
+  const appelesAujourdhui = useMemo(() => sessionDuJour(state, moi?.id).appeles, [state, moi?.id]);
+  const aAppelerParZone = useMemo(() => {
+    const m = new Map<string, number>();
+    zones.forEach(z => m.set(z.id, prospectsAAppelerDansLaZone(state, z.id, appelesAujourdhui).length));
+    return m;
+  }, [zones, state, appelesAujourdhui]);
+  const enregistrerPriorite = async (z: CommercialZone, prioritaire: boolean, consigne: string) => {
+    try {
+      await apiPut(`/commercial-zones/${z.id}`, { prioritaire, consigne });
+      dispatchLocal({ type: 'SET_ZONES', payload: zones.map(x => x.id === z.id ? { ...x, prioritaire, consigne } : x) });
+      toast.success(prioritaire ? `« ${z.nom || 'Zone'} » marquée prioritaire` : `Priorité retirée de « ${z.nom || 'Zone'} »`);
+    } catch { toast.error('Impossible d\'enregistrer la zone'); }
+  };
+  const renommerZone = async (z: CommercialZone) => {
+    const nom = window.prompt('Nom de la zone :', z.nom || '');
+    if (nom === null || !nom.trim() || nom.trim() === z.nom) return;
+    try {
+      await apiPut(`/commercial-zones/${z.id}`, { nom: nom.trim() });
+      await rechargerZones();
+      toast.success('Zone renommée');
+    } catch { toast.error('Impossible de renommer la zone'); }
+  };
+  // « Session d'appel pour cette zone » : les prospects à appeler rejoignent ma session du jour, puis on enchaîne.
+  const lancerSessionZone = async (z: CommercialZone) => {
+    const ids = prospectsAAppelerDansLaZone(state, z.id, appelesAujourdhui).map(p => p.id);
+    if (ids.length === 0) { toast.info('Aucun prospect à appeler dans cette zone'); return; }
+    try {
+      const r = await apiPut('/sessions-appel/jour', { jour: dateLocale(new Date()), prospect_ids: ids, mode: 'ajouter' }) as { session: import('../types').SessionAppel };
+      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
+    } catch { /* la session en mémoire suffit */ }
+    startSession(ids);
+  };
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
   const weekRange = useMemo(() => getWeekRange(rdvWeekOffset), [rdvWeekOffset]);
@@ -170,6 +218,7 @@ export default function MapPage() {
         return rdvProspectIds.has(p.id);
       }
       if (mapFilterCommercial && p.commercial_id !== mapFilterCommercial) return false;
+      if (selectedZones.length > 0 && !selectedZones.includes(p.zone_id || '__hors__')) return false;
       if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
       if (selectedTags.length > 0 && !selectedTags.some(t => p.tags.includes(t))) return false;
@@ -192,7 +241,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, searchTerm, showRdvPanel, rdvProspectIds, mapFilterCommercial]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, selectedZones, searchTerm, showRdvPanel, rdvProspectIds, mapFilterCommercial]);
 
   // Filtered clients for map
   const filteredClients = useMemo(() => {
@@ -203,6 +252,7 @@ export default function MapPage() {
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return false;
       if (c.statut === 'INACTIF') return false;
       if (mapFilterCommercial && c.commercial_id !== mapFilterCommercial) return false;
+      if (selectedZones.length > 0 && !selectedZones.includes(c.zone_id || '__hors__')) return false;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         return (
@@ -213,7 +263,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.clients, showClients, searchTerm, mapFilterCommercial]);
+  }, [state.clients, showClients, searchTerm, mapFilterCommercial, selectedZones]);
 
   // Clients sans coordonnees GPS
   const clientsWithoutGPS = useMemo(() => {
@@ -266,7 +316,9 @@ export default function MapPage() {
     );
   };
 
-  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length;
+  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length + selectedZones.length;
+  const toggleZone = (id: string) => setSelectedZones(prev => prev.includes(id) ? prev.filter(z => z !== id) : [...prev, id]);
+  const prospectsHorsZone = useMemo(() => state.prospects.filter(p => p.latitude && p.longitude && !p.zone_id).length, [state.prospects]);
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
@@ -343,6 +395,17 @@ export default function MapPage() {
             <Layers className="w-4 h-4" />
             <span className="hidden sm:inline">Secteurs</span>
           </button>
+          {/* Dessiner une zone directement sur la carte */}
+          <button
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
+              modeDessin ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'
+            }`}
+            onClick={() => { setModeDessin(!modeDessin); if (!modeDessin) { setShowZones(true); setShowRdvPanel(false); } }}
+            title="Dessiner, modifier ou supprimer une zone point par point sur la carte"
+          >
+            <Pencil className="w-4 h-4" />
+            <span className="hidden sm:inline">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
+          </button>
           {/* Bouton RDV */}
           <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
@@ -404,6 +467,26 @@ export default function MapPage() {
             )}
           </div>
         </div>
+
+        {modeDessin && (
+          <div className="flex items-center gap-2 flex-wrap p-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-900">
+            <Pencil className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Outil polygone en haut à droite de la carte : cliquez point par point, puis sur le premier point pour fermer. Les zones {admin ? 'du commercial choisi' : 'à vous'} sont modifiables (crayon et corbeille).</span>
+            {admin && (
+              <label className="flex items-center gap-1">Pour :
+                <select value={dessinPour} onChange={e => setDessinPour(e.target.value)} className="px-1.5 py-1 rounded border border-red-200 bg-white text-gray-800">
+                  {state.commerciaux.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="flex items-center gap-1 font-medium">
+              <input type="checkbox" checked={dessinPrioritaire} onChange={e => setDessinPrioritaire(e.target.checked)} /> <Star className="w-3.5 h-3.5" /> Zone prioritaire
+            </label>
+            {dessinPrioritaire && (
+              <input value={dessinConsigne} onChange={e => setDessinConsigne(e.target.value)} placeholder="Consigne pour la prospection (facultatif)" className="px-2 py-1 rounded border border-red-200 bg-white text-gray-800 min-w-[220px] flex-1" />
+            )}
+          </div>
+        )}
 
         {/* Filtre par commercial sur la carte */}
         <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:flex-wrap sm:pb-0">
@@ -483,6 +566,43 @@ export default function MapPage() {
                       {region}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Zones dessinées */}
+            {zones.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Zone dessinée</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {zones.map(z => {
+                    const c = getCommercial(z.commercial_id);
+                    const n = state.prospects.filter(p => p.zone_id === z.id).length;
+                    return (
+                      <button
+                        key={z.id}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                          selectedZones.includes(z.id) ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        onClick={() => toggleZone(z.id)}
+                        title={c ? `${c.prenom} ${c.nom}` : ''}
+                      >
+                        {z.prioritaire && <Star className="w-3 h-3 fill-current" />}
+                        {z.nom || 'Zone'}
+                        <span className={`text-[10px] rounded-full px-1.5 ${selectedZones.includes(z.id) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'}`}>{n}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                      selectedZones.includes('__hors__') ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    }`}
+                    onClick={() => toggleZone('__hors__')}
+                    title="Fiches géolocalisées qui ne tombent dans aucune zone dessinée"
+                  >
+                    Hors zone
+                    <span className={`text-[10px] rounded-full px-1.5 ${selectedZones.includes('__hors__') ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>{prospectsHorsZone}</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -625,7 +745,7 @@ export default function MapPage() {
               {activeFilterCount > 0 && (
                 <button
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedDepartments([]); setSelectedRegions([]); }}
+                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedDepartments([]); setSelectedRegions([]); setSelectedZones([]); }}
                 >
                   Réinitialiser les filtres
                 </button>
@@ -828,19 +948,81 @@ export default function MapPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {showZones && zones.map(zone => {
+          {modeDessin && (
+            <DessinZones
+              commercialId={admin ? dessinPour : (moi?.id || '')}
+              color={colorForCommercial(admin ? dessinPour : (moi?.id || ''))}
+              zones={zonesModifiables}
+              demanderUnNom
+              prioritaire={dessinPrioritaire}
+              consigne={dessinConsigne}
+              onChanged={rechargerZones}
+            />
+          )}
+          {showZones && zones.filter(z => !(modeDessin && zonesModifiables.some(m => m.id === z.id))).map(zone => {
             const commercial = getCommercial(zone.commercial_id);
             const color = colorForCommercial(zone.commercial_id);
+            const aAppeler = aAppelerParZone.get(zone.id) || 0;
+            const modifiable = peutModifierZone(zone);
+            const consigne = consigneSaisie[zone.id] ?? zone.consigne;
             return (
               <Polygon
                 key={zone.id}
                 positions={zone.coordinates}
-                pathOptions={{ color, fillOpacity: 0.12, weight: 2 }}
+                pathOptions={zone.prioritaire
+                  ? { color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.18, weight: 3, dashArray: '8 4' }
+                  : { color, fillOpacity: 0.12, weight: 2 }}
               >
                 <Tooltip sticky>
+                  {zone.prioritaire ? '★ Prioritaire · ' : ''}
                   {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'}
                   {zone.nom ? ` — ${zone.nom}` : ''}
                 </Tooltip>
+                <Popup minWidth={240} maxWidth={300}>
+                  <div className="text-sm space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-gray-900 flex items-center gap-1">
+                          {zone.prioritaire && <Star className="w-3.5 h-3.5 text-red-600 fill-current" />}
+                          {zone.nom || 'Zone'}
+                        </p>
+                        <p className="text-[11px] text-gray-500">{commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'} · {state.prospects.filter(p => p.zone_id === zone.id).length} prospect(s)</p>
+                      </div>
+                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-[11px] text-gray-400 hover:text-brewery-600" title="Renommer">Renommer</button>}
+                    </div>
+                    {zone.prioritaire && zone.consigne && !modifiable && (
+                      <p className="text-xs text-red-800 bg-red-50 border border-red-100 rounded p-1.5">{zone.consigne}</p>
+                    )}
+                    {modifiable && (
+                      <div className="space-y-1.5">
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-gray-800">
+                          <input type="checkbox" checked={zone.prioritaire} onChange={e => enregistrerPriorite(zone, e.target.checked, consigne)} />
+                          <Star className="w-3.5 h-3.5 text-red-600" /> Zone prioritaire pour la prospection
+                        </label>
+                        {zone.prioritaire && (
+                          <div className="flex gap-1">
+                            <input
+                              value={consigne}
+                              onChange={e => setConsigneSaisie(prev => ({ ...prev, [zone.id]: e.target.value }))}
+                              placeholder="Consigne pour la prospection"
+                              className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded"
+                            />
+                            {consigne !== zone.consigne && (
+                              <button onClick={() => enregistrerPriorite(zone, true, consigne)} className="px-2 py-1 text-xs rounded bg-brewery-600 text-white">OK</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => lancerSessionZone(zone)}
+                      disabled={aAppeler === 0}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      <Phone className="w-3.5 h-3.5" /> Session d'appel pour cette zone ({aAppeler})
+                    </button>
+                  </div>
+                </Popup>
               </Polygon>
             );
           })}

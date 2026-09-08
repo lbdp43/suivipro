@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import cron from 'node-cron';
 import { dbReady } from './server/db.js';
 import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux } from './server/routes.js';
+import { rattacherTout } from './server/lib/zones.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -133,6 +134,10 @@ dbReady.then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`SuiviPro API + Frontend running on port ${PORT}`);
   });
+
+  // Rattache les fiches géolocalisées aux zones dessinées (une fois, après les migrations).
+  rattacherTout().then(b => console.log(`[ZONES] ${b.zones} zone(s), ${b.prospects_modifies} prospect(s) et ${b.clients_modifies} client(s) mis à jour`))
+    .catch(e => console.error('[ZONES] Rattachement échec:', e.message));
 
   // CRON: Synchro nocturne Easybeer (filet de sécurité) — tous les jours 02:30 UTC
   cron.schedule('30 2 * * *', async () => {

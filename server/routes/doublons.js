@@ -8,6 +8,7 @@ import { encrypt, decrypt } from '../crypto.js';
 import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { SITE_INTERNET_CLIENT_ID, extractEbFieldsSync, findMatchingClient, findMatchingProspect, linkClientToProspect } from '../lib/easybeer-sync.js';
 import { geocodeServer } from '../lib/geo.js';
+import { rattacherEntite, rattacherTout } from '../lib/zones.js';
 import { logActivity } from '../lib/journal.js';
 import { preparerFiche, comparerFiches } from '../../shared/rapprochement.js';
 import { validationError } from '../lib/validation.js';
@@ -331,6 +332,7 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   }
 
   await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, req.params.id]);
+  await rattacherEntite('clients', clientId);
   res.json({ ok: true, client_id: clientId, linked_prospect: prospect?.id || null });
 }));
 
@@ -601,6 +603,7 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
       }
     }
   }
+  await rattacherTout();
   res.json({ ok: true, imported, skipped, enrichedFromProspect, commerciauxCreated, errors: importErrors });
 }));
 
