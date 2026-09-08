@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
-  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2,
+  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
-import { apiDelete, apiGet } from '../api/client';
+import { apiDelete, apiGet, apiPut } from '../api/client';
+import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire } from '../utils/zones';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
@@ -341,10 +342,22 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
     for (const r of rdvPrisDuJour) { const l = m.get(r.commercial_id) || []; l.push(r); m.set(r.commercial_id, l); }
     return [...m.entries()];
   }, [rdvPrisDuJour]);
+  // Les zones prioritaires passent devant, puis mes prospects, puis le score.
   const aAppeler = useMemo(() => state.prospects
     .filter(p => ['a_contacter', 'nouveau', 'contacte'].includes(p.etape_pipeline) && p.telephone)
-    .sort((a, b) => (b.commercial_id === moi.id ? 1 : 0) - (a.commercial_id === moi.id ? 1 : 0) || (b.score || 0) - (a.score || 0))
-    .slice(0, 8), [state.prospects, moi.id]);
+    .sort((a, b) => (estEnZonePrioritaire(state, b) ? 1 : 0) - (estEnZonePrioritaire(state, a) ? 1 : 0)
+      || (b.commercial_id === moi.id ? 1 : 0) - (a.commercial_id === moi.id ? 1 : 0) || (b.score || 0) - (a.score || 0))
+    .slice(0, 8), [state, moi.id]);
+  // Zones prioritaires : ce qu'il reste à y appeler, et une session d'appel par zone.
+  const zonesPrio = useMemo(() => zonesPrioritaires(state).map(z => ({ zone: z, aAppeler: prospectsAAppelerDansLaZone(state, z.id, maSession.appeles) })), [state, maSession.appeles]);
+  const sessionZone = async (ids: string[]) => {
+    if (ids.length === 0) { toast.info('Tout le monde a déjà été appelé dans cette zone'); return; }
+    try {
+      const r = await apiPut('/sessions-appel/jour', { jour: today, prospect_ids: ids, mode: 'ajouter' }) as { session: import('../types').SessionAppel };
+      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
+    } catch { /* la session en mémoire suffit */ }
+    startSession(ids);
+  };
 
   return (
     <>
@@ -374,6 +387,37 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                   {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                   <Link to={`/prospects?id=${p.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{p.nom_etablissement}</Link>
                   <span className="text-[11px] text-gray-400 truncate max-w-[40%]">{p.ville}</span>
+                </div>); })}
+            </div>
+          </div>
+        </BlocErreur>
+      )}
+      {zonesPrio.length > 0 && (
+        <BlocErreur titre="Zones prioritaires">
+          <div className="bg-white rounded-xl border border-red-200 p-4">
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+                <Star className="w-4 h-4 text-red-600 fill-current" /> Zones prioritaires pour la prospection
+              </h3>
+              <div className="flex items-center gap-2">
+                <Link to="/carte" className="text-xs text-brewery-600 hover:underline flex items-center gap-0.5">Carte <ChevronRight className="w-3 h-3" /></Link>
+                {zonesPrio.length > 1 && (
+                  <button onClick={() => sessionZone(zonesPrio.flatMap(z => z.aAppeler.map(p => p.id)))} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700">
+                    <Phone className="w-3.5 h-3.5" /> Toutes les zones ({zonesPrio.reduce((n, z) => n + z.aAppeler.length, 0)})
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {zonesPrio.map(({ zone, aAppeler: liste }) => { const c = getCommercial(zone.commercial_id); return (
+                <div key={zone.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50/60 border border-red-100">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{zone.nom || 'Zone'} <span className="text-[11px] text-gray-500 font-normal">· {c ? `${c.prenom} ${c.nom}` : ''}</span></p>
+                    {zone.consigne ? <p className="text-xs text-red-800">{zone.consigne}</p> : <p className="text-[11px] text-gray-400">Sans consigne</p>}
+                  </div>
+                  <button onClick={() => sessionZone(liste.map(p => p.id))} disabled={liste.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50 whitespace-nowrap">
+                    <Phone className="w-3.5 h-3.5" /> Session d'appel ({liste.length})
+                  </button>
                 </div>); })}
             </div>
           </div>

@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { logActivity } from '../lib/journal.js';
+import { rattacherEntite } from '../lib/zones.js';
 import { EMAIL_RE, PHONE_RE, validationError } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
 
@@ -49,6 +50,7 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
      c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
      c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
   );
+  await rattacherEntite('clients', clientId);
   const created = await db.query('SELECT * FROM clients WHERE id = $1', [clientId]);
   await logActivity(req.user.id, 'creation_client', c.nom, 'client', clientId);
   res.json(created.rows[0]);
@@ -85,6 +87,7 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
      c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
      c.siret || '', c.tournee || '', c.date_modification || now, req.params.id]
   );
+  await rattacherEntite('clients', req.params.id);
   res.json({ ok: true });
 }));
 

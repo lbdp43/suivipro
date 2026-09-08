@@ -4,6 +4,7 @@ import db from '../db.js';
 import { adminOnly, asyncHandler, authMiddleware } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
+import { rattacherEntite } from '../lib/zones.js';
 import { DATAGOUV_BASE_URL, NAF_CODES, fetchAllDatagouv, fetchNearPoint, parseDatagouvResult } from '../lib/sirene-import.js';
 
 const router = Router();
@@ -624,7 +625,7 @@ async function importEtabAsProspect(etab, commercialId, now, userId, configEntit
     [
       prospectId, nomEtab, typeEtab, '', '', '',
       etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
-      etab.libelle_naf || '', etab.latitude || 0, etab.longitude || 0,
+      '', etab.latitude || 0, etab.longitude || 0,
       pipelineStage, '[]', ruleCommercial, etab.siret, entityType,
       `Importe depuis Datagouv (${entityType})\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
       now, now, 30,
@@ -632,6 +633,7 @@ async function importEtabAsProspect(etab, commercialId, now, userId, configEntit
   );
 
   await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etab.id]);
+  await rattacherEntite('prospects', prospectId);
   if (userId) logActivity(userId, 'import_datagouv', `${nomEtab} (${entityType}) (SIRET: ${etab.siret})`, 'prospect', prospectId);
   return 'imported';
 }
@@ -790,13 +792,14 @@ router.post('/sirene/duplicates/:id/import', authMiddleware, adminOnly, asyncHan
     [
       prospectId, nomEtab, typeEtab, '', '', '',
       etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
-      etab.libelle_naf || '', etab.latitude || 0, etab.longitude || 0,
+      '', etab.latitude || 0, etab.longitude || 0,
       pipelineStage, '[]', '', etab.siret, entityType,
       `Import force (doublon ignore)\nSIRET: ${etab.siret}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}`,
       now, now, 30,
     ]
   );
   await db.query('UPDATE sirene_etablissements SET imported_as_prospect = $1 WHERE id = $2', [prospectId, etab.id]);
+  await rattacherEntite('prospects', prospectId);
   await db.query("UPDATE sirene_duplicate_queue SET status = 'force_imported', resolved_by = $2, resolved_at = $3 WHERE id = $1", [d.id, req.user.id, now]);
   await logActivity(req.user.id, 'force_import_doublon', `Import force: ${nomEtab} (SIRET: ${etab.siret})`, 'prospect', prospectId);
   res.json({ ok: true, action: 'force_imported' });

@@ -6,6 +6,7 @@ import { ficheDepuisPartage } from '../partage.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
+import { rattacherEntite, rattacherTout } from '../lib/zones.js';
 import { sansAccents } from '../../shared/normalisation.js';
 import { preparerFiche, comparerFiches } from '../../shared/rapprochement.js';
 import { parseProspect, parseSessionAppel } from '../lib/parse.js';
@@ -33,6 +34,7 @@ router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, scoreCreation]
   );
+  await rattacherEntite('prospects', p.id);
   await logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
   res.json({ ok: true });
 }));
@@ -47,6 +49,7 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
     [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id]
   );
+  await rattacherEntite('prospects', req.params.id);
   await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
   res.json({ ok: true });
 }));
@@ -106,6 +109,7 @@ router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) 
     [id, fiche.nom_etablissement.slice(0, 200), fiche.type_etablissement, fiche.telephone || '', fiche.adresse || '', fiche.ville || '', fiche.code_postal || '', fiche.departement || '',
       fiche.latitude || 0, fiche.longitude || 0, req.user.id, notes, now, await scoreProspect([], 50), fiche.source_url || '']
   );
+  await rattacherEntite('prospects', id);
   await logActivity(req.user.id, 'creation_prospect', `${fiche.nom_etablissement} (fiche partagée)`, 'prospect', id);
   const cree = await db.query('SELECT * FROM prospects WHERE id = $1', [id]);
   res.json({ ok: true, prospect: parseProspect(cree.rows[0]), sources, doublons, provenance: fiche.provenance });
@@ -214,6 +218,7 @@ router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) =
   } finally {
     client.release();
   }
+  await rattacherTout();
   res.json({ ok: true, count: prospects.length });
 }));
 

@@ -16,7 +16,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const hier = dateLocale(new Date(Date.now() - 86400000));
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -34,6 +34,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
                      lignes, notes, source, client_name, date_creation
               FROM commandes ORDER BY date_commande DESC`),
     db.query('SELECT * FROM sessions_appel WHERE jour >= $1', [hier]),
+    db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC'),
   ]);
 
   const etat = {
@@ -52,6 +53,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     tourneeConfigs: tourneeConfigs.rows,
     commandes: commandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
     sessionsAppel: sessionsAppel.rows.map(parseSessionAppel),
+    commercialZones: commercialZones.rows.map(z => { let c = z.coordinates; try { c = JSON.parse(c); } catch { c = []; } return { ...z, coordinates: Array.isArray(c) ? c : [], prioritaire: !!z.prioritaire, consigne: z.consigne || '' }; }),
   };
   // L'écran redemande l'état toutes les 30 s. Quand rien n'a changé, on répond « 304 »
   // sans corps : l'empreinte du JSON sert d'ETag, l'écran garde ce qu'il a.

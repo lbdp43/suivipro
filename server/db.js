@@ -837,6 +837,18 @@ async function initDatabase(attempt = 1) {
       `);
       await client.query("CREATE INDEX IF NOT EXISTS idx_commercial_zones_commercial_id ON commercial_zones(commercial_id)");
     } catch (err) { console.log('commercial_zones migration:', err.message); }
+    // Zones prioritaires (avec une consigne) et rattachement des fiches à la zone qui les contient.
+    try { await client.query("ALTER TABLE commercial_zones ADD COLUMN IF NOT EXISTS prioritaire BOOLEAN DEFAULT FALSE"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE commercial_zones ADD COLUMN IF NOT EXISTS consigne TEXT DEFAULT ''"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS zone_id TEXT"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS zone_id TEXT"); } catch { /* déjà là */ }
+    // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
+    // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
+    // remettra un vrai nom de secteur.
+    try {
+      await client.query(`UPDATE prospects p SET secteur = '' FROM sirene_etablissements s
+        WHERE p.siret = s.siret AND p.siret <> '' AND p.secteur <> '' AND p.secteur = COALESCE(s.libelle_naf, '')`);
+    } catch { /* table SIRENE absente */ }
 
     // ============================================
     // Seed data (only if empty)

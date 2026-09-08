@@ -3,7 +3,7 @@ import { dateLocale } from '../../shared/regles';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
-  Client, Interaction, TaskClient, TourneeConfig, Commande,
+  Client, Interaction, TaskClient, TourneeConfig, Commande, CommercialZone,
 } from '../types';
 import { faitDeLaProspection } from '../utils/roles';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
@@ -91,7 +91,8 @@ type Action =
   | { type: 'DELETE_TASK_CLIENT'; payload: string }
   | { type: 'SAVE_TOURNEE_CONFIG'; payload: TourneeConfig }
   | { type: 'SET_COMMANDES'; payload: Commande[] }
-  | { type: 'IMPORT_CLIENTS'; payload: Client[] };
+  | { type: 'IMPORT_CLIENTS'; payload: Client[] }
+  | { type: 'SET_ZONES'; payload: CommercialZone[] };
 
 // Après un rechargement, chaque collection restée identique garde sa référence : les écrans
 // qui mémorisent leurs calculs (useMemo sur state.clients, state.prospects…) ne refont que
@@ -120,9 +121,12 @@ function reducer(state: AppState, action: Action): AppState {
           tags: Array.isArray(p.tags) ? p.tags : [],
         })),
         sessionsAppel: action.payload.sessionsAppel || [],
+        commercialZones: action.payload.commercialZones || [],
       };
       return fusionnerCollections(state, suivant);
     }
+    case 'SET_ZONES':
+      return { ...state, commercialZones: action.payload };
     case 'SET_SESSION_APPEL':
       return { ...state, sessionsAppel: [...state.sessionsAppel.filter(s => s.id !== action.payload.id), action.payload] };
     case 'RETIRER_SESSION_APPEL':
@@ -326,6 +330,7 @@ const emptyState: AppState = {
   tourneeConfigs: [],
   commandes: [],
   sessionsAppel: [],
+  commercialZones: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
