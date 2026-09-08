@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { format, parseISO, subYears, addYears } from 'date-fns';
 import { rdvAVenir } from '../../shared/regles';
 import { PrisPar } from '../components/RdvAVenir';
+import { NomFiche } from '../components/FicheProspectModal';
 import { fr } from 'date-fns/locale';
 import { generateId } from '../utils/helpers';
 import { apiPost, apiPut } from '../api/client';
@@ -744,7 +745,7 @@ export default function PipelineCRPage() {
                         <div className="flex items-start gap-2">
                           <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm text-gray-900 truncate">{name}</h4>
+                            <h4 className="font-medium text-sm text-gray-900 truncate"><NomFiche prospectId={apt.client_id ? undefined : apt.prospect_id} clientId={apt.client_id}>{name}</NomFiche></h4>
 
                             <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                               {info.typeName}
@@ -852,8 +853,8 @@ export default function PipelineCRPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-gray-400 uppercase tracking-wider">Etablissement</label>
-                <p className="font-semibold text-gray-900">{getEntityName(detailApt)}</p>
+                <label className="text-[10px] text-gray-400 uppercase tracking-wider">Établissement</label>
+                <p className="font-semibold text-gray-900"><NomFiche prospectId={detailApt.client_id ? undefined : detailApt.prospect_id} clientId={detailApt.client_id}>{getEntityName(detailApt)}</NomFiche> <span className="text-[10px] font-normal text-gray-400">· voir la fiche et l'historique</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -19,6 +19,7 @@ import { generateId, detectConflicts } from '../utils/helpers';
 import { apiPost, apiPut } from '../api/client';
 import { rdvSansCompteRendu } from '../../shared/regles';
 import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
+import { NomFiche } from '../components/FicheProspectModal';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -473,14 +474,13 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
       : state.prospects.find((p: any) => p.id === rdv.prospect_id);
     const entityPhone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
     const entityEmail = entity?.email || '';
-    const entityLink = isClient ? `/clients?id=${rdv.client_id}` : `/prospects?id=${rdv.prospect_id}`;
     return (
       <div key={rdv.id} className={`bg-white rounded-xl border ${hasCR ? 'border-green-200 bg-green-50/30' : 'border-gray-200'} p-3`}>
         <div className="flex items-start gap-3">
           {hasCR ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <Link to={entityLink} className="font-semibold text-sm text-brewery-700 hover:text-brewery-900 hover:underline">{entityName}</Link>
+              <NomFiche prospectId={rdv.client_id ? undefined : rdv.prospect_id} clientId={rdv.client_id} className="font-semibold text-sm text-brewery-700">{entityName}</NomFiche>
               {rdvOwner && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{rdvOwner}</span>
               )}
@@ -884,13 +884,12 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                   const phone = entity?.telephone || (isClient && (entity as Client)?.telephone_mobile) || '';
                   const email = entity?.email || '';
                   const ville = entity?.ville || '';
-                  const entityLink = isClient ? `/clients?id=${rdv.client_id}` : `/prospects?id=${rdv.prospect_id}`;
                   return (
                     <div key={rdv.id} className={`bg-white rounded-lg border ${resultColors[expandedResult] || 'border-gray-200'} p-3`}>
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <Link to={entityLink} className="text-sm font-medium text-brewery-700 hover:text-brewery-900 hover:underline">{name}</Link>
+                            <NomFiche prospectId={isClient ? undefined : rdv.prospect_id} clientId={rdv.client_id} className="text-sm font-medium text-brewery-700">{name}</NomFiche>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                               {isClient ? 'Client' : 'Prospect'}
                             </span>

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { CalendarClock, ChevronDown, ChevronUp, Clock, MapPin, Phone, UserCheck } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment } from '../types';
 import { rdvAVenir } from '../../shared/regles';
+import { NomFiche } from './FicheProspectModal';
 
 // Les rendez-vous pris et pas encore passés : ceux qu'un commercial « va avoir ». Chaque
 // ligne dit qui l'a pris (le prospecteur) et, en vue d'équipe, pour qui.
@@ -63,7 +63,6 @@ export default function RdvAVenir({ commercialIds, titre = 'Rendez-vous à venir
             const nom = client?.nom || prospect?.nom_etablissement || 'Rendez-vous';
             const ville = client?.ville || prospect?.ville || '';
             const tel = client?.telephone_mobile || client?.telephone || prospect?.telephone || '';
-            const lien = client ? `/clients?id=${client.id}` : prospect ? `/prospects?id=${prospect.id}` : '/rdv';
             const pour = plusieurs ? getCommercial(rdv.commercial_id) : undefined;
             return (
               <div key={rdv.id} className="flex items-center gap-3 rounded-lg border border-sky-100 bg-sky-50/40 px-3 py-2">
@@ -73,7 +72,7 @@ export default function RdvAVenir({ commercialIds, titre = 'Rendez-vous à venir
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Link to={lien} className="text-sm font-medium text-gray-800 hover:text-brewery-700 hover:underline truncate">{nom}</Link>
+                    <NomFiche prospectId={prospect?.id} clientId={client?.id} className="text-sm font-medium text-gray-800 truncate">{nom}</NomFiche>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${client ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>{client ? 'Client' : 'Prospect'}</span>
                     <PrisPar rdv={rdv} />
                     {pour && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">pour {pour.prenom}</span>}
