@@ -7,22 +7,14 @@ import { apiPost, apiPut, apiPatch } from '../api/client';
 import { Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, PipelineStage, Prospect } from '../types';
 import { generateId, formatDate } from '../utils/helpers';
 import EmailTemplateModal from './EmailTemplateModal';
+import { etapeApresCompteRendu, typeActionApresCompteRendu } from '../../shared/tunnel';
+import { SelectRaisonPerte } from './RaisonPerte';
 
 // LA fenêtre de compte rendu d'un rendez-vous, la même partout (Rendez-vous, Semaine à
-// préparer, Bilan). Elle enregistre le résultat et les notes, déplace le prospect dans le
-// pipeline selon le résultat, programme le rappel (obligatoire quand il faut relancer),
-// propose le mail après « Mail envoyé », et replanifie après « RDV décalé ».
-
-/** Règle unique : l'étape du prospect après un compte rendu, ou null s'il ne bouge pas. */
-export function etapeApresCompteRendu(resultat: AppointmentResult, etapeActuelle: PipelineStage): PipelineStage | null {
-  const terminales: PipelineStage[] = ['client_gagne', 'perdu', 'ne_pas_contacter'];
-  if (resultat === 'client') return 'client_gagne';
-  if (resultat === 'pas_interesse') return 'perdu';
-  if (terminales.includes(etapeActuelle)) return null;
-  if (resultat === 'mail_envoye') return 'negociation';
-  if (resultat === 'commande_plus_tard' || resultat === 'a_relancer') return 'proposition';
-  return null;
-}
+// préparer, Bilan, fiche Prospect). Elle enregistre le résultat et les notes, déplace le
+// prospect dans le pipeline selon la règle du tunnel (shared/tunnel.js), programme la
+// prochaine action (obligatoire quand il faut relancer), propose le mail après
+// « Mail envoyé », et replanifie après « RDV décalé ».
 
 const RAPPEL_OBLIGATOIRE: AppointmentResult[] = ['a_relancer', 'commande_plus_tard', 'mail_envoye'];
 
@@ -48,6 +40,7 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
   const [enregistrement, setEnregistrement] = useState(false);
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
   const [decalage, setDecalage] = useState<{ date: string; debut: string; fin: string; notes: string } | null>(null);
+  const [raisonPerte, setRaisonPerte] = useState('pas_interesse');
 
   useEffect(() => {
     if (!rdv) return;
@@ -84,11 +77,11 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
       dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: misAJour });
 
       if (prospect) {
-        const etape = etapeApresCompteRendu(resultat, prospect.etape_pipeline);
+        const etape = etapeApresCompteRendu(resultat, prospect.etape_pipeline) as PipelineStage | null;
         if (etape) {
           try {
-            await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: etape, date_modification: new Date().toISOString() });
-            dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: etape } });
+            const r = await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: etape, raison_perte: etape === 'perdu' ? raisonPerte : '' }) as { date_etape?: string; raison_perte?: string };
+            dispatchLocal({ type: 'UPDATE_PROSPECT', payload: { ...prospect, etape_pipeline: etape, date_etape: r.date_etape || new Date().toISOString(), raison_perte: r.raison_perte || '', date_modification: new Date().toISOString() } });
           } catch (err) {
             toast.error(`Déplacement du prospect impossible : ${err instanceof Error ? err.message : 'erreur'}`);
           }
@@ -104,6 +97,7 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
           heure: '09:00',
           message: rappelMessage.trim() || `Relance suite RDV ${nom} - ${APPOINTMENT_RESULT_LABELS[resultat] || 'RDV terminé'}`,
           statut: 'actif' as const,
+          type: typeActionApresCompteRendu(resultat),
         };
         try {
           await apiPost('/reminders', rappelPayload);
@@ -224,6 +218,7 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
               ))}
             </div>
             {resultat && <p className="text-[11px] text-gray-500 mt-1.5 italic">{OPTIONS.find(o => o.value === resultat)?.effet}</p>}
+            {resultat === 'pas_interesse' && prospect && <SelectRaisonPerte value={raisonPerte} onChange={setRaisonPerte} />}
           </div>
 
           <div>

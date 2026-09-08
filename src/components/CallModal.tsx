@@ -9,6 +9,8 @@ import { generateId, formatDurationTimer, formatDate, downloadICS } from '../uti
 import FicheProspect from './FicheProspect';
 import ChampsRdv, { type ValeurRdv } from './ChampsRdv';
 import { apiPost, apiPut } from '../api/client';
+import { etapeApresAppel } from '../../shared/tunnel';
+import { SelectRaisonPerte } from './RaisonPerte';
 
 // ============================================
 // Context for triggering calls from anywhere
@@ -57,6 +59,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [editEmail, setEditEmail] = useState('');
   // Negative outcome: pas_interesse → perdu, ne_pas_contacter → ne_pas_contacter
   const [negativeOutcome, setNegativeOutcome] = useState<'none' | 'pas_interesse' | 'ne_pas_contacter'>('none');
+  const [raisonPerte, setRaisonPerte] = useState('pas_interesse');
   const [saveErrors, setSaveErrors] = useState<string[]>([]);
   // RDV state
   const [showRdv, setShowRdv] = useState(false);
@@ -231,32 +234,23 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
         resultat: callResult,
         notes: callNotes,
       };
-      await apiPost('/calls', callPayload);
+      const reponseAppel = await apiPost('/calls', callPayload) as { rappels_termines?: string[] };
       dispatchLocal({ type: 'ADD_CALL', payload: callPayload });
+      // L'appel clôt les actions « appeler » échues de ce prospect.
+      for (const id of reponseAppel.rappels_termines || []) {
+        const r = state.reminders.find(x => x.id === id);
+        if (r) dispatchLocal({ type: 'UPDATE_REMINDER', payload: { ...r, statut: 'termine' } });
+      }
 
       // 2. Update prospect tags + auto-transition pipeline
       const prospect = state.prospects.find(p => p.id === prospectId);
       if (prospect) {
-        const hasMemo = showMemo && memoMessage.trim() && memoDate;
-        const hasRdv = showRdv && rdvDate;
+        const hasMemo = !!(showMemo && memoMessage.trim() && memoDate);
+        const hasRdv = !!(showRdv && rdvDate);
 
-        let newStage = prospect.etape_pipeline;
-
-        // Regle : Negative outcome → perdu ou ne_pas_contacter (priorite max)
-        if (negativeOutcome === 'pas_interesse') {
-          newStage = 'perdu';
-        } else if (negativeOutcome === 'ne_pas_contacter') {
-          newStage = 'ne_pas_contacter';
-        }
-        // Regle : RDV pris → "Gagne" (prioritaire)
-        else if (hasRdv && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-          newStage = 'gagne';
-        }
-        // Regle : memo → "Contacte" si encore en "À contacter" ou "Nouveau"
-        else if (hasMemo && ['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
-          newStage = 'contacte';
-        }
-
+        // Règle unique du tunnel (shared/tunnel.js) : issue négative, RDV pris, mémo.
+        const newStage = (etapeApresAppel({ issueNegative: negativeOutcome, rdvPris: hasRdv, memo: hasMemo }, prospect.etape_pipeline) || prospect.etape_pipeline) as typeof prospect.etape_pipeline;
+        const maintenant = new Date().toISOString();
         const updatedProspect = {
           ...prospect,
           tags: selectedTags,
@@ -264,7 +258,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           nom_contact: editContact.trim() || prospect.nom_contact,
           email: editEmail.trim() || prospect.email,
           etape_pipeline: newStage,
-          date_modification: new Date().toISOString(),
+          raison_perte: newStage === 'perdu' ? raisonPerte : (prospect.raison_perte || ''),
+          date_etape: newStage !== prospect.etape_pipeline ? maintenant : prospect.date_etape,
+          date_modification: maintenant,
         };
         await apiPut(`/prospects/${prospect.id}`, updatedProspect);
         dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
@@ -280,6 +276,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
           heure: memoHeure,
           message: memoMessage.trim(),
           statut: 'actif' as const,
+          type: 'appeler' as const,
         };
         await apiPost('/reminders', reminderPayload);
         dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
@@ -548,7 +545,10 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       </button>
                     </div>
                     {negativeOutcome === 'pas_interesse' && (
-                      <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
+                      <>
+                        <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
+                        <SelectRaisonPerte value={raisonPerte} onChange={setRaisonPerte} />
+                      </>
                     )}
                     {negativeOutcome === 'ne_pas_contacter' && (
                       <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera déplacé dans "Ne pas contacter"</p>

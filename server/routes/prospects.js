@@ -7,6 +7,7 @@ import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
 import { rattacherEntite, rattacherTout } from '../lib/zones.js';
+import { changerEtape, terminerAction } from '../lib/tunnel.js';
 import { sansAccents } from '../../shared/normalisation.js';
 import { preparerFiche, comparerFiches } from '../../shared/rapprochement.js';
 import { parseProspect, parseSessionAppel } from '../lib/parse.js';
@@ -45,10 +46,12 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (errors.length > 0) return validationError(res, errors);
 
   const scoreMaj = await scoreProspect(p.tags, p.score || 50);
+  // L'étape ne se change que par changerEtape (historique, date d'entrée, raison de perte).
   await db.query(
-    `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, etape_pipeline=$13, tags=$14, commercial_id=$15, notes=$16, date_modification=$17, score=$18 WHERE id=$19`,
-    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id]
+    `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, tags=$13, commercial_id=$14, notes=$15, date_modification=$16, score=$17 WHERE id=$18`,
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id]
   );
+  if (p.etape_pipeline) await changerEtape(req.params.id, p.etape_pipeline, req.user.id, { raison: p.raison_perte || '' });
   await rattacherEntite('prospects', req.params.id);
   await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
   res.json({ ok: true });
@@ -159,13 +162,29 @@ router.delete('/sessions-appel/jour/:prospectId', authMiddleware, asyncHandler(a
 
 // Move prospect to a different pipeline stage (partial update)
 router.patch('/prospects/:id/stage', authMiddleware, asyncHandler(async (req, res) => {
-  const { etape_pipeline, date_modification } = req.body;
+  const { etape_pipeline, raison_perte } = req.body;
   if (!etape_pipeline) return validationError(res, ['etape_pipeline est requis']);
-  await db.query(
-    'UPDATE prospects SET etape_pipeline=$1, date_modification=$2 WHERE id=$3',
-    [etape_pipeline, date_modification || new Date().toISOString(), req.params.id]
-  );
-  res.json({ ok: true });
+  const change = await changerEtape(req.params.id, etape_pipeline, req.user.id, { raison: raison_perte || '' });
+  const p = await db.query('SELECT etape_pipeline, date_etape, raison_perte, date_modification FROM prospects WHERE id = $1', [req.params.id]);
+  if (p.rows.length === 0) return res.status(404).json({ error: 'Prospect introuvable' });
+  res.json({ ok: true, change, ...p.rows[0] });
+}));
+
+// « Que s'est-il passé ? » : on termine une action en disant son issue ; le serveur clôt le
+// rappel, déplace l'étape, crée la prochaine action, et renvoie tout ce qui a changé.
+router.post('/prospects/:id/action', authMiddleware, asyncHandler(async (req, res) => {
+  const { rappel_id, type, issue, raison_perte, note } = req.body;
+  if (!issue) return validationError(res, ['issue est requise']);
+  const r = await terminerAction(req.params.id, { rappelId: rappel_id, type, issue, raison: raison_perte || '', note: note || '', commercialId: req.user.id }, req.user.id);
+  if (!r) return res.status(404).json({ error: 'Prospect introuvable' });
+  if (r.erreur) return validationError(res, [r.erreur]);
+  res.json({ ok: true, prospect: parseProspect(r.prospect), rappel: r.rappel, prochaine: r.prochaine, etape: r.etape });
+}));
+
+// Historique des étapes d'un prospect, pour la frise de sa fiche.
+router.get('/prospects/:id/etapes', authMiddleware, asyncHandler(async (req, res) => {
+  const r = await db.query('SELECT * FROM prospect_etapes WHERE prospect_id = $1 ORDER BY date DESC', [req.params.id]);
+  res.json(r.rows);
 }));
 
 // Bulk import (with RLS)

@@ -6,6 +6,7 @@ import { Prospect, Client, DOCUMENT_CATEGORY_LABELS, DocumentCategory } from '..
 import { downloadDocument } from '../api/client';
 import { generateId } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
+import { etapeApresMail } from '../../shared/tunnel';
 
 interface ProspectProps {
   prospect: Prospect;
@@ -118,9 +119,8 @@ export default function EmailTemplateModal(props: Props) {
 
     // Prospect-specific: move to negociation stage
     if (isProspect && prospect) {
-      if (!['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter', 'negociation'].includes(prospect.etape_pipeline)) {
-        dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'negociation' } });
-      }
+      const etape = etapeApresMail(prospect.etape_pipeline);
+      if (etape) dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: etape as Prospect['etape_pipeline'] } });
       // Le clic vaut envoi : tag « Mail envoyé » + trace dans l'historique.
       marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => { /* tracé au mieux */ });
     }
@@ -141,6 +141,7 @@ export default function EmailTemplateModal(props: Props) {
           heure: '09:00',
           message: libelleRelance,
           statut: 'actif',
+          type: 'attendre_reponse',
         },
       });
     } else if (client) {

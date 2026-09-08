@@ -3,6 +3,8 @@ import { useApp } from '../store/AppContext';
 import { Prospect, ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, CALL_RESULT_LABELS, APPOINTMENT_RESULT_LABELS } from '../types';
 import { formatDate, formatDateTime } from '../utils/helpers';
 import { dateLocale, jourDe } from '../../shared/regles';
+import { prochaineActionDe } from '../../shared/tunnel';
+import { libelleRaisonPerte } from './RaisonPerte';
 
 // La fiche d'un établissement, telle qu'on veut l'avoir sous les yeux avant de composer :
 // qui c'est, où, ce qu'on sait déjà (tags, notes) et ce qui s'est passé avec lui
@@ -19,6 +21,7 @@ export default function FicheProspect({ prospect }: { prospect: Prospect }) {
   const adresse = [prospect.adresse, [prospect.code_postal, prospect.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   const lienMaps = prospect.source_url || (adresse ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}` : '');
   const qui = (id: string) => { const c = getCommercial(id); return c ? c.prenom : ''; };
+  const prochaine = prochaineActionDe(prospect, state.reminders, state.appointments, aujourdhui);
 
   return (
     <div className="space-y-3 text-sm">
@@ -67,6 +70,14 @@ export default function FicheProspect({ prospect }: { prospect: Prospect }) {
         </div>
       </div>
 
+      {prospect.etape_pipeline === 'perdu' && prospect.raison_perte && (
+        <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">Perdu : {libelleRaisonPerte(prospect.raison_perte)}</p>
+      )}
+      {prochaine && (
+        <p className={`text-xs rounded-lg px-2.5 py-1.5 border ${prochaine.enRetard ? 'bg-red-50 border-red-100 text-red-700' : 'bg-blue-50 border-blue-100 text-blue-800'}`}>
+          Prochaine action : {prochaine.libelle} · {formatDate(prochaine.date)}{prochaine.enRetard ? ' (en retard)' : ''}{prochaine.rappel?.message ? ` · ${prochaine.rappel.message}` : ''}
+        </p>
+      )}
       {prospect.notes && (
         <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-900">
           <StickyNote className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-500" />

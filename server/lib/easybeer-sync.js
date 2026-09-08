@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import * as eb from '../easybeer-client.js';
 import db from '../db.js';
+import { changerEtape } from './tunnel.js';
 import { sansAccents, normaliserNomEtablissement } from '../../shared/normalisation.js';
 import { calculateNextVisit } from './visites.js';
 
@@ -305,11 +306,8 @@ export async function findMatchingClient(name, email, phone, siret) {
 export async function linkClientToProspect(clientId, prospect, now) {
   // Update client to reference the prospect
   await db.query('UPDATE clients SET prospect_id = $1 WHERE id = $2', [prospect.id, clientId]);
-  // Move prospect to client_gagne
-  await db.query(
-    'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
-    ['client_gagne', now, prospect.id]
-  );
+  // Le prospect passe en « Gagné » (historique et date d'entrée compris).
+  await changerEtape(prospect.id, 'client_gagne', null);
   console.log(`[EasyBeer] Client ${clientId} linked to prospect ${prospect.id} (${prospect.nom_etablissement})`);
 }
 

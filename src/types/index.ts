@@ -346,6 +346,10 @@ export interface Prospect {
   date_creation: string;
   date_modification: string;
   score: number;
+  /** Pourquoi le prospect est perdu (rempli quand il passe en « Perdu »). */
+  raison_perte?: string;
+  /** Quand le prospect est entré dans son étape actuelle. */
+  date_etape?: string | null;
 }
 
 export interface Call {
@@ -382,6 +386,9 @@ export interface Appointment {
   recurrence_end_date?: string; // date de fin de recurrence
 }
 
+export type TypeAction = 'appeler' | 'relancer_mail' | 'attendre_reponse' | 'autre';
+
+/** Un rappel est la PROCHAINE ACTION d'un prospect : typée, datée, à quelqu'un. */
 export interface Reminder {
   id: string;
   prospect_id: string;
@@ -390,6 +397,18 @@ export interface Reminder {
   heure: string;
   message: string;
   statut: ReminderStatus;
+  type?: TypeAction;
+}
+
+/** Un changement d'étape dans le tunnel (historique, pour la frise). */
+export interface ProspectEtape {
+  id: string;
+  prospect_id: string;
+  de: string;
+  vers: string;
+  commercial_id: string | null;
+  date: string;
+  raison: string;
 }
 
 export interface Commercial {
