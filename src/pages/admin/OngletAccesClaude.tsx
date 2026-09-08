@@ -104,10 +104,13 @@ export default function OngletAccesClaude() {
           Chaque personne a le sien : il porte son rôle, et ne montre que ce qu'elle voit déjà à l'écran.
           Rien ne peut être créé, modifié ni supprimé par ce chemin.
         </p>
-        <p className="text-xs text-gray-500 mt-2">
-          À brancher dans Claude : Réglages → Connecteurs → connecteur personnalisé, nom <code className="bg-gray-100 px-1 rounded">suivipro</code>,
-          adresse <code className="bg-gray-100 px-1 rounded">{window.location.origin}/mcp</code>, et le jeton dans le champ d'authentification.
-        </p>
+        <div className="text-xs text-gray-500 mt-3 space-y-1">
+          <p className="font-medium text-gray-700">À brancher dans Claude — Réglages → Connecteurs → connecteur personnalisé :</p>
+          <p>1. Nom <code className="bg-gray-100 px-1 rounded">suivipro</code>, adresse <code className="bg-gray-100 px-1 rounded">{window.location.origin}/mcp</code></p>
+          <p>2. Authentification : <strong>Aucun</strong> — SuiviPro n'utilise pas de service de connexion OAuth, mais un jeton.</p>
+          <p>3. En-têtes de requête supplémentaires : nom <code className="bg-gray-100 px-1 rounded">x-token</code>, valeur = le jeton ci-dessous.</p>
+          <p className="text-gray-400">Si le connecteur propose « Toujours requis » et tente de s'inscrire auprès d'un service de connexion, c'est qu'il n'est pas sur « Aucun » : il échouera.</p>
+        </div>
       </div>
 
       {nouveau && (
