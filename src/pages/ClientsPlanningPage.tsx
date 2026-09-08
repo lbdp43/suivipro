@@ -18,6 +18,7 @@ import ClientDetailModal from '../components/ClientDetailModal';
 import CompteRenduModal from '../components/CompteRenduModal';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
+import { NomFiche } from '../components/FicheProspectModal';
 
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
@@ -893,7 +894,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                                 }
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-semibold text-xs text-gray-800">{entityName}</span>
+                                    <NomFiche prospectId={rdv.client_id ? undefined : rdv.prospect_id} clientId={rdv.client_id} className="font-semibold text-xs text-gray-800">{entityName}</NomFiche>
                                     {isAdmin && comm && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{comm.prenom}</span>}
                                     <PrisPar rdv={rdv} />
                                     {hasCR && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
