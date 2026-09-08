@@ -12,6 +12,8 @@ import type { TaskClient } from '../types';
 import { useToast } from '../components/Toast';
 import { generateId } from '../utils/helpers';
 import { apiPost, apiPut, apiDelete } from '../api/client';
+import { useLancerSession } from '../hooks/useSessionAppel';
+import { telephoneDuClient } from '../utils/sessionAppel';
 
 interface Task {
   id: string;
@@ -99,6 +101,8 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   const [crSaving, setCrSaving] = useState(false);
 
   const isAdmin = state.currentUser?.role === 'admin';
+  // Session d'appel : les clients des tâches ouvertes affichées (un appel par client), les tâches précochées.
+  const lancer = useLancerSession();
   const currentUserId = state.currentUser?.id;
   // Tâches et clients viennent de l'état commun (rechargé toutes les 30 s) : rien à re-télécharger.
   const clients = useMemo<ClientOption[]>(() => stateComplet.clients
@@ -265,6 +269,18 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
 
     return result;
   }, [tasks, filterStatut, filterAssignee, filterPriorite, showCompleted, search, currentUserId, idsVisibles]);
+  const sessionTaches = useMemo(() => {
+    const clients: string[] = []; const taches: string[] = [];
+    for (const t of filtered) {
+      if (t.statut === 'TERMINEE' || !t.client_id) continue;
+      const c = getClientById(t.client_id);
+      if (!c || !telephoneDuClient(c)) continue;
+      if (!clients.includes(c.id)) clients.push(c.id);
+      taches.push(t.id);
+    }
+    return { clients, taches };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, state.clients]);
 
   // Stats — sur la même base que la liste (vue d'équipe appliquée), sinon les chiffres
   // du haut ne correspondent pas à ce qu'on voit dessous.
@@ -312,6 +328,14 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
         )}
         {embarque && <div />}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => lancer.clients(sessionTaches.clients, sessionTaches.taches)}
+            disabled={sessionTaches.clients.length === 0}
+            className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 text-sm font-medium disabled:opacity-50"
+            title="Appeler les clients de ces tâches à la suite ; les tâches sont proposées cochées à la fin de chaque appel"
+          >
+            <Phone className="w-4 h-4" /> Session d'appel ({sessionTaches.clients.length})
+          </button>
           {isAdmin && (
             <button
               onClick={openNewTask}

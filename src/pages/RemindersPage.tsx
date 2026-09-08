@@ -13,6 +13,8 @@ import { Reminder, ReminderStatus, TypeAction } from '../types';
 import { TYPES_ACTION } from '../../shared/tunnel';
 import { useCallModal } from '../components/CallModal';
 import QueSestIlPasse from '../components/QueSestIlPasse';
+import { useLancerSession } from '../hooks/useSessionAppel';
+import { PhoneCall } from 'lucide-react';
 import { generateId, formatDate, isToday } from '../utils/helpers';
 
 // embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
@@ -85,6 +87,17 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
   // les autres demandent « que s'est-il passé ? ».
   const { startCall } = useCallModal();
   const [aTerminer, setATerminer] = useState<Reminder | null>(null);
+  // Session d'appel sur les rappels dus (aujourd'hui et en retard) de la vue en cours :
+  // « Les miens » → mes rappels, « Toute la prospection » → ceux de tous les prospecteurs.
+  const lancer = useLancerSession();
+  const aAppeler = useMemo(() => {
+    const vus = new Set<string>();
+    return [...pastReminders, ...todayReminders]
+      .filter(r => { if (vus.has(r.prospect_id)) return false; vus.add(r.prospect_id); return !!getProspect(r.prospect_id)?.telephone; })
+      .map(r => r.prospect_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pastReminders, todayReminders, state.prospects]);
+  const seulementMoi = idsVisibles && idsVisibles.size === 1 && idsVisibles.has(state.currentUser?.id || '');
   const markComplete = (id: string) => {
     const rem = state.reminders.find(r => r.id === id);
     if (!rem) return;
@@ -322,6 +335,14 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
               ))}
             </select>
           )}
+          <button
+            className="bg-purple-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-purple-700 flex items-center gap-2 text-xs sm:text-sm font-medium disabled:opacity-50"
+            onClick={() => lancer.prospects(aAppeler)}
+            disabled={aAppeler.length === 0}
+            title="Les rappels du jour et en retard de cette vue, enchaînés dans la fenêtre d'appel"
+          >
+            <PhoneCall className="w-4 h-4" /> {seulementMoi ? 'Appeler mes rappels' : 'Appeler tous ces rappels'} ({aAppeler.length})
+          </button>
           <button
             className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-xs sm:text-sm font-medium"
             onClick={() => setShowForm(true)}

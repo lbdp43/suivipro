@@ -1,12 +1,14 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { dateLocale } from '../../shared/regles';
-import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail } from 'lucide-react';
+import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail, ListTodo } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
-import { CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } from '../types';
+import { CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, ISSUE_APPEL_CLIENT_LABELS } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, formatDate, downloadICS } from '../utils/helpers';
 import FicheProspect from './FicheProspect';
+import FicheClient from './FicheClient';
+import { telephoneDuClient } from '../utils/sessionAppel';
 import ChampsRdv, { type ValeurRdv } from './ChampsRdv';
 import { apiPost, apiPut } from '../api/client';
 import { etapeApresAppel } from '../../shared/tunnel';
@@ -20,7 +22,11 @@ interface CallModalContextType {
   startCall: (prospectId: string) => void;
   /** Session d'appels : une file de prospects, enchaînés avec « Suivant ». */
   startSession: (prospectIds: string[]) => void;
-  session: { ids: string[]; index: number } | null;
+  /** Appel d'un client : même fenêtre, même chrono, mêmes résultats ; l'appel est une interaction « APPEL ». */
+  startCallClient: (clientId: string) => void;
+  /** Session d'appels clients ; `tachesPrecochees` : les tâches qui ont motivé la session, à marquer faites. */
+  startSessionClients: (clientIds: string[], tachesPrecochees?: string[]) => void;
+  session: { ids: string[]; index: number; genre: 'prospect' | 'client' } | null;
 }
 
 const CallModalContext = createContext<CallModalContextType | undefined>(undefined);
@@ -43,6 +49,21 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   const [showModal, setShowModal] = useState(false);
   const [prospectId, setProspectId] = useState('');
+  // Clients : même fenêtre, avec la fiche client entre deux appels et les tâches à cocher.
+  const [genre, setGenre] = useState<'prospect' | 'client'>('prospect');
+  const [clientId, setClientId] = useState('');
+  const [tachesCochees, setTachesCochees] = useState<Set<string>>(new Set());
+  const [tachesPrecochees, setTachesPrecochees] = useState<string[]>([]);
+  const [nouvelleTache, setNouvelleTache] = useState<{ titre: string; date: string } | null>(null);
+  const [issueClient, setIssueClient] = useState<IssueAppelClient | ''>('');
+  /** Choisir comment s'est passé l'appel propose la tâche qui va avec (modifiable, effaçable). */
+  const choisirIssueClient = (v: IssueAppelClient) => {
+    setIssueClient(v);
+    setSaveErrors([]);
+    const suite = ISSUES_APPEL_CLIENT.find(i => i.value === v)?.suite;
+    if (suite) { const d = new Date(); d.setDate(d.getDate() + suite.jours); setNouvelleTache({ titre: suite.titre, date: dateLocale(d) }); }
+    else setNouvelleTache(null);
+  };
   const [callActive, setCallActive] = useState(false);
   const [callTimer, setCallTimer] = useState(0);
   const [callResult, setCallResult] = useState<CallResult>('repondu');
@@ -78,7 +99,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStartTimeRef = useRef<number>(0);
   // Session d'appels : file de prospects (ceux qui ont un téléphone) et position courante.
-  const [session, setSession] = useState<{ ids: string[]; index: number } | null>(null);
+  const [session, setSession] = useState<{ ids: string[]; index: number; genre: 'prospect' | 'client' } | null>(null);
   // Entre deux appels d'une session, on montre la fiche de l'établissement avant de composer.
   const [fiche, setFiche] = useState(false);
 
@@ -113,6 +134,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     if (!prospect) return;
 
     setProspectId(pid);
+    setGenre('prospect');
+    setClientId('');
     setFiche(avecFiche);
     setCallActive(!avecFiche);
     callStartTimeRef.current = 0;
@@ -150,15 +173,40 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     if (!avecFiche) composer(prospect.telephone);
   };
 
+  /** Ouvre l'appel d'un client. Avec `avecFiche`, on montre d'abord sa fiche et on compose sur « Appeler ». */
+  const startCallClient = (cid: string, avecFiche = false) => {
+    const client = state.clients.find(c => c.id === cid);
+    if (!client) return;
+    setGenre('client');
+    setClientId(cid);
+    setProspectId('');
+    setFiche(avecFiche);
+    setCallActive(!avecFiche);
+    callStartTimeRef.current = 0;
+    setCallTimer(0);
+    setCallResult('repondu');
+    setCallNotes('');
+    setSaveErrors([]);
+    const ouvertes = state.tasksClient.filter(t => t.client_id === cid && t.statut !== 'TERMINEE').map(t => t.id);
+    setTachesCochees(new Set(tachesPrecochees.filter(id => ouvertes.includes(id))));
+    setNouvelleTache(null);
+    setIssueClient('');
+    setShowConfirmation(false);
+    setShowModal(true);
+    if (!avecFiche) composer(telephoneDuClient(client));
+  };
+
   /** Depuis la fiche : on compose et le chrono démarre. */
   const appelerDepuisFiche = () => {
-    const p = state.prospects.find(x => x.id === prospectId);
-    if (!p) return;
+    const tel = genre === 'client'
+      ? telephoneDuClient(state.clients.find(c => c.id === clientId) || { telephone: '', telephone_mobile: '' })
+      : (state.prospects.find(x => x.id === prospectId)?.telephone || '');
+    if (!tel) return;
     setFiche(false);
     callStartTimeRef.current = 0;
     setCallTimer(0);
     setCallActive(true);
-    composer(p.telephone);
+    composer(tel);
   };
 
   const endCall = () => {
@@ -168,9 +216,22 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const startSession = (prospectIds: string[]) => {
     const ids = prospectIds.filter(id => { const p = state.prospects.find(x => x.id === id); return p && p.telephone; });
     if (ids.length === 0) { toast.error('Aucun prospect avec un numéro de téléphone dans la sélection.'); return; }
-    setSession({ ids, index: 0 });
+    setSession({ ids, index: 0, genre: 'prospect' });
     startCall(ids[0], true);
     if (ids.length < prospectIds.length) toast.info(`${prospectIds.length - ids.length} prospect(s) sans téléphone ignoré(s)`);
+  };
+
+  const startSessionClients = (clientIds: string[], precochees: string[] = []) => {
+    const ids = clientIds.filter(id => { const c = state.clients.find(x => x.id === id); return c && telephoneDuClient(c); });
+    if (ids.length === 0) { toast.error('Aucun client avec un numéro de téléphone dans la sélection.'); return; }
+    setTachesPrecochees(precochees);
+    setSession({ ids, index: 0, genre: 'client' });
+    // Les tâches précochées ne sont connues qu'après ce rendu : on les recalcule à l'ouverture.
+    const client = state.clients.find(c => c.id === ids[0])!;
+    const ouvertes = state.tasksClient.filter(t => t.client_id === client.id && t.statut !== 'TERMINEE').map(t => t.id);
+    startCallClient(ids[0], true);
+    setTachesCochees(new Set(precochees.filter(id => ouvertes.includes(id))));
+    if (ids.length < clientIds.length) toast.info(`${clientIds.length - ids.length} client(s) sans téléphone ignoré(s)`);
   };
 
   /** Passe au prospect suivant de la session, ou la termine. Renvoie true si on a enchaîné. */
@@ -182,8 +243,14 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       setSession(null);
       return false;
     }
-    setSession({ ids: session.ids, index });
-    startCall(session.ids[index], true);
+    setSession({ ids: session.ids, index, genre: session.genre });
+    if (session.genre === 'client') {
+      const ouvertes = state.tasksClient.filter(t => t.client_id === session.ids[index] && t.statut !== 'TERMINEE').map(t => t.id);
+      startCallClient(session.ids[index], true);
+      setTachesCochees(new Set(tachesPrecochees.filter(id => ouvertes.includes(id))));
+    } else {
+      startCall(session.ids[index], true);
+    }
     return true;
   };
 
@@ -209,7 +276,47 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowNewTag(false);
   };
 
+  /** Appel d'un client : une interaction « APPEL » (sans toucher au calendrier des visites), les tâches cochées faites, une tâche créée au besoin. */
+  const saveCallClient = async () => {
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client || saving) return;
+    const erreurs: string[] = [];
+    if (!issueClient) erreurs.push('issue');
+    if (!callNotes.trim()) erreurs.push('notes');
+    if (erreurs.length) { setSaveErrors(erreurs); return; }
+    setSaveErrors([]);
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const interaction = { id: generateId('int'), client_id: client.id, commercial_id: state.currentUser?.id || '', type: 'APPEL' as const, date: now, comment: `${ISSUE_APPEL_CLIENT_LABELS[issueClient as IssueAppelClient]} · ${callNotes.trim()}`, date_creation: now };
+      await apiPost('/interactions', { ...interaction, sans_visite: true });
+      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+      for (const id of tachesCochees) {
+        const t = state.tasksClient.find(x => x.id === id);
+        if (!t) continue;
+        const faite = { ...t, statut: 'TERMINEE' as const, completed_at: now };
+        await apiPut(`/tasks-client/${id}`, faite);
+        dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload: faite });
+      }
+      if (nouvelleTache && nouvelleTache.titre.trim()) {
+        const tache = { id: generateId('task'), titre: nouvelleTache.titre.trim(), description: '', statut: 'A_FAIRE' as const, priorite: 'MOYENNE' as const, date_echeance: nouvelleTache.date || null, commercial_id: state.currentUser?.id || null, client_id: client.id, date_creation: now, completed_at: null };
+        await apiPost('/tasks-client', tache);
+        dispatchLocal({ type: 'ADD_TASK_CLIENT', payload: tache });
+      }
+      toast.success(tachesCochees.size ? `Appel enregistré · ${tachesCochees.size} tâche(s) faite(s)` : 'Appel enregistré');
+      setCallActive(false);
+      setCallTimer(0);
+      if (!suivantDeSession()) setShowModal(false);
+    } catch (err) {
+      console.error('Erreur sauvegarde appel client:', err);
+      toast.error('Erreur lors de la sauvegarde. Veuillez réessayer.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveCall = async () => {
+    if (genre === 'client') return saveCallClient();
     if (!prospectId || saving) return;
 
     // Validation: notes et tags obligatoires
@@ -243,7 +350,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       }
 
       // 2. Update prospect tags + auto-transition pipeline
-      const prospect = state.prospects.find(p => p.id === prospectId);
+          const prospect = state.prospects.find(p => p.id === prospectId);
       if (prospect) {
         const hasMemo = !!(showMemo && memoMessage.trim() && memoDate);
         const hasRdv = !!(showRdv && rdvDate);
@@ -340,7 +447,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     if (!suivantDeSession()) setShowModal(false);
   };
 
-  const prospect = state.prospects.find(p => p.id === prospectId);
+  const prospect = genre === 'prospect' ? state.prospects.find(p => p.id === prospectId) : undefined;
+  const clientAppele = genre === 'client' ? state.clients.find(c => c.id === clientId) : undefined;
+  const tachesDuClient = clientAppele ? state.tasksClient.filter(t => t.client_id === clientAppele.id && t.statut !== 'TERMINEE') : [];
 
   const resultIcons: Record<CallResult, typeof CheckCircle> = {
     repondu: CheckCircle,
@@ -371,11 +480,113 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <CallModalContext.Provider value={{ startCall, startSession, session }}>
+    <CallModalContext.Provider value={{ startCall, startSession, startCallClient, startSessionClients, session }}>
       {children}
 
+      {/* Fenêtre d'appel d'un client : fiche client entre deux appels, résultat, notes, tâches. */}
+      {showModal && genre === 'client' && clientAppele && (
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900">
+                  {fiche ? 'Prochain appel' : callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
+                  {session && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Session {session.index + 1} / {session.ids.length}</span>}
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">{clientAppele.nom} <span className="text-[10px] text-emerald-600 font-medium">Client</span></p>
+              </div>
+              <div className="flex items-center gap-1">
+                {session && (
+                  <button className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded" onClick={passerCeProspect} title="Passer au suivant sans enregistrer">Passer →</button>
+                )}
+                {!callActive && (
+                  <button className="p-1 rounded hover:bg-gray-100" onClick={cancelCall} title={session ? 'Arrêter la session' : 'Fermer'}><X className="w-5 h-5 text-gray-500" /></button>
+                )}
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              {fiche && (
+                <>
+                  <FicheClient client={clientAppele} variante="fenetre" />
+                  <div className="flex gap-2 pt-1">
+                    <button className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50" onClick={appelerDepuisFiche} disabled={!telephoneDuClient(clientAppele)}>
+                      <Phone className="w-5 h-5" /> Appeler
+                    </button>
+                    {session && <button className="px-4 py-3 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200" onClick={passerCeProspect}>Passer →</button>}
+                  </div>
+                </>
+              )}
+              {callActive && (
+                <div className="text-center py-6">
+                  <div className="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-4 animate-pulse"><Phone className="w-8 h-8 text-green-600" /></div>
+                  <div className="text-4xl font-mono font-bold text-brewery-600">{formatDurationTimer(callTimer)}</div>
+                  <p className="text-sm text-gray-500 mt-2">{clientAppele.contact && <span>{clientAppele.contact} - </span>}{telephoneDuClient(clientAppele)}</p>
+                  <button className="mt-6 bg-red-500 text-white px-8 py-3 rounded-full hover:bg-red-600 flex items-center gap-2 mx-auto font-medium" onClick={endCall}><PhoneOff className="w-5 h-5" /> Raccrocher</button>
+                </div>
+              )}
+              {!callActive && !fiche && (
+                <>
+                  {callTimer > 0 && <div className="text-center text-sm text-gray-500">Durée de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span></div>}
+                  <div className={saveErrors.includes('issue') ? 'p-2 border border-red-300 rounded-lg bg-red-50/30' : ''}>
+                    <label className="block text-xs font-medium text-gray-600 mb-2">Comment ça s'est passé ? <span className="text-red-500">*</span></label>
+                    {saveErrors.includes('issue') && <p className="text-[10px] text-red-500 mb-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Dites comment s'est passé l'appel</p>}
+                    <div className="grid grid-cols-2 gap-2">
+                      {ISSUES_APPEL_CLIENT.map(i => (
+                        <button key={i.value} className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${issueClient === i.value ? (i.value === 'probleme' ? 'border-red-500 bg-red-50 text-red-700' : i.value === 'commande' ? 'border-green-500 bg-green-50 text-green-700' : 'border-brewery-500 bg-brewery-50 text-brewery-700') : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`} onClick={() => choisirIssueClient(i.value)}>
+                          {i.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1.5 italic">Enregistré comme un appel dans l'historique du client, sans toucher au calendrier des visites.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>
+                    <textarea className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-brewery-500 ${saveErrors.includes('notes') ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-200'}`} placeholder="Qu'est-ce qui s'est passé pendant l'appel ?" value={callNotes} onChange={e => { setCallNotes(e.target.value); setSaveErrors([]); }} />
+                    {saveErrors.includes('notes') && <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Les notes sont obligatoires</p>}
+                  </div>
+                  {tachesDuClient.length > 0 && (
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-1.5">
+                      <label className="text-xs font-medium text-indigo-700 flex items-center gap-1"><ListTodo className="w-3 h-3" /> Tâches de ce client : cocher celles que cet appel règle</label>
+                      {tachesDuClient.map(t => (
+                        <label key={t.id} className="flex items-center gap-2 text-xs text-gray-800">
+                          <input type="checkbox" checked={tachesCochees.has(t.id)} onChange={e => setTachesCochees(prev => { const n = new Set(prev); if (e.target.checked) n.add(t.id); else n.delete(t.id); return n; })} />
+                          <span className="flex-1 truncate">{t.titre}</span>
+                          {t.date_echeance && <span className="text-[10px] text-gray-500">{formatDate(t.date_echeance)}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {!nouvelleTache ? (
+                    <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-brewery-400 hover:text-brewery-600 text-sm font-medium transition-colors" onClick={() => { const d = new Date(); d.setDate(d.getDate() + 7); setNouvelleTache({ titre: '', date: dateLocale(d) }); }}>
+                      <Plus className="w-4 h-4" /> Créer une tâche pour la suite
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-amber-700 flex items-center gap-1"><ListTodo className="w-3 h-3" /> Nouvelle tâche</label>
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setNouvelleTache(null)}><X className="w-4 h-4" /></button>
+                      </div>
+                      <input type="text" className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Ex : rappeler pour la commande de Noël" value={nouvelleTache.titre} onChange={e => setNouvelleTache({ ...nouvelleTache, titre: e.target.value })} autoFocus />
+                      <input type="date" className="px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white" value={nouvelleTache.date} onChange={e => setNouvelleTache({ ...nouvelleTache, date: e.target.value })} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {!callActive && !fiche && (
+              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
+                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={cancelCall}>Annuler</button>
+                <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 font-medium disabled:opacity-50" onClick={saveCall} disabled={saving}>
+                  <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : session && session.index + 1 < session.ids.length ? 'Enregistrer et suivant' : 'Enregistrer'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Global Call Modal */}
-      {showModal && prospect && (
+      {showModal && genre === 'prospect' && prospect && (
         <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {/* Header */}

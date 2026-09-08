@@ -2,9 +2,8 @@
 
 export function parseSessionAppel(s) {
   if (!s) return s;
-  let ids = s.prospect_ids;
-  if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
-  return { ...s, prospect_ids: Array.isArray(ids) ? ids : [] };
+  const lire = (v) => { if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = []; } } return Array.isArray(v) ? v : []; };
+  return { ...s, prospect_ids: lire(s.prospect_ids), client_ids: lire(s.client_ids) };
 }
 
 export function parseProspect(p) {

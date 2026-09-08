@@ -845,6 +845,8 @@ async function initDatabase(attempt = 1) {
     // Tunnel de vente : type d'action sur les rappels, raison de perte et date d'entrée dans
     // l'étape sur les prospects, historique des changements d'étape.
     try { await client.query("ALTER TABLE reminders ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'appeler'"); } catch { /* déjà là */ }
+    // Sessions d'appel clients (commerciaux) : la même liste du jour, côté clients.
+    try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS client_ids TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS raison_perte TEXT DEFAULT ''"); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS date_etape TEXT"); } catch { /* déjà là */ }
     try { await client.query("UPDATE prospects SET date_etape = date_modification WHERE date_etape IS NULL"); } catch { /* */ }
