@@ -10,9 +10,10 @@ import {
 } from '../../../shared/libelles.js';
 import {
   ETAPES_TERMINALES, RAISONS_PERTE, TYPES_ACTION, SEUIL_STAGNATION_JOURS,
-  prochaineActionDe, derniereActiviteDe, joursDansEtape, joursSansActivite,
+  prochaineActionDe, joursDansEtape,
 } from '../../../shared/tunnel.js';
 import { perimetre, clause, HorsPerimetre, equipe } from '../perimetre.js';
+import { clauseTexte, sansAccentsSql } from '../sql.js';
 import { journaliserContact } from '../journal.js';
 import {
   LIMITE_DEFAUT, LIMITE_MAX, MOIS_DEFAUT, MOIS_MAX, borner, dateFr, ilYaDesMois,
@@ -33,17 +34,68 @@ async function libellesEtapes() {
   return table;
 }
 
-async function chargerProspects(utilisateur, demandeCommercial, outil) {
+// Les colonnes qu'une liste affiche. Les notes et l'adresse ne servent qu'à la fiche :
+// à quatre mille prospects, les transporter à chaque recherche coûte cher pour rien.
+const CHAMPS_LISTE = `id, nom_etablissement, ville, code_postal, secteur, etape_pipeline, score,
+  commercial_id, telephone, email, date_etape, date_modification, date_creation`;
+
+
+/**
+ * Les prospects du périmètre, filtrés par la base. Tout ce qui peut se dire en SQL s'y dit :
+ * ce qui ne remonte pas ne traverse pas le réseau.
+ */
+async function chargerProspects(utilisateur, demandeCommercial, outil, f = {}) {
   const { ids } = await perimetre(utilisateur, demandeCommercial, 'prospects', outil);
   const params = [];
-  const r = await db.query(`SELECT * FROM prospects WHERE 1=1${clause('commercial_id', ids, params)} ORDER BY nom_etablissement`, params);
+  let sql = `SELECT ${f.colonnes || CHAMPS_LISTE} FROM prospects WHERE 1=1${clause('commercial_id', ids, params)}`;
+  sql += clauseTexte(['nom_etablissement', 'ville'], f.texte, params);
+  sql += clauseTexte(['ville', 'code_postal'], f.ville, params);
+  sql += clauseTexte(['secteur'], f.secteur, params);
+  if (f.etape) {
+    const codes = codesDEtape(f.etape, f.etapes || LIBELLES_ETAPE);
+    params.push(codes);
+    sql += ` AND etape_pipeline = ANY($${params.length})`;
+  }
+  if (f.scoreMin != null) { params.push(f.scoreMin); sql += ` AND COALESCE(score, 50) >= $${params.length}`; }
+  if (f.actifs) { params.push(ETAPES_TERMINALES); sql += ` AND NOT (etape_pipeline = ANY($${params.length}))`; }
+  const r = await db.query(`${sql} ORDER BY nom_etablissement`, params);
   return r.rows;
 }
 
-function filtreTexte(lignes, recherche, champs) {
+/** « négociation », « Negociation », « negociation » : les codes d'étape qui répondent. */
+function codesDEtape(recherche, etapes) {
   const q = normaliserPourComparaison(recherche);
-  if (!q) return lignes;
-  return lignes.filter(l => champs.some(ch => normaliserPourComparaison(l[ch] || '').includes(q)));
+  const codes = Object.keys(etapes).filter(c => normaliserPourComparaison(c) === q || normaliserPourComparaison(etapes[c]).includes(q));
+  return codes.length ? codes : [recherche];
+}
+
+/**
+ * Ce qui est en attente : rappels actifs et rendez-vous à venir. Deux ensembles petits par
+ * nature — inutile de les demander prospect par prospect.
+ */
+async function actionsEnCours() {
+  const aujourdhui = dateLocale();
+  const [rappels, rdvs] = await Promise.all([
+    db.query("SELECT * FROM reminders WHERE statut = 'actif'"),
+    db.query('SELECT * FROM appointments WHERE date >= $1', [aujourdhui]),
+  ]);
+  return { rappels: rappels.rows, rdvs: rdvs.rows };
+}
+
+
+/** La dernière activité de chaque fiche affichée, en une requête groupée. */
+async function dernieresActivites(ids) {
+  if (ids.length === 0) return new Map();
+  const r = await db.query(
+    `SELECT prospect_id, MAX(jour) AS jour FROM (
+       SELECT prospect_id, left(date, 10) AS jour FROM calls WHERE prospect_id = ANY($1)
+       UNION ALL
+       SELECT prospect_id, left(date, 10) AS jour FROM appointments
+        WHERE prospect_id = ANY($1) AND statut <> 'annule' AND left(date, 10) <= $2
+     ) t GROUP BY prospect_id`,
+    [ids, dateLocale()]
+  );
+  return new Map(r.rows.map(x => [x.prospect_id, x.jour]));
 }
 
 function lireTags(valeur) {
@@ -59,20 +111,10 @@ function texteProchaineAction(prospect, rappels, rdvs) {
   return `${quoi} ${dateFr(p.date)}${p.enRetard ? ' — EN RETARD' : ''}`;
 }
 
-async function contexteDesProspects(prospects) {
-  if (prospects.length === 0) return { rappels: [], rdvs: [], appels: [] };
-  const ids = prospects.map(p => p.id);
-  const [rappels, rdvs, appels] = await Promise.all([
-    db.query("SELECT * FROM reminders WHERE prospect_id = ANY($1) AND statut = 'actif'", [ids]),
-    db.query('SELECT * FROM appointments WHERE prospect_id = ANY($1)', [ids]),
-    db.query('SELECT * FROM calls WHERE prospect_id = ANY($1)', [ids]),
-  ]);
-  return { rappels: rappels.rows, rdvs: rdvs.rows, appels: appels.rows };
-}
 
-function resumeProspect(p, { etapes, prenoms, rappels, rdvs, appels }) {
-  const derniere = derniereActiviteDe(p, appels, rdvs, dateLocale());
-  const sans = joursSansActivite(derniere);
+function resumeProspect(p, { etapes, prenoms, rappels, rdvs, activites }) {
+  const derniere = activites ? activites.get(p.id) : null;
+  const sans = derniere ? nombreDeJours(derniere) : null;
   return ligne(
     nommer(p.nom_etablissement, p.ville),
     lib(etapes, p.etape_pipeline),
@@ -82,6 +124,13 @@ function resumeProspect(p, { etapes, prenoms, rappels, rdvs, appels }) {
     sans === null ? 'jamais contacté' : `dernière activité il y a ${sans} j`,
     prenoms.get(p.commercial_id) || '',
   );
+}
+
+/** Le contexte des seules lignes affichées : rappels, rendez-vous et dernière activité. */
+async function contexteDeLaPage(page, etapes, prenoms, enCours) {
+  const actions = enCours || (await actionsEnCours());
+  const activites = await dernieresActivites(page.map(p => p.id));
+  return { etapes, prenoms, rappels: actions.rappels, rdvs: actions.rdvs, activites };
 }
 
 const chercherProspect = {
@@ -99,30 +148,26 @@ const chercherProspect = {
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    let lignes = await chargerProspects(utilisateur, a.commercial, 'chercher_prospect');
-    lignes = filtreTexte(lignes, a.nom, ['nom_etablissement', 'ville']);
-    lignes = filtreTexte(lignes, a.ville, ['ville', 'code_postal']);
-    lignes = filtreTexte(lignes, a.secteur, ['secteur']);
     const etapes = await libellesEtapes();
-    if (a.etape) {
-      const q = normaliserPourComparaison(a.etape);
-      lignes = lignes.filter(p => normaliserPourComparaison(p.etape_pipeline) === q || normaliserPourComparaison(lib(etapes, p.etape_pipeline)).includes(q));
-    }
-    if (a.score_min != null) lignes = lignes.filter(p => (p.score ?? 50) >= a.score_min);
-
-    const ctx = { etapes, prenoms: await prenomsEquipe(), ...(await contexteDesProspects(lignes)) };
+    let lignes = await chargerProspects(utilisateur, a.commercial, 'chercher_prospect', {
+      texte: a.nom, ville: a.ville, secteur: a.secteur, etape: a.etape, etapes, scoreMin: a.score_min,
+    });
+    let enCours = null;
     if (a.a_faire) {
+      enCours = await actionsEnCours();
       const aujourdhui = dateLocale();
       lignes = lignes.filter(p => {
-        const pa = prochaineActionDe(p, ctx.rappels, ctx.rdvs, aujourdhui);
+        const pa = prochaineActionDe(p, enCours.rappels, enCours.rdvs, aujourdhui);
         return pa && pa.date <= aujourdhui;
       });
     }
     const limite = borner(a.limite, LIMITE_DEFAUT, LIMITE_MAX);
+    const page = lignes.slice(0, limite);
+    const ctx = await contexteDeLaPage(page, etapes, await prenomsEquipe(), enCours);
     const titre = ligne('Prospects', a.nom, a.ville, a.secteur, a.etape, a.a_faire ? 'à faire' : '', a.commercial);
     return {
       resultats: lignes.length,
-      texte: bloc(entete(titre, Math.min(limite, lignes.length), lignes.length), '', lignes.slice(0, limite).map(p => resumeProspect(p, ctx)).join('\n')),
+      texte: bloc(entete(titre, page.length, lignes.length), '', page.map(p => resumeProspect(p, ctx)).join('\n')),
     };
   },
 };
@@ -137,19 +182,22 @@ const ficheProspect = {
     historique_mois: z.number().optional().describe(`Profondeur d'historique en mois, ${MOIS_DEFAUT} par défaut, ${MOIS_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    const tous = await chargerProspects(utilisateur, a.commercial, 'fiche_prospect');
+    // La fiche a besoin de tout (notes, adresse, étiquettes) — mais d'une seule fiche :
+    // la recherche du nom se fait en base, pas en parcourant quatre mille lignes ici.
+    const tous = await chargerProspects(utilisateur, a.commercial, 'fiche_prospect', { colonnes: '*', texte: a.prospect });
     const q = normaliserPourComparaison(a.prospect);
     let candidats = tous.filter(p => p.id === a.prospect || normaliserPourComparaison(p.nom_etablissement) === q);
     if (candidats.length === 0) candidats = tous.filter(p => normaliserPourComparaison(p.nom_etablissement).includes(q));
     const etapes = await libellesEtapes();
     if (candidats.length === 0) {
-      const ailleurs = await db.query('SELECT COUNT(*)::int AS n FROM prospects WHERE lower(nom_etablissement) LIKE $1', [`%${String(a.prospect).toLowerCase()}%`]);
+      const ailleurs = await db.query(`SELECT COUNT(*)::int AS n FROM prospects WHERE ${sansAccentsSql('nom_etablissement')} LIKE $1`, [`%${normaliserPourComparaison(a.prospect)}%`]);
       if (ailleurs.rows[0]?.n > 0) throw new HorsPerimetre(`« ${a.prospect} » existe mais n'est pas dans votre périmètre. Nommez le commercial qui le suit pour y accéder.`);
       throw new HorsPerimetre(`Aucun prospect ne correspond à « ${a.prospect} ».`);
     }
     if (candidats.length > 1) {
-      const ctx = { etapes, prenoms: await prenomsEquipe(), ...(await contexteDesProspects(candidats)) };
-      return { resultats: candidats.length, texte: bloc(`Plusieurs prospects correspondent à « ${a.prospect} » — précisez :`, '', candidats.slice(0, 10).map(p => resumeProspect(p, ctx)).join('\n')) };
+      const page = candidats.slice(0, 10);
+      const ctx = await contexteDeLaPage(page, etapes, await prenomsEquipe());
+      return { resultats: candidats.length, texte: bloc(`Plusieurs prospects correspondent à « ${a.prospect} » — précisez :`, '', page.map(p => resumeProspect(p, ctx)).join('\n')) };
     }
 
     const p = candidats[0];
@@ -206,55 +254,76 @@ const ficheProspect = {
 const pipeline = {
   nom: 'pipeline',
   titre: 'L\'état du tunnel de vente',
-  description: 'Combien de prospects à chaque étape, leur ancienneté moyenne, les plus anciens nommés, et le nombre d\'actions en retard. Aucun montant.',
+  description: 'Combien de prospects à chaque étape et leur ancienneté moyenne. Précisez une étape pour voir les fiches qui y dorment le plus. Aucun montant.',
   schema: {
     commercial: z.string().optional().describe('Le prénom d\'un collègue ; sinon, les vôtres (toute l\'équipe pour un administrateur).'),
     secteur: z.string().optional().describe('Pour lire une zone en particulier.'),
-    etape: z.string().optional().describe('Pour détailler une seule étape.'),
+    etape: z.string().optional().describe('Pour détailler une seule étape : les plus anciennes fiches y sont nommées.'),
   },
   executer: async (a, { utilisateur }) => {
-    let lignes = await chargerProspects(utilisateur, a.commercial, 'pipeline');
-    lignes = filtreTexte(lignes, a.secteur, ['secteur']);
     const etapes = await libellesEtapes();
-    if (a.etape) {
-      const q = normaliserPourComparaison(a.etape);
-      lignes = lignes.filter(p => normaliserPourComparaison(p.etape_pipeline) === q || normaliserPourComparaison(lib(etapes, p.etape_pipeline)).includes(q));
-    }
-    const ctx = { etapes, prenoms: await prenomsEquipe(), ...(await contexteDesProspects(lignes)) };
-    const aujourdhui = dateLocale();
+    // Seulement de quoi compter et dater : à quatre mille prospects, le reste ne sert à rien.
+    const lignes = await chargerProspects(utilisateur, a.commercial, 'pipeline', {
+      colonnes: 'id, nom_etablissement, ville, commercial_id, etape_pipeline, date_etape, date_modification, date_creation',
+      secteur: a.secteur, etape: a.etape, etapes,
+    });
+    const prenoms = await prenomsEquipe();
     const parEtape = new Map();
-    let enRetard = 0;
     for (const p of lignes) {
       const cle = p.etape_pipeline || 'nouveau';
       if (!parEtape.has(cle)) parEtape.set(cle, []);
       parEtape.get(cle).push(p);
-      const pa = prochaineActionDe(p, ctx.rappels, ctx.rdvs, aujourdhui);
-      if (pa && pa.enRetard) enRetard++;
     }
     const ordre = Object.keys(etapes);
-    const blocs = [...parEtape.entries()]
-      .sort((x, y) => ordre.indexOf(x[0]) - ordre.indexOf(y[0]))
-      .map(([cle, gens]) => {
-        const moyenne = Math.round(gens.reduce((s, p) => s + joursDansEtape(p), 0) / gens.length);
-        const anciens = [...gens].sort((x, y) => joursDansEtape(y) - joursDansEtape(x)).slice(0, 5);
-        return bloc(
-          `**${lib(etapes, cle)}** — ${gens.length} prospect(s), ${moyenne} j en moyenne dans l'étape`,
-          anciens.map(p => `  ${ligne(nommer(p.nom_etablissement, p.ville), `${joursDansEtape(p)} j`, ctx.prenoms.get(p.commercial_id) || '')}`).join('\n'),
-        );
-      });
-    const actifs = lignes.filter(p => !ETAPES_TERMINALES.includes(p.etape_pipeline)).length;
+    const rangs = [...parEtape.entries()].sort((x, y) => ordre.indexOf(x[0]) - ordre.indexOf(y[0]));
+
+    // Une ligne par étape suffit pour voir le tunnel. Les fiches ne sont nommées que
+    // lorsqu'une étape est demandée : sinon la réponse fait trois écrans pour rien.
+    const detail = !!a.etape;
+    const corps = rangs.map(([cle, gens]) => {
+      const moyenne = Math.round(gens.reduce((t, p) => t + joursDansEtape(p), 0) / gens.length);
+      const tete = `${lib(etapes, cle)} — ${gens.length} · ${moyenne} j en moyenne dans l'étape`;
+      if (!detail) return tete;
+      const anciens = [...gens].sort((x, y) => joursDansEtape(y) - joursDansEtape(x)).slice(0, 10);
+      return bloc(`**${tete}**`, anciens.map(p => `  ${ligne(nommer(p.nom_etablissement, p.ville), `${joursDansEtape(p)} j`, prenoms.get(p.commercial_id) || '')}`).join('\n'));
+    });
+
+    // Le total et les actions en retard portent sur tout le tunnel : les afficher sous une
+    // étape isolée laisserait croire qu'ils la concernent.
+    const resume = detail ? '' : ligne(
+      `${lignes.length} prospect(s)`,
+      `${lignes.filter(p => !ETAPES_TERMINALES.includes(p.etape_pipeline)).length} encore en course`,
+      `${await actionsEnRetard(utilisateur, a.commercial)} action(s) en retard`,
+    );
     return {
       resultats: lignes.length,
       texte: bloc(
         entete(ligne('Pipeline', a.commercial, a.secteur, a.etape), lignes.length, lignes.length),
         '',
-        blocs.join('\n\n'),
+        corps.join(detail ? '\n\n' : '\n'),
         '',
-        ligne(`${lignes.length} prospect(s) au total`, `${actifs} encore en course`, `${enRetard} action(s) en retard`),
+        resume,
+        detail ? '' : 'Pour voir les fiches d\'une étape, rappelez cet outil avec « etape ».',
       ),
     };
   },
 };
+
+/**
+ * Les prospects dont l'action est dépassée. Un rappel actif en retard l'emporte toujours
+ * sur un rendez-vous à venir (il est forcément plus ancien) : le compte se fait donc en
+ * base, sans parcourir les fiches.
+ */
+async function actionsEnRetard(utilisateur, demandeCommercial) {
+  // Le périmètre est déjà résolu par le chargement des fiches : pas de seconde trace.
+  const { ids } = await perimetre(utilisateur, demandeCommercial, 'prospects', 'pipeline', { journaliser: false });
+  const params = [dateLocale()];
+  const sql = `SELECT COUNT(DISTINCT r.prospect_id)::int AS n
+                 FROM reminders r JOIN prospects p ON p.id = r.prospect_id
+                WHERE r.statut = 'actif' AND r.date < $1${clause('p.commercial_id', ids, params)}`;
+  const r = await db.query(sql, params);
+  return r.rows[0]?.n || 0;
+}
 
 const prospectsQuiStagnent = {
   nom: 'prospects_qui_stagnent',
@@ -268,39 +337,38 @@ const prospectsQuiStagnent = {
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    let lignes = (await chargerProspects(utilisateur, a.commercial, 'prospects_qui_stagnent'))
-      .filter(p => !ETAPES_TERMINALES.includes(p.etape_pipeline));
-    lignes = filtreTexte(lignes, a.secteur, ['secteur']);
     const etapes = await libellesEtapes();
-    if (a.etape) {
-      const q = normaliserPourComparaison(a.etape);
-      lignes = lignes.filter(p => normaliserPourComparaison(p.etape_pipeline) === q || normaliserPourComparaison(lib(etapes, p.etape_pipeline)).includes(q));
-    }
-    const ctx = { etapes, prenoms: await prenomsEquipe(), ...(await contexteDesProspects(lignes)) };
+    const lignes = await chargerProspects(utilisateur, a.commercial, 'prospects_qui_stagnent', {
+      secteur: a.secteur, etape: a.etape, etapes, actifs: true,
+    });
+    // La dernière activité de tout le monde en une requête groupée : la calculer fiche par
+    // fiche demanderait de rapatrier tous les appels et tous les rendez-vous.
+    const activites = await dernieresActivites(lignes.map(p => p.id));
     const seuil = borner(a.jours, SEUIL_STAGNATION_JOURS, 3650);
     const aujourdhui = dateLocale();
     const dormants = lignes.map(p => {
-      const derniere = derniereActiviteDe(p, ctx.appels, ctx.rdvs, aujourdhui);
-      const sans = joursSansActivite(derniere);
-      const depuisCreation = nombreDeJours(p.date_creation, aujourdhui);
-      return { p, derniere, sans: sans === null ? depuisCreation : sans };
+      const derniere = activites.get(p.id) || null;
+      const sans = derniere ? nombreDeJours(derniere, aujourdhui) : nombreDeJours(p.date_creation, aujourdhui);
+      return { p, derniere, sans };
     }).filter(d => d.sans !== null && d.sans >= seuil)
       .sort((x, y) => y.sans - x.sans);
 
     const limite = borner(a.limite, LIMITE_DEFAUT, LIMITE_MAX);
+    const page = dormants.slice(0, limite);
+    const [prenoms, enCours] = await Promise.all([prenomsEquipe(), actionsEnCours()]);
     return {
       resultats: dormants.length,
       texte: bloc(
-        entete(ligne(`Prospects sans activité depuis ${seuil} j ou plus`, a.etape, a.secteur, a.commercial), Math.min(limite, dormants.length), dormants.length),
+        entete(ligne(`Prospects sans activité depuis ${seuil} j ou plus`, a.etape, a.secteur, a.commercial), page.length, dormants.length),
         '',
-        dormants.slice(0, limite).map(({ p, derniere, sans }) => ligne(
+        page.map(({ p, derniere, sans }) => ligne(
           nommer(p.nom_etablissement, p.ville),
-          lib(ctx.etapes, p.etape_pipeline),
+          lib(etapes, p.etape_pipeline),
           `${sans} j sans activité`,
           `${joursDansEtape(p)} j dans l'étape`,
-          derniere ? `dernier(e) ${derniere.genre} le ${dateFr(derniere.date)}` : 'jamais contacté',
-          texteProchaineAction(p, ctx.rappels, ctx.rdvs),
-          ctx.prenoms.get(p.commercial_id) || '',
+          derniere ? `dernière fois le ${dateFr(derniere)}` : 'jamais contacté',
+          texteProchaineAction(p, enCours.rappels, enCours.rdvs),
+          prenoms.get(p.commercial_id) || '',
         )).join('\n'),
       ),
     };

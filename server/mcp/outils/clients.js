@@ -10,6 +10,7 @@ import {
   LIBELLES_STATUT_TACHE, LIBELLES_STATUT_RDV, FREQUENCES_VISITE,
 } from '../../../shared/libelles.js';
 import { perimetre, clause, HorsPerimetre, equipe } from '../perimetre.js';
+import { clauseTexte, sansAccentsSql } from '../sql.js';
 import { journaliserContact } from '../journal.js';
 import {
   LIMITE_DEFAUT, LIMITE_MAX, MOIS_DEFAUT, MOIS_MAX, borner, dateFr, ilYaDesMois,
@@ -44,18 +45,27 @@ function resumeClient(c, prenoms) {
   );
 }
 
-/** Le filtre de nom : sans accents, sans casse, en cherchant dans le nom et la ville. */
-function filtreTexte(lignes, recherche, champs) {
-  const q = normaliserPourComparaison(recherche);
-  if (!q) return lignes;
-  return lignes.filter(l => champs.some(ch => normaliserPourComparaison(l[ch] || '').includes(q)));
-}
 
-async function chargerClients(utilisateur, demandeCommercial, outil) {
+/** Les clients du périmètre, filtrés par la base : ce qui ne remonte pas ne traverse pas le réseau. */
+async function chargerClients(utilisateur, demandeCommercial, outil, f = {}) {
   const { ids } = await perimetre(utilisateur, demandeCommercial, 'clients', outil);
   const params = [];
-  const sql = `SELECT * FROM clients WHERE 1=1${clause('commercial_id', ids, params)} ORDER BY nom`;
-  const r = await db.query(sql, params);
+  let sql = `SELECT * FROM clients WHERE 1=1${clause('commercial_id', ids, params)}`;
+  sql += clauseTexte(['nom', 'ville'], f.texte, params);
+  sql += clauseTexte(['ville', 'code_postal'], f.ville, params);
+  sql += clauseTexte(['tournee'], f.tournee, params);
+  if (f.type) {
+    // Le type se cherche par son libellé (« cave ») comme par son code (CAVE_EPICERIE).
+    const q = normaliserPourComparaison(f.type);
+    const codes = Object.keys(LIBELLES_TYPE_CLIENT).filter(c => normaliserPourComparaison(c).includes(q) || normaliserPourComparaison(LIBELLES_TYPE_CLIENT[c]).includes(q));
+    params.push(codes.length ? codes : [f.type]);
+    sql += ` AND type_client = ANY($${params.length})`;
+  }
+  if (f.enRetard) {
+    params.push(dateLocale());
+    sql += ` AND statut <> 'INACTIF' AND next_visit IS NOT NULL AND next_visit <> '' AND left(next_visit, 10) < $${params.length}`;
+  }
+  const r = await db.query(`${sql} ORDER BY nom`, params);
   return r.rows;
 }
 
@@ -73,14 +83,9 @@ const chercherClient = {
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    let lignes = await chargerClients(utilisateur, a.commercial, 'chercher_client');
-    lignes = filtreTexte(lignes, a.nom, ['nom', 'ville']);
-    lignes = filtreTexte(lignes, a.ville, ['ville', 'code_postal']);
-    if (a.type) {
-      const q = normaliserPourComparaison(a.type);
-      lignes = lignes.filter(c => normaliserPourComparaison(lib(LIBELLES_TYPE_CLIENT, c.type_client)).includes(q) || normaliserPourComparaison(c.type_client).includes(q));
-    }
-    lignes = filtreTexte(lignes, a.tournee, ['tournee']);
+    let lignes = await chargerClients(utilisateur, a.commercial, 'chercher_client', {
+      texte: a.nom, ville: a.ville, type: a.type, tournee: a.tournee,
+    });
     if (a.etat) lignes = lignes.filter(c => statutVisite(c) === ETATS[a.etat]);
 
     const limite = borner(a.limite, LIMITE_DEFAUT, LIMITE_MAX);
@@ -103,13 +108,13 @@ const ficheClient = {
     historique_mois: z.number().optional().describe(`Profondeur d'historique en mois, ${MOIS_DEFAUT} par défaut, ${MOIS_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    const tous = await chargerClients(utilisateur, a.commercial, 'fiche_client');
+    const tous = await chargerClients(utilisateur, a.commercial, 'fiche_client', { texte: a.client });
     const q = normaliserPourComparaison(a.client);
     let candidats = tous.filter(c => c.id === a.client || normaliserPourComparaison(c.nom) === q);
     if (candidats.length === 0) candidats = tous.filter(c => normaliserPourComparaison(c.nom).includes(q));
     if (candidats.length === 0) {
       // Peut-être un client de collègue : on le dit, sans rien montrer de sa fiche.
-      const ailleurs = await db.query('SELECT COUNT(*)::int AS n FROM clients WHERE lower(nom) LIKE $1', [`%${String(a.client).toLowerCase()}%`]);
+      const ailleurs = await db.query(`SELECT COUNT(*)::int AS n FROM clients WHERE ${sansAccentsSql('nom')} LIKE $1`, [`%${normaliserPourComparaison(a.client)}%`]);
       if (ailleurs.rows[0]?.n > 0) throw new HorsPerimetre(`« ${a.client} » existe mais n'est pas dans votre périmètre. Nommez le commercial qui le suit pour y accéder.`);
       throw new HorsPerimetre(`Aucun client ne correspond à « ${a.client} ».`);
     }
@@ -169,8 +174,9 @@ const clientsEnRetard = {
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    let lignes = (await chargerClients(utilisateur, a.commercial, 'clients_en_retard')).filter(c => statutVisite(c) === 'RETARD');
-    lignes = filtreTexte(lignes, a.tournee, ['tournee']);
+    let lignes = await chargerClients(utilisateur, a.commercial, 'clients_en_retard', { tournee: a.tournee, enRetard: true });
+    // La règle reste celle de shared/regles.js : la base ne fait que dégrossir.
+    lignes = lignes.filter(c => statutVisite(c) === 'RETARD');
     if (a.jours_min) lignes = lignes.filter(c => joursDeRetard(c) >= a.jours_min);
     lignes.sort((x, y) => joursDeRetard(y) - joursDeRetard(x));
     const limite = borner(a.limite, LIMITE_DEFAUT, LIMITE_MAX);
