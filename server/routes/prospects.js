@@ -125,24 +125,41 @@ function jourValide(j) { return /^\d{4}-\d{2}-\d{2}$/.test(String(j || '')) ? j 
 router.put('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res) => {
   const jour = jourValide(req.body.jour);
   const mode = req.body.mode === 'remplacer' ? 'remplacer' : 'ajouter';
-  const demandes = [...new Set((Array.isArray(req.body.prospect_ids) ? req.body.prospect_ids : []).filter(x => typeof x === 'string' && x))];
-  if (demandes.length === 0 && mode === 'ajouter') return validationError(res, ['Aucun prospect sélectionné']);
-  // Seuls les prospects existants, avec un numéro, valent la peine d'être dans une session.
-  const valides = demandes.length
-    ? (await db.query(`SELECT id FROM prospects WHERE id = ANY($1) AND telephone <> ''`, [demandes])).rows.map(r => r.id)
-    : [];
+  const lireIds = (v) => [...new Set((Array.isArray(v) ? v : []).filter(x => typeof x === 'string' && x))];
+  const prospectsDemandes = lireIds(req.body.prospect_ids);
+  const clientsDemandes = lireIds(req.body.client_ids);
+  if (prospectsDemandes.length === 0 && clientsDemandes.length === 0 && mode === 'ajouter') return validationError(res, ['Aucune fiche sélectionnée']);
+  // Seules les fiches existantes, avec un numéro, valent la peine d'être dans une session.
+  // On garde l'ordre choisi à l'écran (la base renvoie les lignes dans n'importe quel ordre).
+  const prospectsOk = new Set(prospectsDemandes.length
+    ? (await db.query(`SELECT id FROM prospects WHERE id = ANY($1) AND telephone <> ''`, [prospectsDemandes])).rows.map(r => r.id)
+    : []);
+  const clientsOk = new Set(clientsDemandes.length
+    ? (await db.query(`SELECT id FROM clients WHERE id = ANY($1) AND (COALESCE(telephone, '') <> '' OR COALESCE(telephone_mobile, '') <> '')`, [clientsDemandes])).rows.map(r => r.id)
+    : []);
+  const prospectsValides = prospectsDemandes.filter(d => prospectsOk.has(d));
+  const clientsValides = clientsDemandes.filter(d => clientsOk.has(d));
   const existante = await db.query('SELECT * FROM sessions_appel WHERE commercial_id = $1 AND jour = $2', [req.user.id, jour]);
-  const avant = existante.rows[0] ? parseSessionAppel(existante.rows[0]).prospect_ids : [];
-  const liste = mode === 'ajouter' ? [...new Set([...avant, ...valides])] : demandes.filter(d => valides.includes(d));
+  const avant = existante.rows[0] ? parseSessionAppel(existante.rows[0]) : { prospect_ids: [], client_ids: [] };
+  // En mode « remplacer », seule la liste envoyée est remplacée ; l'autre reste telle quelle.
+  const prospects = mode === 'ajouter' ? [...new Set([...avant.prospect_ids, ...prospectsValides])]
+    : (req.body.prospect_ids !== undefined ? prospectsDemandes.filter(d => prospectsValides.includes(d)) : avant.prospect_ids);
+  const clients = mode === 'ajouter' ? [...new Set([...avant.client_ids, ...clientsValides])]
+    : (req.body.client_ids !== undefined ? clientsDemandes.filter(d => clientsValides.includes(d)) : avant.client_ids);
   const now = new Date().toISOString();
   const row = await db.query(
-    `INSERT INTO sessions_appel (id, commercial_id, jour, prospect_ids, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $5)
-     ON CONFLICT (commercial_id, jour) DO UPDATE SET prospect_ids = EXCLUDED.prospect_ids, updated_at = EXCLUDED.updated_at
+    `INSERT INTO sessions_appel (id, commercial_id, jour, prospect_ids, client_ids, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $6)
+     ON CONFLICT (commercial_id, jour) DO UPDATE SET prospect_ids = EXCLUDED.prospect_ids, client_ids = EXCLUDED.client_ids, updated_at = EXCLUDED.updated_at
      RETURNING *`,
-    [`session-${req.user.id}-${jour}`, req.user.id, jour, JSON.stringify(liste), now]
+    [`session-${req.user.id}-${jour}`, req.user.id, jour, JSON.stringify(prospects), JSON.stringify(clients), now]
   );
-  res.json({ ok: true, session: parseSessionAppel(row.rows[0]), ajoutes: liste.length - avant.length, sans_telephone: demandes.length - valides.length });
+  res.json({
+    ok: true,
+    session: parseSessionAppel(row.rows[0]),
+    ajoutes: (prospects.length - avant.prospect_ids.length) + (clients.length - avant.client_ids.length),
+    sans_telephone: (prospectsDemandes.length - prospectsValides.length) + (clientsDemandes.length - clientsValides.length),
+  });
 }));
 
 router.delete('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res) => {
@@ -155,8 +172,11 @@ router.delete('/sessions-appel/jour/:prospectId', authMiddleware, asyncHandler(a
   const jour = jourValide(req.query.jour);
   const existante = await db.query('SELECT * FROM sessions_appel WHERE commercial_id = $1 AND jour = $2', [req.user.id, jour]);
   if (!existante.rows[0]) return res.json({ ok: true, session: null });
-  const liste = parseSessionAppel(existante.rows[0]).prospect_ids.filter(id => id !== req.params.prospectId);
-  const row = await db.query('UPDATE sessions_appel SET prospect_ids = $1, updated_at = $2 WHERE id = $3 RETURNING *', [JSON.stringify(liste), new Date().toISOString(), existante.rows[0].id]);
+  // L'identifiant peut être un prospect ou un client : on le retire de la liste où il est.
+  const session = parseSessionAppel(existante.rows[0]);
+  const prospects = session.prospect_ids.filter(id => id !== req.params.prospectId);
+  const clients = session.client_ids.filter(id => id !== req.params.prospectId);
+  const row = await db.query('UPDATE sessions_appel SET prospect_ids = $1, client_ids = $2, updated_at = $3 WHERE id = $4 RETURNING *', [JSON.stringify(prospects), JSON.stringify(clients), new Date().toISOString(), existante.rows[0].id]);
   res.json({ ok: true, session: parseSessionAppel(row.rows[0]) });
 }));
 

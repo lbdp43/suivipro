@@ -144,9 +144,20 @@ function zoneConfiguree(config: Record<string, unknown>, tournee: string): boole
 // COMMERCIAL
 // ============================================================================
 function AccueilCommercial({ moi }: { moi: Commercial }) {
-  const { state, getProspect, getClient, perimetre } = useApp();
+  const { state, getProspect, getClient, perimetre, dispatchLocal } = useApp();
+  const { startSessionClients } = useCallModal();
+  const toast = useToast();
   const now = new Date();
   const today = dateLocale(now);
+  // « Ma session d'appel clients du jour » : choisie dans Tâches, Clients ou Planning ; les appelés viennent des appels du jour.
+  const maSessionClients = useMemo(() => sessionDuJour(state, moi.id, now), [state, moi.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const viderLaSessionClients = async () => {
+    if (!confirm('Vider votre session d\'appel clients du jour ?')) return;
+    try {
+      await apiPut('/sessions-appel/jour', { jour: maSessionClients.jour, client_ids: [], mode: 'remplacer' });
+      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: { ...(maSessionClients.session as import('../types').SessionAppel), client_ids: [] } });
+    } catch { toast.error('Impossible de vider la session'); }
+  };
   const dayKey = String(now.getDay());
 
   const tournee = useMemo(() => {
@@ -187,6 +198,38 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
       <Bonjour personne={moi} sousTitre={(perimetre === 'equipe' ? 'vue de toute l\'équipe' : 'mes clients') + (faitDeLaProspection(moi) ? ' · prospection' : '')} />
 
       <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
+
+      {maSessionClients.session && maSessionClients.clients.length > 0 && (
+        <BlocErreur titre="Ma session d'appel clients">
+          <div className="bg-white rounded-xl border border-purple-200 p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+                <ListChecks className="w-4 h-4 text-purple-600" /> Ma session d'appel clients du jour
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">{maSessionClients.clients.length - maSessionClients.clientsRestants.length} / {maSessionClients.clients.length} appelés</span>
+              </h3>
+              <button onClick={viderLaSessionClients} className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1" title="Vider la session du jour"><Trash2 className="w-3.5 h-3.5" /> Vider</button>
+            </div>
+            <div className="h-1.5 rounded-full bg-gray-100 mb-3 overflow-hidden">
+              <div className="h-full bg-purple-500 progress-bar" style={{ width: `${Math.round(100 * (maSessionClients.clients.length - maSessionClients.clientsRestants.length) / maSessionClients.clients.length)}%` }} />
+            </div>
+            {maSessionClients.clientsRestants.length > 0 ? (
+              <button onClick={() => startSessionClients(maSessionClients.clientsRestants.map(c => c.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700">
+                <Phone className="w-4 h-4" /> {maSessionClients.clientsRestants.length === maSessionClients.clients.length ? 'Commencer' : 'Reprendre'} la session ({maSessionClients.clientsRestants.length} restant{maSessionClients.clientsRestants.length > 1 ? 's' : ''})
+              </button>
+            ) : (
+              <p className="text-sm text-green-700 flex items-center gap-1.5 mb-2"><CheckCircle2 className="w-4 h-4" /> Session terminée, tout le monde a été appelé.</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 max-h-56 overflow-y-auto">
+              {maSessionClients.clients.map(c => { const fait = maSessionClients.clientsAppeles.has(c.id); return (
+                <div key={c.id} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
+                  {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
+                  <Link to={`/clients?id=${c.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{c.nom}</Link>
+                  <span className="text-[11px] text-gray-400 truncate max-w-[40%]">{c.ville}</span>
+                </div>); })}
+            </div>
+          </div>
+        </BlocErreur>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Rendez-vous du jour">

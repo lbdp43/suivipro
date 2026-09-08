@@ -16,6 +16,8 @@ import { apiPut, apiPost } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import ClientDetailModal from '../components/ClientDetailModal';
 import CompteRenduModal from '../components/CompteRenduModal';
+import { useLancerSession } from '../hooks/useSessionAppel';
+
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
 // est alors dans le volet Bilan, on ne l'affiche pas deux fois.
@@ -57,6 +59,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
   // Scheduling mode state
   const [schedulingDay, setSchedulingDay] = useState<string | null>(null);
   const [selectedClients, setSelectedClients] = useState<Set<string>>(new Set());
+  const lancer = useLancerSession();
   const [showSchedulingModal, setShowSchedulingModal] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<string>('');
   const [scheduleStartTime, setScheduleStartTime] = useState('09:00');
@@ -1015,6 +1018,13 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
             className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
           >
             Tout désélectionner
+          </button>
+          <button
+            onClick={() => { const ids = [...selectedClients]; setSelectedClients(new Set()); lancer.clients(ids); }}
+            className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 flex items-center gap-2 whitespace-nowrap"
+            title="Appeler ces clients à la suite"
+          >
+            <Phone className="w-4 h-4" /> Session d'appel
           </button>
           <button
             onClick={openSchedulingModal}

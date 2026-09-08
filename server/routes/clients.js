@@ -121,8 +121,9 @@ router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
       [i.id, i.client_id, commercialId, i.type, i.date || now, i.comment || '', i.date_creation || now]
     );
 
-    // Update client's last_visit and calculate next_visit
-    const clientResult = await dbClient.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [i.client_id]);
+    // Update client's last_visit and calculate next_visit. Un appel passé depuis une session
+    // d'appel (sans_visite) ne vaut pas visite : le calendrier des visites ne bouge pas.
+    const clientResult = i.sans_visite ? { rows: [] } : await dbClient.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [i.client_id]);
     if (clientResult.rows.length > 0) {
       const client = clientResult.rows[0];
       const visitDate = i.date || now;
