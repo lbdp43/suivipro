@@ -31,9 +31,13 @@ router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
   const errors = validateCall(c);
   if (errors.length > 0) return validationError(res, errors);
 
+  // Même règle qu'à la création : seul un admin peut attribuer l'appel à quelqu'un d'autre.
+  const existant = await db.query('SELECT commercial_id FROM calls WHERE id = $1', [req.params.id]);
+  if (existant.rows.length === 0) return res.status(404).json({ error: 'Appel introuvable' });
+  const commercialId = isAdmin(req) ? (c.commercial_id || existant.rows[0].commercial_id) : existant.rows[0].commercial_id;
   await db.query(
     'UPDATE calls SET prospect_id=$1, commercial_id=$2, date=$3, duree=$4, resultat=$5, notes=$6 WHERE id=$7',
-    [c.prospect_id, c.commercial_id, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id]
+    [c.prospect_id, commercialId, c.date, c.duree || 0, c.resultat, c.notes || '', req.params.id]
   );
   res.json({ ok: true });
 }));

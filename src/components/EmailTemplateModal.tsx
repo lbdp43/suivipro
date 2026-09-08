@@ -125,21 +125,41 @@ export default function EmailTemplateModal(props: Props) {
       marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => { /* tracé au mieux */ });
     }
 
-    // Create a reminder for 7-day follow-up
+    // Relance à 7 jours : un rappel pour un prospect, une tâche pour un client
+    // (les rappels sont rattachés aux prospects, les tâches aux clients).
     const in7days = new Date();
     in7days.setDate(in7days.getDate() + 7);
-    dispatch({
-      type: 'ADD_REMINDER',
-      payload: {
-        id: generateId('rem'),
-        prospect_id: isProspect ? prospect!.id : '',
-        commercial_id: state.currentUser?.id || 'com-1',
-        date: dateLocale(in7days),
-        heure: '09:00',
-        message: `Relance email - ${entityName} (${selectedTemplate.nom})`,
-        statut: 'actif',
-      },
-    });
+    const libelleRelance = `Relance email - ${entityName} (${selectedTemplate.nom})`;
+    if (isProspect && prospect) {
+      dispatch({
+        type: 'ADD_REMINDER',
+        payload: {
+          id: generateId('rem'),
+          prospect_id: prospect.id,
+          commercial_id: state.currentUser?.id || 'com-1',
+          date: dateLocale(in7days),
+          heure: '09:00',
+          message: libelleRelance,
+          statut: 'actif',
+        },
+      });
+    } else if (client) {
+      dispatch({
+        type: 'ADD_TASK_CLIENT',
+        payload: {
+          id: generateId('task'),
+          titre: libelleRelance,
+          description: '',
+          statut: 'A_FAIRE',
+          priorite: 'MOYENNE',
+          date_echeance: dateLocale(in7days),
+          commercial_id: state.currentUser?.id || null,
+          client_id: client.id,
+          date_creation: new Date().toISOString(),
+          completed_at: null,
+        },
+      });
+    }
 
     onClose();
   };
