@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { estUneErreurDeChargement, rechargerUneFois } from '../utils/version';
 
 interface State {
   hasError: boolean;
@@ -17,6 +18,7 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('ErrorBoundary caught:', error, info.componentStack);
     this.setState({ componentStack: info.componentStack || '' });
+    if (estUneErreurDeChargement(error)) rechargerUneFois();
   }
 
   // Le message seul (« Cannot read properties of undefined ») ne dit pas OU ca casse.

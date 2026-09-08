@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { pageParesseuse } from './utils/pageParesseuse';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './store/AppContext';
 import { Beer } from 'lucide-react';
@@ -7,27 +8,27 @@ import { peutVoirLesStatistiques } from './components/menu';
 import LoginPage from './pages/LoginPage';
 
 // Lazy-loaded pages
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const AccueilPage = lazy(() => import('./pages/AccueilPage'));
-const MapPage = lazy(() => import('./pages/MapPage'));
-const PipelinePage = lazy(() => import('./pages/PipelinePage'));
-const ProspectsPage = lazy(() => import('./pages/ProspectsPage'));
-const PartagePage = lazy(() => import('./pages/PartagePage'));
-const CallsPage = lazy(() => import('./pages/CallsPage'));
-const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'));
-const EmailsPage = lazy(() => import('./pages/EmailsPage'));
-const ImportPage = lazy(() => import('./pages/ImportPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
-const ProfilePage = lazy(() => import('./pages/ProfilePage'));
-const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
-const GuidePage = lazy(() => import('./pages/GuidePage'));
-const ClientsPage = lazy(() => import('./pages/ClientsPage'));
-const TourneesPage = lazy(() => import('./pages/TourneesPage'));
-const PipelineCRPage = lazy(() => import('./pages/PipelineCRPage'));
-const SirenePage = lazy(() => import('./pages/SirenePage'));
-const AnnuairePage = lazy(() => import('./pages/AnnuairePage'));
-const SemainePage = lazy(() => import('./pages/SemainePage'));
-const RappelsTachesPage = lazy(() => import('./pages/RappelsTachesPage'));
+const DashboardPage = pageParesseuse(() => import('./pages/DashboardPage'));
+const AccueilPage = pageParesseuse(() => import('./pages/AccueilPage'));
+const MapPage = pageParesseuse(() => import('./pages/MapPage'));
+const PipelinePage = pageParesseuse(() => import('./pages/PipelinePage'));
+const ProspectsPage = pageParesseuse(() => import('./pages/ProspectsPage'));
+const PartagePage = pageParesseuse(() => import('./pages/PartagePage'));
+const CallsPage = pageParesseuse(() => import('./pages/CallsPage'));
+const AppointmentsPage = pageParesseuse(() => import('./pages/AppointmentsPage'));
+const EmailsPage = pageParesseuse(() => import('./pages/EmailsPage'));
+const ImportPage = pageParesseuse(() => import('./pages/ImportPage'));
+const AdminPage = pageParesseuse(() => import('./pages/AdminPage'));
+const ProfilePage = pageParesseuse(() => import('./pages/ProfilePage'));
+const DocumentsPage = pageParesseuse(() => import('./pages/DocumentsPage'));
+const GuidePage = pageParesseuse(() => import('./pages/GuidePage'));
+const ClientsPage = pageParesseuse(() => import('./pages/ClientsPage'));
+const TourneesPage = pageParesseuse(() => import('./pages/TourneesPage'));
+const PipelineCRPage = pageParesseuse(() => import('./pages/PipelineCRPage'));
+const SirenePage = pageParesseuse(() => import('./pages/SirenePage'));
+const AnnuairePage = pageParesseuse(() => import('./pages/AnnuairePage'));
+const SemainePage = pageParesseuse(() => import('./pages/SemainePage'));
+const RappelsTachesPage = pageParesseuse(() => import('./pages/RappelsTachesPage'));
 
 function PageLoader() {
   return (

@@ -4,6 +4,8 @@
 
 const API_BASE = '/api';
 
+import { noterVersion } from '../utils/version';
+
 let authToken: string | null = localStorage.getItem('suivipro_token');
 
 // Toast callback for API errors (set by ToastProvider integration)
@@ -39,6 +41,7 @@ async function request(path: string, options: RequestInit = {}) {
     ...options,
     headers,
   });
+  noterVersion(res.headers.get('X-Version'));
 
   if (res.status === 401) {
     // Token expired or invalid
@@ -85,6 +88,7 @@ export async function loadFullState(forcer = false): Promise<any | null> {
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   if (!forcer && empreinteEtat) headers['If-None-Match'] = empreinteEtat;
   const res = await fetch(`${API_BASE}/state`, { headers, cache: 'no-store' });
+  noterVersion(res.headers.get('X-Version'));
   if (res.status === 304) return null;
   if (res.status === 401) {
     setToken(null);

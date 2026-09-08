@@ -10,6 +10,7 @@ import { useApp } from '../store/AppContext';
 import { apiPut } from '../api/client';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
+import { nouvelleVersionDisponible, rechargerUneFois } from '../utils/version';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
 import { Link } from 'react-router-dom';
 
@@ -62,6 +63,11 @@ export default function Layout() {
   const [openSections, setOpenSections] = useState<Set<string> | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  // Nouvelle version déployée pendant que l'onglet était ouvert : on recharge l'application
+  // entière sur la page demandée, avant qu'elle ne cherche des fichiers qui n'existent plus.
+  useEffect(() => {
+    if (nouvelleVersionDisponible()) rechargerUneFois(location.pathname + location.search);
+  }, [location.pathname, location.search]);
   const { state, logout, perimetre, setPerimetre } = useApp();
   const today = dateLocale(new Date());
   // Badge = rappels en retard filtrés par utilisateur
