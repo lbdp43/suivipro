@@ -159,7 +159,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-x-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -337,7 +337,7 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-4 flex-shrink-0">
+        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 flex-shrink-0 min-w-0">
           <button
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-100"
             onClick={() => setSidebarOpen(true)}
@@ -346,29 +346,31 @@ export default function Layout() {
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1" />
-          <div className="flex items-center gap-3 text-sm text-gray-600">
+          <div className="flex items-center gap-1.5 sm:gap-3 text-sm text-gray-600 min-w-0">
             {/* Périmètre : mes clients (défaut commercial) ou toute l'équipe (remplacement). */}
             <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs font-medium" role="group" aria-label="Périmètre des clients">
               <button
                 type="button"
                 onClick={() => setPerimetre('moi')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${perimetre === 'moi' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-2 sm:px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${perimetre === 'moi' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 title="Mes clients et les fiches sans commercial"
               >
-                Mes clients
+                <span className="sm:hidden">Moi</span>
+                <span className="hidden sm:inline">Mes clients</span>
               </button>
               <button
                 type="button"
                 onClick={() => setPerimetre('equipe')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${perimetre === 'equipe' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-2 sm:px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${perimetre === 'equipe' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 title="Tous les clients de l'équipe (remplacement d'un collègue)"
               >
-                Toute l'équipe
+                <span className="sm:hidden">Équipe</span>
+                <span className="hidden sm:inline">Toute l'équipe</span>
               </button>
             </div>
             <Link
               to="/carte"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"
               title="Carte des prospects"
             >
               <Map className="w-4 h-4" />
@@ -378,7 +380,7 @@ export default function Layout() {
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => { setNotifOpen(prev => !prev); }}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`relative flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   notifOpen
                     ? 'bg-brewery-100 text-brewery-700'
                     : 'text-gray-500 hover:bg-brewery-50 hover:text-brewery-700'
@@ -442,12 +444,13 @@ export default function Layout() {
               )}
             </div>
 
-            <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+            {/* Le rôle est masqué sur téléphone : la barre doit tenir dans 360 px. */}
+            <div className={`hidden sm:block px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
               isAdmin ? 'bg-amber-100 text-amber-700' : state.currentUser?.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
             }`}>
               {isAdmin ? 'Admin' : state.currentUser?.role === 'prospection' ? 'Prospection' : state.currentUser?.prospection ? 'Commercial + prospection' : 'Commercial'}
             </div>
-            <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors">{state.currentUser?.prenom}</Link>
+            <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors truncate max-w-[5.5rem] sm:max-w-none" title="Mon profil">{state.currentUser?.prenom}</Link>
           </div>
         </header>
 
