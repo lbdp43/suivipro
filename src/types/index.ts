@@ -721,6 +721,45 @@ export interface SessionAppel {
 // App State
 // ============================================
 
+/** Ce qu'un partage a permis de lire, avant qualification. */
+export interface FicheSignalee {
+  nom_etablissement?: string;
+  type_etablissement?: EstablishmentType;
+  adresse?: string;
+  ville?: string;
+  code_postal?: string;
+  departement?: string;
+  telephone?: string;
+  latitude?: number;
+  longitude?: number;
+  categorie_google?: string;
+  /** Nom du compte sur un réseau social (« @victor.brasserie »). */
+  compte?: string;
+  /** Fiches existantes qui ressemblent (calculé à la réception). */
+  doublons?: { genre: 'prospect' | 'client'; id: string; nom: string; ville: string; etape?: string }[];
+}
+export type SourceSignalement = 'google' | 'instagram' | 'facebook' | 'tiktok' | 'linkedin' | 'site' | 'texte';
+export type StatutSignalement = 'a_qualifier' | 'traite' | 'ignore';
+/** Un partage de l'équipe qui attend d'être qualifié dans la boîte de prospection. */
+export interface Signalement {
+  id: string;
+  texte: string;
+  lien: string;
+  source: SourceSignalement;
+  titre: string;
+  fiche: FicheSignalee;
+  commentaire: string;
+  partage_par: string;
+  /** Commercial à qui le signalement est destiné ; vide = la prospection. */
+  commercial_id: string;
+  statut: StatutSignalement;
+  prospect_id: string;
+  client_id: string;
+  traite_par: string;
+  traite_le: string | null;
+  created_at: string;
+}
+
 export interface AppState {
   prospects: Prospect[];
   calls: Call[];
@@ -739,4 +778,5 @@ export interface AppState {
   commandes: Commande[];
   sessionsAppel: SessionAppel[];
   commercialZones: CommercialZone[];
+  signalements: Signalement[];
 }

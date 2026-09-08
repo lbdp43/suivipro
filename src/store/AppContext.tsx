@@ -3,7 +3,7 @@ import { dateLocale } from '../../shared/regles';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
-  Client, Interaction, TaskClient, TourneeConfig, Commande, CommercialZone,
+  Client, Interaction, TaskClient, TourneeConfig, Commande, CommercialZone, Signalement,
 } from '../types';
 import { faitDeLaProspection } from '../utils/roles';
 import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
@@ -92,7 +92,9 @@ type Action =
   | { type: 'SAVE_TOURNEE_CONFIG'; payload: TourneeConfig }
   | { type: 'SET_COMMANDES'; payload: Commande[] }
   | { type: 'IMPORT_CLIENTS'; payload: Client[] }
-  | { type: 'SET_ZONES'; payload: CommercialZone[] };
+  | { type: 'SET_ZONES'; payload: CommercialZone[] }
+  | { type: 'UPSERT_SIGNALEMENT'; payload: Signalement }
+  | { type: 'DELETE_SIGNALEMENT'; payload: string };
 
 // Après un rechargement, chaque collection restée identique garde sa référence : les écrans
 // qui mémorisent leurs calculs (useMemo sur state.clients, state.prospects…) ne refont que
@@ -122,11 +124,18 @@ function reducer(state: AppState, action: Action): AppState {
         })),
         sessionsAppel: action.payload.sessionsAppel || [],
         commercialZones: action.payload.commercialZones || [],
+        signalements: action.payload.signalements || [],
       };
       return fusionnerCollections(state, suivant);
     }
     case 'SET_ZONES':
       return { ...state, commercialZones: action.payload };
+    case 'UPSERT_SIGNALEMENT': {
+      const existe = state.signalements.some(s => s.id === action.payload.id);
+      return { ...state, signalements: existe ? state.signalements.map(s => s.id === action.payload.id ? action.payload : s) : [action.payload, ...state.signalements] };
+    }
+    case 'DELETE_SIGNALEMENT':
+      return { ...state, signalements: state.signalements.filter(s => s.id !== action.payload) };
     case 'SET_SESSION_APPEL':
       return { ...state, sessionsAppel: [...state.sessionsAppel.filter(s => s.id !== action.payload.id), action.payload] };
     case 'RETIRER_SESSION_APPEL':
@@ -331,6 +340,7 @@ const emptyState: AppState = {
   commandes: [],
   sessionsAppel: [],
   commercialZones: [],
+  signalements: [],
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {

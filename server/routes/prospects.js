@@ -1,15 +1,12 @@
-// Prospects, fiches partagées, sessions d'appel — routes déplacées telles quelles depuis routes.js.
+// Prospects et sessions d'appel — routes déplacées telles quelles depuis routes.js.
+// Les fiches partagées passent par la boîte de prospection (routes/signalements.js).
 import { Router } from 'express';
-import crypto from 'crypto';
 import db from '../db.js';
-import { ficheDepuisPartage } from '../partage.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
 import { rattacherEntite, rattacherTout } from '../lib/zones.js';
 import { changerEtape, terminerAction } from '../lib/tunnel.js';
-import { sansAccents } from '../../shared/normalisation.js';
-import { preparerFiche, comparerFiches } from '../../shared/rapprochement.js';
 import { parseProspect, parseSessionAppel } from '../lib/parse.js';
 import { scoreProspect } from '../lib/scores.js';
 import { validateProspect, validationError } from '../lib/validation.js';
@@ -65,58 +62,6 @@ router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) =>
 // Corps : { texte, forcer }. `texte` est le message WhatsApp tel quel (nom, adresse, lien)
 // ou le lien seul. Sans `forcer`, un doublon probable bloque la création et est renvoyé
 // pour que la personne choisisse : ouvrir l'existant, ou créer quand même.
-// Fiches existantes qui ressemblent à la fiche partagée : même règle que partout
-// (rapprochement partagé), avec une tolérance sur « un nom contient l'autre » dans la même commune.
-async function doublonsDeFiche(fiche) {
-  const partagee = preparerFiche({ nom: fiche.nom_etablissement, telephone: fiche.telephone, ville: fiche.ville });
-  const [p, c] = await Promise.all([
-    db.query('SELECT id, nom_etablissement AS nom, ville, telephone, etape_pipeline FROM prospects'),
-    db.query('SELECT id, nom, ville, telephone FROM clients'),
-  ]);
-  const ressemble = (r) => {
-    const cmp = comparerFiches(partagee, r);
-    if (!cmp) return false;
-    if (cmp.score >= 80) return true;
-    if (cmp.score === 60) { const v = sansAccents(r.ville); return !partagee._ville || !v || v === partagee._ville; }
-    return false;
-  };
-  const out = [];
-  for (const r of p.rows) if (ressemble(r)) out.push({ genre: 'prospect', id: r.id, nom: r.nom, ville: r.ville || '', etape: r.etape_pipeline });
-  for (const r of c.rows) if (ressemble(r)) out.push({ genre: 'client', id: r.id, nom: r.nom, ville: r.ville || '' });
-  return out.slice(0, 6);
-}
-
-router.post('/prospects/partage', authMiddleware, asyncHandler(async (req, res) => {
-  const texte = String(req.body.texte || '').trim().slice(0, 4000);
-  if (!texte) return validationError(res, ['Collez le message WhatsApp ou le lien Google Maps']);
-  const { fiche, sources } = await ficheDepuisPartage(texte);
-  // Lien seul et fiche Google illisible : on crée quand même, avec le lien, et la personne renomme.
-  const sansNom = !fiche.nom_etablissement;
-  if (sansNom) {
-    if (!fiche.source_url) return res.status(422).json({ error: "Rien à lire : collez le lien Google de l'établissement, ou son nom sur la première ligne." });
-    fiche.nom_etablissement = 'Établissement partagé (à renommer)';
-    sources.push('nom : inconnu, à renommer');
-  }
-  const doublons = sansNom ? [] : await doublonsDeFiche(fiche);
-  if (doublons.length > 0 && !req.body.forcer) return res.json({ ok: false, doublons, fiche, sources });
-
-  const now = new Date().toISOString();
-  const id = `prospect-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const auteur = await db.query('SELECT prenom, nom FROM commerciaux WHERE id = $1', [req.user.id]);
-  const qui = auteur.rows[0] ? `${auteur.rows[0].prenom} ${auteur.rows[0].nom}`.trim() : req.user.id;
-  const notes = [`Fiche partagée par ${qui} le ${dateLocale(new Date())}.`, fiche.categorie_google ? `Catégorie Google : ${fiche.categorie_google}.` : '']
-    .filter(Boolean).join('\n');
-  await db.query(
-    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, source_url)
-     VALUES ($1,$2,$3,'',$4,'',$5,$6,$7,$8,'',$9,$10,'partage','[]',$11,$12,$13,$13,$14,$15)`,
-    [id, fiche.nom_etablissement.slice(0, 200), fiche.type_etablissement, fiche.telephone || '', fiche.adresse || '', fiche.ville || '', fiche.code_postal || '', fiche.departement || '',
-      fiche.latitude || 0, fiche.longitude || 0, req.user.id, notes, now, await scoreProspect([], 50), fiche.source_url || '']
-  );
-  await rattacherEntite('prospects', id);
-  await logActivity(req.user.id, 'creation_prospect', `${fiche.nom_etablissement} (fiche partagée)`, 'prospect', id);
-  const cree = await db.query('SELECT * FROM prospects WHERE id = $1', [id]);
-  res.json({ ok: true, prospect: parseProspect(cree.rows[0]), sources, doublons, provenance: fiche.provenance });
-}));
 
 // La liste que chacun se choisit dans Prospects ou dans le Pipeline. Le jour vient de
 // l'écran (heure de Paris) ; les prospects appelés se déduisent des appels du jour.

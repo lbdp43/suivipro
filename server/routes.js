@@ -19,6 +19,7 @@ import admin from './routes/admin.js';
 import annuaire from './routes/annuaire.js';
 import sirene from './routes/sirene.js';
 import crons from './routes/crons.js';
+import signalements from './routes/signalements.js';
 
 const router = Router();
 router.use(auth);
@@ -38,6 +39,7 @@ router.use(admin);
 router.use(annuaire);
 router.use(sirene);
 router.use(crons);
+router.use(signalements);
 
 export { runZoneSync } from './routes/sirene.js';
 export { syncNocturneEasybeer } from './routes/crons.js';

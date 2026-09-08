@@ -862,6 +862,29 @@ async function initDatabase(attempt = 1) {
       )`);
       await client.query('CREATE INDEX IF NOT EXISTS idx_prospect_etapes_prospect ON prospect_etapes(prospect_id)');
     } catch (err) { console.log('prospect_etapes migration:', err.message); }
+    // Boîte de prospection : tout ce que l'équipe partage (lien Google, Instagram, Facebook,
+    // TikTok, article, simple texte) attend ici d'être qualifié en prospect, rattaché à une
+    // fiche existante, ou ignoré. Le pipeline ne reçoit que des fiches vérifiées.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS signalements (
+        id TEXT PRIMARY KEY,
+        texte TEXT NOT NULL DEFAULT '',
+        lien TEXT DEFAULT '',
+        source TEXT DEFAULT 'texte',
+        titre TEXT DEFAULT '',
+        fiche TEXT DEFAULT '{}',
+        commentaire TEXT DEFAULT '',
+        partage_par TEXT,
+        commercial_id TEXT DEFAULT '',
+        statut TEXT DEFAULT 'a_qualifier',
+        prospect_id TEXT DEFAULT '',
+        client_id TEXT DEFAULT '',
+        traite_par TEXT DEFAULT '',
+        traite_le TEXT,
+        created_at TEXT NOT NULL
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_signalements_statut ON signalements(statut)');
+    } catch (err) { console.log('signalements migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.

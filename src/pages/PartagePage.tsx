@@ -1,144 +1,178 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Share2, MapPin, Phone, User, ExternalLink, AlertTriangle, CheckCircle, Building2, Loader2, Smartphone } from 'lucide-react';
+import { Share2, ClipboardPaste, Send, Inbox, Loader2, AlertTriangle, CheckCircle, Smartphone, MapPin, Phone, ExternalLink, Building2 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost } from '../api/client';
-import { Prospect, ESTABLISHMENT_LABELS } from '../types';
+import { Signalement } from '../types';
+import { LIBELLES_SOURCE, titreDuSignalement } from '../utils/signalements';
+import { faitDeLaProspection } from '../utils/roles';
 
-// Point d'arrivée du bouton « Partager » du téléphone : depuis Google Maps ou une fiche
-// Google, on choisit SuiviPro, le texte partagé arrive ici et la fiche prospect est créée
-// tout de suite dans l'étape « Nouveau partagé ». Pas d'entrée de menu : sans texte partagé,
-// la page explique seulement comment s'en servir.
-interface Doublon { genre: 'prospect' | 'client'; id: string; nom: string; ville: string; etape?: string }
-interface Reponse {
-  ok: boolean;
-  prospect?: Prospect;
-  doublons: Doublon[];
-  fiche: { nom_etablissement: string };
-  sources: string[];
-  provenance?: 'maps' | 'recherche' | 'autre';
-}
-
+// Point d'arrivée du bouton « Partager » du téléphone (Android) et de la saisie par collage
+// (iPhone) : ce que l'on a reçu sur WhatsApp — lien Google Maps, Instagram, Facebook, TikTok,
+// article, ou un simple nom — part dans la boîte de prospection, avec un commentaire et le
+// commercial à qui c'est destiné. Rien n'entre dans le pipeline avant d'être qualifié.
 export default function PartagePage() {
   const [searchParams] = useSearchParams();
   const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const partage = [searchParams.get('title'), searchParams.get('text'), searchParams.get('url')].filter(Boolean).join('\n').trim();
   const [texte, setTexte] = useState(partage);
-  const [enCours, setEnCours] = useState(!!partage);
+  const [commentaire, setCommentaire] = useState('');
+  const [commercialId, setCommercialId] = useState('');
+  const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState('');
-  const [reponse, setReponse] = useState<Reponse | null>(null);
-  const lance = useRef(false);
+  const [envoye, setEnvoye] = useState<Signalement | null>(null);
+  const peutColler = typeof navigator !== 'undefined' && !!navigator.clipboard?.readText;
+  const nomDe = (id: string) => { const c = state.commerciaux.find(x => x.id === id); return c ? c.prenom : id; };
 
-  const envoyer = async (forcer = false, contenu = texte) => {
-    if (!contenu.trim()) return;
+  const coller = async () => {
+    try {
+      const t = (await navigator.clipboard.readText()).trim();
+      if (!t) { toast.info('Le presse-papiers est vide'); return; }
+      setTexte(prev => (prev ? `${prev}\n${t}` : t));
+    } catch {
+      toast.error('Impossible de lire le presse-papiers : collez avec un appui long dans le champ');
+    }
+  };
+
+  const envoyer = async () => {
+    if (!texte.trim()) return;
     setEnCours(true); setErreur('');
     try {
-      const r = await apiPost('/prospects/partage', { texte: contenu, forcer }) as Reponse;
-      setReponse(r);
-      if (r.ok && r.prospect) {
-        dispatchLocal({ type: 'ADD_PROSPECT', payload: r.prospect });
-        toast.success(`« ${r.prospect.nom_etablissement} » ajouté en « Nouveau partagé »`);
-      }
+      const s = await apiPost('/signalements', { texte, commentaire, commercial_id: commercialId }) as Signalement;
+      dispatchLocal({ type: 'UPSERT_SIGNALEMENT', payload: s });
+      setEnvoye(s);
+      toast.success('Ajouté à la boîte de prospection');
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : 'Impossible de créer la fiche');
+      setErreur(err instanceof Error ? err.message : "Impossible d'envoyer le signalement");
     } finally {
       setEnCours(false);
     }
   };
 
-  // Arrivée avec un texte partagé : on crée sans attendre un clic.
-  useEffect(() => {
-    if (partage && !lance.current && state.currentUser) { lance.current = true; envoyer(false, partage); }
-  }, [partage, state.currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const cree = reponse?.ok ? reponse.prospect : undefined;
-  const manquants = cree ? [
-    cree.nom_etablissement.startsWith('Établissement partagé') && 'le nom (la fiche Google n\'a pas pu être lue, ouvrez le lien)',
-    !cree.telephone && 'le téléphone',
-    !cree.nom_contact && 'le nom du contact',
-    cree.type_etablissement === 'autre' && 'le type d\'établissement',
-    !cree.ville && 'la commune',
-  ].filter(Boolean) as string[] : [];
-  const enAttente = state.prospects.filter(p => p.etape_pipeline === 'partage').length;
+  const recommencer = () => { setEnvoye(null); setTexte(''); setCommentaire(''); setErreur(''); };
+  const enAttente = state.signalements.filter(s => s.statut === 'a_qualifier').length;
 
   return (
     <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Share2 className="w-5 h-5 text-brewery-600" /> Fiche partagée</h1>
-        <p className="text-sm text-gray-500 mt-1">Une fiche partagée depuis <span className="font-medium">Google Maps</span> devient un prospect dans l'étape <span className="font-medium text-purple-700">« Nouveau partagé »</span>, avec son nom, sa position et son adresse. Reste à ajouter le téléphone et le contact.</p>
+        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Share2 className="w-5 h-5 text-brewery-600" /> Signaler un prospect</h1>
+        <p className="text-sm text-gray-500 mt-1">Un lien Google Maps, Instagram, Facebook, TikTok, un article ou juste un nom : tout part dans la <span className="font-medium">boîte de prospection</span>, où il sera qualifié avant d'entrer dans le pipeline.</p>
       </div>
 
-      {!partage && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3 text-sm text-gray-700">
-          <p className="font-medium text-gray-900 flex items-center gap-2"><Smartphone className="w-4 h-4 text-brewery-600" /> Comment partager une fiche</p>
-          <ol className="list-decimal pl-5 space-y-1">
-            <li>Sur Android, installez SuiviPro une fois : menu du navigateur → « Ajouter à l'écran d'accueil ».</li>
-            <li>Dans l'application <span className="font-medium">Google Maps</span>, ouvrez l'établissement, touchez « Partager » puis choisissez SuiviPro.</li>
-            <li>La fiche est créée dans « Nouveau partagé » avec le nom, la position et l'adresse ; il reste le téléphone et le contact.</li>
-            <li>Partagez bien depuis Google Maps, pas depuis la recherche Google : celle-ci ne donne que le nom.</li>
-          </ol>
-          <p className="text-xs text-gray-500">Sur iPhone, le partage vers une application web n'existe pas : envoyez la fiche sur WhatsApp à quelqu'un sur Android, ou créez le prospect dans Prospects.</p>
-          <Link to="/pipeline" className="inline-block text-brewery-700 hover:underline">{enAttente > 0 ? `${enAttente} fiche(s) attendent dans « Nouveau partagé »` : 'Ouvrir le pipeline'}</Link>
-        </div>
-      )}
-
-      {partage && enCours && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex items-center gap-3 text-sm text-gray-700">
-          <Loader2 className="w-5 h-5 animate-spin text-brewery-600" /> Lecture de la fiche Google…
-        </div>
-      )}
-
-      {erreur && !enCours && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-red-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {erreur}</p>
-          <textarea className="w-full min-h-[100px] px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white" value={texte} onChange={e => setTexte(e.target.value)} />
-          <button className="px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700" onClick={() => envoyer(false)}>Réessayer</button>
-        </div>
-      )}
-
-      {reponse && !reponse.ok && reponse.doublons.length > 0 && !enCours && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-amber-900 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Une fiche ressemble déjà à « {reponse.fiche.nom_etablissement} »</p>
-          <ul className="space-y-1">
-            {reponse.doublons.map(d => (
-              <li key={`${d.genre}-${d.id}`} className="flex items-center gap-2 text-sm">
-                <Building2 className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                <Link to={d.genre === 'client' ? `/clients?id=${d.id}` : `/prospects?id=${d.id}`} className="text-brewery-700 hover:underline">{d.nom}{d.ville ? ` · ${d.ville}` : ''}</Link>
-                <span className="text-[11px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">{d.genre === 'client' ? 'client' : `prospect · ${state.pipelineColumns.find(c => c.id === d.etape)?.label || d.etape}`}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="flex gap-2">
-            <button className="px-3 py-1.5 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700" onClick={() => envoyer(true)}>Créer quand même</button>
-            <Link to="/pipeline" className="px-3 py-1.5 text-sm rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50">Ne rien créer</Link>
+      {!envoye && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="partage-texte" className="text-sm font-medium text-gray-700">Ce que vous avez reçu</label>
+              {peutColler && (
+                <button type="button" onClick={coller} className="flex items-center gap-1 text-xs font-medium text-brewery-700 hover:underline">
+                  <ClipboardPaste className="w-3.5 h-3.5" /> Coller
+                </button>
+              )}
+            </div>
+            <textarea
+              id="partage-texte"
+              className="w-full min-h-[110px] px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              placeholder={'Le message WhatsApp tel quel, un lien, ou le nom de l\'établissement…'}
+              value={texte}
+              onChange={e => setTexte(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="partage-commentaire" className="block text-sm font-medium text-gray-700 mb-1">Commentaire <span className="font-normal text-gray-400">(optionnel)</span></label>
+            <input
+              id="partage-commentaire"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              placeholder="Bonne réputation, recommandé par Amélie, vu en passant…"
+              value={commentaire}
+              onChange={e => setCommentaire(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="partage-pour" className="block text-sm font-medium text-gray-700 mb-1">Pour qui ?</label>
+            <select id="partage-pour" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white" value={commercialId} onChange={e => setCommercialId(e.target.value)}>
+              <option value="">La prospection</option>
+              {state.commerciaux.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{faitDeLaProspection(c) ? ' · prospection' : ''}</option>)}
+            </select>
+          </div>
+          {erreur && <p className="text-sm text-red-700 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {erreur}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={envoyer}
+              disabled={enCours || !texte.trim()}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700 disabled:opacity-50"
+            >
+              {enCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Envoyer dans la boîte
+            </button>
+            <Link to="/boite" className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">
+              <Inbox className="w-4 h-4" /> {enAttente > 0 ? `${enAttente} à qualifier` : 'Ouvrir la boîte'}
+            </Link>
           </div>
         </div>
       )}
 
-      {cree && (
+      {envoye && (
         <div className="bg-white rounded-xl border border-green-200 shadow-sm p-4 space-y-3">
-          <p className="text-sm font-medium text-green-800 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Fiche créée en « Nouveau partagé »</p>
+          <p className="text-sm font-medium text-green-800 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Ajouté à la boîte de prospection</p>
           <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
-            <div className="px-3 py-2 font-semibold text-gray-900">{cree.nom_etablissement} <span className="font-normal text-gray-500">· {ESTABLISHMENT_LABELS[cree.type_etablissement]}</span></div>
-            <div className="px-3 py-2 flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-gray-400" /><span className={cree.adresse || cree.ville ? 'text-gray-800' : 'text-gray-400 italic'}>{[cree.adresse, [cree.code_postal, cree.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') || 'Adresse à compléter'}</span></div>
-            <div className="px-3 py-2 flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-gray-400" /><span className={cree.telephone ? 'text-gray-800' : 'text-gray-400 italic'}>{cree.telephone || 'Téléphone à compléter'}</span></div>
-            <div className="px-3 py-2 flex items-center gap-2"><User className="w-3.5 h-3.5 text-gray-400" /><span className="text-gray-400 italic">Contact à compléter</span></div>
-            {cree.source_url && (
-              <a href={cree.source_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 flex items-center gap-2 text-blue-600 hover:underline"><ExternalLink className="w-3.5 h-3.5" /> Ouvrir la fiche Google</a>
+            <div className="px-3 py-2 flex items-center justify-between gap-2">
+              <span className="font-semibold text-gray-900 truncate">{titreDuSignalement(envoye)}</span>
+              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">{LIBELLES_SOURCE[envoye.source]}</span>
+            </div>
+            {(envoye.fiche.adresse || envoye.fiche.ville) && (
+              <div className="px-3 py-2 flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-gray-400" /><span className="text-gray-800">{[envoye.fiche.adresse, [envoye.fiche.code_postal, envoye.fiche.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</span></div>
             )}
+            {envoye.fiche.telephone && <div className="px-3 py-2 flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-gray-400" /><span className="text-gray-800">{envoye.fiche.telephone}</span></div>}
+            {envoye.lien && <a href={envoye.lien} target="_blank" rel="noopener noreferrer" className="px-3 py-2 flex items-center gap-2 text-blue-600 hover:underline"><ExternalLink className="w-3.5 h-3.5" /> Ouvrir le lien</a>}
+            <div className="px-3 py-2 text-gray-600">Pour : <span className="font-medium text-gray-800">{envoye.commercial_id ? nomDe(envoye.commercial_id) : 'la prospection'}</span>{envoye.commentaire ? <> · « {envoye.commentaire} »</> : null}</div>
           </div>
-          {manquants.length > 0 && <p className="text-xs text-amber-700">Il manque {manquants.join(', ')}.</p>}
-          {reponse?.provenance === 'recherche' && !cree.ville && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">Partagé depuis la recherche Google : seul le nom a pu être lu. Pour avoir la position et l'adresse, partagez la fiche depuis l'application Google Maps.</p>
+          {envoye.fiche.doublons && envoye.fiche.doublons.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Ressemble à une fiche existante</p>
+              <ul className="mt-1 space-y-0.5">
+                {envoye.fiche.doublons.map(d => (
+                  <li key={`${d.genre}-${d.id}`} className="flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                    <Link to={d.genre === 'client' ? `/clients?id=${d.id}` : `/prospects?id=${d.id}`} className="text-brewery-700 hover:underline">{d.nom}{d.ville ? ` · ${d.ville}` : ''}</Link>
+                    <span className="text-[11px] bg-amber-100 px-1.5 py-0.5 rounded-full">{d.genre === 'client' ? 'client' : 'prospect'}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs mt-1">La personne qui qualifie pourra rattacher ce signalement à cette fiche.</p>
+            </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <Link to={`/prospects?id=${cree.id}`} className="px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700">Compléter la fiche</Link>
-            <Link to="/pipeline" className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Voir le pipeline</Link>
+            <Link to="/boite" className="px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700">Voir la boîte</Link>
+            <button type="button" onClick={recommencer} className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Signaler un autre</button>
           </div>
         </div>
       )}
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3 text-sm text-gray-700">
+        <p className="font-medium text-gray-900 flex items-center gap-2"><Smartphone className="w-4 h-4 text-brewery-600" /> Depuis le téléphone</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <p className="font-medium text-gray-800 mb-1">Android</p>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>Installez SuiviPro une fois : menu du navigateur → « Ajouter à l'écran d'accueil ».</li>
+              <li>Dans WhatsApp, Google Maps ou Instagram, touchez « Partager » puis choisissez SuiviPro.</li>
+              <li>Le contenu arrive ici : ajoutez un commentaire, choisissez pour qui, envoyez.</li>
+            </ol>
+          </div>
+          <div>
+            <p className="font-medium text-gray-800 mb-1">iPhone</p>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>Dans WhatsApp, appui long sur le message → « Copier ».</li>
+              <li>Ouvrez SuiviPro → « Signaler un prospect » (ou cette page).</li>
+              <li>Touchez « Coller », ajoutez un commentaire, choisissez pour qui, envoyez.</li>
+            </ol>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">Un lien Google Maps donne le nom, l'adresse et la position. Un lien Instagram, Facebook ou TikTok ne donne que le nom du compte : le reste se complète à la qualification.</p>
+      </div>
     </div>
   );
 }
