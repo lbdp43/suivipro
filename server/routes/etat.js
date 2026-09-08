@@ -5,7 +5,7 @@ import db from '../db.js';
 import { asyncHandler, authMiddleware } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { parseCommercial, parseProspect, parseSessionAppel } from '../lib/parse.js';
-import { parseSignalement } from './signalements.js';
+import { parseSignalement, SELECT_SIGNALEMENTS } from './signalements.js';
 
 const router = Router();
 
@@ -36,8 +36,9 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
               FROM commandes ORDER BY date_commande DESC`),
     db.query('SELECT * FROM sessions_appel WHERE jour >= $1', [hier]),
     db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC'),
-    // La boîte de prospection : tout ce qui attend, et un mois de traités.
-    db.query("SELECT * FROM signalements WHERE statut = 'a_qualifier' OR created_at >= $1 ORDER BY created_at DESC", [dateLocale(new Date(Date.now() - 30 * 86400000))]),
+    // La boîte de prospection : tout ce qui attend, un mois de traités, et ce qui est rattaché à
+    // une fiche (ses photos restent visibles sur la fiche).
+    db.query(`${SELECT_SIGNALEMENTS} WHERE s.statut = 'a_qualifier' OR s.created_at >= $1 OR s.prospect_id <> '' OR s.client_id <> '' ORDER BY s.created_at DESC`, [dateLocale(new Date(Date.now() - 30 * 86400000))]),
   ]);
 
   const etat = {

@@ -10,6 +10,7 @@ import { Client, CLIENT_TYPE_LABELS, CLIENT_VISIT_FREQUENCIES, ClientStatus, Int
 import { generateId, formatDate } from '../utils/helpers';
 import { decrocheDuClient } from '../utils/commandes';
 import { apiPost, apiPut, apiDelete } from '../api/client';
+import { PhotosPartagees } from './PhotosSignalement';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
 // ouverte depuis Semaine : identité, contact, visites, actions rapides, notes, tâches,
@@ -265,6 +266,8 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             <button onClick={enregistrerInteraction} disabled={!interactionComment.trim()} className="w-full py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 disabled:opacity-50 transition-colors">Enregistrer</button>
           </div>
         )}
+
+        <div className="px-4"><PhotosPartagees clientId={client.id} /></div>
 
         <div className="px-4 pt-3 pb-2">
           <div className="flex items-center justify-between mb-1">

@@ -29,7 +29,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
-      imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
       connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr"],
       fontSrc: ["'self'"],
       frameSrc: ["'self'"],
@@ -117,6 +117,11 @@ if (existsSync(DIST)) {
       if (/\/(sw\.js|manifest\.webmanifest)$/.test(chemin)) res.setHeader('Cache-Control', 'no-cache');
     },
   }));
+
+  // Partage de fichiers depuis Android : le service worker intercepte ce POST et redirige vers
+  // l'écran de partage. S'il n'est pas encore actif (toute première ouverture), on y renvoie
+  // quand même, sans les photos, avec un mot d'explication.
+  app.post('/partage', (_req, res) => res.redirect(303, '/partage?sans_fichiers=1'));
 
   // SPA fallback: all non-API routes serve index.html
   app.get('{*path}', (req, res) => {

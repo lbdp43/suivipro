@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Share2, ClipboardPaste, Send, Inbox, Loader2, AlertTriangle, CheckCircle, Smartphone, MapPin, Phone, ExternalLink, Building2 } from 'lucide-react';
+import { Share2, ClipboardPaste, Send, Inbox, Loader2, AlertTriangle, CheckCircle, Smartphone, MapPin, Phone, ExternalLink, Building2, Camera, X } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost } from '../api/client';
 import { Signalement } from '../types';
 import { LIBELLES_SOURCE, titreDuSignalement } from '../utils/signalements';
 import { faitDeLaProspection } from '../utils/roles';
+import { PHOTOS_MAX, PhotoPrete, imagesCollees, lirePhotosPartagees, reduirePhoto } from '../utils/photos';
+import { GaleriePhotos } from '../components/PhotosSignalement';
 
 // Point d'arrivée du bouton « Partager » du téléphone (Android) et de la saisie par collage
 // (iPhone) : ce que l'on a reçu sur WhatsApp — lien Google Maps, Instagram, Facebook, TikTok,
@@ -23,7 +25,38 @@ export default function PartagePage() {
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState('');
   const [envoye, setEnvoye] = useState<Signalement | null>(null);
+  const [photos, setPhotos] = useState<PhotoPrete[]>([]);
+  const [photosEnCours, setPhotosEnCours] = useState(false);
+  const fichiersRef = useRef<HTMLInputElement>(null);
   const peutColler = typeof navigator !== 'undefined' && !!navigator.clipboard?.readText;
+  const nbFichiersPartages = parseInt(searchParams.get('fichiers') || '0', 10) || 0;
+  const sansFichiers = searchParams.get('sans_fichiers') === '1';
+
+  const ajouterPhotos = async (fichiers: Blob[]) => {
+    if (fichiers.length === 0) return;
+    setPhotosEnCours(true);
+    try {
+      const pretes: PhotoPrete[] = [];
+      for (const f of fichiers.slice(0, PHOTOS_MAX)) {
+        try { pretes.push(await reduirePhoto(f)); } catch { toast.error('Une image n\'a pas pu être lue'); }
+      }
+      setPhotos(prev => [...prev, ...pretes].slice(0, PHOTOS_MAX));
+      if (photos.length + pretes.length > PHOTOS_MAX) toast.info(`${PHOTOS_MAX} photos au plus par signalement`);
+    } finally { setPhotosEnCours(false); }
+  };
+
+  // Partage Android avec des fichiers : le service worker les a déposés dans un cache.
+  const fichiersLus = useRef(false);
+  useEffect(() => {
+    if (nbFichiersPartages > 0 && !fichiersLus.current) { fichiersLus.current = true; lirePhotosPartagees(nbFichiersPartages).then(ajouterPhotos); }
+  }, [nbFichiersPartages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // iPhone : copier l'image dans WhatsApp, puis coller n'importe où sur cette page.
+  useEffect(() => {
+    const surCollage = (e: ClipboardEvent) => { const images = imagesCollees(e); if (images.length > 0) { e.preventDefault(); ajouterPhotos(images); } };
+    document.addEventListener('paste', surCollage);
+    return () => document.removeEventListener('paste', surCollage);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   const nomDe = (id: string) => { const c = state.commerciaux.find(x => x.id === id); return c ? c.prenom : id; };
 
   const coller = async () => {
@@ -37,10 +70,10 @@ export default function PartagePage() {
   };
 
   const envoyer = async () => {
-    if (!texte.trim()) return;
+    if (!texte.trim() && photos.length === 0) return;
     setEnCours(true); setErreur('');
     try {
-      const s = await apiPost('/signalements', { texte, commentaire, commercial_id: commercialId }) as Signalement;
+      const s = await apiPost('/signalements', { texte, commentaire, commercial_id: commercialId, photos: photos.map(p => ({ type_mime: p.type_mime, contenu: p.contenu })) }) as Signalement;
       dispatchLocal({ type: 'UPSERT_SIGNALEMENT', payload: s });
       setEnvoye(s);
       toast.success('Ajouté à la boîte de prospection');
@@ -51,7 +84,7 @@ export default function PartagePage() {
     }
   };
 
-  const recommencer = () => { setEnvoye(null); setTexte(''); setCommentaire(''); setErreur(''); };
+  const recommencer = () => { setEnvoye(null); setTexte(''); setCommentaire(''); setErreur(''); setPhotos([]); };
   const enAttente = state.signalements.filter(s => s.statut === 'a_qualifier').length;
 
   return (
@@ -60,6 +93,10 @@ export default function PartagePage() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Share2 className="w-5 h-5 text-brewery-600" /> Signaler un prospect</h1>
         <p className="text-sm text-gray-500 mt-1">Un lien Google Maps, Instagram, Facebook, TikTok, un article ou juste un nom : tout part dans la <span className="font-medium">boîte de prospection</span>, où il sera qualifié avant d'entrer dans le pipeline.</p>
       </div>
+
+      {sansFichiers && !envoye && (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">L'application n'était pas encore prête à recevoir des photos : le partage est arrivé sans elles. Réessayez le partage, ou ajoutez-les ci-dessous.</p>
+      )}
 
       {!envoye && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-4">
@@ -79,6 +116,27 @@ export default function PartagePage() {
               value={texte}
               onChange={e => setTexte(e.target.value)}
             />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-gray-700">Photos <span className="font-normal text-gray-400">(optionnel, {PHOTOS_MAX} au plus)</span></span>
+              <button type="button" onClick={() => fichiersRef.current?.click()} disabled={photosEnCours || photos.length >= PHOTOS_MAX} className="flex items-center gap-1 text-xs font-medium text-brewery-700 hover:underline disabled:opacity-50">
+                {photosEnCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />} Ajouter des photos
+              </button>
+              <input ref={fichiersRef} type="file" accept="image/*" multiple className="hidden" onChange={e => { ajouterPhotos(Array.from(e.target.files || [])); e.target.value = ''; }} />
+            </div>
+            {photos.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {photos.map((p, i) => (
+                  <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                    <img src={p.apercu} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))} className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80" aria-label="Retirer la photo"><X className="w-3 h-3" /></button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">Devanture, carte, ardoise… Sur iPhone, copiez l'image dans WhatsApp puis collez-la ici.</p>
+            )}
           </div>
           <div>
             <label htmlFor="partage-commentaire" className="block text-sm font-medium text-gray-700 mb-1">Commentaire <span className="font-normal text-gray-400">(optionnel)</span></label>
@@ -102,7 +160,7 @@ export default function PartagePage() {
             <button
               type="button"
               onClick={envoyer}
-              disabled={enCours || !texte.trim()}
+              disabled={enCours || photosEnCours || (!texte.trim() && photos.length === 0)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700 disabled:opacity-50"
             >
               {enCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Envoyer dans la boîte
@@ -128,6 +186,7 @@ export default function PartagePage() {
             {envoye.fiche.telephone && <div className="px-3 py-2 flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-gray-400" /><span className="text-gray-800">{envoye.fiche.telephone}</span></div>}
             {envoye.lien && <a href={envoye.lien} target="_blank" rel="noopener noreferrer" className="px-3 py-2 flex items-center gap-2 text-blue-600 hover:underline"><ExternalLink className="w-3.5 h-3.5" /> Ouvrir le lien</a>}
             <div className="px-3 py-2 text-gray-600">Pour : <span className="font-medium text-gray-800">{envoye.commercial_id ? nomDe(envoye.commercial_id) : 'la prospection'}</span>{envoye.commentaire ? <> · « {envoye.commentaire} »</> : null}</div>
+            {envoye.photos.length > 0 && <div className="px-3 py-2"><GaleriePhotos signalements={[envoye]} /></div>}
           </div>
           {envoye.fiche.doublons && envoye.fiche.doublons.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -158,7 +217,7 @@ export default function PartagePage() {
             <p className="font-medium text-gray-800 mb-1">Android</p>
             <ol className="list-decimal pl-5 space-y-1">
               <li>Installez SuiviPro une fois : menu du navigateur → « Ajouter à l'écran d'accueil ».</li>
-              <li>Dans WhatsApp, Google Maps ou Instagram, touchez « Partager » puis choisissez SuiviPro.</li>
+              <li>Dans WhatsApp, Google Maps, Instagram ou la galerie photos, touchez « Partager » puis choisissez SuiviPro. Les photos partagées arrivent avec.</li>
               <li>Le contenu arrive ici : ajoutez un commentaire, choisissez pour qui, envoyez.</li>
             </ol>
           </div>
@@ -167,7 +226,7 @@ export default function PartagePage() {
             <ol className="list-decimal pl-5 space-y-1">
               <li>Dans WhatsApp, appui long sur le message → « Copier ».</li>
               <li>Ouvrez SuiviPro → « Signaler un prospect » (ou cette page).</li>
-              <li>Touchez « Coller », ajoutez un commentaire, choisissez pour qui, envoyez.</li>
+              <li>Touchez « Coller » ; pour une photo, « Ajouter des photos » ou collez l'image copiée.</li>
             </ol>
           </div>
         </div>
