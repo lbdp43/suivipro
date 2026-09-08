@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { dateLocale } from '../../shared/regles';
+import { candidatsDoublons } from '../../shared/rapprochement';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
@@ -10,7 +12,6 @@ import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import { ListChecks, ExternalLink } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
-import { dateLocale } from '../../shared/regles';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { ocrProspect, convertProspectToClient, apiGet, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { useToast } from '../components/Toast';
@@ -22,7 +23,7 @@ import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType,
 } from '../types';
-import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress, toLocalDateStr } from '../utils/helpers';
+import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
@@ -208,7 +209,7 @@ export default function ProspectsPage() {
     setCompteRenduRappel(false);
     const in7days = new Date();
     in7days.setDate(in7days.getDate() + 7);
-    setCompteRenduRappelDate(toLocalDateStr(in7days));
+    setCompteRenduRappelDate(dateLocale(in7days));
     setCompteRenduRappelMessage('');
     setShowCompteRendu(true);
   };
@@ -590,35 +591,15 @@ export default function ProspectsPage() {
     }
   };
 
-  // Live duplicate detection as user types
+  // Contrôle à la saisie : le même moteur de rapprochement que les doublons, sur les prospects puis sur les clients.
   const liveDuplicates = useMemo(() => {
     if (!showForm || editingProspect) return [];
-    const nom = (formData.nom_etablissement || '').trim().toLowerCase();
-    const tel = (formData.telephone || '').trim();
-    const email = (formData.email || '').trim().toLowerCase();
-    if (!nom && !tel && !email) return [];
-    return state.prospects.filter(p => {
-      if (nom && nom.length >= 3 && p.nom_etablissement.trim().toLowerCase().includes(nom)) return true;
-      if (tel && tel.length >= 4 && p.telephone.trim().includes(tel)) return true;
-      if (email && email.length >= 5 && p.email && p.email.trim().toLowerCase().includes(email)) return true;
-      return false;
-    });
+    return candidatsDoublons({ nom: formData.nom_etablissement || '', telephone: formData.telephone || '', email: formData.email || '' }, state.prospects);
   }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.prospects]);
 
-  // Also check existing clients
   const liveClientDuplicates = useMemo(() => {
     if (!showForm || editingProspect) return [];
-    const nom = (formData.nom_etablissement || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const tel = (formData.telephone || '').trim();
-    const email = (formData.email || '').trim().toLowerCase();
-    if (nom.length < 3 && tel.length < 4 && email.length < 5) return [];
-    return state.clients.filter(c => {
-      const cn = c.nom.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (nom.length >= 3 && (cn.includes(nom) || nom.includes(cn))) return true;
-      if (tel.length >= 4 && c.telephone && c.telephone.trim().includes(tel)) return true;
-      if (email.length >= 5 && c.email && c.email.trim().toLowerCase().includes(email)) return true;
-      return false;
-    });
+    return candidatsDoublons({ nom: formData.nom_etablissement || '', telephone: formData.telephone || '', email: formData.email || '' }, state.clients);
   }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
 
   const saveProspect = async () => {
@@ -1040,7 +1021,7 @@ export default function ProspectsPage() {
                       e.stopPropagation();
                       const in3days = new Date();
                       in3days.setDate(in3days.getDate() + 3);
-                      setReminderDate(toLocalDateStr(in3days));
+                      setReminderDate(dateLocale(in3days));
                       setReminderHeure('09:00');
                       setReminderMessage('');
                       setReminderProspect(p);
@@ -1652,7 +1633,7 @@ export default function ProspectsPage() {
                     onClick={() => {
                       const d = new Date();
                       d.setDate(d.getDate() + shortcut.days);
-                      setReminderDate(toLocalDateStr(d));
+                      setReminderDate(dateLocale(d));
                     }}
                   >
                     {shortcut.label}

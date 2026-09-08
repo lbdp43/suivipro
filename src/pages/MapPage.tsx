@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -12,7 +13,7 @@ import { apiPut, apiGet } from '../api/client';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS, CommercialZone, colorForCommercial } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatDate, downloadICS, toLocalDateStr } from '../utils/helpers';
+import { formatDate, downloadICS } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 
 // Custom marker icon factory
@@ -42,7 +43,7 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
   else if (offset > 0) label = `+${offset} sem.`;
   else label = `${offset} sem.`;
   label += ` (${fmt(monday)} - ${fmt(sunday)})`;
-  return { start: toLocalDateStr(monday), end: toLocalDateStr(sunday), label };
+  return { start: dateLocale(monday), end: dateLocale(sunday), label };
 }
 
 const DAY_NAMES_SHORT: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam', 0: 'Dim' };
@@ -102,7 +103,7 @@ export default function MapPage() {
 
   // Compter les RDV a venir toutes semaines confondues (pour le badge)
   const totalUpcomingRdv = useMemo(() => {
-    const today = toLocalDateStr(new Date());
+    const today = dateLocale(new Date());
     return state.appointments.filter(a => a.date >= today && a.statut !== 'annule' && a.statut !== 'termine').length;
   }, [state.appointments]);
 
@@ -269,7 +270,7 @@ export default function MapPage() {
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
-  const today = toLocalDateStr(new Date());
+  const today = dateLocale(new Date());
 
   const statusColors: Record<string, string> = {
     planifie: 'bg-blue-100 text-blue-700',
@@ -955,7 +956,7 @@ export default function MapPage() {
                   </div>
                   {client.next_visit && (
                     <p className="mt-1 text-xs text-gray-500">
-                      Prochaine visite: <span className={`font-medium ${client.next_visit < toLocalDateStr(new Date()) ? 'text-red-600' : 'text-green-600'}`}>
+                      Prochaine visite: <span className={`font-medium ${client.next_visit < dateLocale(new Date()) ? 'text-red-600' : 'text-green-600'}`}>
                         {new Date(client.next_visit).toLocaleDateString('fr-FR')}
                       </span>
                     </p>

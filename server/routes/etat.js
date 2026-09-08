@@ -3,7 +3,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import db from '../db.js';
 import { asyncHandler, authMiddleware } from '../lib/auth.js';
-import { toLocalDateStr } from '../lib/dates.js';
+import { dateLocale } from '../../shared/regles.js';
 import { parseCommercial, parseProspect, parseSessionAppel } from '../lib/parse.js';
 
 const router = Router();
@@ -15,7 +15,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // fois dans le contexte de l'application, donc partout — accueil et retards compris.
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
-  const hier = toLocalDateStr(new Date(Date.now() - 86400000));
+  const hier = dateLocale(new Date(Date.now() - 86400000));
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),

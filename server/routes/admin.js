@@ -2,20 +2,20 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { adminOnly, asyncHandler, authMiddleware } from '../lib/auth.js';
-import { toLocalDateStr } from '../lib/dates.js';
+import { dateLocale } from '../../shared/regles.js';
 import { nomZone } from '../lib/geo.js';
 
 const router = Router();
 
 router.get('/admin/stats', authMiddleware, asyncHandler(async (req, res) => {
   const now = new Date();
-  const today = toLocalDateStr(now);
+  const today = dateLocale(now);
 
   // Get Monday of current week
   const dayOfWeek = now.getDay() || 7;
   const monday = new Date(now);
   monday.setDate(now.getDate() - dayOfWeek + 1);
-  const weekStart = toLocalDateStr(monday);
+  const weekStart = dateLocale(monday);
 
   // Start of month
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -99,7 +99,7 @@ router.get('/admin/activity-feed', authMiddleware, asyncHandler(async (req, res)
     endDate = `${month}-${lastDay}`;
   } else {
     startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    endDate = toLocalDateStr(now);
+    endDate = dateLocale(now);
   }
 
   const activities = [];
@@ -204,8 +204,8 @@ router.get('/admin/planning', authMiddleware, asyncHandler(async (req, res) => {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
 
-    const startStr = toLocalDateStr(weekStart);
-    const endStr = toLocalDateStr(weekEnd);
+    const startStr = dateLocale(weekStart);
+    const endStr = dateLocale(weekEnd);
 
     let query = `SELECT c.id, c.nom, c.ville, c.type_client, c.next_visit, c.tournee,
       co.prenom as commercial_prenom, co.nom as commercial_nom, c.commercial_id

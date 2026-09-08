@@ -3,6 +3,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import * as eb from '../easybeer-client.js';
 import db from '../db.js';
+import { preuvesDeLien, verdictDeLien } from '../../shared/rapprochement.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { adminOnly, asyncHandler, authMiddleware } from '../lib/auth.js';
 import { clientLocalDepuisEasybeerId, createVisiteFromCommandeRow, createVisitesFromCommandes, ensureSiteInternetGroup, estCommandeWeb, extractEbFieldsSync, findMatchingClient, findMatchingProspect, importerClientDepuisCommande, linkClientToProspect, mapEasyBeerTypeToClientType, resolveCommercialFromEasybeer, upsertClientFromEasybeer } from '../lib/easybeer-sync.js';
@@ -1187,24 +1188,13 @@ router.get('/easybeer/audit-liens', authMiddleware, asyncHandler(async (req, res
     WHERE ec.status = 'imported' AND ec.imported_client_id IS NOT NULL
     ORDER BY ec.name`);
 
-  const norm = (x) => (x || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-  const tokens = (x) => (x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .split(/[^a-z0-9]+/).filter(t => t.length > 2);
-
   const resultats = liens.rows.map(l => {
-    const preuves = [];
-    if (l.eb_siret && l.client_siret && norm(l.eb_siret) === norm(l.client_siret)) preuves.push('siret');
-    if (l.eb_email && l.client_email && norm(l.eb_email) === norm(l.client_email)) preuves.push('email');
-    const ebTel = norm(l.eb_phone);
-    if (ebTel && ebTel.length >= 8 && (norm(l.client_tel).includes(ebTel) || norm(l.client_mobile).includes(ebTel))) preuves.push('telephone');
-    const tEb = tokens(l.eb_name), tCli = tokens(l.client_nom);
-    const communs = tEb.filter(t => tCli.includes(t));
-    if (norm(l.eb_name) && norm(l.eb_name) === norm(l.client_nom)) preuves.push('nom_exact');
-    else if (communs.length > 0) preuves.push('nom_partiel');
-
-    let verdict = 'ok';
-    if (preuves.length === 0) verdict = 'suspect';
-    else if (!preuves.some(p => ['siret', 'email', 'telephone', 'nom_exact'].includes(p))) verdict = 'a_verifier';
+    // Même moteur que les doublons : les preuves d'un lien et le verdict qui en découle.
+    const preuves = preuvesDeLien(
+      { nom: l.eb_name, email: l.eb_email, siret: l.eb_siret, telephone: l.eb_phone },
+      { nom: l.client_nom, email: l.client_email, siret: l.client_siret, telephone: l.client_tel, telephone_mobile: l.client_mobile },
+    );
+    const verdict = verdictDeLien(preuves);
 
     return {
       easybeer_id: l.easybeer_id,

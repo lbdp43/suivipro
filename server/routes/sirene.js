@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { adminOnly, asyncHandler, authMiddleware } from '../lib/auth.js';
-import { toLocalDateStr } from '../lib/dates.js';
+import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
 import { DATAGOUV_BASE_URL, NAF_CODES, fetchAllDatagouv, fetchNearPoint, parseDatagouvResult } from '../lib/sirene-import.js';
 
@@ -239,7 +239,7 @@ router.post('/sirene/sync-zone', authMiddleware, adminOnly, asyncHandler(async (
   const departements = config.departements.split(',').map(d => d.trim()).filter(Boolean);
   const nafCodes = config.naf_codes ? config.naf_codes.split(',').map(c => c.trim()).filter(Boolean) : NAF_CODES.map(n => n.code);
   const lookbackDays = config.lookback_days || 7;
-  const dateFrom = toLocalDateStr(new Date(Date.now() - lookbackDays * 86400000));
+  const dateFrom = dateLocale(new Date(Date.now() - lookbackDays * 86400000));
 
   const logRes = await db.query(
     `INSERT INTO sirene_sync_logs (started_at, naf_codes, departements, source, is_cron)
@@ -384,7 +384,7 @@ router.post('/sirene/sync', authMiddleware, adminOnly, asyncHandler(async (req, 
     ? naf_codes
     : NAF_CODES.map(n => n.code);
 
-  const dateFrom = toLocalDateStr(new Date(Date.now() - lookback_days * 86400000));
+  const dateFrom = dateLocale(new Date(Date.now() - lookback_days * 86400000));
 
   // Create sync log
   const logRes = await db.query(
@@ -848,7 +848,7 @@ async function runSyncForConfig(config, isCron = false) {
   const departements = config.departements.split(',').map(d => d.trim()).filter(Boolean);
   const nafCodes = config.naf_codes ? config.naf_codes.split(',').map(c => c.trim()).filter(Boolean) : NAF_CODES.map(n => n.code);
   const lookbackDays = config.lookback_days || 7;
-  const dateFrom = toLocalDateStr(new Date(Date.now() - lookbackDays * 86400000));
+  const dateFrom = dateLocale(new Date(Date.now() - lookbackDays * 86400000));
 
   console.log(`[SYNC] Config "${config.name}" (${config.entity_type}): ${nafCodes.length} NAF x ${departements.length} depts, depuis ${dateFrom}`);
 

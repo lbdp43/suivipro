@@ -3,6 +3,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import * as eb from '../easybeer-client.js';
 import db from '../db.js';
+import { dateLocale } from '../../shared/regles.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { ensureSiteInternetGroup, estCommandeWeb } from '../lib/easybeer-sync.js';
 
@@ -20,7 +21,7 @@ export async function syncNocturneEasybeer(fenetreJours = 7) {
     const headers = { Authorization: 'Basic ' + Buffer.from(`${config.username}:${decrypt(config.password)}`).toString('base64') };
     const apiBase = (config.api_url || 'https://api.easybeer.fr').replace(/\/$/, '');
     const now = new Date().toISOString();
-    const fmt = (d) => d.toISOString().slice(0, 10);
+    const fmt = (d) => dateLocale(d);
     const filtre = {
       dateDebutCreation: fmt(new Date(Date.now() - fenetreJours * 86400000)),
       dateFinCreation: fmt(new Date()),

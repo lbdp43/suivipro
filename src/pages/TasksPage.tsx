@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   ListTodo, Plus, Edit2, Trash2, Save, X, RefreshCw, Filter,
@@ -9,7 +10,7 @@ import {
 import { useApp } from '../store/AppContext';
 import type { TaskClient } from '../types';
 import { useToast } from '../components/Toast';
-import { toLocalDateStr, generateId } from '../utils/helpers';
+import { generateId } from '../utils/helpers';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 
 interface Task {
@@ -268,7 +269,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   // Stats — sur la même base que la liste (vue d'équipe appliquée), sinon les chiffres
   // du haut ne correspondent pas à ce qu'on voit dessous.
   const stats = useMemo(() => {
-    const today = toLocalDateStr(new Date());
+    const today = dateLocale(new Date());
     const base = idsVisibles ? tasks.filter(t => !t.commercial_id || idsVisibles.has(t.commercial_id)) : tasks;
     const myTasks = base.filter(t => t.commercial_id === currentUserId);
     return {
@@ -290,7 +291,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
 
   const isOverdue = (task: Task) => {
     if (!task.date_echeance || task.statut === 'TERMINEE') return false;
-    return task.date_echeance < toLocalDateStr(new Date());
+    return task.date_echeance < dateLocale(new Date());
   };
 
 

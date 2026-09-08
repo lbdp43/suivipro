@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { dateLocale, estEnRetard, joursDeRetard } from '../../shared/regles';
 import { Link } from 'react-router-dom';
 import {
   Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
@@ -8,13 +9,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { apiGet } from '../api/client';
 import { APPOINTMENT_RESULT_LABELS, CLIENT_TYPE_LABELS, ClientType } from '../types';
-import {
-  getCallsToday, getCallsThisWeek, getCallsThisMonth,
-  getAppointmentsThisWeek, getAppointmentsThisMonth,
-  getResponseRate, getAverageCallDuration,
-  formatDuration, formatDate, toLocalDateStr,
-} from '../utils/helpers';
-import { estEnRetard, joursDeRetard } from '../../shared/regles';
+import { getCallsToday, getCallsThisWeek, getCallsThisMonth, getAppointmentsThisWeek, getAppointmentsThisMonth, getResponseRate, getAverageCallDuration, formatDuration, formatDate } from '../utils/helpers';
 import { objectifAppels } from '../utils/objectifs';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
@@ -117,8 +112,8 @@ function getPeriodRange(period: TimePeriod): { start: Date; end: Date } {
 // commercial_id. Renvoie la fonction d'annulation attendue par useEffect.
 function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) => void) {
   const range = getPeriodRange(periode);
-  const debut = toLocalDateStr(range.start);
-  const fin = toLocalDateStr(range.end);
+  const debut = dateLocale(range.start);
+  const fin = dateLocale(range.end);
   let annule = false;
   (async () => {
     try {
@@ -343,7 +338,7 @@ export default function DashboardPage() {
       const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
 
       // Visit coverage: clients visited in time vs late
-      const today = toLocalDateStr(new Date());
+      const today = dateLocale(new Date());
       const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
       const clientsLate = activeClients.filter(c => estEnRetard(c, today)).length;
       const clientsOnTime = activeClients.length - clientsLate;
@@ -405,7 +400,7 @@ export default function DashboardPage() {
       const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
 
       // Visit coverage
-      const today = toLocalDateStr(new Date());
+      const today = dateLocale(new Date());
       const activeClients = userClients.filter(c => c.statut === 'ACTIF' && c.next_visit);
       const coverageRate = activeClients.length > 0
         ? Math.round((activeClients.filter(c => c.next_visit! >= today).length / activeClients.length) * 100)
@@ -556,9 +551,9 @@ export default function DashboardPage() {
 
   // === Sante des visites ===
   const visitHealth = useMemo(() => {
-    const today = toLocalDateStr(new Date());
+    const today = dateLocale(new Date());
     const activeClients = perimetre.clients.filter(c => c.statut === 'ACTIF');
-    const weekEnd = toLocalDateStr(endOfWeek(new Date(), { weekStartsOn: 1 }));
+    const weekEnd = dateLocale(endOfWeek(new Date(), { weekStartsOn: 1 }));
 
     // Règle 1 : en retard = visite prévue dépassée d'au moins un jour.
     const lateClients = activeClients.filter(c => estEnRetard(c, today));
@@ -635,7 +630,7 @@ export default function DashboardPage() {
     });
 
     // Clients actifs sans commande depuis 60 jours
-    const sixtyDaysAgo = toLocalDateStr(new Date(Date.now() - 60 * 86400000));
+    const sixtyDaysAgo = dateLocale(new Date(Date.now() - 60 * 86400000));
     const inactiveOrdering = clientCA.filter(c =>
       c.client.statut === 'ACTIF' && c.orderCount > 0 && c.lastOrderDate < sixtyDaysAgo
     );
@@ -668,7 +663,7 @@ export default function DashboardPage() {
     const moi = state.currentUser?.id || '';
     const taches = ((state as any).tasksClient || []) as any[];
     const overdueTasks = taches.filter((t) =>
-      t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < toLocalDateStr(new Date())
+      t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance < dateLocale(new Date())
       && (vueEquipe || t.commercial_id === moi)
     ).length;
     return { lateVisits: visitHealth.lateCount, stagnantProspects: funnelData.stagnantCount, orphanCommandes, overdueTasks };

@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { dateLocale, statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
+import { candidatsDoublons } from '../../shared/rapprochement';
+import { lireConfigTournee } from '../../shared/tournee';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, ChevronRight, ChevronLeft, X,
@@ -16,11 +19,10 @@ import {
   ClientType, ClientStatus, Client, InteractionType,
   INTERACTION_TYPE_LABELS, 
 } from '../types';
-import { generateId, formatDate, downloadICSClient, geocodeAddress, toLocalDateStr } from '../utils/helpers';
+import { generateId, formatDate, downloadICSClient, geocodeAddress } from '../utils/helpers';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { statutVisite, joursDeRetard, StatutVisite } from '../../shared/regles';
 import { decrocheDuClient } from '../utils/commandes';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
@@ -192,7 +194,7 @@ export default function ClientsPage() {
   useEffect(() => {
     const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
     (state.tourneeConfigs || []).forEach((r: any) => {
-      const cfg = typeof r.config === 'string' ? JSON.parse(r.config || '{}') : (r.config || {});
+      const cfg = lireConfigTournee(r.config);
       map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
     });
     setTourneeConfigs(map);
@@ -240,7 +242,7 @@ export default function ClientsPage() {
       const nextDate = new Date(myLastVisit + 'T12:00:00');
       if (isNaN(nextDate.getTime())) return { lastVisit: myLastVisit, nextVisit: client.next_visit, isPersonal: false };
       nextDate.setDate(nextDate.getDate() + freq);
-      const nextVisit = nextDate.toISOString().slice(0, 10);
+      const nextVisit = dateLocale(nextDate);
       return { lastVisit: myLastVisit, nextVisit, isPersonal: true };
     } catch {
       return { lastVisit: myLastVisit, nextVisit: client.next_visit, isPersonal: false };
@@ -504,7 +506,7 @@ export default function ClientsPage() {
     });
     // Include zones from state tournee configs (loaded at login)
     state.tourneeConfigs?.forEach((tc: any) => {
-      const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+      const cfg = lireConfigTournee(tc.config);
       if (cfg) Object.values(cfg).forEach((zones: any) => {
         if (Array.isArray(zones)) zones.forEach((z: string) => { if (z && typeof z === 'string') set.add(z); });
       });
@@ -524,7 +526,7 @@ export default function ClientsPage() {
       }
       // Update tournee configs too
       for (const tc of state.tourneeConfigs || []) {
-        const cfg = typeof tc.config === 'string' ? JSON.parse(tc.config) : tc.config;
+        const cfg = lireConfigTournee(tc.config);
         let modified = false;
         const newCfg = { ...cfg };
         for (const day of Object.keys(newCfg)) {
@@ -764,7 +766,7 @@ export default function ClientsPage() {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Clients');
-      XLSX.writeFile(wb, `clients-${toLocalDateStr(new Date())}.xlsx`);
+      XLSX.writeFile(wb, `clients-${dateLocale(new Date())}.xlsx`);
     } catch { /* ignore */ }
   };
 
@@ -861,28 +863,15 @@ export default function ClientsPage() {
   const lateCount = state.clients.filter(c => getPersonalVisitStatus(c) === 'LATE').length;
 
 
-  // Duplicate detection
-  const normalize = (s: string) =>
-    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
-
+  // Contrôle à la saisie : le même moteur de rapprochement que les doublons.
   const duplicateClients = useMemo(() => {
     if (!showForm || editingClient) return [];
-    const q = normalize(formData.nom || '');
-    if (q.length < 3) return [];
-    return state.clients.filter(c => {
-      const n = normalize(c.nom);
-      return n.includes(q) || q.includes(n);
-    });
+    return candidatsDoublons({ nom: formData.nom || '' }, state.clients);
   }, [formData.nom, showForm, editingClient, state.clients]);
 
   const duplicateProspects = useMemo(() => {
     if (!showForm || editingClient) return [];
-    const q = normalize(formData.nom || '');
-    if (q.length < 3) return [];
-    return state.prospects.filter(p => {
-      const n = normalize(p.nom_etablissement);
-      return n.includes(q) || q.includes(n);
-    });
+    return candidatsDoublons({ nom: formData.nom || '' }, state.prospects);
   }, [formData.nom, showForm, editingClient, state.prospects]);
 
   // Selected client detail
@@ -1632,7 +1621,7 @@ export default function ClientsPage() {
             variante="panneau"
             onFermer={() => setSearchParams({})}
             onModifier={openEditForm}
-            onInteraction={(c, type) => { setInteractionClient(c); setInteractionType(type); if (type === 'RDV_PLANIFIE') setInteractionDate(toLocalDateStr(new Date())); }}
+            onInteraction={(c, type) => { setInteractionClient(c); setInteractionType(type); if (type === 'RDV_PLANIFIE') setInteractionDate(dateLocale(new Date())); }}
             onEmail={setEmailClient}
             onAjouterTache={c => { setTaskClientId(c.id); setTaskTitle(''); setTaskDate(''); setShowTaskForm(true); }}
             frequence={c => getEffectiveFrequency(c.type_client, null)}

@@ -1,5 +1,7 @@
 // Tournées, secteurs, fréquence de visite — onglet de la page Administration, extrait tel quel.
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { sansAccents } from '../../../shared/normalisation';
+import { lireConfigTournee } from '../../../shared/tournee';
 import { Plus, X, Save, Edit2, Trash2, User, RefreshCw, Loader2, MapPin } from 'lucide-react';
 import { CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES } from '../../types';
 import { useApp } from '../../store/AppContext';
@@ -145,7 +147,7 @@ export default function OngletTournees() {
       const r = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(r.error || 'Fusion impossible'); return; }
       // Mise à jour immédiate de l'état local (le polling confirmera).
-      const normaliser = (v: string) => (v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const normaliser = sansAccents;
       const cles = new Set(sources.map(s => s.cle));
       const maintenant = new Date().toISOString();
       for (const c of stateComplet.clients) if (cles.has(normaliser(c.tournee))) dispatchLocal({ type: 'UPDATE_CLIENT', payload: { ...c, tournee: cible, date_modification: maintenant } });
@@ -183,7 +185,7 @@ export default function OngletTournees() {
         const configs: Record<string, { config: Record<string, string[]>; notes: string; tournee_info: string; week_pattern: string }> = {};
         for (const row of rows) {
           let parsed = {};
-          try { parsed = typeof row.config === 'string' ? JSON.parse(row.config) : row.config; } catch { /* ignore */ }
+          parsed = lireConfigTournee(row.config);
           configs[row.commercial_id] = {
             config: parsed as Record<string, string[]>,
             notes: row.notes || '',

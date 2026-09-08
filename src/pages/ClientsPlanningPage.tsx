@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { dateLocale, estEnRetard, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
+import { lireConfigTournee } from '../../shared/tournee';
 import {
   ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Calendar, CheckCircle2, Clock, AlertTriangle, Phone, MapPin, Map,
@@ -9,10 +11,9 @@ import { useToast } from '../components/Toast';
 import {
   Client, Appointment, APPOINTMENT_RESULT_LABELS, Interaction,
 } from '../types';
-import { toLocalDateStr, downloadICSClientBatch, generateId } from '../utils/helpers';
+import { downloadICSClientBatch, generateId } from '../utils/helpers';
 import { apiPut, apiPost } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { estEnRetard, tourneeActive, rdvSansCompteRendu, rdvAVenir } from '../../shared/regles';
 import ClientDetailModal from '../components/ClientDetailModal';
 import CompteRenduModal from '../components/CompteRenduModal';
 
@@ -44,7 +45,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
   useEffect(() => {
     const map: Record<string, { config: Record<string, string[]>; week_pattern: string }> = {};
     (state.tourneeConfigs || []).forEach((r: any) => {
-      const cfg = typeof r.config === 'string' ? JSON.parse(r.config || '{}') : (r.config || {});
+      const cfg = lireConfigTournee(r.config);
       map[r.commercial_id] = { config: cfg, week_pattern: r.week_pattern || 'every' };
     });
     setTourneeConfigs(map);
@@ -375,7 +376,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
       d.setDate(monday.getDate() + i);
       days.push({
         date: d,
-        dateStr: toLocalDateStr(d),
+        dateStr: dateLocale(d),
         label: `${dayNames[i]} ${d.getDate()}/${d.getMonth() + 1}`,
         dayKey: String(i + 1),
       });
@@ -392,7 +393,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
 
     // Règle 1 : en retard = visite prévue dépassée d'au moins un jour (par rapport à aujourd'hui,
     // quelle que soit la semaine affichée).
-    const aujourdhui = toLocalDateStr(new Date());
+    const aujourdhui = dateLocale(new Date());
     const lateClients = clientsBase.filter(c => estEnRetard(c, aujourdhui));
     const groupByTournee = (clients: Client[]) => {
       const groups: Record<string, Client[]> = {};
@@ -479,7 +480,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
   // Results card data - filtered by period
   const resultsData = useMemo(() => {
     const now = new Date();
-    const todayStr = toLocalDateStr(now);
+    const todayStr = dateLocale(now);
     let startDate = '';
     let endDate = todayStr;
     let periodLabel = '';
@@ -492,22 +493,22 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
       monday.setHours(0, 0, 0, 0);
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
-      startDate = toLocalDateStr(monday);
-      endDate = toLocalDateStr(sunday);
+      startDate = dateLocale(monday);
+      endDate = dateLocale(sunday);
       periodLabel = `Sem. ${monday.getDate()}/${monday.getMonth() + 1} - ${sunday.getDate()}/${sunday.getMonth() + 1}`;
     } else if (resultsPeriod === 'mois') {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      startDate = toLocalDateStr(firstDay);
-      endDate = toLocalDateStr(lastDay);
+      startDate = dateLocale(firstDay);
+      endDate = dateLocale(lastDay);
       const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
       periodLabel = monthNames[now.getMonth()] + ' ' + now.getFullYear();
     } else if (resultsPeriod === 'trimestre') {
       const quarter = Math.floor(now.getMonth() / 3);
       const firstDay = new Date(now.getFullYear(), quarter * 3, 1);
       const lastDay = new Date(now.getFullYear(), quarter * 3 + 3, 0);
-      startDate = toLocalDateStr(firstDay);
-      endDate = toLocalDateStr(lastDay);
+      startDate = dateLocale(firstDay);
+      endDate = dateLocale(lastDay);
       periodLabel = `T${quarter + 1} ${now.getFullYear()}`;
     } else {
       // tout
@@ -795,8 +796,8 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
       {/* Days of the week - collapsible */}
       <div className="space-y-3">
         {planningData.days.map(day => {
-          const isToday = day.dateStr === toLocalDateStr(new Date());
-          const isPast = day.dateStr < toLocalDateStr(new Date());
+          const isToday = day.dateStr === dateLocale(new Date());
+          const isPast = day.dateStr < dateLocale(new Date());
           const isCollapsed = collapsedDays.has(day.dateStr);
           return (
             <div
@@ -943,7 +944,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                               {sector.clients.map(c => {
                                 const comm = getCommercial(c.commercial_id);
                                 const isDue = c.next_visit && c.next_visit <= day.dateStr;
-                                const isLate = c.next_visit && c.next_visit < toLocalDateStr(new Date());
+                                const isLate = c.next_visit && c.next_visit < dateLocale(new Date());
                                 const isInSchedulingMode = schedulingDay === day.dateStr;
                                 const isInMassMode = massActionDay === day.dateStr;
                                 const isSelected = isInSchedulingMode && selectedClients.has(c.id);

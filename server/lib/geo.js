@@ -33,11 +33,4 @@ export function nomZone(z) {
 }
 
 // Config de tournee lue en base : texte JSON, jamais garanti valide.
-export function lireConfigTournee(texte) {
-  try {
-    const c = JSON.parse(texte || '{}');
-    return c && typeof c === 'object' && !Array.isArray(c) ? c : {};
-  } catch {
-    return {};
-  }
-}
+export { lireConfigTournee } from '../../shared/tournee.js';

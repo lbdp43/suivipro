@@ -1,4 +1,6 @@
 import { useState, useRef } from 'react';
+import { normaliserPourComparaison, chiffresTelephone } from '../../shared/normalisation';
+import { dateLocale } from '../../shared/regles';
 import {
   Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, Loader2, MapPin,
   Search, Trash2, Trophy, CheckSquare, Square, Building2,
@@ -6,7 +8,7 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
-import { generateId, exportProspectsCSV, geocodeBatch, toLocalDateStr } from '../utils/helpers';
+import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 
 export default function ImportPage() {
@@ -45,7 +47,7 @@ export default function ImportPage() {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Prospects');
-      XLSX.writeFile(wb, `prospects-${toLocalDateStr(new Date())}.xlsx`);
+      XLSX.writeFile(wb, `prospects-${dateLocale(new Date())}.xlsx`);
     } catch (err) {
       toast.error('Erreur lors de l\'export Excel');
     }
@@ -516,8 +518,8 @@ export default function ImportPage() {
     return { ville: '', cp: '', adresseClean: adresse };
   };
 
-  const normalizeForMatch = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-  const normalizePhoneForMatch = (tel: string) => tel.replace(/[\s.\-()\/+]/g, '').replace(/^0033/, '0').replace(/^33/, '0');
+  const normalizeForMatch = normaliserPourComparaison;
+  const normalizePhoneForMatch = chiffresTelephone;
 
   // Step 1: Parse file and generate preview
   const handleClientFileParse = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1002,8 +1004,8 @@ export default function ImportPage() {
     }
   };
 
-  const normalizeStr = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-  const normalizePhone = (tel: string) => tel.replace(/[\s.\-()\/+]/g, '').replace(/^0033/, '0').replace(/^33/, '0');
+  const normalizeStr = normaliserPourComparaison;
+  const normalizePhone = chiffresTelephone;
 
   const handleCrossRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

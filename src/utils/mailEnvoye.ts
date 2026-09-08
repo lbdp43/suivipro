@@ -1,4 +1,5 @@
 import { AppState, Prospect, Tag } from '../types';
+import { sansAccents } from '../../shared/normalisation';
 import { apiPost, apiPut } from '../api/client';
 import { generateId } from './helpers';
 import { scoreDepuisTags } from '../../shared/score';
@@ -18,7 +19,7 @@ export async function marquerMailEnvoye(
   sujet: string,
 ): Promise<void> {
   const moi = state.currentUser?.id || 'com-1';
-  const normaliser = (s: string) => s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const normaliser = sansAccents;
   let tag = state.tags.find(t => normaliser(t.nom) === normaliser(NOM_TAG_MAIL));
   if (!tag) {
     tag = { id: generateId('tag'), nom: NOM_TAG_MAIL, couleur: '#3b82f6', points: 0 };

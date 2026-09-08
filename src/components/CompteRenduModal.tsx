@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { ClipboardCheck, X, Bell, UserCheck, Mail, ShoppingCart, RefreshCw, Ban, CalendarClock, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
 import { apiPost, apiPut, apiPatch } from '../api/client';
 import { Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, PipelineStage, Prospect } from '../types';
-import { generateId, formatDate, toLocalDateStr } from '../utils/helpers';
+import { generateId, formatDate } from '../utils/helpers';
 import EmailTemplateModal from './EmailTemplateModal';
 
 // LA fenêtre de compte rendu d'un rendez-vous, la même partout (Rendez-vous, Semaine à
@@ -34,7 +35,7 @@ const OPTIONS: { value: AppointmentResult; icon: typeof Check; couleur: string; 
   { value: 'decale', icon: CalendarClock, couleur: 'border-violet-500 bg-violet-50 text-violet-700', effet: 'Le rendez-vous est marqué décalé, puis vous choisissez la nouvelle date.' },
 ];
 
-function dansSeptJours() { const d = new Date(); d.setDate(d.getDate() + 7); return toLocalDateStr(d); }
+function dansSeptJours() { const d = new Date(); d.setDate(d.getDate() + 7); return dateLocale(d); }
 
 export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | null; onClose: () => void }) {
   const { state, dispatchLocal } = useApp();

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
 import { Appointment, AppointmentStatus, Prospect, Commercial, Client, EVENT_TYPE_LABELS } from '../types';
-import { downloadICS, toLocalDateStr } from '../utils/helpers';
+import { downloadICS } from '../utils/helpers';
 
 interface Props {
   appointments: Appointment[];
@@ -47,7 +48,7 @@ function getWeekDays(offset: number): Date[] {
 }
 
 function toDateStr(d: Date): string {
-  return toLocalDateStr(d);
+  return dateLocale(d);
 }
 
 function timeToMinutes(time: string): number {

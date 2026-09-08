@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { lireConfigTournee } from '../../shared/tournee';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
@@ -136,7 +137,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
     for (const uid of effectiveUserIds) {
       const tc = state.tourneeConfigs?.find((t: any) => t.commercial_id === uid);
       if (!tc?.config) continue;
-      const cfg = typeof tc.config === 'string' ? (() => { try { return JSON.parse(tc.config); } catch { return {}; } })() : tc.config;
+      const cfg = lireConfigTournee(tc.config);
       for (const [dow, zones] of Object.entries(cfg)) {
         if (!Array.isArray(zones)) continue;
         if (!merged[dow]) merged[dow] = [];

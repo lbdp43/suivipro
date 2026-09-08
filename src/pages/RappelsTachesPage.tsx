@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { dateLocale } from '../../shared/regles';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, ListTodo, Users } from 'lucide-react';
 import { useApp } from '../store/AppContext';
@@ -38,7 +39,7 @@ export default function RappelsTachesPage() {
     return null;
   }, [vue, state.currentUser, state.commerciaux]);
 
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const aujourdhui = dateLocale();
   const rappelsDus = state.reminders.filter(r => r.statut === 'actif' && r.date <= aujourdhui && (!idsVisibles || idsVisibles.has(r.commercial_id))).length;
   const tachesOuvertes = state.tasksClient.filter(t => t.statut !== 'TERMINEE' && (!idsVisibles || (t.commercial_id ? idsVisibles.has(t.commercial_id) : vue === 'tous' || vue === 'moi'))).length;
 
