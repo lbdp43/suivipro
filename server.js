@@ -27,6 +27,14 @@ app.set('trust proxy', 1);
 // il lui faut sa propre origine autorisée et son propre quota. Lecture seule.
 app.use('/mcp', mcpRoutes);
 
+// Un client MCP qui n'a pas trouvé de service de connexion va sonder ces adresses. Sans
+// réponse nette, il reçoit la page de l'application (200, du HTML), en conclut qu'un OAuth
+// existe, tente une inscription impossible et affiche « problème de connexion ».
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/.well-known/oauth-')) return next();
+  return res.status(404).json({ error: 'SuiviPro n\'utilise pas OAuth : l\'accès au MCP se fait par un jeton d\'en-tête.' });
+});
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {

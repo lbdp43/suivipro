@@ -19,7 +19,7 @@ const routeur = express.Router();
 routeur.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Token', 'X-Api-Key', 'X-Suivipro-Token', 'X-Access-Token', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'],
   exposedHeaders: ['mcp-session-id', 'mcp-protocol-version'],
 }));
 
@@ -27,7 +27,7 @@ routeur.use(rateLimit({
   windowMs: 60 * 1000,
   max: 600,
   // Un quota par jeton : deux personnes derrière la même adresse ne se gênent pas.
-  keyGenerator: (req) => (req.headers.authorization || '').slice(-12) || ipKeyGenerator(req.ip),
+  keyGenerator: (req) => jetonDeLaRequete(req).slice(-12) || ipKeyGenerator(req.ip),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Trop de requêtes, réessayez dans une minute' },
@@ -35,8 +35,10 @@ routeur.use(rateLimit({
 
 routeur.use(express.json({ limit: '1mb' }));
 
+// Pas d'en-tête « WWW-Authenticate » : un client qui le voit croit à un service de
+// connexion OAuth, part chercher une inscription qui n'existe pas, et affiche
+// « problème de connexion ». Ici l'accès se fait par un jeton d'en-tête, point.
 function refus(res, message) {
-  res.setHeader('WWW-Authenticate', 'Bearer realm="SuiviPro"');
   return res.status(401).json({
     jsonrpc: '2.0',
     error: { code: -32001, message },
@@ -44,16 +46,31 @@ function refus(res, message) {
   });
 }
 
+// Les clients ne nomment pas tous l'en-tête pareil : « Authorization: Bearer » est le
+// standard, mais les connecteurs qui passent une clé d'API laissent choisir le nom.
+// On accepte les usages courants, et on reconnaît un jeton à son préfixe.
+const ENTETES_JETON = ['authorization', 'x-token', 'x-api-key', 'x-suivipro-token', 'x-access-token'];
+
+function jetonDeLaRequete(req) {
+  for (const nom of ENTETES_JETON) {
+    const brut = req.headers[nom];
+    if (!brut) continue;
+    const valeur = String(brut).replace(/^Bearer\s+/i, '').trim();
+    if (valeur.startsWith('sp_')) return valeur;
+  }
+  return '';
+}
+
 /** Le porteur du jeton, ou une fin de non-recevoir. Révoqué, expiré, inconnu : même réponse. */
 async function identifier(req, res) {
-  const entete = req.headers.authorization || '';
-  if (!entete.startsWith('Bearer ')) {
-    refus(res, 'Jeton manquant : ajoutez votre accès Claude dans l\'en-tête Authorization.');
+  const jeton = jetonDeLaRequete(req);
+  if (!jeton) {
+    refus(res, 'Jeton manquant. Dans les réglages du connecteur : Authentification « Aucun », puis un en-tête supplémentaire « x-token » avec votre accès Claude (créé dans SuiviPro, Administration → Accès Claude).');
     return null;
   }
-  const utilisateur = await porteurDuJeton(entete.slice(7).trim());
+  const utilisateur = await porteurDuJeton(jeton);
   if (!utilisateur) {
-    refus(res, 'Jeton invalide, révoqué ou expiré. Demandez-en un nouveau dans SuiviPro (Administration → Équipe).');
+    refus(res, 'Jeton invalide, révoqué ou expiré. Demandez-en un nouveau dans SuiviPro (Administration → Accès Claude).');
     return null;
   }
   return utilisateur;
