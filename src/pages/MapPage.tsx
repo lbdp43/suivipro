@@ -103,11 +103,6 @@ export default function MapPage() {
   const peutModifierZone = (z: CommercialZone) => admin || z.commercial_id === moi?.id;
   const zonesModifiables = useMemo(() => zones.filter(z => admin ? z.commercial_id === dessinPour : z.commercial_id === moi?.id), [zones, admin, dessinPour, moi?.id]);
   const appelesAujourdhui = useMemo(() => sessionDuJour(state, moi?.id).appeles, [state, moi?.id]);
-  const aAppelerParZone = useMemo(() => {
-    const m = new Map<string, number>();
-    zones.forEach(z => m.set(z.id, prospectsAAppelerDansLaZone(state, z.id, appelesAujourdhui).length));
-    return m;
-  }, [zones, state, appelesAujourdhui]);
   const enregistrerPriorite = async (z: CommercialZone, prioritaire: boolean, consigne: string) => {
     try {
       await apiPut(`/commercial-zones/${z.id}`, { prioritaire, consigne });
@@ -123,16 +118,6 @@ export default function MapPage() {
       await rechargerZones();
       toast.success('Zone renommée');
     } catch { toast.error('Impossible de renommer la zone'); }
-  };
-  // « Session d'appel pour cette zone » : les prospects à appeler rejoignent ma session du jour, puis on enchaîne.
-  const lancerSessionZone = async (z: CommercialZone) => {
-    const ids = prospectsAAppelerDansLaZone(state, z.id, appelesAujourdhui).map(p => p.id);
-    if (ids.length === 0) { toast.info('Aucun prospect à appeler dans cette zone'); return; }
-    try {
-      const r = await apiPut('/sessions-appel/jour', { jour: dateLocale(new Date()), prospect_ids: ids, mode: 'ajouter' }) as { session: import('../types').SessionAppel };
-      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
-    } catch { /* la session en mémoire suffit */ }
-    startSession(ids);
   };
 
   // RDV de la semaine selectionnee (filtre par commercial si actif)
@@ -314,6 +299,27 @@ export default function MapPage() {
     setSelectedDepartments(prev =>
       prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
     );
+  };
+
+  // Les prospects à appeler dans une zone respectent les filtres de la carte (étape, commercial,
+  // tags…) : ce qu'on voit, c'est ce qu'on appelle. Le panneau RDV est mis de côté pour ce calcul.
+  const idsVisibles = useMemo(() => new Set(filteredProspects.map(p => p.id)), [filteredProspects]);
+  const aAppelerDansZone = (zoneId: string) => prospectsAAppelerDansLaZone(state, zoneId, appelesAujourdhui).filter(p => showRdvPanel || idsVisibles.has(p.id));
+  const aAppelerParZone = useMemo(() => {
+    const m = new Map<string, number>();
+    zones.forEach(z => m.set(z.id, aAppelerDansZone(z.id).length));
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zones, state, appelesAujourdhui, idsVisibles, showRdvPanel]);
+  // « Session d'appel pour cette zone » : les prospects à appeler rejoignent ma session du jour, puis on enchaîne.
+  const lancerSessionZone = async (z: CommercialZone) => {
+    const ids = aAppelerDansZone(z.id).map(p => p.id);
+    if (ids.length === 0) { toast.info('Aucun prospect à appeler dans cette zone avec les filtres actuels'); return; }
+    try {
+      const r = await apiPut('/sessions-appel/jour', { jour: dateLocale(new Date()), prospect_ids: ids, mode: 'ajouter' }) as { session: import('../types').SessionAppel };
+      dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
+    } catch { /* la session en mémoire suffit */ }
+    startSession(ids);
   };
 
   const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length + selectedZones.length;
@@ -1021,6 +1027,7 @@ export default function MapPage() {
                     >
                       <Phone className="w-3.5 h-3.5" /> Session d'appel pour cette zone ({aAppeler})
                     </button>
+                    {activeFilterCount > 0 && <p className="text-[10px] text-gray-400 text-center">Selon les filtres actifs de la carte</p>}
                   </div>
                 </Popup>
               </Polygon>

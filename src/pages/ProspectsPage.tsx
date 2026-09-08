@@ -844,7 +844,7 @@ export default function ProspectsPage() {
                   disabled={sessionEnCours}
                   title="Garder ces prospects comme ma session d'appel d'aujourd'hui (à reprendre depuis l'accueil)"
                 >
-                  <ListChecks className="w-3 h-3" /> Ma session du jour{maSession.session ? ` (+${selectedIds.size})` : ` (${selectedIds.size})`}
+                  <ListChecks className="w-3 h-3" /> Ajouter à ma session du jour{maSession.session ? ` (+${selectedIds.size})` : ` (${selectedIds.size})`}
                 </button>
                 <button
                   className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-[10px] font-semibold hover:bg-brewery-700"

@@ -12,6 +12,7 @@ import { PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineCol
 import { prochaineActionDe, derniereActiviteDe, joursDansEtape, joursSansActivite, estTerminale, SEUIL_STAGNATION_JOURS } from '../../shared/tunnel';
 import { formatDate } from '../utils/helpers';
 import RaisonPerteModal, { libelleRaisonPerte } from '../components/RaisonPerte';
+import { estEnZonePrioritaire } from '../utils/zones';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
@@ -33,11 +34,20 @@ export default function PipelinePage() {
   const [maxPerColumn, setMaxPerColumn] = useState(50);
   const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
   const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
+  // Zones dessinées sur la carte ; « __hors__ » = géolocalisé mais dans aucune zone.
+  const [filterZones, setFilterZones] = useState<Set<string>>(new Set());
+  const optionsZones = useMemo(() => {
+    const compte = new Map<string, number>(); let hors = 0;
+    state.prospects.forEach(p => { if (p.zone_id) compte.set(p.zone_id, (compte.get(p.zone_id) || 0) + 1); else if (p.latitude && p.longitude) hors += 1; });
+    const opts = state.commercialZones.map(z => ({ value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'} (${compte.get(z.id) || 0})` }));
+    opts.push({ value: '__hors__', label: `Hors zone (${hors})` });
+    return opts;
+  }, [state.prospects, state.commercialZones]);
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
   const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
   const [filterAvecRdv, setFilterAvecRdv] = useState(false);
   const [filterCommercial, setFilterCommercial] = useState<string>('');
-  // Sélection multiple : on coche des cartes, puis « Ma session du jour » ou « Appeler maintenant ».
+  // Sélection multiple : on coche des cartes, puis « Ajouter à ma session du jour » (à reprendre depuis l'accueil) ou « Appeler maintenant ».
   const [selection, setSelection] = useState(false);
   const [coches, setCoches] = useState<Set<string>>(new Set());
   const [sessionEnCours, setSessionEnCours] = useState(false);
@@ -129,7 +139,7 @@ export default function PipelinePage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
+  const hasActiveFilters = filterSecteurs.size > 0 || filterZones.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -167,6 +177,7 @@ export default function PipelinePage() {
   const prospectsByStage = useMemo(() => {
     const filtered = state.prospects.filter(p => {
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
+      if (filterZones.size > 0 && !filterZones.has(p.zone_id || ((p.latitude && p.longitude) ? '__hors__' : ''))) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
@@ -184,7 +195,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, filterZones]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -330,6 +341,15 @@ export default function PipelinePage() {
               color="amber"
             />
           )}
+          {state.commercialZones.length > 0 && (
+            <MultiSelectDropdown
+              label="Zone"
+              options={optionsZones}
+              selected={filterZones}
+              onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
+              color="amber"
+            />
+          )}
           {allDepartments.length > 0 && (
             <MultiSelectDropdown
               label="Dept (CP)"
@@ -372,7 +392,7 @@ export default function PipelinePage() {
           {hasActiveFilters && (
             <button
               className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterCommercial(''); }}
+              onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterCommercial(''); }}
             >
               <X className="w-3 h-3" />
             </button>
@@ -553,7 +573,7 @@ export default function PipelinePage() {
                 disabled={sessionEnCours}
                 title="Garder ces prospects comme ma session d'appel d'aujourd'hui (à reprendre depuis l'accueil)"
               >
-                <ListChecks className="w-3.5 h-3.5" /> Ma session du jour{maSession.session ? ` (+${coches.size})` : ''}
+                <ListChecks className="w-3.5 h-3.5" /> Ajouter à ma session du jour{maSession.session ? ` (+${coches.size})` : ` (${coches.size})`}
               </button>
               <button
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700"
@@ -655,6 +675,9 @@ export default function PipelinePage() {
                             ) : null}
                           </div>); })()}
 
+                        {estEnZonePrioritaire(state, prospect) && (
+                          <span className="inline-block mt-1.5 text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium" title="Dans une zone prioritaire pour la prospection">★ Zone prioritaire</span>
+                        )}
                         {/* Tags */}
                         {prospect.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
