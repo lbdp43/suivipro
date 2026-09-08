@@ -885,6 +885,18 @@ async function initDatabase(attempt = 1) {
       )`);
       await client.query('CREATE INDEX IF NOT EXISTS idx_signalements_statut ON signalements(statut)');
     } catch (err) { console.log('signalements migration:', err.message); }
+    // Les photos partagées avec un signalement, rangées comme les documents (base64).
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS signalement_photos (
+        id TEXT PRIMARY KEY,
+        signalement_id TEXT NOT NULL REFERENCES signalements(id) ON DELETE CASCADE,
+        type_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+        taille INTEGER NOT NULL DEFAULT 0,
+        contenu TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_signalement_photos_signalement ON signalement_photos(signalement_id)');
+    } catch (err) { console.log('signalement_photos migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.

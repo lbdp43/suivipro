@@ -11,6 +11,7 @@ import { LIBELLES_SOURCE, aQualifier, concerne, grouper, titreDuSignalement } fr
 import { faitDeLaProspection } from '../utils/roles';
 import { formatDate } from '../utils/helpers';
 import { sansAccents } from '../../shared/normalisation';
+import { GaleriePhotos } from '../components/PhotosSignalement';
 
 // La boîte de prospection : ce que l'équipe a partagé attend ici. Chaque signalement (ou
 // groupe de signalements sur le même établissement) se qualifie en un geste : créer le
@@ -25,6 +26,7 @@ const COULEUR_SOURCE: Record<Signalement['source'], string> = {
   linkedin: 'bg-sky-50 text-sky-700 border-sky-200',
   site: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   texte: 'bg-gray-50 text-gray-600 border-gray-200',
+  photo: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
 function hier(iso: string): string {
@@ -137,6 +139,8 @@ export default function BoitePage() {
                 )}
               </div>
 
+              <GaleriePhotos signalements={groupe} taille="grande" />
+
               {(adresse || fiche.telephone || fiche.categorie_google) && (
                 <div className="text-sm text-gray-700 space-y-0.5">
                   {adresse && <p className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-gray-400" /> {adresse}</p>}
@@ -147,7 +151,7 @@ export default function BoitePage() {
 
               {(s.commentaire || autres.some(a => a.commentaire) || !s.lien) && (
                 <div className="space-y-1">
-                  {!s.lien && s.texte !== titreDuSignalement(s) && <p className="text-sm text-gray-600 whitespace-pre-wrap">{s.texte}</p>}
+                  {!s.lien && s.texte && s.texte !== titreDuSignalement(s) && <p className="text-sm text-gray-600 whitespace-pre-wrap">{s.texte}</p>}
                   {[s, ...autres].filter(a => a.commentaire).map(a => (
                     <p key={a.id} className="text-sm text-gray-700 flex items-start gap-2"><MessageSquare className="w-3.5 h-3.5 text-gray-400 mt-1 flex-shrink-0" /><span>« {a.commentaire} » <span className="text-xs text-gray-500">— {nomDe(a.partage_par)}</span></span></p>
                   ))}

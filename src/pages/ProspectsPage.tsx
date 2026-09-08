@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
+import { PhotosPartagees } from '../components/PhotosSignalement';
 import { ListChecks, ExternalLink } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
@@ -1229,6 +1230,8 @@ export default function ProspectsPage() {
                   . Une fois complétée, passez-la en « À contacter ».
                 </div>
               )}
+
+              <PhotosPartagees prospectId={selectedProspect.id} />
 
               {/* Contact info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">

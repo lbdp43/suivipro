@@ -9,11 +9,12 @@ export const LIBELLES_SOURCE: Record<SourceSignalement, string> = {
   linkedin: 'LinkedIn',
   site: 'Site ou article',
   texte: 'Texte',
+  photo: 'Photo',
 };
 
 /** Ce qu'on affiche en titre d'un signalement : le nom lu, sinon le compte, sinon le début du texte. */
 export function titreDuSignalement(s: Signalement): string {
-  return s.titre || s.fiche.nom_etablissement || s.fiche.compte || s.texte.split('\n')[0].slice(0, 80) || s.lien;
+  return s.titre || s.fiche.nom_etablissement || s.fiche.compte || s.texte.split('\n')[0].slice(0, 80) || s.lien || ((s.photos || []).length > 1 ? `${s.photos.length} photos` : 'Photo');
 }
 
 export function aQualifier(state: Pick<AppState, 'signalements'>): Signalement[] {
