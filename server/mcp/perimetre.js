@@ -49,8 +49,10 @@ export async function trouverCommercial(recherche) {
  *
  * @param domaine 'clients' | 'prospects' — la prospection n'a pas accès aux clients,
  *   et voit en revanche les prospects de toute l'équipe, comme à l'écran.
+ * @param journaliser à passer à faux quand un outil résout le périmètre une seconde fois :
+ *   une même demande ne doit laisser qu'une trace.
  */
-export async function perimetre(utilisateur, demande, domaine, outil) {
+export async function perimetre(utilisateur, demande, domaine, outil, { journaliser = true } = {}) {
   if (domaine === 'clients' && faitDeLaProspection(utilisateur)) {
     await journaliserRefus(utilisateur, outil, 'accès clients demandé par la prospection');
     throw new HorsPerimetre("Les clients ne font pas partie de votre périmètre : votre accès couvre les prospects, le pipeline, la boîte de prospection et les rendez-vous que vous avez pris.");
@@ -63,7 +65,7 @@ export async function perimetre(utilisateur, demande, domaine, outil) {
   // Une personne nommée : l'admin la lit sans façon, un commercial la lit et c'est noté.
   if (demande) {
     const cible = await trouverCommercial(demande);
-    if (cible.id !== utilisateur.id && !estAdmin(utilisateur) && !defautLarge) {
+    if (journaliser && cible.id !== utilisateur.id && !estAdmin(utilisateur) && !defautLarge) {
       await journaliserCollegue(utilisateur, `${cible.prenom} ${cible.nom}`, outil);
     }
     return { ids: [cible.id], cible, montantsMasques: !estAdmin(utilisateur) && cible.id !== utilisateur.id };
