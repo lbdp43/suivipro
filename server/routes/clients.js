@@ -5,6 +5,7 @@ import db from '../db.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { logActivity } from '../lib/journal.js';
 import { rattacherEntite } from '../lib/zones.js';
+import { changerEtape } from '../lib/tunnel.js';
 import { EMAIL_RE, PHONE_RE, validationError } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
 
@@ -286,11 +287,8 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
        p.latitude || 0, p.longitude || 0, tournee || '', prospect_id, now, now]
     );
 
-    // Move prospect to client_gagne stage
-    await dbClient.query(
-      'UPDATE prospects SET etape_pipeline = $1, date_modification = $2 WHERE id = $3',
-      ['client_gagne', now, prospect_id]
-    );
+    // Le prospect passe en « Gagné » (historique et date d'entrée compris).
+    await changerEtape(prospect_id, 'client_gagne', req.user.id, { executeur: dbClient });
 
     await dbClient.query('COMMIT');
   } catch (err) {

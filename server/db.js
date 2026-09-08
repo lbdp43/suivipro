@@ -842,6 +842,24 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE commercial_zones ADD COLUMN IF NOT EXISTS consigne TEXT DEFAULT ''"); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS zone_id TEXT"); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS zone_id TEXT"); } catch { /* déjà là */ }
+    // Tunnel de vente : type d'action sur les rappels, raison de perte et date d'entrée dans
+    // l'étape sur les prospects, historique des changements d'étape.
+    try { await client.query("ALTER TABLE reminders ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'appeler'"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS raison_perte TEXT DEFAULT ''"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS date_etape TEXT"); } catch { /* déjà là */ }
+    try { await client.query("UPDATE prospects SET date_etape = date_modification WHERE date_etape IS NULL"); } catch { /* */ }
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS prospect_etapes (
+        id TEXT PRIMARY KEY,
+        prospect_id TEXT NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+        de TEXT DEFAULT '',
+        vers TEXT NOT NULL,
+        commercial_id TEXT,
+        date TEXT NOT NULL,
+        raison TEXT DEFAULT ''
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_prospect_etapes_prospect ON prospect_etapes(prospect_id)');
+    } catch (err) { console.log('prospect_etapes migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.

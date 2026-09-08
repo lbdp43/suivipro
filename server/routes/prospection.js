@@ -3,6 +3,8 @@ import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { logActivity } from '../lib/journal.js';
+import { cloreActionsAppel } from '../lib/tunnel.js';
+import { dateLocale } from '../../shared/regles.js';
 import { validateAppointment, validateCall, validateReminder, validationError } from '../lib/validation.js';
 
 const router = Router();
@@ -23,7 +25,9 @@ router.post('/calls', authMiddleware, asyncHandler(async (req, res) => {
     [c.id, c.prospect_id, commercialId, c.date, c.duree || 0, c.resultat, c.notes || '']
   );
   await logActivity(req.user.id, 'appel', `Résultat: ${c.resultat}`, 'call', c.id);
-  res.json({ ok: true });
+  // L'appel passé clôt les actions « appeler » échues de ce prospect.
+  const rappelsTermines = c.resultat === 'email_envoye' ? [] : await cloreActionsAppel(c.prospect_id, dateLocale(new Date()));
+  res.json({ ok: true, rappels_termines: rappelsTermines });
 }));
 
 router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -109,8 +113,8 @@ router.post('/reminders', authMiddleware, asyncHandler(async (req, res) => {
 
   const commercialId = isAdmin(req) ? (r.commercial_id || req.user.id) : req.user.id;
   await db.query(
-    'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-    [r.id, r.prospect_id, commercialId, r.date, r.heure || '', r.message || '', r.statut || 'actif']
+    'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+    [r.id, r.prospect_id, commercialId, r.date, r.heure || '', r.message || '', r.statut || 'actif', r.type || 'appeler']
   );
   res.json({ ok: true });
 }));
@@ -121,8 +125,8 @@ router.put('/reminders/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'UPDATE reminders SET prospect_id=$1, commercial_id=$2, date=$3, heure=$4, message=$5, statut=$6 WHERE id=$7',
-    [r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id]
+    'UPDATE reminders SET prospect_id=$1, commercial_id=$2, date=$3, heure=$4, message=$5, statut=$6, type=COALESCE($8, type) WHERE id=$7',
+    [r.prospect_id, r.commercial_id, r.date, r.heure || '', r.message || '', r.statut, req.params.id, r.type || null]
   );
   res.json({ ok: true });
 }));

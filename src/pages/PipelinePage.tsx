@@ -1,5 +1,5 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { dateLocale } from '../../shared/regles';
 import { useApp } from '../store/AppContext';
@@ -8,7 +8,10 @@ import { useCallModal } from '../components/CallModal';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
-import { PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect } from '../types';
+import { PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect, CALL_RESULT_LABELS, APPOINTMENT_RESULT_LABELS } from '../types';
+import { prochaineActionDe, derniereActiviteDe, joursDansEtape, joursSansActivite, estTerminale, SEUIL_STAGNATION_JOURS } from '../../shared/tunnel';
+import { formatDate } from '../utils/helpers';
+import RaisonPerteModal, { libelleRaisonPerte } from '../components/RaisonPerte';
 import { Link } from 'react-router-dom';
 
 export default function PipelinePage() {
@@ -39,6 +42,31 @@ export default function PipelinePage() {
   const [coches, setCoches] = useState<Set<string>>(new Set());
   const [sessionEnCours, setSessionEnCours] = useState(false);
   const maSession = sessionDuJour(state, state.currentUser?.id);
+  // Glisser dans « Perdu » demande la raison avant de déplacer.
+  const [perteEnAttente, setPerteEnAttente] = useState<Prospect | null>(null);
+  const aujourdhui = dateLocale(new Date());
+  // Ce que chaque carte raconte : dernière activité, prochaine action, jours dans l'étape.
+  const recits = useMemo(() => {
+    const m = new Map<string, { derniere: ReturnType<typeof derniereActiviteDe>; prochaine: ReturnType<typeof prochaineActionDe>; jours: number; sansActivite: number | null }>();
+    for (const p of state.prospects) {
+      const derniere = derniereActiviteDe(p, state.calls, state.appointments, aujourdhui);
+      m.set(p.id, { derniere, prochaine: prochaineActionDe(p, state.reminders, state.appointments, aujourdhui), jours: joursDansEtape(p), sansActivite: joursSansActivite(derniere) });
+    }
+    return m;
+  }, [state.prospects, state.calls, state.appointments, state.reminders, aujourdhui]);
+  const prenom = (id: string) => state.commerciaux.find(c => c.id === id)?.prenom || '';
+  const texteDerniere = (d: ReturnType<typeof derniereActiviteDe>) => {
+    if (!d) return 'Jamais contacté';
+    const quand = (() => { const j = joursSansActivite(d) ?? 0; return j === 0 ? "aujourd'hui" : j === 1 ? 'hier' : `il y a ${j} j`; })();
+    const quoi = d.genre === 'mail' ? 'Mail envoyé' : d.genre === 'rdv' ? `RDV${d.resultat ? ` · ${APPOINTMENT_RESULT_LABELS[d.resultat] || d.resultat}` : ''}` : `Appel · ${CALL_RESULT_LABELS[d.resultat as keyof typeof CALL_RESULT_LABELS] || d.resultat}`;
+    return `${quoi} · ${quand}${prenom(d.commercial_id) ? ` (${prenom(d.commercial_id)})` : ''}`;
+  };
+  const deplacer = async (prospectId: string, stageId: string, raison = '') => {
+    const p = state.prospects.find(x => x.id === prospectId);
+    const r = await apiPatch(`/prospects/${prospectId}/stage`, { etape_pipeline: stageId, raison_perte: raison }) as { date_etape?: string; raison_perte?: string };
+    if (p) dispatchLocal({ type: 'UPDATE_PROSPECT', payload: { ...p, etape_pipeline: stageId as PipelineStage, date_etape: r.date_etape || new Date().toISOString(), raison_perte: r.raison_perte ?? p.raison_perte, date_modification: new Date().toISOString() } });
+    else dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
+  };
 
   const cocher = (id: string) => {
     setCoches(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -178,12 +206,15 @@ export default function PipelinePage() {
     e.preventDefault();
     const prospectId = e.dataTransfer.getData('text/plain');
     if (prospectId) {
-      try {
-        const date_modification = new Date().toISOString();
-        await apiPatch(`/prospects/${prospectId}/stage`, { etape_pipeline: stageId, date_modification });
-        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: stageId as PipelineStage } });
-      } catch {
-        toast.error('Erreur lors du deplacement du prospect');
+      const p = state.prospects.find(x => x.id === prospectId);
+      if (stageId === 'perdu' && p && p.etape_pipeline !== 'perdu') {
+        setPerteEnAttente(p);
+      } else {
+        try {
+          await deplacer(prospectId, stageId);
+        } catch {
+          toast.error('Erreur lors du deplacement du prospect');
+        }
       }
     }
     setDraggedId(null);
@@ -592,9 +623,14 @@ export default function PipelinePage() {
                         ? (coches.has(prospect.id) ? <CheckSquare className="w-4 h-4 text-brewery-600 mt-0.5 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />)
                         : <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />}
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm text-gray-900 truncate">
-                          {prospect.nom_etablissement}
-                        </h4>
+                        {(() => { const r = recits.get(prospect.id); const actif = !estTerminale(prospect.etape_pipeline); const stagne = actif && (r?.sansActivite === null || (r?.sansActivite ?? 0) >= SEUIL_STAGNATION_JOURS); return (
+                          <div className="flex items-start justify-between gap-1">
+                            <h4 className="font-medium text-sm text-gray-900 truncate flex items-center gap-1">
+                              {stagne && <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={r?.sansActivite === null ? 'Jamais contacté' : `Aucune activité depuis ${r?.sansActivite} jours`} />}
+                              {prospect.nom_etablissement}
+                            </h4>
+                            <span className="text-[9px] text-gray-400 tabular-nums flex-shrink-0 flex items-center gap-0.5" title="Jours dans cette étape"><Clock className="w-2.5 h-2.5" /> J+{r?.jours ?? 0}</span>
+                          </div>); })()}
                         <p className="text-[10px] text-gray-500 mt-0.5">
                           {ESTABLISHMENT_LABELS[prospect.type_etablissement]}
                           {prospect.secteur && <span> - {prospect.secteur}</span>}
@@ -603,6 +639,21 @@ export default function PipelinePage() {
                           <MapPin className="w-3 h-3" />
                           {prospect.ville || prospect.adresse}
                         </div>
+                        {(() => { const r = recits.get(prospect.id); const actif = !estTerminale(prospect.etape_pipeline); return (
+                          <div className="mt-1.5 space-y-0.5">
+                            <p className="text-[10px] text-gray-500 truncate" title={texteDerniere(r?.derniere ?? null)}>{texteDerniere(r?.derniere ?? null)}</p>
+                            {prospect.etape_pipeline === 'perdu' ? (
+                              prospect.raison_perte ? <p className="text-[10px] text-red-600 truncate">Perdu : {libelleRaisonPerte(prospect.raison_perte)}</p> : null
+                            ) : actif ? (
+                              r?.prochaine ? (
+                                <p className={`text-[10px] truncate flex items-center gap-1 ${r.prochaine.enRetard ? 'text-red-600 font-medium' : 'text-blue-700'}`} title={r.prochaine.rappel?.message || ''}>
+                                  <Bell className="w-2.5 h-2.5 flex-shrink-0" /> {r.prochaine.libelle} · {formatDate(r.prochaine.date)}{r.prochaine.enRetard ? ' · en retard' : ''}
+                                </p>
+                              ) : (
+                                <p className="text-[10px] text-amber-700 flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" /> Aucune prochaine action</p>
+                              )
+                            ) : null}
+                          </div>); })()}
 
                         {/* Tags */}
                         {prospect.tags.length > 0 && (
@@ -687,6 +738,17 @@ export default function PipelinePage() {
       </div>
 
       {/* Email template modal */}
+      {perteEnAttente && (
+        <RaisonPerteModal
+          nom={perteEnAttente.nom_etablissement}
+          onClose={() => setPerteEnAttente(null)}
+          onConfirm={async raison => {
+            try { await deplacer(perteEnAttente.id, 'perdu', raison); toast.success('Prospect perdu'); }
+            catch { toast.error('Erreur lors du deplacement du prospect'); }
+            setPerteEnAttente(null);
+          }}
+        />
+      )}
       {emailProspect && (
         <EmailTemplateModal prospect={emailProspect} onClose={() => setEmailProspect(null)} />
       )}

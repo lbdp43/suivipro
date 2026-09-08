@@ -9,7 +9,10 @@ import {
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete } from '../api/client';
-import { Reminder, ReminderStatus } from '../types';
+import { Reminder, ReminderStatus, TypeAction } from '../types';
+import { TYPES_ACTION } from '../../shared/tunnel';
+import { useCallModal } from '../components/CallModal';
+import QueSestIlPasse from '../components/QueSestIlPasse';
 import { generateId, formatDate, isToday } from '../utils/helpers';
 
 // embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
@@ -53,6 +56,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
   const pastReminders = reminders.filter(r => r.statut === 'actif' && r.date < dateLocale(new Date()));
   const completedReminders = reminders.filter(r => r.statut === 'termine');
 
+  const [formType, setFormType] = useState<TypeAction>('appeler');
   const saveReminder = async () => {
     if (!formData.prospect_id || !formData.date) return;
     const prospect = getProspect(formData.prospect_id);
@@ -62,8 +66,9 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
       commercial_id: state.currentUser?.id || 'com-1',
       date: formData.date,
       heure: formData.heure,
-      message: formData.message || `Rappeler ${prospect?.nom_etablissement}`,
+      message: formData.message || (formType === 'appeler' ? `Rappeler ${prospect?.nom_etablissement}` : `${TYPES_ACTION[formType]} · ${prospect?.nom_etablissement}`),
       statut: 'actif' as const,
+      type: formType,
     };
     try {
       await apiPost('/reminders', payload);
@@ -76,17 +81,15 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
     }
   };
 
-  const markComplete = async (id: string) => {
+  // Terminer une action : « Appeler » passe l'appel (l'appel enregistré clôt le rappel),
+  // les autres demandent « que s'est-il passé ? ».
+  const { startCall } = useCallModal();
+  const [aTerminer, setATerminer] = useState<Reminder | null>(null);
+  const markComplete = (id: string) => {
     const rem = state.reminders.find(r => r.id === id);
     if (!rem) return;
-    const payload = { ...rem, statut: 'termine' as const };
-    try {
-      await apiPut(`/reminders/${id}`, payload);
-      dispatchLocal({ type: 'UPDATE_REMINDER', payload });
-      toast.success('Rappel terminé');
-    } catch (err) {
-      toast.error(`Erreur mise à jour rappel: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
-    }
+    if ((rem.type || 'appeler') === 'appeler') { startCall(rem.prospect_id); return; }
+    setATerminer(rem);
   };
 
   const openSnoozeModal = (rem: Reminder) => {
@@ -212,7 +215,10 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 whitespace-pre-line">{rem.message}</p>
+            <p className="text-sm font-medium text-gray-900 whitespace-pre-line">
+              <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${(rem.type || 'appeler') === 'appeler' ? 'bg-green-100 text-green-700' : rem.type === 'relancer_mail' ? 'bg-blue-100 text-blue-700' : rem.type === 'attendre_reponse' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{TYPES_ACTION[rem.type || 'appeler']}</span>
+              {rem.message}
+            </p>
             <div className="flex items-center gap-3 mt-1.5">
               <span className="text-xs text-gray-500 flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> {formatDate(rem.date)}
@@ -242,7 +248,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
                   onClick={() => markComplete(rem.id)}
                 >
-                  <Check className="w-3.5 h-3.5" /> Terminer
+                  <Check className="w-3.5 h-3.5" /> {(rem.type || 'appeler') === 'appeler' ? 'Appeler' : 'Terminer'}
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
@@ -536,6 +542,8 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
         </div>
       )}
 
+      {aTerminer && (() => { const p = getProspect(aTerminer.prospect_id); return p ? <QueSestIlPasse prospect={p} rappel={aTerminer} onClose={() => setATerminer(null)} /> : null; })()}
+
       {/* Form modal */}
       {showForm && (
         <div className="modal-backdrop">
@@ -552,6 +560,12 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                 <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.prospect_id} onChange={e => setFormData(prev => ({ ...prev, prospect_id: e.target.value }))}>
                   <option value="">Sélectionnez</option>
                   {state.prospects.map(p => (<option key={p.id} value={p.id}>{p.nom_etablissement}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Action</label>
+                <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formType} onChange={e => setFormType(e.target.value as TypeAction)}>
+                  {(Object.keys(TYPES_ACTION) as TypeAction[]).map(t => <option key={t} value={t}>{TYPES_ACTION[t]}</option>)}
                 </select>
               </div>
               <div>

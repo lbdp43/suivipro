@@ -4,26 +4,29 @@ import { candidatsDoublons } from '../../shared/rapprochement';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
-  Edit2, Trash2, Save, Clock, Calendar, MessageSquare, ArrowUpDown,
-  CheckSquare, Square, XCircle, Settings, Check, Bell, UserCheck, User,
-  Camera, Loader2, Building2, ClipboardCheck, ShoppingCart, Ban, RefreshCw, CalendarClock,
+  Edit2, Trash2, Save, Calendar, MessageSquare, ArrowUpDown,
+  CheckSquare, Square, XCircle, Settings, Bell, UserCheck, User,
+  Camera, Loader2, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useCallModal } from '../components/CallModal';
 import { ListChecks, ExternalLink } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import { ocrProspect, convertProspectToClient, apiGet, apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
+import CompteRenduModal from '../components/CompteRenduModal';
+import FriseProspect from '../components/FriseProspect';
+import { libelleRaisonPerte } from '../components/RaisonPerte';
+import { ocrProspect, convertProspectToClient, apiGet, apiPost, apiPut, apiDelete } from '../api/client';
 import { useToast } from '../components/Toast';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, PIPELINE_DESCRIPTIONS,
-  APPOINTMENT_RESULT_LABELS, AppointmentResult, Appointment,
+    Appointment,
   EstablishmentType, PipelineStage, Prospect, Tag as TagType,
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType,
 } from '../types';
-import { generateId, formatDate, formatTimeAgo, formatDuration, geocodeAddress } from '../utils/helpers';
+import { generateId, formatDate, formatTimeAgo, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
@@ -31,7 +34,7 @@ import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { estEnZonePrioritaire } from '../utils/zones';
 
 export default function ProspectsPage() {
-  const { state, dispatchLocal, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect } = useApp();
+  const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const { startCall, startSession } = useCallModal();
   const [sessionEnCours, setSessionEnCours] = useState(false);
@@ -144,14 +147,8 @@ export default function ProspectsPage() {
       .catch(err => console.error('Failed to load entity types:', err));
   }, []);
 
-  // Compte-rendu modal
-  const [showCompteRendu, setShowCompteRendu] = useState(false);
-  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
-  const [compteRenduResult, setCompteRenduResult] = useState<AppointmentResult>('');
-  const [compteRenduNotes, setCompteRenduNotes] = useState('');
-  const [compteRenduRappel, setCompteRenduRappel] = useState(false);
-  const [compteRenduRappelDate, setCompteRenduRappelDate] = useState('');
-  const [compteRenduRappelMessage, setCompteRenduRappelMessage] = useState('');
+  // Compte rendu : LA fenêtre partagée (CompteRenduModal), comme partout ailleurs.
+  const [crRdv, setCrRdv] = useState<Appointment | null>(null);
 
   // Tag management in form
   const [showTagManager, setShowTagManager] = useState(false);
@@ -204,88 +201,6 @@ export default function ProspectsPage() {
     setNewTagName(tag.nom);
     setNewTagColor(tag.couleur);
     setShowTagManager(true);
-  };
-
-  // Compte-rendu functions
-  const openCompteRendu = (rdv: Appointment) => {
-    setCompteRenduRdv(rdv);
-    setCompteRenduResult((rdv.compte_rendu as AppointmentResult) || '');
-    setCompteRenduNotes(rdv.notes_compte_rendu || '');
-    setCompteRenduRappel(false);
-    const in7days = new Date();
-    in7days.setDate(in7days.getDate() + 7);
-    setCompteRenduRappelDate(dateLocale(in7days));
-    setCompteRenduRappelMessage('');
-    setShowCompteRendu(true);
-  };
-
-  const handleCompteRenduResultChange = (value: AppointmentResult) => {
-    const newValue = compteRenduResult === value ? '' : value;
-    setCompteRenduResult(newValue);
-    if (newValue === 'a_relancer' || newValue === 'commande_plus_tard' || newValue === 'mail_envoye') {
-      setCompteRenduRappel(true);
-    }
-  };
-
-  const rappelRequired = compteRenduResult === 'a_relancer' || compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'mail_envoye';
-  const compteRenduValid = compteRenduResult !== '' && compteRenduNotes.trim() !== '' && (!rappelRequired || compteRenduRappelDate);
-
-  const saveCompteRendu = async () => {
-    if (!compteRenduRdv || !compteRenduValid) return;
-    const updatedRdv = {
-      ...compteRenduRdv,
-      statut: 'termine' as const,
-      compte_rendu: compteRenduResult,
-      notes_compte_rendu: compteRenduNotes,
-    };
-    try {
-      await apiPut(`/appointments/${compteRenduRdv.id}`, updatedRdv);
-      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updatedRdv });
-    } catch (err) {
-      toast.error(`Erreur mise à jour RDV: ${(err as Error).message}`);
-      return;
-    }
-    const prospect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
-    if (prospect) {
-      const terminal = ['client_gagne', 'perdu', 'ne_pas_contacter'];
-      let newStage: PipelineStage | null = null;
-      if (compteRenduResult === 'client') {
-        newStage = 'client_gagne';
-      } else if (compteRenduResult === 'pas_interesse') {
-        newStage = 'perdu';
-      } else if (compteRenduResult === 'mail_envoye') {
-        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'negociation';
-      } else if (compteRenduResult === 'commande_plus_tard' || compteRenduResult === 'a_relancer') {
-        if (!terminal.includes(prospect.etape_pipeline)) newStage = 'proposition';
-      }
-      if (newStage) {
-        try {
-          await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: newStage, date_modification: new Date().toISOString() });
-          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: newStage } });
-        } catch (err) {
-          toast.error(`Erreur deplacement prospect: ${(err as Error).message}`);
-        }
-      }
-    }
-    if (compteRenduRappel && compteRenduRappelDate) {
-      const autoMessage = compteRenduRappelMessage.trim() || `Relance suite RDV ${prospect?.nom_etablissement || ''} - ${APPOINTMENT_RESULT_LABELS[compteRenduResult] || 'RDV termine'}`;
-      const reminderPayload = {
-        id: generateId('rem'),
-        prospect_id: compteRenduRdv.prospect_id,
-        commercial_id: compteRenduRdv.commercial_id,
-        date: compteRenduRappelDate,
-        heure: '09:00',
-        message: autoMessage,
-        statut: 'actif' as const,
-      };
-      try {
-        await apiPost('/reminders', reminderPayload);
-        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
-      } catch (err) {
-        toast.error(`Erreur creation rappel: ${(err as Error).message}`);
-      }
-    }
-    setShowCompteRendu(false);
   };
 
   // Multi-selection mode
@@ -542,9 +457,6 @@ export default function ProspectsPage() {
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
-  const prospectCalls = selectedProspect ? getCallsForProspect(selectedProspect.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
-  const prospectRdv = selectedProspect ? getAppointmentsForProspect(selectedProspect.id) : [];
-  const prospectReminders = selectedProspect ? getRemindersForProspect(selectedProspect.id) : [];
 
 
   const [formData, setFormData] = useState<Partial<Prospect>>({});
@@ -1293,6 +1205,9 @@ export default function ProspectsPage() {
                   {getStageInfo(selectedProspect.etape_pipeline).label}
                 </span>
                 <span className="badge bg-gray-100 text-gray-600">Score: {selectedProspect.score}</span>
+                {selectedProspect.etape_pipeline === 'perdu' && selectedProspect.raison_perte && (
+                  <span className="badge bg-red-100 text-red-700">{libelleRaisonPerte(selectedProspect.raison_perte)}</span>
+                )}
                 {selectedProspect.tags.map(tagId => {
                   const tag = state.tags.find(t => t.id === tagId);
                   return tag ? (
@@ -1365,108 +1280,7 @@ export default function ProspectsPage() {
               </div>
             </div>
 
-            {/* Call history */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Phone className="w-4 h-4" /> Historique des appels ({prospectCalls.length})
-              </h3>
-              {prospectCalls.length > 0 ? (
-                <div className="space-y-2">
-                  {prospectCalls.map(call => {
-                    const commercial = state.commerciaux.find(c => c.id === call.commercial_id);
-                    return (
-                      <div key={call.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 text-sm">
-                        <div className={`w-2 h-2 rounded-full ${call.resultat === 'repondu' ? 'bg-green-500' : call.resultat === 'messagerie' ? 'bg-amber-500' : 'bg-red-500'}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-600">{call.notes || 'Aucune note'}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">
-                            {formatTimeAgo(call.date)} par {commercial?.prenom} - {formatDuration(call.duree)}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">Aucun appel enregistré</p>
-              )}
-            </div>
-
-            {/* Appointments */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Calendar className="w-4 h-4" /> Rendez-vous ({prospectRdv.length})
-              </h3>
-              {prospectRdv.length > 0 ? (
-                <div className="space-y-2">
-                  {prospectRdv.map(rdv => (
-                    <div key={rdv.id} className="p-2 rounded-lg bg-gray-50 text-sm space-y-1">
-                      <div className="flex items-center gap-3">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <div className="flex-1">
-                          <p className="text-xs font-medium text-gray-700">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</p>
-                          <p className="text-[10px] text-gray-500">{rdv.lieu}</p>
-                        </div>
-                        <span className={`badge text-[10px] ${rdv.statut === 'confirme' ? 'bg-green-100 text-green-700' : rdv.statut === 'termine' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
-                          {rdv.statut}
-                        </span>
-                        <button
-                          onClick={() => openCompteRendu(rdv as Appointment)}
-                          className={`px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1 ${
-                            rdv.compte_rendu
-                              ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
-                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                          }`}
-                          title={rdv.compte_rendu ? 'Modifier le compte-rendu' : 'Faire le compte-rendu'}
-                        >
-                          <ClipboardCheck className="w-3 h-3" />
-                          {rdv.compte_rendu ? 'Modifier CR' : 'Compte-rendu'}
-                        </button>
-                      </div>
-                      {rdv.compte_rendu && (
-                        <div className="ml-7 space-y-0.5">
-                          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-                            rdv.compte_rendu === 'client' ? 'bg-green-100 text-green-700' :
-                            rdv.compte_rendu === 'mail_envoye' ? 'bg-blue-100 text-blue-700' :
-                            rdv.compte_rendu === 'commande_plus_tard' ? 'bg-amber-100 text-amber-700' :
-                            rdv.compte_rendu === 'a_relancer' ? 'bg-purple-100 text-purple-700' :
-                            rdv.compte_rendu === 'pas_interesse' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
-                          </span>
-                          {rdv.notes_compte_rendu && (
-                            <p className="text-[10px] text-gray-500 italic">{rdv.notes_compte_rendu}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">Aucun RDV</p>
-              )}
-            </div>
-
-            {/* Reminders */}
-            {prospectReminders.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> Rappels ({prospectReminders.length})
-                </h3>
-                <div className="space-y-2">
-                  {prospectReminders.map(rem => (
-                    <div key={rem.id} className="flex items-center gap-3 p-2 rounded-lg bg-amber-50 text-sm">
-                      <Clock className="w-4 h-4 text-amber-500" />
-                      <div className="flex-1">
-                        <p className="text-xs text-gray-700">{rem.message}</p>
-                        <p className="text-[10px] text-gray-500">{formatDate(rem.date)} a {rem.heure}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <FriseProspect prospect={selectedProspect} onCompteRendu={rdv => setCrRdv(rdv)} />
           </div>
         </div>
       ) : (
@@ -2063,125 +1877,7 @@ export default function ProspectsPage() {
         </div>
       )}
 
-      {/* Compte-rendu modal */}
-      {showCompteRendu && compteRenduRdv && (() => {
-        const crProspect = state.prospects.find(p => p.id === compteRenduRdv.prospect_id);
-        const resultOptions: { value: AppointmentResult; label: string; icon: typeof Check; color: string }[] = [
-          { value: 'client', label: 'Client', icon: UserCheck, color: 'border-green-500 bg-green-50 text-green-700' },
-          { value: 'mail_envoye', label: 'Mail envoyé', icon: Mail, color: 'border-blue-500 bg-blue-50 text-blue-700' },
-          { value: 'commande_plus_tard', label: 'Commande plus tard', icon: ShoppingCart, color: 'border-amber-500 bg-amber-50 text-amber-700' },
-          { value: 'a_relancer', label: 'À relancer', icon: RefreshCw, color: 'border-purple-500 bg-purple-50 text-purple-700' },
-          { value: 'pas_interesse', label: 'Pas intéressé', icon: Ban, color: 'border-red-500 bg-red-50 text-red-700' },
-          { value: 'decale', label: 'RDV décalé', icon: CalendarClock, color: 'border-violet-500 bg-violet-50 text-violet-700' },
-        ];
-        return (
-          <div className="modal-backdrop">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte-rendu du RDV
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-0.5">{crProspect?.nom_etablissement || 'Prospect'} - {formatDate(compteRenduRdv.date)}</p>
-                </div>
-                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowCompteRendu(false)}>
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Résultat du rendez-vous</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {resultOptions.map(opt => {
-                      const Icon = opt.icon;
-                      return (
-                        <button
-                          key={opt.value}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${
-                            compteRenduResult === opt.value ? opt.color : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                          }`}
-                          onClick={() => handleCompteRenduResultChange(opt.value)}
-                        >
-                          <Icon className="w-4 h-4" />
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Notes du compte-rendu <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${
-                      compteRenduNotes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
-                    }`}
-                    placeholder="Comment s'est passe le rendez-vous ? (obligatoire)"
-                    value={compteRenduNotes}
-                    onChange={e => setCompteRenduNotes(e.target.value)}
-                  />
-                </div>
-                {!compteRenduRappel && !rappelRequired ? (
-                  <button
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
-                    onClick={() => setCompteRenduRappel(true)}
-                  >
-                    <Bell className="w-4 h-4" /> Programmer un rappel
-                  </button>
-                ) : compteRenduRappel ? (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
-                        <Bell className="w-3 h-3" /> Rappel de relance {rappelRequired && <span className="text-red-500">*</span>}
-                      </label>
-                      {!rappelRequired && (
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setCompteRenduRappel(false)}>
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelRequired && <span className="text-red-500">*</span>}</label>
-                      <input
-                        type="date"
-                        className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${
-                          rappelRequired && !compteRenduRappelDate ? 'border-red-300' : 'border-amber-200'
-                        }`}
-                        value={compteRenduRappelDate}
-                        onChange={e => setCompteRenduRappelDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-amber-600 mb-0.5">Message (optionnel)</label>
-                      <input
-                        type="text"
-                        className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
-                        placeholder="Ex: Relancer pour devis..."
-                        value={compteRenduRappelMessage}
-                        onChange={e => setCompteRenduRappelMessage(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
-                <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowCompteRendu(false)}>
-                  Annuler
-                </button>
-                <button
-                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={saveCompteRendu}
-                  disabled={!compteRenduValid}
-                >
-                  <ClipboardCheck className="w-4 h-4" />
-                  Valider le compte-rendu
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {crRdv && <CompteRenduModal rdv={crRdv} onClose={() => setCrRdv(null)} />}
     </div>
   );
 }

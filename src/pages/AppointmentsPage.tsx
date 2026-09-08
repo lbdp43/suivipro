@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { dateLocale, rdvSansCompteRendu } from '../../shared/regles';
+import { etapeApresRdvCree } from '../../shared/tunnel';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Navigation, Phone,
    Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
@@ -250,15 +251,10 @@ export default function AppointmentsPage() {
         // Auto-transition: move prospect to "RDV / Gagne" when RDV is created
         if (!isEvent) {
           const prospect = state.prospects.find(p => p.id === formData.prospect_id);
-          if (prospect && !['gagne', 'client_gagne', 'perdu', 'ne_pas_contacter'].includes(prospect.etape_pipeline)) {
-            await apiPatch(`/prospects/${prospect.id}/stage`, {
-              etape_pipeline: 'gagne',
-              date_modification: new Date().toISOString(),
-            });
-            dispatchLocal({
-              type: 'MOVE_PROSPECT',
-              payload: { id: prospect.id, stage: 'gagne' },
-            });
+          const etape = prospect ? etapeApresRdvCree(prospect.etape_pipeline) : null;
+          if (prospect && etape) {
+            await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: etape });
+            dispatchLocal({ type: 'UPDATE_PROSPECT', payload: { ...prospect, etape_pipeline: etape as Prospect['etape_pipeline'], date_etape: new Date().toISOString(), date_modification: new Date().toISOString() } });
           }
         }
       }
