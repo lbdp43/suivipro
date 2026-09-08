@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { MessageSquare, Copy, Send, Check, Moon } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { Appointment, Commercial } from '../types';
+import { Appointment, Commercial, Interaction } from '../types';
 import { dateLocale, jourDe, rdvAnnule } from '../../shared/regles';
 
 // Bilan du soir du prospecteur : un message par commercial, avec les rendez-vous pris
-// aujourd'hui pour lui — le texte que l'équipe s'envoie déjà à la main chaque soir.
+// aujourd'hui pour lui et les appels passés sur ses clients (avec ce qui s'est dit) — le
+// texte que l'équipe s'envoie déjà à la main chaque soir.
 // Envoi par SMS ou WhatsApp (pré-rempli), ou copie du texte.
 
 const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
@@ -32,12 +33,24 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
 
   const parCommercial = useMemo(() => {
     const pris = state.appointments.filter(a => a.prospecteur_id === moi.id && jourDe(a.created_at) === today && !rdvAnnule(a) && a.commercial_id !== moi.id);
-    const m = new Map<string, Appointment[]>();
-    for (const r of pris) { const l = m.get(r.commercial_id) || []; l.push(r); m.set(r.commercial_id, l); }
-    return [...m.entries()].map(([cid, liste]) => ({ commercial: getCommercial(cid), liste: liste.sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')) }));
-  }, [state.appointments, moi.id, today, getCommercial]);
+    const m = new Map<string, { rdv: Appointment[]; appels: Interaction[] }>();
+    const groupe = (cid: string) => { let g = m.get(cid); if (!g) { g = { rdv: [], appels: [] }; m.set(cid, g); } return g; };
+    for (const r of pris) groupe(r.commercial_id).rdv.push(r);
+    // Les appels passés aujourd'hui sur les clients d'un autre commercial (tâches confiées, sessions clients).
+    for (const i of state.interactions) {
+      if (i.commercial_id !== moi.id || i.type !== 'APPEL' || jourDe(i.date) !== today) continue;
+      const c = getClient(i.client_id);
+      if (!c?.commercial_id || c.commercial_id === moi.id) continue;
+      groupe(c.commercial_id).appels.push(i);
+    }
+    return [...m.entries()].map(([cid, g]) => ({
+      commercial: getCommercial(cid),
+      liste: g.rdv.sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+      appels: g.appels.sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+  }, [state.appointments, state.interactions, moi.id, today, getCommercial, getClient]);
 
-  const texteDe = (commercial: Commercial | undefined, liste: Appointment[]) => {
+  const texteDe = (commercial: Commercial | undefined, liste: Appointment[], appels: Interaction[]) => {
     const lignes = liste.map(r => {
       const p = r.client_id ? null : getProspect(r.prospect_id);
       const c = r.client_id ? getClient(r.client_id) : null;
@@ -48,7 +61,14 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
       const notes = r.notes ? `\n   ${r.notes.trim()}` : '';
       return `• ${dateCourte(r.date)} à ${r.heure_debut || '?'} — ${nom}${ville ? ` (${ville})` : ''}${lieu}${contact ? `\n   Contact : ${contact}` : ''}${notes}`;
     });
-    return `Bonjour ${commercial?.prenom || ''},\nvoici ${liste.length > 1 ? `les ${liste.length} rendez-vous pris` : 'le rendez-vous pris'} aujourd'hui pour toi :\n\n${lignes.join('\n')}\n\nBonne soirée,\n${moi.prenom}`;
+    const lignesAppels = appels.map(i => {
+      const c = getClient(i.client_id);
+      return `• ${c?.nom || 'Client'}${c?.ville ? ` (${c.ville})` : ''} — ${i.comment || 'appel passé'}`;
+    });
+    const parties: string[] = [];
+    if (lignes.length) parties.push(`${liste.length > 1 ? `Les ${liste.length} rendez-vous pris` : 'Le rendez-vous pris'} aujourd'hui pour toi :\n\n${lignes.join('\n')}`);
+    if (lignesAppels.length) parties.push(`${appels.length > 1 ? `Les ${appels.length} appels passés` : 'L\'appel passé'} aujourd'hui sur tes clients :\n\n${lignesAppels.join('\n')}`);
+    return `Bonjour ${commercial?.prenom || ''},\n${parties.join('\n\n')}\n\nBonne soirée,\n${moi.prenom}`;
   };
 
   const copier = async (id: string, texte: string) => {
@@ -59,22 +79,22 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
     <div className="bg-white rounded-xl border border-indigo-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Moon className="w-4 h-4 text-indigo-600" /> Bilan du soir</h3>
-        <span className="text-[11px] text-gray-400">un message par commercial, avec les RDV pris aujourd'hui</span>
+        <span className="text-[11px] text-gray-400">un message par commercial : RDV pris et appels passés sur ses clients aujourd'hui</span>
       </div>
       {parCommercial.length === 0 ? (
-        <p className="text-xs text-gray-400 italic">Aucun rendez-vous pris aujourd'hui pour un commercial : rien à envoyer.</p>
+        <p className="text-xs text-gray-400 italic">Aucun rendez-vous pris ni appel passé aujourd'hui pour un commercial : rien à envoyer.</p>
       ) : (
         <div className="space-y-3">
-          {parCommercial.map(({ commercial, liste }) => {
+          {parCommercial.map(({ commercial, liste, appels }) => {
             const id = commercial?.id || 'inconnu';
-            const texte = texteDe(commercial, liste);
+            const texte = texteDe(commercial, liste, appels);
             const tel = commercial?.telephone || '';
             const fait = envoyes.has(id);
             return (
               <div key={id} className={`rounded-lg border p-3 ${fait ? 'border-green-200 bg-green-50/40' : 'border-gray-200'}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-sm font-semibold text-gray-800">
-                    {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial inconnu'} <span className="text-xs font-normal text-gray-400">· {liste.length} RDV</span>
+                    {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial inconnu'} <span className="text-xs font-normal text-gray-400">· {[liste.length ? `${liste.length} RDV` : '', appels.length ? `${appels.length} appel${appels.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</span>
                     {fait && <span className="ml-2 text-[10px] text-green-700 inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> envoyé</span>}
                   </p>
                   <div className="flex gap-1.5">

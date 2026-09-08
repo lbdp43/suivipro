@@ -14,6 +14,8 @@ import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, APPOINTMENT_
 import { generateId, formatDate, downloadICS, downloadICSBatch } from '../utils/helpers';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
+import { PucesTourneesDuJour, InfoTourneeModal } from '../components/ResumeTournees';
+import { resumeTournees, lundiDe, JOURS_SEMAINE, type ResumeTournee } from '../utils/resumeTournees';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 
@@ -30,6 +32,9 @@ export default function AppointmentsPage() {
   const [filterCompteRendu, setFilterCompteRendu] = usePersistedState<string>('rdv_compte_rendu', '');
   const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda' | 'planning'>('rdv_view', 'planning');
   const [weekOffset, setWeekOffset] = useState(0);
+  // Les tournées des commerciaux pour la semaine affichée : secteurs, RDV à prendre, pris.
+  const resumes = useMemo(() => resumeTournees(state, lundiDe(weekOffset)).filter(r => !filterCommercial || r.commercial.id === filterCommercial), [state, weekOffset, filterCommercial]);
+  const [infoTournee, setInfoTournee] = useState<ResumeTournee | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDateFrom, setExportDateFrom] = useState('');
   const [exportDateTo, setExportDateTo] = useState('');
@@ -741,6 +746,11 @@ export default function AppointmentsPage() {
                       </div>
                       <span className="text-[10px] text-gray-400">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
                     </div>
+                    {(() => { const jour = String(new Date(day.date + 'T12:00:00').getDay()); return resumes.length > 0 ? (
+                      <div className={`px-4 pb-2 ${day.isToday ? 'bg-brewery-100/50 border-brewery-200' : 'bg-gray-50 border-gray-100'} border-b`}>
+                        <PucesTourneesDuJour resumes={resumes} jour={jour} onInfo={setInfoTournee} compact />
+                      </div>
+                    ) : null; })()}
 
                     {/* Evenements du jour */}
                     <div className="p-2">
@@ -987,6 +997,18 @@ export default function AppointmentsPage() {
             </button>
           </div>
 
+          {/* Tournées des commerciaux, jour par jour, alignées sur les colonnes de l'agenda */}
+          {resumes.length > 0 && (
+            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+              <div className="min-w-[700px] grid grid-cols-[60px_repeat(7,1fr)] gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1.5">
+                <div className="text-[10px] text-gray-400 flex items-center">Tournées</div>
+                {JOURS_SEMAINE.map(jour => (
+                  <div key={jour} className="min-w-0"><PucesTourneesDuJour resumes={resumes} jour={jour} onInfo={setInfoTournee} compact /></div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Agenda grid */}
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
           <div className="min-w-[700px]">
@@ -1003,6 +1025,8 @@ export default function AppointmentsPage() {
           </div>
         </div>
       )}
+
+      {infoTournee && <InfoTourneeModal resume={infoTournee} semaine={getWeekLabel()} onClose={() => setInfoTournee(null)} />}
 
       {/* ===================== LIST VIEW ===================== */}
       {viewMode === 'list' && (
