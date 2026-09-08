@@ -42,7 +42,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
-  exposedHeaders: ['X-Non-Lues'],
+  exposedHeaders: ['X-Non-Lues', 'X-Version'],
 }));
 
 // Rate limiting global — PAR UTILISATEUR, sur l'API seulement.
@@ -95,6 +95,12 @@ app.use('/api/prospects/import', rateLimit({
 // /state pèse plusieurs Mo en JSON : compressé, il en fait dix fois moins sur la 4G.
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+
+// Version de l'application déployée : l'écran la lit sur chaque réponse et se recharge de
+// lui-même à la prochaine navigation quand elle change (les fichiers des pages changent
+// de nom à chaque déploiement).
+const VERSION_APPLI = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_VERSION || String(Date.now());
+app.use('/api', (_req, res, next) => { res.setHeader('X-Version', VERSION_APPLI); next(); });
 
 // API routes
 app.use('/api', apiRoutes);
