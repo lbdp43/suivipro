@@ -51,6 +51,7 @@ const NOTIF_ICONS: Record<string, string> = {
   easybeer_client_created: '🆕',
   easybeer_client_pending: '⏳',
   easybeer_doublon: '⚠️',
+  signalement: '📣',
   info: 'ℹ️',
 };
 
@@ -113,6 +114,7 @@ export default function Layout() {
   // un commercial peut aller dans la prospection et inversement, seul l'ordre change.
   const role = state.currentUser?.role;
   const groupes = groupesDuMenu(role);
+  const aQualifier = state.signalements.filter(s => s.statut === 'a_qualifier').length;
   const ouverts = openSections ?? groupesOuvertsParDefaut(role, faitDeLaProspection(state.currentUser));
   const toggleSection = (id: string) => {
     setOpenSections(() => {
@@ -252,7 +254,10 @@ export default function Layout() {
                         }}
                       >
                         <entree.icon className="w-5 h-5 flex-shrink-0" />
-                        <span>{entree.label}</span>
+                        <span className="flex-1">{entree.label}</span>
+                        {entree.to === '/boite' && aQualifier > 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brewery-600 text-white tabular-nums">{aQualifier}</span>
+                        )}
                       </NavLink>
                     ))}
                   </div>

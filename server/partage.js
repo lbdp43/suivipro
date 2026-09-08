@@ -284,6 +284,68 @@ export async function adresseVersPosition(adresse, fetchFn = globalThis.fetch) {
  * Le texte partagé → les champs d'un prospect (sans identifiant ni dates).
  * `sources` liste d'où vient chaque information, pour l'afficher à celui qui complète.
  */
+/** D'où vient un lien : Google Maps, réseau social, ou site quelconque. */
+export function sourceDuLien(url) {
+  if (!url) return 'texte';
+  let h = '';
+  try { h = new URL(url).hostname.toLowerCase(); } catch { return 'texte'; }
+  if (HOTES_MAPS.test(h)) return 'google';
+  if (/(^|\.)instagram\.com$/.test(h)) return 'instagram';
+  if (/(^|\.)(facebook\.com|fb\.com|fb\.watch|fb\.me)$/.test(h)) return 'facebook';
+  if (/(^|\.)(tiktok\.com)$/.test(h)) return 'tiktok';
+  if (/(^|\.)(linkedin\.com|lnkd\.in)$/.test(h)) return 'linkedin';
+  return 'site';
+}
+
+function titreOg(html) {
+  if (!html) return '';
+  for (const m of attributsMeta(html)) {
+    if ((m.property === 'og:title' || m.name === 'og:title' || m.name === 'twitter:title') && m.content) return decoderHtml(m.content).trim();
+  }
+  const t = String(html).match(/<title[^>]*>([^<]*)<\/title>/i);
+  return t ? decoderHtml(t[1]).trim() : '';
+}
+
+/** Ce qu'un lien de réseau social dit à lui seul : le nom du compte (« @victor.brasserie »). */
+export function compteDuLien(url, source) {
+  let u;
+  try { u = new URL(url); } catch { return ''; }
+  const segments = u.pathname.split('/').filter(Boolean).map(decoderSegment);
+  if (source === 'instagram') {
+    const reserves = new Set(['p', 'reel', 'reels', 'stories', 'explore', 'share', 'tv']);
+    return segments[0] && !reserves.has(segments[0]) ? `@${segments[0]}` : '';
+  }
+  if (source === 'tiktok') {
+    const s = segments.find(x => x.startsWith('@'));
+    return s || '';
+  }
+  if (source === 'facebook') {
+    const reserves = new Set(['share', 'sharer', 'sharer.php', 'photo', 'photo.php', 'watch', 'story.php', 'permalink.php', 'events', 'groups', 'reel', 'videos', 'posts', 'people', 'pages', 'profile.php', 'l.php']);
+    if (segments[0] === 'people' && segments[1]) return segments[1];
+    return segments[0] && !reserves.has(segments[0]) ? segments[0] : '';
+  }
+  return '';
+}
+
+/**
+ * Un lien qui n'est pas Google : on essaie de lire le titre de la page (article, site d'un
+ * établissement, page Facebook publique) et, pour les réseaux sociaux, on garde au moins le
+ * nom du compte. Les pages derrière une connexion (Instagram, TikTok) ne donnent que cela.
+ */
+export async function lireLienQuelconque(url, { fetchFn = globalThis.fetch } = {}) {
+  const source = sourceDuLien(url);
+  const r = { source, titre: '', urlFinale: url, compte: compteDuLien(url, source) };
+  if (source === 'texte') return r;
+  const res = await resoudreLien(url, fetchFn);
+  if (res?.urlFinale) { r.urlFinale = res.urlFinale; r.compte = r.compte || compteDuLien(res.urlFinale, source); }
+  const titre = titreOg(res?.html);
+  // Les titres génériques des réseaux (« Instagram », « Log in or sign up ») ne disent rien.
+  if (titre && !/^(instagram|facebook|tiktok|log ?in|se connecter|connexion|error|erreur)\b/i.test(titre)) {
+    r.titre = titre.replace(/\s*[|·•-]\s*(instagram|facebook|tiktok)\s*$/i, '').trim();
+  }
+  return r;
+}
+
 export async function ficheDepuisPartage(texte, { fetchFn = globalThis.fetch } = {}) {
   const t = analyserTexte(texte);
   const fiche = {

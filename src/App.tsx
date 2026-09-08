@@ -14,6 +14,7 @@ const MapPage = pageParesseuse(() => import('./pages/MapPage'));
 const PipelinePage = pageParesseuse(() => import('./pages/PipelinePage'));
 const ProspectsPage = pageParesseuse(() => import('./pages/ProspectsPage'));
 const PartagePage = pageParesseuse(() => import('./pages/PartagePage'));
+const BoitePage = pageParesseuse(() => import('./pages/BoitePage'));
 const CallsPage = pageParesseuse(() => import('./pages/CallsPage'));
 const AppointmentsPage = pageParesseuse(() => import('./pages/AppointmentsPage'));
 const EmailsPage = pageParesseuse(() => import('./pages/EmailsPage'));
@@ -86,6 +87,7 @@ export default function App() {
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/prospects" element={<ProspectsPage />} />
           <Route path="/partage" element={<PartagePage />} />
+          <Route path="/boite" element={<BoitePage />} />
           <Route path="/appels" element={<CallsPage />} />
           <Route path="/rdv" element={<AppointmentsPage />} />
           <Route path="/rappels" element={<RappelsTachesPage />} />

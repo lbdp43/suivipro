@@ -5,6 +5,7 @@ import db from '../db.js';
 import { asyncHandler, authMiddleware } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { parseCommercial, parseProspect, parseSessionAppel } from '../lib/parse.js';
+import { parseSignalement } from './signalements.js';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const hier = dateLocale(new Date(Date.now() - 86400000));
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones, signalements] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -35,6 +36,8 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
               FROM commandes ORDER BY date_commande DESC`),
     db.query('SELECT * FROM sessions_appel WHERE jour >= $1', [hier]),
     db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC'),
+    // La boîte de prospection : tout ce qui attend, et un mois de traités.
+    db.query("SELECT * FROM signalements WHERE statut = 'a_qualifier' OR created_at >= $1 ORDER BY created_at DESC", [dateLocale(new Date(Date.now() - 30 * 86400000))]),
   ]);
 
   const etat = {
@@ -53,6 +56,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     tourneeConfigs: tourneeConfigs.rows,
     commandes: commandes.rows.map(c => ({ ...c, lignes: JSON.parse(c.lignes || '[]') })),
     sessionsAppel: sessionsAppel.rows.map(parseSessionAppel),
+    signalements: signalements.rows.map(parseSignalement),
     commercialZones: commercialZones.rows.map(z => { let c = z.coordinates; try { c = JSON.parse(c); } catch { c = []; } return { ...z, coordinates: Array.isArray(c) ? c : [], prioritaire: !!z.prioritaire, consigne: z.consigne || '' }; }),
   };
   // L'écran redemande l'état toutes les 30 s. Quand rien n'a changé, on répond « 304 »

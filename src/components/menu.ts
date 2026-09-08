@@ -1,6 +1,6 @@
 import {
   Users, Kanban, Phone, Calendar, Mail, Map, Building2, CalendarDays, GitBranch,
-  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3,
+  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3, Inbox,
 } from 'lucide-react';
 
 // Le menu : « Accueil » et « Rappels et tâches » toujours visibles en tête, puis quatre
@@ -29,6 +29,7 @@ export interface GroupeMenu {
 const PROSPECTION: GroupeMenu = {
   id: 'prospection', titre: 'Prospection', icon: Phone, roles: ['prospection'],
   entrees: [
+    { to: '/boite', icon: Inbox, label: 'Boîte de prospection', alias: ['/partage'] },
     { to: '/prospects', icon: Users, label: 'Prospects' },
     { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
     { to: '/appels', icon: Phone, label: 'Appels' },

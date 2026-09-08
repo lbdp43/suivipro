@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
-  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star,
+  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
 import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire } from '../utils/zones';
+import { aQualifier, concerne, titreDuSignalement, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
@@ -415,6 +416,26 @@ function SessionProspectsDuJour({ moi }: { moi: Commercial }) {
   );
 }
 
+// La boîte de prospection sur l'accueil : ce qui attend d'être qualifié, pour moi d'abord.
+function BoiteDeProspection({ moi }: { moi: Commercial }) {
+  const { state, getCommercial } = useApp();
+  const attente = useMemo(() => aQualifier(state).filter(s => concerne(s, moi, faitDeLaProspection(moi))), [state, moi]);
+  const nomDe = (id: string) => { const c = getCommercial(id); return c ? c.prenom : id; };
+  return (
+    <Carte titre="Boîte de prospection" icone={Inbox} lien="/boite" compte={attente.length} vide="Rien à qualifier." teinte={attente.length ? 'brewery' : 'gray'}
+      enfants={<div className="space-y-0.5 max-h-64 overflow-y-auto">
+        {attente.slice(0, 8).map(s => (
+          <Link key={s.id} to="/boite" className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 rounded">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">{LIBELLES_SOURCE[s.source]}</span>
+            <span className="flex-1 min-w-0 truncate text-sm text-gray-800">{titreDuSignalement(s)}</span>
+            <span className="text-[11px] text-gray-500 whitespace-nowrap">{nomDe(s.partage_par)}{s.commercial_id ? ` → ${nomDe(s.commercial_id)}` : ''}</span>
+          </Link>
+        ))}
+        {attente.length > 8 && <p className="text-xs text-gray-500 pt-1">et {attente.length - 8} autre(s)…</p>}
+      </div>} />
+  );
+}
+
 function BlocsProspection({ moi }: { moi: Commercial }) {
   const { state, getProspect, getCommercial, dispatchLocal } = useApp();
   const { startSession } = useCallModal();
@@ -488,6 +509,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
         </BlocErreur>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <BlocErreur titre="Boîte de prospection"><BoiteDeProspection moi={moi} /></BlocErreur>
         <BlocErreur titre="Rappels">
           <Carte titre="À rappeler aujourd'hui" icone={Bell} lien="/rappels" compte={rappels.length} vide="Aucun rappel en attente." teinte={rappels.length ? 'amber' : 'gray'}
             enfants={<div className="space-y-0.5 max-h-80 overflow-y-auto">
@@ -634,6 +656,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
     { label: 'RDV sans compte rendu', n: alertes.sansCr, lien: '/semaine/bilan', icone: ClipboardCheck },
     { label: 'tâches en retard', n: alertes.taches, lien: '/taches', icone: ListTodo },
     { label: 'rappels en retard', n: alertes.rappels, lien: '/rappels', icone: Bell },
+    { label: 'signalements à qualifier', n: aQualifier(state).length, lien: '/boite', icone: Inbox },
   ];
   const nbProblemes = cartes.filter(c => c.n > 0).length;
 
@@ -657,7 +680,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
             <AlertTriangle className={`w-4 h-4 ${nbProblemes ? 'text-amber-600' : 'text-gray-400'}`} /> Problèmes à régler
             {nbProblemes === 0 && <span className="text-xs font-normal text-green-700 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> tout est en ordre</span>}
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
             {cartes.map(c => (
               <Link key={c.label} to={c.lien} className={`rounded-lg border p-2.5 ${c.n === 0 ? 'border-gray-100 text-gray-400' : c.grave ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'} hover:opacity-90`}>
                 <c.icone className="w-4 h-4 mb-1" />
