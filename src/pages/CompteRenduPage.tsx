@@ -18,6 +18,7 @@ import {
 import { generateId, detectConflicts } from '../utils/helpers';
 import { apiPost, apiPut } from '../api/client';
 import { rdvSansCompteRendu } from '../../shared/regles';
+import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -796,6 +797,9 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         </div>
       )}
 
+      {/* Les rendez-vous à venir : pris, pas encore passés, et par qui. */}
+      <div className="mb-6"><RdvAVenir commercialIds={effectiveUserIds} /></div>
+
       {/* Stats summary */}
       {(
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
@@ -890,6 +894,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                               {isClient ? 'Client' : 'Prospect'}
                             </span>
+                            <PrisPar rdv={rdv} />
                           </div>
                           <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date}</span>

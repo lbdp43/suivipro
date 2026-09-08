@@ -17,6 +17,7 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import ClientDetailModal from '../components/ClientDetailModal';
 import CompteRenduModal from '../components/CompteRenduModal';
 import { useLancerSession } from '../hooks/useSessionAppel';
+import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
 
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
@@ -754,6 +755,9 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
         </div>
       </div>
 
+      {/* Les rendez-vous pris, pas encore passés : ce que le commercial va avoir, et qui l'a pris. */}
+      <RdvAVenir commercialIds={[planningCommercialId || state.currentUser?.id || '']} />
+
       {/* Late clients - collapsible */}
       {planningData.lateCount > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg">
@@ -891,6 +895,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-semibold text-xs text-gray-800">{entityName}</span>
                                     {isAdmin && comm && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{comm.prenom}</span>}
+                                    <PrisPar rdv={rdv} />
                                     {hasCR && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
                                   </div>
                                   <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
