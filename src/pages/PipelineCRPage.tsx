@@ -12,7 +12,9 @@ import {
   ESTABLISHMENT_LABELS, Prospect, Client,
 } from '../types';
 import { Link } from 'react-router-dom';
-import { format, parseISO, subYears } from 'date-fns';
+import { format, parseISO, subYears, addYears } from 'date-fns';
+import { rdvAVenir } from '../../shared/regles';
+import { PrisPar } from '../components/RdvAVenir';
 import { fr } from 'date-fns/locale';
 import { generateId } from '../utils/helpers';
 import { apiPost, apiPut } from '../api/client';
@@ -29,7 +31,8 @@ interface CRColumnDef {
 }
 
 const DEFAULT_COLUMNS: CRColumnDef[] = [
-  { id: 'en_attente', label: 'RDV en attente', color: '#6b7280', description: 'RDV passes sans CR', builtin: true },
+  { id: 'a_venir', label: 'RDV à venir', color: '#0ea5e9', description: 'Pris, pas encore eu lieu', builtin: true },
+  { id: 'en_attente', label: 'RDV en attente', color: '#6b7280', description: 'RDV passés sans CR', builtin: true },
   { id: 'decale', label: 'RDV décalé', color: '#8b5cf6', description: 'RDV reporté a une autre date', builtin: true },
   { id: 'mail_envoye', label: 'Mail envoyé', color: '#3b82f6', description: 'Mail/devis envoyé', builtin: true },
   { id: 'commande_plus_tard', label: 'Commande plus tard', color: '#f59e0b', description: 'Intéressé, a recontacter', builtin: true },
@@ -39,6 +42,7 @@ const DEFAULT_COLUMNS: CRColumnDef[] = [
 ];
 
 const COLUMN_ICONS: Record<string, React.ReactNode> = {
+  a_venir: <CalendarClock className="w-3.5 h-3.5" />,
   en_attente: <Calendar className="w-3.5 h-3.5" />,
   decale: <CalendarClock className="w-3.5 h-3.5" />,
   mail_envoye: <Mail className="w-3.5 h-3.5" />,
@@ -53,7 +57,12 @@ const STORAGE_KEY = 'suivipro_cr_pipeline_columns';
 function loadColumns(): CRColumnDef[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const cols: CRColumnDef[] = JSON.parse(saved);
+      // Les étapes par défaut arrivées après un premier enregistrement (« RDV à venir ») s'ajoutent d'elles-mêmes.
+      const manquantes = DEFAULT_COLUMNS.filter(d => !cols.some(c => c.id === d.id));
+      return manquantes.length ? [...manquantes.filter(m => m.id === 'a_venir'), ...cols, ...manquantes.filter(m => m.id !== 'a_venir')] : cols;
+    }
   } catch { /* ignore */ }
   return DEFAULT_COLUMNS;
 }
@@ -69,6 +78,7 @@ const PRESET_COLORS = ['#6b7280', '#3b82f6', '#8b5cf6', '#f59e0b', '#f97316', '#
 // ============================================
 function getColumnId(apt: Appointment, columns: CRColumnDef[]): string {
   const cr = apt.compte_rendu as string | undefined;
+  if ((!cr || cr === '') && rdvAVenir(apt)) return 'a_venir';
   if (!cr || cr === '') return 'en_attente';
   // Check if column exists
   if (columns.some(c => c.id === cr)) return cr;
@@ -102,7 +112,8 @@ export default function PipelineCRPage() {
   const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set());
   // Default: 1 year rolling
   const [filterDateStart, setFilterDateStart] = useState(() => format(subYears(new Date(), 1), 'yyyy-MM-dd'));
-  const [filterDateEnd, setFilterDateEnd] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  // Jusqu'à un an devant : les rendez-vous à venir font partie du suivi.
+  const [filterDateEnd, setFilterDateEnd] = useState(() => format(addYears(new Date(), 1), 'yyyy-MM-dd'));
   const [detailApt, setDetailApt] = useState<Appointment | null>(null);
 
   // Reschedule modal
@@ -202,20 +213,16 @@ export default function PipelineCRPage() {
   // ============================================
   // RDV filtering
   // ============================================
-  // Include: RDVs that are termine OR have a CR OR are past date (planifie/confirme with date < today)
+  // Tous les rendez-vous (pas les événements) qui visent une fiche : ceux à venir (colonne
+  // « RDV à venir »), ceux passés sans compte rendu, et ceux qui ont un résultat.
   const rdvAppointments = useMemo(() => {
     return state.appointments.filter(a => {
-      // Only RDVs (no event_type or event_type = 'rdv')
       if (a.event_type && a.event_type !== 'rdv') return false;
-      // Must have a prospect_id or client_id
       if (!a.prospect_id && !a.client_id) return false;
-      // Include if: termine, has CR, or past date
-      const hasCR = !!(a.compte_rendu as string);
-      const isPast = a.date < today;
-      if (a.statut === 'termine' || hasCR || isPast) return true;
-      return false;
+      if (a.statut === 'annule') return false;
+      return true;
     });
-  }, [state.appointments, today]);
+  }, [state.appointments]);
 
   // All secteurs
   const allSecteurs = useMemo(() => {
@@ -317,6 +324,15 @@ export default function PipelineCRPage() {
     if (!apt) return;
 
     if (getColumnId(apt, columns) === colId) {
+      setDraggedId(null);
+      setDragOverColumn(null);
+      return;
+    }
+
+    // « RDV à venir » n'est pas un résultat : on n'y dépose rien, et un rendez-vous qui n'a pas
+    // encore eu lieu ne reçoit pas de compte rendu (sauf pour le décaler).
+    if (colId === 'a_venir' || (rdvAVenir(apt) && colId !== 'decale')) {
+      toast.warning(colId === 'a_venir' ? 'Un rendez-vous revient « à venir » en changeant sa date.' : "Ce rendez-vous n'a pas encore eu lieu : décalez-le, ou attendez pour son compte rendu.");
       setDraggedId(null);
       setDragOverColumn(null);
       return;
@@ -715,7 +731,6 @@ export default function PipelineCRPage() {
                     const name = getEntityName(apt);
                     const info = getEntityInfo(apt);
                     const comName = commercialMap.get(apt.commercial_id) || '';
-                    const prospName = apt.prospecteur_id ? commercialMap.get(apt.prospecteur_id) : null;
                     return (
                       <div
                         key={apt.id}
@@ -749,12 +764,10 @@ export default function PipelineCRPage() {
                               {apt.heure_debut && <span className="ml-1">{apt.heure_debut}</span>}
                             </div>
 
-                            <div className="flex items-center gap-1 mt-1 text-[10px]">
+                            <div className="flex items-center gap-1 mt-1 text-[10px] flex-wrap">
                               <UserCheck className="w-3 h-3 text-brewery-400" />
                               <span className="text-brewery-600 truncate">{comName}</span>
-                              {prospName && (
-                                <span className="text-gray-400 truncate">(par {prospName})</span>
-                              )}
+                              <PrisPar rdv={apt} />
                             </div>
 
                             {apt.notes_compte_rendu && (
