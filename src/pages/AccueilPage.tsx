@@ -11,7 +11,7 @@ import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
 import { formatDate } from '../utils/helpers';
-import { dateLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe } from '../../shared/regles';
+import { dateLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import BlocErreur from '../components/BlocErreur';
 import BilanDuSoir from '../components/BilanDuSoir';
@@ -593,20 +593,38 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
     return { orphelines, sansCommercial, retards, sansCr, taches, rappels };
   }, [state, today]);
 
+  // Vue semaine : cette semaine (lundi → aujourd'hui) ou la semaine dernière (complète).
+  const [decalageSemaine, setDecalageSemaine] = useState<0 | -1>(0);
+  const semaine = useMemo(() => {
+    const lundi = lundiDeLaSemaine(now, decalageSemaine);
+    const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6);
+    const debut = dateLocale(lundi);
+    const fin = decalageSemaine === 0 ? today : dateLocale(dimanche);
+    const jours = Math.min(6, Math.round((new Date(fin).getTime() - lundi.getTime()) / 86400000)) + 1;
+    return { debut, fin, jours, libelle: `du ${formatDate(debut)} au ${formatDate(fin)}` };
+  }, [decalageSemaine, today]);
+
   const equipe = useMemo(() => state.commerciaux.filter(c => c.role !== 'admin' || c.id === moi.id).map(p => {
     const prosp = faitDeLaProspection(p);
     const comm = estCommercial(p);
-    const appels = state.calls.filter(c => c.commercial_id === p.id && jourDe(c.date) === today).length;
-    const rdvPris = state.appointments.filter(a => a.prospecteur_id === p.id && jourDe(a.created_at) === today).length;
-    const rdvJour = state.appointments.filter(a => a.commercial_id === p.id && jourDe(a.date) === today && !rdvAnnule(a)).length;
-    const visites = state.interactions.filter(i => i.commercial_id === p.id && i.type === 'VISITE' && jourDe(i.date) === today).length;
+    // Une même mesure pour un jour ou pour la semaine.
+    const mesurer = (dedans: (d: string) => boolean) => ({
+      appels: state.calls.filter(c => c.commercial_id === p.id && dedans(jourDe(c.date))).length,
+      rdvPris: state.appointments.filter(a => a.prospecteur_id === p.id && dedans(jourDe(a.created_at))).length,
+      rdv: state.appointments.filter(a => a.commercial_id === p.id && dedans(jourDe(a.date)) && !rdvAnnule(a)).length,
+      visites: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'VISITE' && dedans(jourDe(i.date))).length,
+      appelsClients: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'APPEL' && dedans(jourDe(i.date))).length,
+    });
+    const jour = mesurer(d => d === today);
+    const sem = mesurer(d => d >= semaine.debut && d <= semaine.fin);
+    const { appels, rdvPris, rdv: rdvJour, visites } = jour;
     const retards = state.clients.filter(c => c.commercial_id === p.id && estEnRetard(c, today)).length;
     const sansCr = state.appointments.filter(a => a.commercial_id === p.id && rdvSansCompteRendu(a, now)).length;
     const rappels = state.reminders.filter(r => r.commercial_id === p.id && r.statut === 'actif' && r.date <= today).length;
     const objectifs = mesurerObjectifs(state, p, now);
     const derive = objectifs.filter(o => o.etat === 'en_retard').length;
-    return { p, prosp, comm, appels, rdvPris, rdvJour, visites, retards, sansCr, rappels, objectifs, derive };
-  }), [state, moi.id, today]);
+    return { p, prosp, comm, appels, rdvPris, rdvJour, visites, appelsClients: jour.appelsClients, sem, retards, sansCr, rappels, objectifs, derive };
+  }), [state, moi.id, today, semaine]);
 
   const cartes: { label: string; n: number; lien: string; icone: typeof Calendar; grave?: boolean }[] = [
     { label: 'commandes sans client', n: alertes.orphelines, lien: '/easybeer', icone: ShoppingCart, grave: true },
@@ -656,29 +674,44 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
         </div>
       </BlocErreur>
 
-      <BlocErreur titre="L'équipe aujourd'hui">
+      <BlocErreur titre="L'équipe">
         <div className="bg-white rounded-xl border border-gray-200 p-4 overflow-x-auto">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm mb-3"><Users className="w-4 h-4 text-brewery-600" /> L'équipe aujourd'hui</h3>
-          <table className="w-full text-xs min-w-[720px]">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Users className="w-4 h-4 text-brewery-600" /> L'équipe</h3>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 font-medium" role="group" aria-label="Semaine affichée">
+                <button type="button" onClick={() => setDecalageSemaine(0)} className={`px-2 py-0.5 rounded-md ${decalageSemaine === 0 ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Cette semaine</button>
+                <button type="button" onClick={() => setDecalageSemaine(-1)} className={`px-2 py-0.5 rounded-md ${decalageSemaine === -1 ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Semaine dernière</button>
+              </div>
+              <span className="text-gray-400 hidden sm:inline">{semaine.libelle}</span>
+            </div>
+          </div>
+          <table className="w-full text-xs min-w-[860px]">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-100">
                 <th className="py-2 pr-2 font-medium">Membre</th>
                 <th className="py-2 px-2 font-medium text-center">Aujourd'hui</th>
+                <th className="py-2 px-2 font-medium text-center">{decalageSemaine === 0 ? 'Cette semaine' : 'Semaine dernière'} <span className="font-normal text-gray-400">({semaine.jours} j)</span></th>
                 <th className="py-2 px-2 font-medium text-center">À rattraper</th>
                 <th className="py-2 px-2 font-medium">Objectifs du mois</th>
               </tr>
             </thead>
             <tbody>
-              {equipe.map(({ p, prosp, comm, appels, rdvPris, rdvJour, visites, retards, sansCr, rappels, objectifs, derive }) => (
+              {equipe.map(({ p, prosp, comm, appels, rdvPris, rdvJour, visites, appelsClients, sem, retards, sansCr, rappels, objectifs, derive }) => (
                 <tr key={p.id} className="border-b border-gray-50 last:border-0 align-top">
                   <td className="py-2 pr-2">
                     <p className="font-semibold text-gray-800">{p.prenom} {p.nom}</p>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : p.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{libelleRole(p)}</span>
                   </td>
                   <td className="py-2 px-2 text-center text-gray-700 whitespace-nowrap">
-                    {comm && <span><b className="tabular-nums">{rdvJour}</b> RDV · <b className="tabular-nums">{visites}</b> visites</span>}
+                    {comm && <span><b className="tabular-nums">{rdvJour}</b> RDV · <b className="tabular-nums">{visites}</b> visites · <b className="tabular-nums">{appelsClients}</b> appels clients</span>}
                     {comm && prosp && <br />}
                     {prosp && <span><b className="tabular-nums">{appels}</b> appels · <b className="tabular-nums">{rdvPris}</b> RDV pris</span>}
+                  </td>
+                  <td className="py-2 px-2 text-center text-gray-700 whitespace-nowrap bg-gray-50/60">
+                    {comm && <span><b className="tabular-nums">{sem.rdv}</b> RDV · <b className="tabular-nums">{sem.visites}</b> visites · <b className="tabular-nums">{sem.appelsClients}</b> appels clients</span>}
+                    {comm && prosp && <br />}
+                    {prosp && <span><b className="tabular-nums">{sem.appels}</b> appels · <b className="tabular-nums">{sem.rdvPris}</b> RDV pris</span>}
                   </td>
                   <td className="py-2 px-2 text-center whitespace-nowrap">
                     {comm && (
