@@ -22,7 +22,9 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
     db.query('SELECT * FROM reminders'),
-    db.query('SELECT * FROM commerciaux'),
+    // Un membre retiré de l'équipe disparaît de toutes les listes d'un coup : sa ligne
+    // reste en base pour que son travail garde son nom, mais elle ne sort plus d'ici.
+    db.query('SELECT * FROM commerciaux WHERE actif'),
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),

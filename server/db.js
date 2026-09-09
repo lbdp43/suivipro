@@ -885,6 +885,36 @@ async function initDatabase(attempt = 1) {
       )`);
       await client.query('CREATE INDEX IF NOT EXISTS idx_signalements_statut ON signalements(statut)');
     } catch (err) { console.log('signalements migration:', err.message); }
+    // Retirer quelqu'un de l'équipe ne peut pas effacer sa ligne : ses appels, ses visites
+    // et ses rendez-vous portent son nom, et les écrans les affichent par son identifiant.
+    // On la garde donc et on la marque inactive — la personne ne se connecte plus et
+    // disparaît de toutes les listes, mais son travail garde son auteur.
+    try { await client.query('ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS actif BOOLEAN NOT NULL DEFAULT TRUE'); } catch { /* déjà là */ }
+
+    // La corbeille : rien n'est détruit. Supprimer un prospect ou un client range la
+    // fiche ici, avec tout ce qui serait parti avec elle (appels, rendez-vous, rappels,
+    // visites, commandes...), et l'administrateur peut la remettre en place. On garde la
+    // ligne entière en JSON plutôt qu'un drapeau sur la table : les quelque quatre-vingts
+    // lectures de prospects et de clients restent inchangées, donc aucune fiche rangée ne
+    // peut réapparaître dans un écran qu'on aurait oublié de filtrer.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS corbeille (
+        id SERIAL PRIMARY KEY,
+        type TEXT NOT NULL,
+        entite_id TEXT NOT NULL,
+        nom TEXT NOT NULL DEFAULT '',
+        ville TEXT NOT NULL DEFAULT '',
+        commercial_id TEXT DEFAULT '',
+        contenu TEXT NOT NULL,
+        resume TEXT NOT NULL DEFAULT '{}',
+        supprime_par TEXT NOT NULL,
+        supprime_le TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        restaure_par TEXT,
+        restaure_le TIMESTAMPTZ
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_corbeille_le ON corbeille(supprime_le DESC)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_corbeille_entite ON corbeille(type, entite_id)');
+    } catch (err) { console.log('corbeille migration:', err.message); }
     // Les accès Claude (MCP) : un jeton par personne, portant son rôle. Le jeton lui-même
     // n'est jamais stocké — seulement son empreinte, comme un mot de passe.
     try {

@@ -8,6 +8,7 @@ import { rattacherEntite } from '../lib/zones.js';
 import { changerEtape } from '../lib/tunnel.js';
 import { EMAIL_RE, PHONE_RE, validationError } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
+import { archiver, Introuvable } from '../lib/corbeille.js';
 
 const router = Router();
 
@@ -92,8 +93,15 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Supprimer ne détruit plus : la fiche part dans la corbeille avec ses visites, ses
+// tâches et ses commandes, et l'administrateur peut la remettre en place.
 router.delete('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
-  await db.query('DELETE FROM clients WHERE id = $1', [req.params.id]);
+  try {
+    await archiver('client', req.params.id, req.user.id);
+  } catch (err) {
+    if (err instanceof Introuvable) return res.status(404).json({ error: 'Client introuvable' });
+    throw err;
+  }
   res.json({ ok: true });
 }));
 

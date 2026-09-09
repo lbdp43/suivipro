@@ -15,6 +15,8 @@ router.post('/auth/login', asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM commerciaux WHERE email = $1', [email]);
   const user = result.rows[0];
   if (!user) return res.status(401).json({ error: 'Identifiants incorrects' });
+  // Un compte retiré de l'équipe ne se connecte plus, même avec le bon mot de passe.
+  if (user.actif === false) return res.status(403).json({ error: "Ce compte a ete retire de l'equipe" });
 
   // bcrypt only — no plaintext fallback
   const valid = bcrypt.compareSync(password, user.password);

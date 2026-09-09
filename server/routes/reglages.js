@@ -7,6 +7,7 @@ import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js
 import { parseCommercial, parseProspect } from '../lib/parse.js';
 import { EMAIL_RE } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
+import { archiver, EncoreRattache, Introuvable } from '../lib/corbeille.js';
 
 const router = Router();
 
@@ -195,11 +196,22 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
   res.json({ ok: true });
 }));
 
+// Retirer quelqu'un de l'équipe le range dans la corbeille avec son secteur, ses réglages
+// de tournée, ses sessions d'appel, son journal, ses notifications, son lien Google Agenda
+// et son accès Claude — tout ce que la base emportait jusqu'ici en silence. Et si des
+// fiches lui appartiennent encore, on le dit au lieu de laisser passer une erreur de clé
+// étrangère : elles doivent d'abord revenir à quelqu'un.
 router.delete('/commerciaux/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   if (req.params.id === req.user.id) {
     return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
   }
-  await db.query('DELETE FROM commerciaux WHERE id = $1', [req.params.id]);
+  try {
+    await archiver('membre', req.params.id, req.user.id);
+  } catch (err) {
+    if (err instanceof EncoreRattache) return res.status(409).json({ error: err.message });
+    if (err instanceof Introuvable) return res.status(404).json({ error: 'Membre introuvable' });
+    throw err;
+  }
   res.json({ ok: true });
 }));
 

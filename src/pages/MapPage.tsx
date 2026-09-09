@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
-  ChevronLeft, ChevronRight, Users, Check, Building2, Layers, Pencil, Star,
+  ChevronLeft, ChevronRight, Users, Check, Building2, Layers, Pencil, Star, CheckSquare,
 } from 'lucide-react';
 import DessinZones from '../components/DessinZones';
 import { prospectsAAppelerDansLaZone } from '../utils/zones';
@@ -20,12 +20,18 @@ import { formatDate } from '../utils/helpers';
 import { estCommercial } from '../utils/roles';
 import { ouvrirDansGoogleAgenda } from '../utils/agenda';
 import FilterPresets from '../components/FilterPresets';
+import SelectionCarte from '../components/SelectionCarte';
 
 // Custom marker icon factory
-function createMarkerIcon(color: string): L.DivIcon {
+function createMarkerIcon(color: string, selectionne = false): L.DivIcon {
+  // Une fiche sélectionnée porte un anneau sombre : on doit voir son lot d'un coup d'œil,
+  // sans compter les points un par un, avant de lancer une action dessus.
+  const contour = selectionne
+    ? 'border:3px solid #111827;box-shadow:0 0 0 3px #fff,0 2px 6px rgba(0,0,0,0.4);'
+    : 'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);';
   return L.divIcon({
     className: 'custom-marker',
-    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};${contour}"></div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
     popupAnchor: [0, -14],
@@ -93,6 +99,10 @@ export default function MapPage() {
   // Mode dessin : polygone point par point directement sur la carte. L'admin dessine pour
   // n'importe qui, un commercial pour lui-même.
   const [modeDessin, setModeDessin] = useState(false);
+  // La sélection multiple : on clique les points, puis on agit sur le lot.
+  const [modeSelection, setModeSelection] = useState(false);
+  const [selProspects, setSelProspects] = useState<Set<string>>(new Set());
+  const [selClients, setSelClients] = useState<Set<string>>(new Set());
   const [dessinPour, setDessinPour] = useState<string>(moi?.id || '');
   const [dessinPrioritaire, setDessinPrioritaire] = useState(false);
   const [dessinConsigne, setDessinConsigne] = useState('');
@@ -106,6 +116,19 @@ export default function MapPage() {
   // définissent, la prospection les lit — sa consigne reste visible, en lecture seule.
   const peutDefinirZones = estCommercial(moi);
   const peutModifierZone = (z: CommercialZone) => peutDefinirZones && (admin || z.commercial_id === moi?.id);
+  // La sélection multiple appartient aux commerciaux et à l'administrateur : c'est eux qui
+  // réattribuent un secteur. La prospection ne réattribue pas les fiches des autres.
+  const peutSelectionner = estCommercial(moi);
+  const basculer = (setter: typeof setSelProspects) => (id: string) => setter(prev => {
+    const suivant = new Set(prev);
+    if (suivant.has(id)) suivant.delete(id); else suivant.add(id);
+    return suivant;
+  });
+  const basculerProspect = basculer(setSelProspects);
+  const basculerClient = basculer(setSelClients);
+  const viderSelection = () => { setSelProspects(new Set()); setSelClients(new Set()); };
+  const quitterSelection = () => { viderSelection(); setModeSelection(false); };
+
   const zonesModifiables = useMemo(() => zones.filter(z => admin ? z.commercial_id === dessinPour : z.commercial_id === moi?.id), [zones, admin, dessinPour, moi?.id]);
   const appelesAujourdhui = useMemo(() => sessionDuJour(state, moi?.id).appeles, [state, moi?.id]);
   const enregistrerPriorite = async (z: CommercialZone, prioritaire: boolean, consigne: string) => {
@@ -306,6 +329,13 @@ export default function MapPage() {
     );
   };
 
+  // Les prospects réellement dessinés : le plafond de marqueurs en cache une partie, et
+  // « tout ce qui est affiché » ne doit jamais sélectionner des fiches qu'on ne voit pas.
+  const prospectsAffiches = useMemo(
+    () => (maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)),
+    [filteredProspects, maxMarkers],
+  );
+
   // Les prospects à appeler dans une zone respectent les filtres de la carte (étape, commercial,
   // tags…) : ce qu'on voit, c'est ce qu'on appelle. Le panneau RDV est mis de côté pour ce calcul.
   const idsVisibles = useMemo(() => new Set(filteredProspects.map(p => p.id)), [filteredProspects]);
@@ -416,6 +446,17 @@ export default function MapPage() {
           >
             <Pencil className="w-4 h-4" />
             <span className="hidden sm:inline">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
+          </button>}
+          {/* Sélectionner plusieurs fiches d'un coup, pour agir sur le lot. */}
+          {peutSelectionner && <button
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
+              modeSelection ? 'bg-brewery-600 text-white' : 'bg-brewery-50 text-brewery-700 hover:bg-brewery-100'
+            }`}
+            onClick={() => { if (modeSelection) quitterSelection(); else { setModeSelection(true); setModeDessin(false); } }}
+            title="Choisir plusieurs prospects ou clients pour les attribuer, les desactiver ou les supprimer"
+          >
+            <CheckSquare className="w-4 h-4" />
+            <span className="hidden sm:inline">{modeSelection ? 'Terminer la sélection' : 'Sélectionner'}</span>
           </button>}
           {/* Bouton RDV */}
           <button
@@ -1038,15 +1079,16 @@ export default function MapPage() {
               </Polygon>
             );
           })}
-          {showProspects && (maxMarkers === 0 ? filteredProspects : filteredProspects.slice(0, maxMarkers)).map(prospect => {
+          {showProspects && prospectsAffiches.map(prospect => {
             const markerColor = showRdvPanel ? '#2563eb' : getStageInfo(prospect.etape_pipeline).color;
             return (
               <Marker
                 key={prospect.id}
                 position={[prospect.latitude, prospect.longitude]}
-                icon={createMarkerIcon(markerColor)}
+                icon={createMarkerIcon(markerColor, selProspects.has(prospect.id))}
+                eventHandlers={modeSelection ? { click: () => basculerProspect(prospect.id) } : undefined}
               >
-                <Popup>
+                {!modeSelection && <Popup>
                   <div className="min-w-[200px]">
                     <h3 className="font-bold text-gray-900 text-sm">{prospect.nom_etablissement}</h3>
                     <p className="text-xs text-gray-500 mt-0.5">
@@ -1122,7 +1164,7 @@ export default function MapPage() {
                       </Link>
                     </div>
                   </div>
-                </Popup>
+                </Popup>}
               </Marker>
             );
           })}
@@ -1131,9 +1173,10 @@ export default function MapPage() {
             <Marker
               key={`cli-${client.id}`}
               position={[Number(client.latitude), Number(client.longitude)]}
-              icon={createMarkerIcon('#10b981')}
+              icon={createMarkerIcon('#10b981', selClients.has(client.id))}
+              eventHandlers={modeSelection ? { click: () => basculerClient(client.id) } : undefined}
             >
-              <Popup>
+              {!modeSelection && <Popup>
                 <div className="min-w-[200px]">
                   <div className="flex items-center gap-1 mb-1">
                     <Building2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -1172,10 +1215,28 @@ export default function MapPage() {
                     </Link>
                   </div>
                 </div>
-              </Popup>
+              </Popup>}
             </Marker>
           ))}
         </MapContainer>
+
+        {modeSelection && (
+          <SelectionCarte
+            selection={{ prospects: [...selProspects], clients: [...selClients] }}
+            nomDe={(type, id) => type === 'prospect'
+              ? (state.prospects.find(p => p.id === id)?.nom_etablissement || id)
+              : (state.clients.find(c => c.id === id)?.nom || id)}
+            commerciaux={state.commerciaux.filter(c => estCommercial(c))}
+            admin={admin}
+            onTout={() => {
+              setSelProspects(new Set(showProspects ? prospectsAffiches.map(p => p.id) : []));
+              setSelClients(new Set(showClients ? filteredClients.map(c => c.id) : []));
+            }}
+            onVider={viderSelection}
+            onFini={viderSelection}
+            onFermer={quitterSelection}
+          />
+        )}
       </div>
     </div>
   );
