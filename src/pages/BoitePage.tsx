@@ -10,6 +10,7 @@ import { Client, EstablishmentType, ESTABLISHMENT_LABELS, Prospect, Signalement 
 import { LIBELLES_SOURCE, aQualifier, concerne, estLienGoogle, grouper, lienMapsDepuisAdresse, titreDuSignalement } from '../utils/signalements';
 import { faitDeLaProspection } from '../utils/roles';
 import { formatDate } from '../utils/helpers';
+import ChampsIdentite from '../components/ChampsIdentite';
 import { formaterSiren, formaterSiret, tvaIntracom } from '../../shared/siret';
 import { sansAccents } from '../../shared/normalisation';
 import { GaleriePhotos } from '../components/PhotosSignalement';
@@ -262,7 +263,9 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
     nom_contact: s.fiche.nom_contact || '',
     email: s.fiche.email || '',
     raison_sociale: s.fiche.raison_sociale || '',
+    siren: s.fiche.siren || '',
     siret: s.fiche.siret || '',
+    tva_intracom: '',
     commercial_id: s.commercial_id || moi?.id || '',
   });
   const [enCours, setEnCours] = useState(false);
@@ -313,15 +316,12 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
             <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
             <input className={champ} type="email" value={form.email} onChange={e => maj('email', e.target.value)} placeholder="Optionnel" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Raison sociale</label>
-              <input className={champ} value={form.raison_sociale} onChange={e => maj('raison_sociale', e.target.value)} placeholder="Optionnel" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">SIRET</label>
-              <input className={champ} value={form.siret} onChange={e => maj('siret', e.target.value)} placeholder="Optionnel" />
-            </div>
+          <div className="border-t border-gray-100 pt-3">
+            <ChampsIdentite
+              valeurs={form}
+              onChange={m => setForm(f => ({ ...f, ...m }))}
+              compact
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Adresse</label>

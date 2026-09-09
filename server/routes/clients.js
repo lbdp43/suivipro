@@ -44,13 +44,15 @@ router.post('/clients', authMiddleware, asyncHandler(async (req, res) => {
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
      type_client, statut, commercial_id, next_visit, last_visit, notes, custom_recurrence,
-     latitude, longitude, siret, tournee, prospect_id, date_creation, date_modification)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+     latitude, longitude, siret, tournee, prospect_id, date_creation, date_modification,
+     raison_sociale, siren, tva_intracom)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
     [clientId, c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
      c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
      c.statut || 'ACTIF', commercialId, nextVisit || null, c.last_visit || null,
      c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
-     c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now]
+     c.siret || '', c.tournee || '', c.prospect_id || null, c.date_creation || now, c.date_modification || now,
+     c.raison_sociale || '', c.siren || '', c.tva_intracom || '']
   );
   await rattacherEntite('clients', clientId);
   const created = await db.query('SELECT * FROM clients WHERE id = $1', [clientId]);
@@ -82,12 +84,13 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
     `UPDATE clients SET nom=$1, ville=$2, adresse=$3, code_postal=$4, telephone=$5, telephone_mobile=$6,
      email=$7, contact=$8, type_client=$9, statut=$10, commercial_id=$11, next_visit=$12, last_visit=$13,
      notes=$14, custom_recurrence=$15, latitude=$16, longitude=$17, siret=$18, tournee=$19,
-     date_modification=$20 WHERE id=$21`,
+     date_modification=$20, raison_sociale=$22, siren=$23, tva_intracom=$24 WHERE id=$21`,
     [c.nom, c.ville || '', c.adresse || '', c.code_postal || '', c.telephone || '',
      c.telephone_mobile || '', c.email || '', c.contact || '', c.type_client || 'BAR_RESTAURANT_GENERAL',
      c.statut || 'ACTIF', commercialFinal, c.next_visit || null, c.last_visit || null,
      c.notes || '', c.custom_recurrence !== undefined && c.custom_recurrence !== null ? c.custom_recurrence : null, c.latitude || 0, c.longitude || 0,
-     c.siret || '', c.tournee || '', c.date_modification || now, req.params.id]
+     c.siret || '', c.tournee || '', c.date_modification || now, req.params.id,
+     c.raison_sociale || '', c.siren || '', c.tva_intracom || '']
   );
   await rattacherEntite('clients', req.params.id);
   res.json({ ok: true });
