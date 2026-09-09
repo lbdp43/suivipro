@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { LIBELLES_TYPE_ETABLISSEMENT } from '../../../shared/libelles.js';
 import { deposer, lirePartage, DepotRefuse } from '../../lib/boiteProspection.js';
 import { bloc, ligne, lib } from '../format.js';
+import { LIBELLES_MOTIF_ECART } from '../../../shared/libelles.js';
 import {
   chiffres, sirenValide, siretValide, sirenDeSiret, tvaIntracom, formaterSiren, formaterSiret,
   normaliserTva, tvaPlausible, sirenDeTva,
@@ -67,7 +68,7 @@ const deposerDansLaBoite = {
     'Donnez le nom de l\'établissement, ou à défaut un lien Google Maps ou Google Business : la fiche sera lue pour vous.',
     'Donnez tout ce que vous savez d\'autre, et rien de plus — ne devinez ni un téléphone ni une adresse.',
     'L\'identité légale (raison sociale, SIRET, numéro de TVA) est facultative mais précieuse : elle suit la fiche jusqu\'au prospect créé depuis la boîte. Appelez « contexte » avec le sujet « identite » pour savoir ce que chaque numéro désigne.',
-    'Les doublons avec les prospects et les clients existants sont signalés dans la réponse.',
+    'Les doublons avec les prospects et les clients existants sont signalés dans la réponse, ainsi que les établissements déjà écartés par l\'équipe.',
   ].join(' '),
   ecrit: true,
   schema: {
@@ -131,7 +132,7 @@ const deposerDansLaBoite = {
       tvaDonnee && !tvaRetenue ? `TVA ${tvaDonnee}` : '',
     ].filter(Boolean);
 
-    const { doublons, destinataires } = await deposer({
+    const { doublons, ecartes, destinataires } = await deposer({
       texte: texteDuDepot({ ...lue, ...a, nom_etablissement: nom, lien }),
       commentaire: a.commentaire,
       parQui: utilisateur.id,
@@ -163,6 +164,12 @@ const deposerDansLaBoite = {
         `« ${nom} »${a.ville ? ` à ${NETTOYER(a.ville, 100)}` : ''} est dans la boîte de prospection, à qualifier.`,
         ligne('Prévenus', `la prospection, ${destinataires.length} personne(s)`),
         ligne('Type', lib(LIBELLES_TYPE_ETABLISSEMENT, TYPES.includes(a.type_etablissement) ? a.type_etablissement : 'autre')),
+        // Quelqu'un a déjà tranché sur cet établissement. Ce n'est pas un refus — le dépôt
+        // a bien eu lieu — mais celui qui a demandé mérite de le savoir.
+        ecartes && ecartes.total
+          ? `Attention, cet établissement a déjà été écarté ${ecartes.total > 1 ? `${ecartes.total} fois` : 'une fois'} :\n`
+            + ecartes.lignes.map(e => `- ${e.nom}${e.ville ? ` (${e.ville})` : ''} : ${lib(LIBELLES_MOTIF_ECART, e.motif)}`).join('\n')
+          : '',
         doublons.length
           ? `Attention, ${doublons.length} fiche(s) lui ressemblent déjà :\n`
             + doublons.map(d => `- ${d.genre} : ${d.nom}${d.ville ? ` (${d.ville})` : ''}`).join('\n')

@@ -926,6 +926,32 @@ async function initDatabase(attempt = 1) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_corbeille_le ON corbeille(supprime_le DESC)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_corbeille_entite ON corbeille(type, entite_id)');
     } catch (err) { console.log('corbeille migration:', err.message); }
+    // Ce qu'on a déjà écarté. Ignorer un signalement, le supprimer, ou mettre un prospect
+    // ou un client à la corbeille laisse ici une ligne d'identité — le nom, la commune, le
+    // téléphone, le lien. Elle sert à une seule chose : quand le même établissement revient
+    // dans la boîte (un collègue le repartage, Claude le redépose, un import le ramène), le
+    // dire au lieu de le faire re-trancher une deuxième fois.
+    //
+    // C'est une trace, pas une archive : elle survit à la suppression réelle du signalement,
+    // qui, elle, efface la ligne pour de bon.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS etablissements_ecartes (
+        id SERIAL PRIMARY KEY,
+        origine TEXT NOT NULL,
+        origine_id TEXT NOT NULL DEFAULT '',
+        nom TEXT NOT NULL DEFAULT '',
+        nom_compare TEXT NOT NULL DEFAULT '',
+        ville TEXT NOT NULL DEFAULT '',
+        telephone TEXT NOT NULL DEFAULT '',
+        lien TEXT NOT NULL DEFAULT '',
+        motif TEXT NOT NULL DEFAULT '',
+        par_qui TEXT NOT NULL DEFAULT '',
+        le TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_ecartes_nom ON etablissements_ecartes(nom_compare)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_ecartes_origine ON etablissements_ecartes(origine, origine_id)');
+    } catch (err) { console.log('etablissements_ecartes migration:', err.message); }
+
     // Les accès Claude (MCP) : un jeton par personne, portant son rôle. Le jeton lui-même
     // n'est jamais stocké — seulement son empreinte, comme un mot de passe.
     try {

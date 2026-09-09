@@ -318,14 +318,17 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
 
   await db.query(
     `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
-     type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, prospect_id, date_creation, date_modification)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+     type_client, statut, commercial_id, next_visit, notes, siret, tournee, latitude, longitude, prospect_id, date_creation, date_modification,
+     raison_sociale, siren, tva_intracom)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [clientId, eb.name, eb.city || '', eb.address || '', eb.postal_code || '',
      eb.phone || '', eb.phone_mobile || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
      commercial_id || prospect?.commercial_id || req.user.id, nextVisit || null,
      [prospect?.notes, eb.notes].filter(Boolean).join('\n') || '',
-     eb.siret || '', tournee || prospect?.tournee || eb.tournee || '', lat, lng,
-     prospect?.id || null, now, now]
+     eb.siret || prospect?.siret || '', tournee || prospect?.tournee || eb.tournee || '', lat, lng,
+     prospect?.id || null, now, now,
+     // L'identité légale vient du prospect rapproché : la fiche EasyBeer ne la porte pas.
+     prospect?.raison_sociale || '', prospect?.siren || '', prospect?.tva_intracom || '']
   );
 
   if (prospect) {
@@ -557,12 +560,18 @@ router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => 
       await db.query(
         `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, telephone_mobile, email, contact,
          type_client, statut, commercial_id, next_visit, last_visit, notes, custom_recurrence, tournee, siret,
-         latitude, longitude, prospect_id, date_creation, date_modification)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+         latitude, longitude, prospect_id, date_creation, date_modification,
+         raison_sociale, siren, tva_intracom)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
         [c.id, c.nom, finalVille, finalAdresse, finalCp,
          finalTel, finalTelMobile, finalEmail, finalContact,
          clientType, 'ACTIF', finalCommercialId, nextVisit || null, c.last_visit || null, finalNotes,
-         c.custom_recurrence || null, finalTournee, finalSiret, finalLat, finalLng, prospectId, now, now]
+         c.custom_recurrence || null, finalTournee, finalSiret, finalLat, finalLng, prospectId, now, now,
+         // Même règle qu'ailleurs : l'identité légale suit la fiche, elle ne se retrouve pas
+         // une deuxième fois à la main.
+         c.raison_sociale || prospectMatch?.raison_sociale || '',
+         c.siren || prospectMatch?.siren || '',
+         c.tva_intracom || prospectMatch?.tva_intracom || '']
       );
 
       // Link prospect to client: mark prospect as client_gagne

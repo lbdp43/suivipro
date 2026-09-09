@@ -3,6 +3,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { adminOnly, asyncHandler, authMiddleware } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
+import { sansAccents } from '../../shared/normalisation.js';
 import { logActivity } from '../lib/journal.js';
 import { rattacherEntite } from '../lib/zones.js';
 import { DATAGOUV_BASE_URL, NAF_CODES, fetchAllDatagouv, fetchNearPoint, parseDatagouvResult } from '../lib/sirene-import.js';
@@ -12,6 +13,19 @@ const router = Router();
 const INSEE_BASE_URL = 'https://api.insee.fr/api-sirene/3.11';
 
 // Parse INSEE result -> array of etablissements
+/**
+ * La raison sociale d'un établissement importé : le nom légal, mais seulement quand il
+ * diffère de l'enseigne sous laquelle la fiche est rangée. Répéter le même nom dans deux
+ * champs n'apprend rien à personne.
+ */
+function raisonSociale(etab, nomEtab) {
+  const legal = String(etab.nom || '').trim();
+  // « Non renseigne » est ce que l'annuaire renvoie faute de mieux (lib/sirene-import.js) :
+  // l'écrire en raison sociale serait pire que de laisser le champ vide.
+  if (!legal || sansAccents(legal) === 'non renseigne') return '';
+  return sansAccents(legal) === sansAccents(String(nomEtab || '')) ? '' : legal.slice(0, 200);
+}
+
 function parseInseeResult(etab) {
   const periodes = etab.periodesEtablissement || [];
   const dernierePeriode = periodes[0] || {};
@@ -617,17 +631,21 @@ async function importEtabAsProspect(etab, commercialId, now, userId, configEntit
   }
 
   // No duplicate → create new entry (prospect/concurrent/distributeur/partenaire)
+  // Le SIREN et la raison sociale n'allaient nulle part ailleurs que dans les notes, en
+  // toutes lettres : le bloc « Identité légale » de la fiche restait vide alors que
+  // l'annuaire les donnait. Ils ont maintenant leurs colonnes, et les notes ne gardent que
+  // ce qui n'en a pas — l'activité et la date de création.
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
       adresse, ville, code_postal, departement, secteur, latitude, longitude,
-      etape_pipeline, tags, commercial_id, siret, entity_type, notes, date_creation, date_modification, score)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      etape_pipeline, tags, commercial_id, siret, siren, raison_sociale, entity_type, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       prospectId, nomEtab, typeEtab, '', '', '',
       etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
       '', etab.latitude || 0, etab.longitude || 0,
-      pipelineStage, '[]', ruleCommercial, etab.siret, entityType,
-      `Importe depuis Datagouv (${entityType})\nSIRET: ${etab.siret}\nSIREN: ${etab.siren}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
+      pipelineStage, '[]', ruleCommercial, etab.siret || '', etab.siren || '', raisonSociale(etab, nomEtab), entityType,
+      `Importe depuis Datagouv (${entityType})\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}\nDate creation: ${etab.date_creation_etab || 'N/A'}`,
       now, now, 30,
     ]
   );
@@ -787,14 +805,14 @@ router.post('/sirene/duplicates/:id/import', authMiddleware, adminOnly, asyncHan
   await db.query(
     `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email,
       adresse, ville, code_postal, departement, secteur, latitude, longitude,
-      etape_pipeline, tags, commercial_id, siret, entity_type, notes, date_creation, date_modification, score)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      etape_pipeline, tags, commercial_id, siret, siren, raison_sociale, entity_type, notes, date_creation, date_modification, score)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       prospectId, nomEtab, typeEtab, '', '', '',
       etab.adresse_voie || '', etab.commune || '', etab.code_postal || '', etab.departement || '',
       '', etab.latitude || 0, etab.longitude || 0,
-      pipelineStage, '[]', '', etab.siret, entityType,
-      `Import force (doublon ignore)\nSIRET: ${etab.siret}\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}`,
+      pipelineStage, '[]', '', etab.siret || '', etab.siren || '', raisonSociale(etab, nomEtab), entityType,
+      `Import force (doublon ignore)\nNAF: ${etab.code_naf} - ${etab.libelle_naf || ''}`,
       now, now, 30,
     ]
   );

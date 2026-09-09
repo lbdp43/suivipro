@@ -145,6 +145,14 @@ export const LIBELLES_SOURCE_SIGNALEMENT = {
 
 // Les codes sont ceux que le serveur écrit (routes/signalements.js) : « traite » quand le
 // signalement a donné un prospect ou a été rattaché, « ignore » quand il a été écarté.
+// Pourquoi un établissement figure parmi les écartés — ce qu'on affiche quand il revient.
+export const LIBELLES_MOTIF_ECART = {
+  signalement_ignore: 'ignoré dans la boîte',
+  signalement_supprime: 'supprimé de la boîte',
+  prospect_corbeille: 'prospect mis à la corbeille',
+  client_corbeille: 'client mis à la corbeille',
+};
+
 export const LIBELLES_STATUT_SIGNALEMENT = {
   a_qualifier: 'À qualifier',
   traite: 'Qualifié',
