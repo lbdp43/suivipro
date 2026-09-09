@@ -13,11 +13,11 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
 import { apiPut, apiGet } from '../api/client';
-import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS, CommercialZone, colorForCommercial } from '../types';
+import { Appointment, ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS, CommercialZone, colorForCommercial } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { formatDate } from '../utils/helpers';
-import { envoyerDansAgenda } from '../utils/agenda';
+import ChoixAgenda from '../components/ChoixAgenda';
 import FilterPresets from '../components/FilterPresets';
 
 // Custom marker icon factory
@@ -74,6 +74,8 @@ export default function MapPage() {
   const [selectedPostalCodes, setSelectedPostalCodes] = usePersistedState<string[]>('map_postal_codes', []);
   const [selectedDepartments, setSelectedDepartments] = usePersistedState<string[]>('map_departments', []);
   const [searchTerm, setSearchTerm] = useState('');
+  // Le rendez-vous dont on choisit l'agenda de destination.
+  const [agendaPour, setAgendaPour] = useState<Appointment | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showRdvPanel, setShowRdvPanel] = useState(false);
   const [rdvWeekOffset, setRdvWeekOffset] = usePersistedState<number>('map_rdv_week', 0);
@@ -927,7 +929,7 @@ export default function MapPage() {
                                   {prospect && (
                                     <button
                                       className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                      onClick={async () => { const m = await envoyerDansAgenda(rdv, prospect, getCommercial(rdv.commercial_id)?.prenom); if (m.bon) toast.success(m.texte); else toast.info(m.texte); }}
+                                      onClick={() => setAgendaPour(rdv)}
                                       title="Envoyer dans l'agenda Google du commercial"
                                     >
                                       <CalendarPlus className="w-3 h-3" />
@@ -1173,6 +1175,14 @@ export default function MapPage() {
           ))}
         </MapContainer>
       </div>
+      {agendaPour && (
+        <ChoixAgenda
+          rdv={agendaPour}
+          prospect={agendaPour.prospect_id ? getProspect(agendaPour.prospect_id) : undefined}
+          onFini={(texte, bon) => (bon ? toast.success(texte) : toast.info(texte))}
+          onFermer={() => setAgendaPour(null)}
+        />
+      )}
     </div>
   );
 }

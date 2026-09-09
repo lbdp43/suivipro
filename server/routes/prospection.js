@@ -108,7 +108,11 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
 router.post('/appointments/:id/agenda', authMiddleware, asyncHandler(async (req, res) => {
   const r = await db.query('SELECT id FROM appointments WHERE id = $1', [req.params.id]);
   if (r.rows.length === 0) return res.status(404).json({ error: 'Rendez-vous introuvable' });
-  return res.json(await poserRendezVous(req.params.id));
+  // L'agenda visé, écrit par la connexion de celui qui demande : les agendas partagés en
+  // écriture permettent de poser le rendez-vous sur celui d'un collègue.
+  const calendarId = req.body?.calendar_id;
+  const cible = calendarId ? { calendarId, viaCommercialId: req.user.id } : null;
+  return res.json(await poserRendezVous(req.params.id, cible));
 }));
 
 router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {

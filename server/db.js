@@ -911,6 +911,9 @@ async function initDatabase(attempt = 1) {
     try {
       await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_event_id TEXT DEFAULT ''");
       await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_commercial_id TEXT DEFAULT ''");
+      // Les agendas sont partagés en écriture : l'événement peut être posé sur l'agenda
+      // d'Alban depuis la connexion d'Eva. On garde donc les deux : par qui, et où.
+      await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_calendar_id TEXT DEFAULT ''");
     } catch (err) { console.log('appointments google migration:', err.message); }
     // Les photos partagées avec un signalement, rangées comme les documents (base64).
     try {
