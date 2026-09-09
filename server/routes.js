@@ -22,6 +22,7 @@ import crons from './routes/crons.js';
 import signalements from './routes/signalements.js';
 import mcpJetons from './routes/mcpJetons.js';
 import corbeille from './routes/corbeille.js';
+import masse from './routes/masse.js';
 
 const router = Router();
 router.use(auth);
@@ -44,6 +45,7 @@ router.use(crons);
 router.use(signalements);
 router.use(mcpJetons);
 router.use(corbeille);
+router.use(masse);
 
 export { runZoneSync } from './routes/sirene.js';
 export { syncNocturneEasybeer } from './routes/crons.js';
