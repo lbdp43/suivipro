@@ -13,16 +13,16 @@ export function libelle(table, code) {
 export const LIBELLES_TYPE_ETABLISSEMENT = {
   bar_restaurant: 'Bar / Restaurant',
   cave: 'Cave',
-  epicerie: 'Epicerie',
-  supermarche: 'Supermarche / GMS',
-  marche: 'Marche',
+  epicerie: 'Épicerie',
+  supermarche: 'Supermarché / GMS',
+  marche: 'Marché',
   distributeur: 'Distributeur',
-  hotel: 'Hotel',
+  hotel: 'Hôtel',
   camping: 'Camping',
   traiteur: 'Traiteur',
   association: 'Association',
-  comite_entreprise: 'Comite d\'entreprise',
-  collectivite: 'Collectivite',
+  comite_entreprise: 'Comité d\'entreprise',
+  collectivite: 'Collectivité',
   autre: 'Autre',
 };
 
@@ -143,8 +143,10 @@ export const LIBELLES_SOURCE_SIGNALEMENT = {
   texte: 'Texte',
 };
 
+// Les codes sont ceux que le serveur écrit (routes/signalements.js) : « traite » quand le
+// signalement a donné un prospect ou a été rattaché, « ignore » quand il a été écarté.
 export const LIBELLES_STATUT_SIGNALEMENT = {
   a_qualifier: 'À qualifier',
-  qualifie: 'Qualifié',
-  ecarte: 'Écarté',
+  traite: 'Qualifié',
+  ignore: 'Écarté',
 };
