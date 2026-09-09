@@ -47,7 +47,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Statistiques : commerciaux et admins seulement. Un prospecteur qui tape l'adresse revient à l'accueil.
+// Statistiques : administrateurs seulement. Quelqu'un d'autre qui tape l'adresse revient à l'accueil.
 function RouteStatistiques({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
   if (!peutVoirLesStatistiques(state.currentUser?.role)) {

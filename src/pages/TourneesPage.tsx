@@ -252,7 +252,8 @@ export default function TourneesPage() {
   const toast = useToast();
   const [configs, setConfigs] = useState<TourneeConfig[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  // On retient de qui on règle la tournée : la sienne, ou celle d'un collègue quand on est admin.
+  const [editingFor, setEditingFor] = useState<string | null>(null);
   const [editConfig, setEditConfig] = useState<Record<string, string[]>>({});
   const [editNotes, setEditNotes] = useState('');
   const [editInfo, setEditInfo] = useState('');
@@ -314,8 +315,10 @@ export default function TourneesPage() {
 
   useEffect(() => { loadData(); loadZones(); }, [loadData, loadZones]);
 
-  const startEdit = () => {
-    const myConfig = configs.find(c => c.commercial_id === currentUserId);
+  const panneauReglage = useRef<HTMLDivElement | null>(null);
+
+  const startEdit = (commercialId: string) => {
+    const myConfig = configs.find(c => c.commercial_id === commercialId);
     const fullConfig = myConfig?.config || {};
     // Extract prospection zones separately, keep day config clean
     const { prospection: prospZones, ...dayConfig } = fullConfig as any;
@@ -328,21 +331,23 @@ export default function TourneesPage() {
     setEditNotes(myConfig?.notes || '');
     setEditInfo(myConfig?.tournee_info || '');
     setEditWeekPattern(myConfig?.week_pattern || 'every');
-    setEditing(true);
+    setEditingFor(commercialId);
+    // Le panneau est en haut de la page : depuis la fiche d'un collègue, on l'y amène.
+    setTimeout(() => panneauReglage.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
-  const saveMyConfig = async () => {
-    if (!currentUserId) return;
+  const saveConfig = async () => {
+    if (!editingFor) return;
     setSaving(true);
     try {
-      await apiPost(`/tournee-config/${currentUserId}`, {
+      await apiPost(`/tournee-config/${editingFor}`, {
         config: { ...editConfig, ...(editProspectionZones.length > 0 ? { prospection: editProspectionZones } : {}) },
         notes: editNotes,
         tournee_info: editInfo,
         week_pattern: editWeekPattern,
       });
       toast.success('Tournées sauvegardées');
-      setEditing(false);
+      setEditingFor(null);
       loadData();
     } catch {
       toast.error('Erreur sauvegarde');
@@ -595,6 +600,11 @@ export default function TourneesPage() {
     );
   }
 
+  const nomCommercial = (id: string) => {
+    const c = state.commerciaux.find(x => x.id === id);
+    return c ? `${c.prenom} ${c.nom}`.trim() : 'ce commercial';
+  };
+
   const commercials = state.commerciaux.filter(c => c.role === 'commercial' || c.role === 'admin');
   const prospecteurs = state.commerciaux.filter(c => c.role === 'prospection');
   const isProspection = state.currentUser?.role === 'prospection';
@@ -680,6 +690,25 @@ export default function TourneesPage() {
                 </div>
               );
             })()}
+
+            {/* L'admin règle la tournée de chacun : jours, zones prioritaires et nombre de
+                rendez-vous voulus, comme l'intéressé le ferait depuis « Mes tournées ». */}
+            {isAdmin && !isMe && (
+              <div className="flex items-center justify-between gap-2 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg mb-3">
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                  <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                  <span className="truncate">
+                    {hasConfig ? 'Jours et zones prioritaires réglés' : 'Jours et zones prioritaires à régler'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => startEdit(commercial.id)}
+                  className="text-xs font-medium text-brewery-600 hover:text-brewery-800 flex items-center gap-1 flex-shrink-0"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Régler ses tournées
+                </button>
+              </div>
+            )}
 
             {(() => {
               // Build prospection lookup: zone -> slots
@@ -832,9 +861,9 @@ export default function TourneesPage() {
           <button onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <RefreshCw className="w-4 h-4" />
           </button>
-          {!editing && (
+          {!editingFor && currentUserId && (
             <button
-              onClick={startEdit}
+              onClick={() => startEdit(currentUserId)}
               className="px-3 py-2 sm:px-4 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 text-sm font-medium"
             >
               <Edit2 className="w-4 h-4" /> Mes tournées
@@ -892,16 +921,20 @@ export default function TourneesPage() {
       )}
 
       {/* My tournée edit form */}
-      {editing && (
-        <div className="bg-white rounded-xl border-2 border-brewery-300 p-4 sm:p-5 space-y-4">
+      {editingFor && (
+        <div ref={panneauReglage} className="bg-white rounded-xl border-2 border-brewery-300 p-4 sm:p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900">Configurer mes tournées</h3>
+            <h3 className="font-semibold text-gray-900">
+              {editingFor === currentUserId
+                ? 'Configurer mes tournées'
+                : `Tournées de ${nomCommercial(editingFor)}`}
+            </h3>
             <div className="flex gap-2">
-              <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">
+              <button onClick={() => setEditingFor(null)} className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">
                 Annuler
               </button>
               <button
-                onClick={saveMyConfig}
+                onClick={saveConfig}
                 disabled={saving}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-1 disabled:opacity-50"
               >
@@ -934,7 +967,7 @@ export default function TourneesPage() {
           {/* Day config */}
           {allZones.length > 0 && (
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
-              <p className="text-xs font-medium text-blue-700 mb-2">Zones existantes dans vos clients :</p>
+              <p className="text-xs font-medium text-blue-700 mb-2">Zones existantes chez les clients :</p>
               <div className="flex flex-wrap gap-1.5">
                 {allZones.map(zone => (
                   <span key={zone} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full border border-blue-200 font-medium">
@@ -967,7 +1000,9 @@ export default function TourneesPage() {
               <span className="text-[10px] text-green-600 font-normal">(visibles par les prospecteurs)</span>
             </div>
             <p className="text-[11px] text-green-700 mb-2.5">
-              Indiquez les secteurs ou vous souhaitez que la prospection vous cale des rendez-vous.
+              {editingFor === currentUserId
+                ? 'Indiquez les secteurs ou vous souhaitez que la prospection vous cale des rendez-vous, et combien.'
+                : `Indiquez les secteurs ou la prospection doit caler des rendez-vous a ${nomCommercial(editingFor)}, et combien.`}
             </p>
             <ProspectionZonePicker
               entries={editProspectionZones}
@@ -999,7 +1034,10 @@ export default function TourneesPage() {
           {/* Notes privées */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Notes personnelles <span className="text-gray-400 font-normal">(privees)</span>
+              Notes personnelles{' '}
+              <span className="text-gray-400 font-normal">
+                {editingFor === currentUserId ? '(privees)' : `(les notes privees de ${nomCommercial(editingFor)})`}
+              </span>
             </label>
             <textarea
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"

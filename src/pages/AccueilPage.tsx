@@ -16,6 +16,7 @@ import { dateLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, 
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import BlocErreur from '../components/BlocErreur';
 import BilanDuSoir from '../components/BilanDuSoir';
+import CompteRenduModal from '../components/CompteRenduModal';
 import { useCallModal } from '../components/CallModal';
 import { faitDeLaProspection, estCommercial, libelleRole } from '../utils/roles';
 
@@ -115,7 +116,9 @@ function telDuRdv(rdv: Appointment, getProspect: (id: string) => Prospect | unde
   if (rdv.client_id) { const c = getClient(rdv.client_id); return c?.telephone_mobile || c?.telephone || ''; }
   return getProspect(rdv.prospect_id)?.telephone || '';
 }
-function LigneRdv({ rdv, nom, tel, aQui }: { rdv: Appointment; nom: string; tel: string; aQui?: string }) {
+// `surCompteRendu` n'est fourni que pour les rendez-vous dont on a soi-même la charge :
+// le compte rendu se saisit alors depuis l'accueil, sans passer par la page Rendez-vous.
+function LigneRdv({ rdv, nom, tel, aQui, surCompteRendu }: { rdv: Appointment; nom: string; tel: string; aQui?: string; surCompteRendu?: () => void }) {
   return (
     <div className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
       <span className="text-xs font-semibold text-gray-700 tabular-nums w-12">{rdv.heure_debut || '—'}</span>
@@ -124,6 +127,16 @@ function LigneRdv({ rdv, nom, tel, aQui }: { rdv: Appointment; nom: string; tel:
         {rdv.lieu && <p className="text-[11px] text-gray-400 truncate flex items-center gap-1"><MapPin className="w-3 h-3" />{rdv.lieu}</p>}
       </div>
       {rdv.compte_rendu && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}</span>}
+      {surCompteRendu && (
+        <button
+          onClick={surCompteRendu}
+          title={rdv.compte_rendu ? 'Modifier le compte rendu' : 'Faire le compte rendu'}
+          className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-[11px] font-medium bg-brewery-50 text-brewery-700 hover:bg-brewery-100 flex-shrink-0"
+        >
+          <ClipboardCheck className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{rdv.compte_rendu ? 'Modifier' : 'Compte rendu'}</span>
+        </button>
+      )}
       {tel && <a href={`tel:${tel.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>}
     </div>
   );
@@ -182,6 +195,8 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
   const rappels = useMemo(() => state.reminders.filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today), [state.reminders, moi.id, today]);
 
   const aRattraper = retards.length + sansCr.length + taches.length + rappels.length;
+  // Le compte rendu se saisit ici même, sur la ligne du rendez-vous du jour.
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
@@ -196,7 +211,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Rendez-vous du jour">
           <Carte titre="Rendez-vous aujourd'hui" icone={Calendar} lien="/rdv" compte={rdvDuJour.length} vide="Aucun rendez-vous aujourd'hui." teinte="brewery"
-            enfants={<div>{rdvDuJour.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} tel={telDuRdv(r, getProspect, getClient)} />)}</div>} />
+            enfants={<div>{rdvDuJour.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} tel={telDuRdv(r, getProspect, getClient)} surCompteRendu={() => setCompteRenduRdv(r)} />)}</div>} />
         </BlocErreur>
         <BlocErreur titre="Tournée du jour">
           <Carte titre={tournee.zones.length ? `Tournée du jour · ${tournee.zones.join(', ')}` : 'Clients à visiter aujourd\'hui'} icone={MapPin} lien="/semaine" compte={tournee.clients.length}
@@ -309,6 +324,8 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
           <BlocsProspection moi={moi} />
         </>
       )}
+
+      <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
   );
 }
@@ -659,6 +676,10 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
     { label: 'signalements à qualifier', n: aQualifier(state).length, lien: '/boite', icone: Inbox },
   ];
   const nbProblemes = cartes.filter(c => c.n > 0).length;
+  // L'administrateur fait aussi du terrain : ses propres rendez-vous du jour se
+  // rendent compte ici, sur leur ligne, comme pour un commercial.
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+  const estAMoi = (r: Appointment) => r.commercial_id === moi.id || (r.participants || []).includes(moi.id);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
@@ -768,10 +789,13 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
           enfants={<div>
             {state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === today).sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || '')).map(r => {
               const c = state.commerciaux.find(x => x.id === r.commercial_id);
-              return <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} tel="" aQui={c ? c.prenom : undefined} />;
+              return <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} tel="" aQui={c ? c.prenom : undefined}
+                surCompteRendu={estAMoi(r) ? () => setCompteRenduRdv(r) : undefined} />;
             })}
           </div>} />
       </BlocErreur>
+
+      <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
   );
 }
