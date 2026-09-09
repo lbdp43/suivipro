@@ -11,6 +11,7 @@ import {
   Users, CalendarPlus, StickyNote, CalendarDays, Link2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import ChampsIdentite from '../components/ChampsIdentite';
 import { useToast } from '../components/Toast';
 import ChampsRdv, { type ValeurRdv } from '../components/ChampsRdv';
 import FicheClient from '../components/FicheClient';
@@ -1852,15 +1853,9 @@ export default function ClientsPage() {
                 />
               </div>
 
-              {/* SIRET */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">SIRET</label>
-                <input
-                  type="text"
-                  value={formData.siret || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, siret: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
+              {/* Identité légale : les mêmes champs que sur une fiche prospect. */}
+              <div className="border-t border-gray-100 pt-3">
+                <ChampsIdentite valeurs={formData} onChange={maj => setFormData(prev => ({ ...prev, ...maj }))} />
               </div>
 
               {/* Notes */}

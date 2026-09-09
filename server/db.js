@@ -897,6 +897,9 @@ async function initDatabase(attempt = 1) {
     for (const table of ['prospects', 'clients']) {
       try { await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS siren TEXT DEFAULT ''`); } catch { /* déjà là */ }
       try { await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS raison_sociale TEXT DEFAULT ''`); } catch { /* déjà là */ }
+      // Vide, le numéro de TVA se calcule depuis le SIREN. On ne le stocke que s'il ne peut
+      // pas se calculer — une société étrangère, par exemple.
+      try { await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS tva_intracom TEXT DEFAULT ''`); } catch { /* déjà là */ }
     }
 
     // La corbeille : rien n'est détruit. Supprimer un prospect ou un client range la

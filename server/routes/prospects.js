@@ -29,9 +29,10 @@ router.post('/prospects', authMiddleware, asyncHandler(async (req, res) => {
 
   const scoreCreation = await scoreProspect(p.tags, p.score || 50);
   await db.query(
-    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, scoreCreation]
+    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, raison_sociale, siren, siret, tva_intracom)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+    [p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []), commercialId, p.notes || '', p.date_creation, p.date_modification, scoreCreation,
+     p.raison_sociale || '', p.siren || '', p.siret || '', p.tva_intracom || '']
   );
   await rattacherEntite('prospects', p.id);
   await logActivity(req.user.id, 'creation_prospect', p.nom_etablissement, 'prospect', p.id);
@@ -46,8 +47,9 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   const scoreMaj = await scoreProspect(p.tags, p.score || 50);
   // L'étape ne se change que par changerEtape (historique, date d'entrée, raison de perte).
   await db.query(
-    `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, tags=$13, commercial_id=$14, notes=$15, date_modification=$16, score=$17 WHERE id=$18`,
-    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id]
+    `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, tags=$13, commercial_id=$14, notes=$15, date_modification=$16, score=$17, raison_sociale=$19, siren=$20, siret=$21, tva_intracom=$22 WHERE id=$18`,
+    [p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '', p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '', p.latitude || 0, p.longitude || 0, JSON.stringify(p.tags || []), p.commercial_id || req.user.id, p.notes || '', p.date_modification, scoreMaj, req.params.id,
+     p.raison_sociale || '', p.siren || '', p.siret || '', p.tva_intracom || '']
   );
   if (p.etape_pipeline) await changerEtape(req.params.id, p.etape_pipeline, req.user.id, { raison: p.raison_perte || '' });
   await rattacherEntite('prospects', req.params.id);

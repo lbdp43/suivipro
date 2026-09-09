@@ -9,6 +9,7 @@ import {
   Camera, Loader2, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import ChampsIdentite from '../components/ChampsIdentite';
 import { useCallModal } from '../components/CallModal';
 import { PhotosPartagees } from '../components/PhotosSignalement';
 import { ListChecks, ExternalLink } from 'lucide-react';
@@ -1850,6 +1851,10 @@ export default function ProspectsPage() {
                   </div>
                 )}
               </div>
+              <div className="border-t border-gray-100 pt-3">
+                <ChampsIdentite valeurs={formData} onChange={maj => setFormData(prev => ({ ...prev, ...maj }))} />
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
                 <textarea className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none" value={formData.notes || ''} onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))} />

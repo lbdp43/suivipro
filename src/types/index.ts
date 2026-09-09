@@ -296,6 +296,10 @@ export const REGION_LABELS: string[] = [
 // ============================================
 
 export interface Prospect {
+  /** Identité légale. Le numéro de TVA reste vide quand il se calcule depuis le SIREN. */
+  raison_sociale?: string;
+  siren?: string;
+  tva_intracom?: string;
   id: string;
   nom_etablissement: string;
   type_etablissement: EstablishmentType;
@@ -485,6 +489,10 @@ export type TaskClientPriority = 'BASSE' | 'MOYENNE' | 'HAUTE';
 export const TASK_CLIENT_PRIORITY_LABELS = LIBELLES_PRIORITE_TACHE as Record<TaskClientPriority, string>;
 
 export interface Client {
+  /** Identité légale. Le numéro de TVA reste vide quand il se calcule depuis le SIREN. */
+  raison_sociale?: string;
+  siren?: string;
+  tva_intracom?: string;
   id: string;
   nom: string;
   ville: string;
