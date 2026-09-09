@@ -195,10 +195,64 @@ const clientsEnRetard = {
 const JOURS_SEMAINE = { 1: 'Lundi', 2: 'Mardi', 3: 'Mercredi', 4: 'Jeudi', 5: 'Vendredi', 6: 'Samedi', 0: 'Dimanche' };
 const MOTIFS = { every: 'toutes les semaines', even: 'semaines paires', odd: 'semaines impaires' };
 
+// Une zone est un polygone [[lat, lng], ...] dessiné à la main sur la carte. Son nom ne dit
+// rien de l'endroit — il y a deux « Secteur 1 », l'un à Loïc, l'autre à Guillaume — alors on
+// donne le contour lui-même : des coordonnées, un centre et une étendue en kilomètres. Un
+// modèle situe une latitude et une longitude ; il ne devine pas « Secteur 1 ».
+const POINTS_MAX = 60;
+
+function contourDeZone(brut) {
+  let points = brut;
+  if (typeof points === 'string') { try { points = JSON.parse(points); } catch { points = []; } }
+  if (!Array.isArray(points) || points.length < 3) return null;
+
+  // On garde les couples entiers : filtrer latitudes et longitudes séparément désaligne
+  // les index et fabriquerait des points qui n'existent pas.
+  const valides = points
+    .map(p => [Number(p?.[0]), Number(p?.[1])])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  if (valides.length < 3) return null;
+
+  const lats = valides.map(p => p[0]);
+  const lngs = valides.map(p => p[1]);
+  const sud = Math.min(...lats), nord = Math.max(...lats);
+  const ouest = Math.min(...lngs), est = Math.max(...lngs);
+  const centreLat = (sud + nord) / 2, centreLng = (ouest + est) / 2;
+  // Un degré de latitude fait 111 km ; un degré de longitude se resserre vers les pôles.
+  const hauteur = (nord - sud) * 110.6;
+  const largeur = (est - ouest) * 111.3 * Math.cos((centreLat * Math.PI) / 180);
+
+  // Quatre décimales, soit une dizaine de mètres : au-delà, on alourdit sans rien apprendre.
+  const arrondi = (v) => Number(v.toFixed(4));
+  // Un tracé fait à la souris peut compter des centaines de sommets. On en garde un sur n,
+  // régulièrement : la forme reste juste, la réponse reste lisible. Le compte réel est dit.
+  const pas = Math.ceil(valides.length / POINTS_MAX);
+  const gardes = pas > 1 ? valides.filter((_, i) => i % pas === 0) : valides;
+  return {
+    total: valides.length,
+    points: gardes.map(([lat, lng]) => [arrondi(lat), arrondi(lng)]),
+    centre: [arrondi(centreLat), arrondi(centreLng)],
+    cadre: [arrondi(sud), arrondi(ouest), arrondi(nord), arrondi(est)],
+    largeur: Math.round(largeur),
+    hauteur: Math.round(hauteur),
+  };
+}
+
+/** Le contour en clair : centre, étendue, cadre, puis les sommets. */
+function decrireContour(c) {
+  if (!c) return '  contour indisponible';
+  return [
+    `  centre ${c.centre[0]}, ${c.centre[1]} — environ ${c.largeur} km sur ${c.hauteur} km`,
+    `  cadre sud-ouest ${c.cadre[0]}, ${c.cadre[1]} → nord-est ${c.cadre[2]}, ${c.cadre[3]}`,
+    `  contour (${c.points.length === c.total ? `${c.total} points` : `${c.points.length} points sur ${c.total}, tracé simplifié`}) : `
+      + c.points.map(p => `${p[0]},${p[1]}`).join(' '),
+  ].join('\n');
+}
+
 const secteursEtZones = {
   nom: 'secteurs_et_zones',
   titre: 'Secteurs, zones et tournées',
-  description: 'Le découpage du terrain : les zones dessinées sur la carte, celles qui sont prioritaires et leur consigne, le nombre de fiches rattachées, et les jours de tournée avec le rythme des semaines paires ou impaires.',
+  description: 'Le découpage du terrain : le contour géographique de chaque zone dessinée sur la carte (coordonnées, centre, étendue en kilomètres), qui elle appartient, celles qui sont prioritaires et leur consigne, le nombre de fiches rattachées, et les jours de tournée avec le rythme des semaines paires ou impaires.',
   schema: {
     commercial: z.string().optional().describe('Le prénom d\'un collègue ; sinon, les vôtres.'),
     prioritaires_seulement: z.boolean().optional().describe('Ne montrer que les zones prioritaires.'),
@@ -240,12 +294,15 @@ const secteursEtZones = {
       texte: bloc(
         entete(ligne('Zones', a.commercial, a.prioritaires_seulement ? 'prioritaires' : ''), zones.rows.length, zones.rows.length),
         '',
-        zones.rows.map(z => ligne(
-          `${z.prioritaire ? '★ ' : ''}${z.nom}`,
-          prenoms.get(z.commercial_id) || '',
-          `${nbP.get(z.id) || 0} prospect(s)`,
-          `${nbC.get(z.id) || 0} client(s)`,
-          z.consigne ? `consigne : ${extrait(z.consigne, 200)}` : '',
+        zones.rows.map(z => bloc(
+          ligne(
+            `${z.prioritaire ? '★ ' : ''}${z.nom}`,
+            prenoms.get(z.commercial_id) || '',
+            `${nbP.get(z.id) || 0} prospect(s)`,
+            `${nbC.get(z.id) || 0} client(s)`,
+            z.consigne ? `consigne : ${extrait(z.consigne, 200)}` : '',
+          ),
+          decrireContour(contourDeZone(z.coordinates)),
         )).join('\n') || 'Aucune zone dessinée.',
         tournees.length ? bloc('', '## Tournées', tournees.join('\n')) : '',
         '',

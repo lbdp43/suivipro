@@ -48,12 +48,12 @@ export async function creerProspectDepuisFiche(fiche, { auteurId, commercialId, 
   await db.query(
     // L'email suit la fiche comme le reste : il était perdu ici, ce qui obligeait à le
     // ressaisir alors qu'il venait d'être partagé.
-    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, source_url)
-     VALUES ($1,$2,$3,$4,$5,$17,$6,$7,$8,$9,'',$10,$11,'partage','[]',$12,$13,$14,$14,$15,$16)`,
+    `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, source_url, siret, siren, raison_sociale)
+     VALUES ($1,$2,$3,$4,$5,$17,$6,$7,$8,$9,'',$10,$11,'partage','[]',$12,$13,$14,$14,$15,$16,$18,$19,$20)`,
     [id, String(fiche.nom_etablissement || 'Établissement partagé (à renommer)').slice(0, 200), fiche.type_etablissement || 'autre', fiche.nom_contact || '', fiche.telephone || '',
       fiche.adresse || '', fiche.ville || '', fiche.code_postal || '', fiche.departement || '',
       fiche.latitude || 0, fiche.longitude || 0, commercialId || auteurId, texteNotes, now, await scoreProspect([], 50), fiche.source_url || '',
-      fiche.email || '']
+      fiche.email || '', fiche.siret || '', fiche.siren || '', fiche.raison_sociale || '']
   );
   await rattacherEntite('prospects', id);
   await logActivity(auteurId, 'creation_prospect', `${fiche.nom_etablissement} (fiche partagée)`, 'prospect', id);

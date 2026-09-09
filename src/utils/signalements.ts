@@ -13,9 +13,25 @@ export const LIBELLES_SOURCE: Record<SourceSignalement, string> = {
   claude: 'Claude',
 };
 
-/** Une fiche Google se dit par son nom : le lien mérite mieux qu'un « Ouvrir » anonyme. */
+/**
+ * Une fiche Google se dit par son nom : le lien mérite mieux qu'un « Ouvrir » anonyme.
+ * Les hôtes sont les mêmes que côté serveur (server/partage.js) — « share.google » compris,
+ * c'est ce que donne le bouton Partager de Google Maps sur Android.
+ */
+const HOTES_GOOGLE = /(^|\.)(google\.[a-z.]+|share\.google|goo\.gl|g\.co|g\.page)$/i;
+
 export function estLienGoogle(lien: string): boolean {
-  return /(^|\.)google\.[a-z.]+\/|(^|\.)goo\.gl\/|maps\.app\.goo\.gl|business\.google\./i.test(lien || '');
+  try { return HOTES_GOOGLE.test(new URL(lien).hostname); } catch { return false; }
+}
+
+/**
+ * L'adresse d'un établissement, ouverte dans Google Maps.
+ * On cherche par le nom ET l'adresse : c'est ce qui tombe sur la bonne fiche, là où un
+ * identifiant de lieu recopié à la main ne donne « aucun résultat ».
+ */
+export function lienMapsDepuisAdresse(nom: string, ...morceaux: (string | undefined)[]): string {
+  const requete = [nom, ...morceaux].map(m => (m || '').trim()).filter(Boolean).join(' ');
+  return requete ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(requete)}` : '';
 }
 
 /** Ce qu'on affiche en titre d'un signalement : le nom lu, sinon le compte, sinon le début du texte. */

@@ -891,6 +891,14 @@ async function initDatabase(attempt = 1) {
     // disparaît de toutes les listes, mais son travail garde son auteur.
     try { await client.query('ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS actif BOOLEAN NOT NULL DEFAULT TRUE'); } catch { /* déjà là */ }
 
+    // L'identité légale d'un établissement : le SIRET existait, le SIREN et la raison
+    // sociale manquaient. Le numéro de TVA intracommunautaire, lui, ne se stocke pas — il se
+    // calcule à partir du SIREN (shared/siret.js), donc il ne peut pas être faux.
+    for (const table of ['prospects', 'clients']) {
+      try { await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS siren TEXT DEFAULT ''`); } catch { /* déjà là */ }
+      try { await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS raison_sociale TEXT DEFAULT ''`); } catch { /* déjà là */ }
+    }
+
     // La corbeille : rien n'est détruit. Supprimer un prospect ou un client range la
     // fiche ici, avec tout ce qui serait parti avec elle (appels, rendez-vous, rappels,
     // visites, commandes...), et l'administrateur peut la remettre en place. On garde la
