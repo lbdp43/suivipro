@@ -17,7 +17,7 @@ export async function logActivity(userId, action, details = '', entityType = '',
 // Helper: send a notification to all admins
 export async function notifyAdmins(type, title, message, data = {}) {
   try {
-    const admins = await db.query("SELECT id FROM commerciaux WHERE role = 'admin'");
+    const admins = await db.query("SELECT id FROM commerciaux WHERE actif AND role = 'admin'");
     const now = new Date().toISOString();
     for (const admin of admins.rows) {
       const notifId = `notif-${crypto.randomUUID()}`;

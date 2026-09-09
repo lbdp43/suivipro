@@ -11,6 +11,7 @@
 // l'identique depuis la page Administration.
 import db from '../db.js';
 import { logActivity } from './journal.js';
+import { oublierLesComptesRetires } from './auth.js';
 
 /** Ce qui part avec une fiche, et qu'il faut donc ranger avec elle. */
 const DEPENDANCES = {
@@ -150,6 +151,7 @@ export async function archiver(type, entiteId, utilisateurId) {
       // connecte plus et sort de toutes les listes (voir routes/etat.js), mais son
       // travail garde son auteur. Ses accès vivants, eux, sont retirés pour de bon.
       await cx.query('UPDATE commerciaux SET actif = FALSE WHERE id = $1', [entiteId]);
+      oublierLesComptesRetires();
       for (const dep of DEPENDANCES.membre) {
         await cx.query('SAVEPOINT ret');
         try {
@@ -219,6 +221,7 @@ export async function restaurer(ligneId, utilisateurId) {
       // Retour en poste. On ne remet volontairement ni le lien Google Agenda ni l'accès
       // Claude : ce sont des autorisations vivantes, elles se redonnent explicitement.
       await cx.query('UPDATE commerciaux SET actif = TRUE WHERE id = $1', [entree.entite_id]);
+      oublierLesComptesRetires();
       await cx.query('UPDATE corbeille SET restaure_par = $1, restaure_le = NOW() WHERE id = $2',
         [utilisateurId, ligneId]);
       await cx.query('COMMIT');

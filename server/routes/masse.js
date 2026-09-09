@@ -37,8 +37,10 @@ router.post('/masse/attribuer', authMiddleware, commercialOuAdmin, asyncHandler(
   if (prospects.length + clients.length > MAX) return validationError(res, [`${MAX} fiches au maximum`]);
   if (!commercialId) return validationError(res, ['commercial_id est requis']);
 
-  const cible = await db.query('SELECT id, prenom, nom FROM commerciaux WHERE id = $1', [commercialId]);
-  if (cible.rows.length === 0) return res.status(404).json({ error: 'Commercial introuvable' });
+  // Pas vers quelqu'un qui a été retiré : les fiches deviendraient invisibles, appartenant
+  // à un compte qui ne se connecte plus et ne figure dans aucune liste.
+  const cible = await db.query('SELECT id, prenom, nom FROM commerciaux WHERE id = $1 AND actif', [commercialId]);
+  if (cible.rows.length === 0) return res.status(404).json({ error: "Commercial introuvable ou retire de l'equipe" });
 
   const maintenant = new Date().toISOString();
   let touches = 0;

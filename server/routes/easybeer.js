@@ -352,7 +352,7 @@ async function handleEasyBeerWebhook(req, res) {
 
           // Notify admins
           try {
-            const admins = await db.query("SELECT id FROM commerciaux WHERE role = 'admin'");
+            const admins = await db.query("SELECT id FROM commerciaux WHERE actif AND role = 'admin'");
             for (const admin of admins.rows) {
               const notifId = `notif-${crypto.randomUUID()}`;
               await db.query(
@@ -641,10 +641,10 @@ async function handleEasyBeerWebhook(req, res) {
               if (nameParts.length >= 2) {
                 // Try matching prenom + nom or nom + prenom
                 const comResult = await db.query(
-                  `SELECT id FROM commerciaux WHERE
+                  `SELECT id FROM commerciaux WHERE actif AND (
                     (LOWER(prenom) = $1 AND LOWER(nom) = $2) OR (LOWER(prenom) = $2 AND LOWER(nom) = $1)
                     OR LOWER(prenom || ' ' || nom) = $3 OR LOWER(nom || ' ' || prenom) = $3
-                  LIMIT 1`,
+                  ) LIMIT 1`,
                   [nameParts[0], nameParts.slice(1).join(' '), f.commercial_name.toLowerCase().trim()]
                 );
                 if (comResult.rows.length > 0) {
@@ -658,7 +658,7 @@ async function handleEasyBeerWebhook(req, res) {
 
             // 3. Match by commercial email directly against commerciaux table
             if (!commercialId && f.commercial_email) {
-              const comResult = await db.query('SELECT id FROM commerciaux WHERE LOWER(email) = LOWER($1) LIMIT 1', [f.commercial_email]);
+              const comResult = await db.query('SELECT id FROM commerciaux WHERE actif AND LOWER(email) = LOWER($1) LIMIT 1', [f.commercial_email]);
               if (comResult.rows.length > 0) {
                 commercialId = comResult.rows[0].id;
                 console.log(`[EasyBeer Webhook] Commercial trouve par email direct: ${f.commercial_email} -> ${commercialId}`);
