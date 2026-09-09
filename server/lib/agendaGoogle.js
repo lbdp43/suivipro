@@ -167,18 +167,18 @@ async function contexteDuRdv(rdv) {
   };
 }
 
-async function memoriser(rdvId, eventId, commercialId) {
-  await db.query('UPDATE appointments SET google_event_id = $1, google_commercial_id = $2 WHERE id = $3',
-    [eventId || '', eventId ? commercialId : '', rdvId]).catch(() => {});
+async function memoriser(rdvId, eventId, commercialId, calendarId) {
+  await db.query('UPDATE appointments SET google_event_id = $1, google_commercial_id = $2, google_calendar_id = $3 WHERE id = $4',
+    [eventId || '', eventId ? commercialId : '', eventId ? (calendarId || 'primary') : '', rdvId]).catch(() => {});
 }
 
 /** Retire l'événement d'un agenda, sans bruit s'il n'y est plus. */
-async function retirerDe(commercialId, eventId) {
+async function retirerDe(commercialId, eventId, calendarId = 'primary') {
   if (!commercialId || !eventId) return;
   const agenda = await agendaDe(commercialId);
   if (!agenda) return;
   try {
-    await agenda.events.delete({ calendarId: 'primary', eventId });
+    await agenda.events.delete({ calendarId: calendarId || 'primary', eventId });
   } catch (err) {
     if (err?.code !== 404 && err?.code !== 410) {
       await oublierSiRevoque(commercialId, err);
@@ -188,44 +188,88 @@ async function retirerDe(commercialId, eventId) {
 }
 
 /**
- * Pose (ou met à jour) le rendez-vous dans l'agenda du commercial concerné.
- * Renvoie ce qui s'est passé, pour que l'écran puisse le dire.
+ * Le lien qui ouvre Google Agenda avec l'événement déjà rempli.
+ *
+ * C'est la voie la plus simple, et celle qui marche pour tout le monde : pas de compte à
+ * connecter, pas d'autorisation à donner. Google affiche sa propre fenêtre de création,
+ * où l'on choisit l'agenda de destination avant d'enregistrer.
+ *
+ * Le contenu est le même que celui écrit par l'API : une seule définition (corpsEvenement).
  */
-export async function poserRendezVous(rdvId) {
+export async function lienGoogleAgenda(rdvId) {
+  const r = await db.query('SELECT * FROM appointments WHERE id = $1', [rdvId]);
+  const rdv = r.rows[0];
+  if (!rdv) return null;
+  const e = corpsEvenement(await contexteDuRdv(rdv));
+  // Google lit « 20260914T100000/20260914T110000 » avec le fuseau donné à part.
+  const sansSeparateurs = (v) => String(v || '').replace(/[-:]/g, '');
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: e.summary,
+    dates: `${sansSeparateurs(e.start.dateTime)}/${sansSeparateurs(e.end.dateTime)}`,
+    ctz: e.start.timeZone,
+  });
+  if (e.description) p.set('details', e.description);
+  if (e.location) p.set('location', e.location);
+  return {
+    lien: `https://calendar.google.com/calendar/render?${p.toString()}`,
+    // Pour prévenir avant d'en créer un deuxième si l'API l'a déjà posé quelque part.
+    deja_pose: !!rdv.google_event_id,
+    agenda: rdv.google_calendar_id || '',
+  };
+}
+
+/**
+ * Pose (ou met à jour) le rendez-vous sur un agenda Google.
+ *
+ * Sans précision, il va sur l'agenda du commercial qui a le rendez-vous, par sa propre
+ * connexion. Avec `cible`, il va sur l'agenda demandé, écrit par la connexion de la
+ * personne qui le demande — c'est ce qui permet à Eva de poser un rendez-vous sur
+ * l'agenda d'Alban, puisqu'Alban le lui a partagé en écriture.
+ *
+ * Un rendez-vous ne vit que sur un agenda : s'il change de destination, il est retiré de
+ * l'ancien avant d'être posé sur le nouveau. Jamais de doublon.
+ */
+export async function poserRendezVous(rdvId, cible = null) {
   try {
     const r = await db.query('SELECT * FROM appointments WHERE id = $1', [rdvId]);
     const rdv = r.rows[0];
     if (!rdv) return { pose: false, raison: 'introuvable' };
 
-    // Annulé, ou passé à quelqu'un d'autre : on nettoie l'ancien agenda d'abord.
-    const ancien = rdv.google_commercial_id;
-    if (ancien && (rdv.statut === 'annule' || ancien !== rdv.commercial_id)) {
-      await retirerDe(ancien, rdv.google_event_id);
-      await memoriser(rdvId, '', '');
+    const via = cible?.viaCommercialId || rdv.commercial_id;
+    const calendrier = cible?.calendarId || 'primary';
+    const memeEndroit = rdv.google_commercial_id === via && (rdv.google_calendar_id || 'primary') === calendrier;
+
+    // Annulé, ou destination changée : on nettoie d'abord là où il était.
+    if (rdv.google_event_id && (rdv.statut === 'annule' || !memeEndroit)) {
+      await retirerDe(rdv.google_commercial_id, rdv.google_event_id, rdv.google_calendar_id);
+      await memoriser(rdvId, '', '', '');
       rdv.google_event_id = '';
     }
     if (rdv.statut === 'annule') return { pose: false, raison: 'annule' };
     if (!googleConfigure()) return { pose: false, raison: 'non_configure' };
 
-    const agenda = await agendaDe(rdv.commercial_id);
+    const agenda = await agendaDe(via);
     if (!agenda) return { pose: false, raison: 'non_connecte' };
 
     const corps = corpsEvenement(await contexteDuRdv(rdv));
     if (rdv.google_event_id) {
       try {
-        const maj = await agenda.events.update({ calendarId: 'primary', eventId: rdv.google_event_id, requestBody: corps });
-        return { pose: true, eventId: maj.data.id, mis_a_jour: true };
+        const maj = await agenda.events.update({ calendarId: calendrier, eventId: rdv.google_event_id, requestBody: corps });
+        return { pose: true, eventId: maj.data.id, calendarId: calendrier, mis_a_jour: true };
       } catch (err) {
         // L'événement a été supprimé à la main dans Google : on en repose un.
         if (err?.code !== 404 && err?.code !== 410) throw err;
       }
     }
-    const cree = await agenda.events.insert({ calendarId: 'primary', requestBody: corps });
-    await memoriser(rdvId, cree.data.id, rdv.commercial_id);
-    return { pose: true, eventId: cree.data.id, mis_a_jour: false };
+    const cree = await agenda.events.insert({ calendarId: calendrier, requestBody: corps });
+    await memoriser(rdvId, cree.data.id, via, calendrier);
+    return { pose: true, eventId: cree.data.id, calendarId: calendrier, mis_a_jour: false };
   } catch (err) {
     const rdv = (await db.query('SELECT commercial_id FROM appointments WHERE id = $1', [rdvId]).catch(() => ({ rows: [] }))).rows[0];
-    if (rdv && await oublierSiRevoque(rdv.commercial_id, err)) return { pose: false, raison: 'acces_revoque' };
+    const via = cible?.viaCommercialId || rdv?.commercial_id;
+    if (via && await oublierSiRevoque(via, err)) return { pose: false, raison: 'acces_revoque' };
+    if (err?.code === 403 || err?.code === 404) return { pose: false, raison: 'agenda_refuse', message: err.message };
     console.error('[AGENDA] Pose impossible :', err.message);
     return { pose: false, raison: 'erreur', message: err.message };
   }
@@ -234,5 +278,5 @@ export async function poserRendezVous(rdvId) {
 /** Le rendez-vous disparaît de SuiviPro : il disparaît de l'agenda. */
 export async function retirerRendezVous(rdv) {
   if (!rdv?.google_event_id) return;
-  await retirerDe(rdv.google_commercial_id || rdv.commercial_id, rdv.google_event_id);
+  await retirerDe(rdv.google_commercial_id || rdv.commercial_id, rdv.google_event_id, rdv.google_calendar_id);
 }

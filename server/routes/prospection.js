@@ -6,7 +6,7 @@ import { logActivity } from '../lib/journal.js';
 import { cloreActionsAppel } from '../lib/tunnel.js';
 import { dateLocale } from '../../shared/regles.js';
 import { validateAppointment, validateCall, validateReminder, validationError } from '../lib/validation.js';
-import { poserRendezVous, retirerRendezVous } from '../lib/agendaGoogle.js';
+import { poserRendezVous, retirerRendezVous, lienGoogleAgenda } from '../lib/agendaGoogle.js';
 
 const router = Router();
 
@@ -103,12 +103,24 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   res.json({ ok: true, agenda });
 }));
 
+// Le lien qui ouvre Google Agenda avec l'événement rempli : le chemin le plus court,
+// et le seul qui ne demande aucune connexion préalable.
+router.get('/appointments/:id/lien-agenda', authMiddleware, asyncHandler(async (req, res) => {
+  const lien = await lienGoogleAgenda(req.params.id);
+  if (!lien) return res.status(404).json({ error: 'Rendez-vous introuvable' });
+  return res.json(lien);
+}));
+
 // Renvoyer un rendez-vous dans l'agenda : pour ceux d'avant cette bascule, et pour
 // réessayer après une reconnexion.
 router.post('/appointments/:id/agenda', authMiddleware, asyncHandler(async (req, res) => {
   const r = await db.query('SELECT id FROM appointments WHERE id = $1', [req.params.id]);
   if (r.rows.length === 0) return res.status(404).json({ error: 'Rendez-vous introuvable' });
-  return res.json(await poserRendezVous(req.params.id));
+  // L'agenda visé, écrit par la connexion de celui qui demande : les agendas partagés en
+  // écriture permettent de poser le rendez-vous sur celui d'un collègue.
+  const calendarId = req.body?.calendar_id;
+  const cible = calendarId ? { calendarId, viaCommercialId: req.user.id } : null;
+  return res.json(await poserRendezVous(req.params.id, cible));
 }));
 
 router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
