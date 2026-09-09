@@ -20,7 +20,9 @@ let cacheEquipe = { le: 0, lignes: [] };
 
 export async function equipe() {
   if (Date.now() - cacheEquipe.le < 30000) return cacheEquipe.lignes;
-  const r = await db.query('SELECT id, prenom, nom, role, prospection FROM commerciaux ORDER BY prenom');
+  // Les membres retirés ne font plus partie de l'équipe : on ne les propose pas, et on ne
+  // les retrouve pas par leur prénom.
+  const r = await db.query('SELECT id, prenom, nom, role, prospection FROM commerciaux WHERE actif ORDER BY prenom');
   cacheEquipe = { le: Date.now(), lignes: r.rows };
   return r.rows;
 }

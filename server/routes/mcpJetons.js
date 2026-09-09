@@ -15,7 +15,8 @@ router.get('/mcp/jetons', authMiddleware, adminOnly, asyncHandler(async (_req, r
 router.post('/mcp/jetons', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { commercial_id: commercialId, nom } = req.body || {};
   if (!commercialId) return res.status(400).json({ error: 'Choisissez la personne à qui cet accès appartient' });
-  const personne = await db.query('SELECT prenom, nom FROM commerciaux WHERE id = $1', [commercialId]);
+  // Un accès Claude est une autorisation vivante : retiré de l'équipe, on n'en redonne pas.
+  const personne = await db.query('SELECT prenom, nom FROM commerciaux WHERE id = $1 AND actif', [commercialId]);
   if (personne.rows.length === 0) return res.status(404).json({ error: 'Personne introuvable' });
 
   const jeton = await creerJeton({ commercialId, nom, creePar: req.user.id });

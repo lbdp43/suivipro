@@ -79,8 +79,9 @@ export async function deposer({ texte = '', photos = [], commentaire = '', comme
 
   const cible = String(commercialId || '').trim();
   if (cible) {
-    const c = await db.query('SELECT id FROM commerciaux WHERE id = $1', [cible]);
-    if (c.rows.length === 0) throw new DepotRefuse('Commercial inconnu');
+    // Un membre retiré ne reçoit plus de signalement : il ne le verrait jamais.
+    const c = await db.query('SELECT id FROM commerciaux WHERE id = $1 AND actif', [cible]);
+    if (c.rows.length === 0) throw new DepotRefuse("Commercial inconnu ou retire de l'equipe");
   }
 
   const lu = await lirePartage(t);
@@ -117,7 +118,7 @@ export async function deposer({ texte = '', photos = [], commentaire = '', comme
   let destinataires = [];
   if (cible) destinataires = [cible];
   else {
-    const p = await db.query("SELECT id FROM commerciaux WHERE role = 'prospection' OR prospection = TRUE");
+    const p = await db.query("SELECT id FROM commerciaux WHERE actif AND (role = 'prospection' OR prospection = TRUE)");
     destinataires = p.rows.map(r => r.id);
   }
   destinataires = destinataires.filter(u => u !== parQui);
