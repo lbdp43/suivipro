@@ -53,7 +53,11 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [prospectId, setProspectId] = useState('');
   // Ce qu'on fera une fois le rappel de saisie lu : l'appel, ou la session, qu'on a retenu.
   const [rappelAvant, setRappelAvant] = useState<
-    { genre: 'appel'; pid: string; avecFiche: boolean } | { genre: 'session'; ids: string[]; total: number } | null
+    | { genre: 'appel'; pid: string; avecFiche: boolean }
+    | { genre: 'session'; ids: string[]; total: number }
+    | { genre: 'appelClient'; cid: string; avecFiche: boolean }
+    | { genre: 'sessionClients'; ids: string[]; precochees: string[]; total: number }
+    | null
   >(null);
   // Clients : même fenêtre, avec la fiche client entre deux appels et les tâches à cocher.
   const [genre, setGenre] = useState<'prospect' | 'client'>('prospect');
@@ -179,8 +183,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     if (!avecFiche) composer(prospect.telephone);
   };
 
-  /** Ouvre l'appel d'un client. Avec `avecFiche`, on montre d'abord sa fiche et on compose sur « Appeler ». */
-  const startCallClient = (cid: string, avecFiche = false) => {
+  /** Ouvre vraiment l'appel d'un client, une fois le rappel de saisie passé. */
+  const lancerAppelClient = (cid: string, avecFiche = false) => {
     const client = state.clients.find(c => c.id === cid);
     if (!client) return;
     setGenre('client');
@@ -242,6 +246,12 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     lancerAppel(pid, avecFiche);
   };
 
+  /** Ouvre l'appel d'un client, en rappelant d'abord la saisie du contact s'il le faut. */
+  const startCallClient = (cid: string, avecFiche = false) => {
+    if (rdvsIncomplets.length > 0) { setRappelAvant({ genre: 'appelClient', cid, avecFiche }); return; }
+    lancerAppelClient(cid, avecFiche);
+  };
+
   const lancerSession = (ids: string[], total: number) => {
     setSession({ ids, index: 0, genre: 'prospect' });
     lancerAppel(ids[0], true);
@@ -256,17 +266,22 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     lancerSession(ids, prospectIds.length);
   };
 
-  const startSessionClients = (clientIds: string[], precochees: string[] = []) => {
-    const ids = clientIds.filter(id => { const c = state.clients.find(x => x.id === id); return c && telephoneDuClient(c); });
-    if (ids.length === 0) { toast.error('Aucun client avec un numéro de téléphone dans la sélection.'); return; }
+  const lancerSessionClients = (ids: string[], precochees: string[], total: number) => {
     setTachesPrecochees(precochees);
     setSession({ ids, index: 0, genre: 'client' });
     // Les tâches précochées ne sont connues qu'après ce rendu : on les recalcule à l'ouverture.
     const client = state.clients.find(c => c.id === ids[0])!;
     const ouvertes = state.tasksClient.filter(t => t.client_id === client.id && t.statut !== 'TERMINEE').map(t => t.id);
-    startCallClient(ids[0], true);
+    lancerAppelClient(ids[0], true);
     setTachesCochees(new Set(precochees.filter(id => ouvertes.includes(id))));
-    if (ids.length < clientIds.length) toast.info(`${clientIds.length - ids.length} client(s) sans téléphone ignoré(s)`);
+    if (ids.length < total) toast.info(`${total - ids.length} client(s) sans téléphone ignoré(s)`);
+  };
+
+  const startSessionClients = (clientIds: string[], precochees: string[] = []) => {
+    const ids = clientIds.filter(id => { const c = state.clients.find(x => x.id === id); return c && telephoneDuClient(c); });
+    if (ids.length === 0) { toast.error('Aucun client avec un numéro de téléphone dans la sélection.'); return; }
+    if (rdvsIncomplets.length > 0) { setRappelAvant({ genre: 'sessionClients', ids, precochees, total: clientIds.length }); return; }
+    lancerSessionClients(ids, precochees, clientIds.length);
   };
 
   /** Passe au prospect suivant de la session, ou la termine. Renvoie true si on a enchaîné. */
@@ -281,7 +296,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setSession({ ids: session.ids, index, genre: session.genre });
     if (session.genre === 'client') {
       const ouvertes = state.tasksClient.filter(t => t.client_id === session.ids[index] && t.statut !== 'TERMINEE').map(t => t.id);
-      startCallClient(session.ids[index], true);
+      lancerAppelClient(session.ids[index], true);
       setTachesCochees(new Set(tachesPrecochees.filter(id => ouvertes.includes(id))));
     } else {
       lancerAppel(session.ids[index], true);
@@ -528,7 +543,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
             const suite = rappelAvant;
             setRappelAvant(null);
             if (suite.genre === 'appel') lancerAppel(suite.pid, suite.avecFiche);
-            else lancerSession(suite.ids, suite.total);
+            else if (suite.genre === 'session') lancerSession(suite.ids, suite.total);
+            else if (suite.genre === 'appelClient') lancerAppelClient(suite.cid, suite.avecFiche);
+            else lancerSessionClients(suite.ids, suite.precochees, suite.total);
           }}
         />
       )}
