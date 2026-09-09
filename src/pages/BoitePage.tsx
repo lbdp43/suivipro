@@ -7,7 +7,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPatch, apiDelete } from '../api/client';
 import { Client, EstablishmentType, ESTABLISHMENT_LABELS, Prospect, Signalement } from '../types';
-import { LIBELLES_SOURCE, aQualifier, concerne, grouper, titreDuSignalement } from '../utils/signalements';
+import { LIBELLES_SOURCE, aQualifier, concerne, estLienGoogle, grouper, titreDuSignalement } from '../utils/signalements';
 import { faitDeLaProspection } from '../utils/roles';
 import { formatDate } from '../utils/helpers';
 import { sansAccents } from '../../shared/normalisation';
@@ -137,7 +137,7 @@ export default function BoitePage() {
                   </p>
                 </div>
                 {s.lien && (
-                  <a href={s.lien} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline whitespace-nowrap"><ExternalLink className="w-3.5 h-3.5" /> Ouvrir</a>
+                  <a href={s.lien} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline whitespace-nowrap"><ExternalLink className="w-3.5 h-3.5" /> {estLienGoogle(s.lien) ? 'Fiche Google' : 'Ouvrir'}</a>
                 )}
               </div>
 

@@ -9,7 +9,7 @@
 // d'établissement et de refuser proprement sans lui, au lieu de ranger une fiche vide.
 import { z } from 'zod';
 import { LIBELLES_TYPE_ETABLISSEMENT } from '../../../shared/libelles.js';
-import { deposer, DepotRefuse } from '../../lib/boiteProspection.js';
+import { deposer, lirePartage, DepotRefuse } from '../../lib/boiteProspection.js';
 import { bloc, ligne, lib } from '../format.js';
 
 const TYPES = Object.keys(LIBELLES_TYPE_ETABLISSEMENT);
@@ -36,13 +36,14 @@ const deposerDansLaBoite = {
   titre: 'Déposer dans la boîte de prospection',
   description: [
     'Dépose un établissement dans la boîte de prospection, à qualifier par l\'équipe.',
-    'Ne crée pas de prospect : quelqu\'un relira et décidera. Le nom de l\'établissement est obligatoire ;',
-    'donnez tout ce que vous savez d\'autre, et rien de plus — ne devinez ni un téléphone ni une adresse.',
+    'Ne crée pas de prospect : quelqu\'un relira et décidera.',
+    'Donnez le nom de l\'établissement, ou à défaut un lien Google Maps ou Google Business : la fiche sera lue pour vous.',
+    'Donnez tout ce que vous savez d\'autre, et rien de plus — ne devinez ni un téléphone ni une adresse.',
     'Les doublons avec les prospects et les clients existants sont signalés dans la réponse.',
   ].join(' '),
   ecrit: true,
   schema: {
-    nom_etablissement: z.string().describe('Obligatoire. Le nom de l\'établissement, tel qu\'il s\'écrit.'),
+    nom_etablissement: z.string().optional().describe('Le nom de l\'établissement, tel qu\'il s\'écrit. Vous pouvez l\'omettre si vous donnez un lien Google : il sera lu depuis la fiche.'),
     ville: z.string().optional(),
     code_postal: z.string().optional(),
     adresse: z.string().optional().describe('Le numéro et la rue, sans la ville ni le code postal.'),
@@ -54,16 +55,32 @@ const deposerDansLaBoite = {
     commentaire: z.string().optional().describe('Pourquoi vous le signalez, ce qui peut aider celui qui le traitera.'),
   },
   executer: async (a, { utilisateur }) => {
-    const nom = NETTOYER(a.nom_etablissement, 200);
-    if (!nom) throw new DepotRefuse('Le nom de l\'établissement est obligatoire.');
+    const lien = NETTOYER(a.lien, 500);
+    let nom = NETTOYER(a.nom_etablissement, 200);
+    // Un lien Google seul suffit : on lit la fiche, comme le fait l'application quand
+    // quelqu'un partage depuis son téléphone. Ce qui en sort ne sert qu'à compléter —
+    // les valeurs données explicitement priment toujours.
+    let lue = {};
+    if (!nom && lien) {
+      const partage = await lirePartage(lien);
+      lue = partage.fiche || {};
+      nom = NETTOYER(lue.nom_etablissement, 200);
+    }
+    if (!nom) {
+      throw new DepotRefuse(
+        'Il faut au moins le nom de l\'établissement. Un lien Google Maps ou Google Business suffit aussi : '
+        + 'le nom sera lu depuis la fiche. Ici, ni l\'un ni l\'autre n\'a donné de nom.'
+      );
+    }
 
     const { doublons, destinataires } = await deposer({
-      texte: texteDuDepot({ ...a, nom_etablissement: nom }),
+      texte: texteDuDepot({ ...lue, ...a, nom_etablissement: nom, lien }),
       commentaire: a.commentaire,
       parQui: utilisateur.id,
       source: 'claude',
       // Ce que Claude affirme prime sur ce que la lecture du texte devinerait.
       ficheImposee: {
+        ...lue,
         nom_etablissement: nom,
         ville: NETTOYER(a.ville, 100),
         code_postal: NETTOYER(a.code_postal, 10),
