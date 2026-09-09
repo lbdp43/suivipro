@@ -48,28 +48,6 @@ export async function agendaDe(commercialId) {
 }
 
 /**
- * Les agendas sur lesquels cette personne peut écrire : le sien, et tous ceux qu'on lui a
- * partagés en écriture. C'est ce qui permet à Eva de poser un rendez-vous sur l'agenda
- * d'Alban sans qu'Alban ait connecté quoi que ce soit à SuiviPro.
- */
-export async function agendasAccessibles(commercialId) {
-  const agenda = await agendaDe(commercialId);
-  if (!agenda) return { connecte: false, agendas: [] };
-  try {
-    const r = await agenda.calendarList.list({ maxResults: 100, minAccessRole: 'writer' });
-    const agendas = (r.data.items || [])
-      .filter(c => !c.deleted && (c.accessRole === 'owner' || c.accessRole === 'writer'))
-      .map(c => ({ id: c.id, nom: c.summaryOverride || c.summary || c.id, principal: !!c.primary }))
-      .sort((a, b) => (b.principal ? 1 : 0) - (a.principal ? 1 : 0) || a.nom.localeCompare(b.nom));
-    return { connecte: true, agendas };
-  } catch (err) {
-    if (await oublierSiRevoque(commercialId, err)) return { connecte: false, agendas: [], raison: 'acces_revoque' };
-    console.error('[AGENDA] Liste des agendas impossible :', err.message);
-    return { connecte: true, agendas: [], raison: 'erreur' };
-  }
-}
-
-/**
  * Un accès qui ne vaut plus rien se nettoie : la personne devra reconnecter son agenda.
  *
  * Deux cas. L'accès révoqué ou expiré (401). Et surtout, celui qui n'a que le droit de
@@ -207,6 +185,38 @@ async function retirerDe(commercialId, eventId, calendarId = 'primary') {
       console.error('[AGENDA] Retrait impossible :', err.message);
     }
   }
+}
+
+/**
+ * Le lien qui ouvre Google Agenda avec l'événement déjà rempli.
+ *
+ * C'est la voie la plus simple, et celle qui marche pour tout le monde : pas de compte à
+ * connecter, pas d'autorisation à donner. Google affiche sa propre fenêtre de création,
+ * où l'on choisit l'agenda de destination avant d'enregistrer.
+ *
+ * Le contenu est le même que celui écrit par l'API : une seule définition (corpsEvenement).
+ */
+export async function lienGoogleAgenda(rdvId) {
+  const r = await db.query('SELECT * FROM appointments WHERE id = $1', [rdvId]);
+  const rdv = r.rows[0];
+  if (!rdv) return null;
+  const e = corpsEvenement(await contexteDuRdv(rdv));
+  // Google lit « 20260914T100000/20260914T110000 » avec le fuseau donné à part.
+  const sansSeparateurs = (v) => String(v || '').replace(/[-:]/g, '');
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: e.summary,
+    dates: `${sansSeparateurs(e.start.dateTime)}/${sansSeparateurs(e.end.dateTime)}`,
+    ctz: e.start.timeZone,
+  });
+  if (e.description) p.set('details', e.description);
+  if (e.location) p.set('location', e.location);
+  return {
+    lien: `https://calendar.google.com/calendar/render?${p.toString()}`,
+    // Pour prévenir avant d'en créer un deuxième si l'API l'a déjà posé quelque part.
+    deja_pose: !!rdv.google_event_id,
+    agenda: rdv.google_calendar_id || '',
+  };
 }
 
 /**

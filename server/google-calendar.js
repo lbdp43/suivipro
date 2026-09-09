@@ -3,7 +3,6 @@ import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto.js';
-import { agendasAccessibles } from './lib/agendaGoogle.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -82,11 +81,7 @@ router.get('/google-calendar/authorize', authMiddleware, (req, res) => {
     prompt: 'consent',
     // Écriture : SuiviPro pose les rendez-vous dans l'agenda, il ne fait plus que le lire.
     // Ce changement de droit oblige chacun à reconnecter son agenda une fois.
-    scope: [
-      'https://www.googleapis.com/auth/calendar.events',
-      // Pour savoir sur quels agendas partagés cette personne a le droit d'écrire.
-      'https://www.googleapis.com/auth/calendar.readonly',
-    ],
+    scope: ['https://www.googleapis.com/auth/calendar.events'],
     state: statePayload,
   });
 
@@ -205,14 +200,6 @@ router.post('/google-calendar/disconnect', authMiddleware, asyncHandler(async (r
 
   await db.query('DELETE FROM google_calendar_tokens WHERE commercial_id = $1', [commercialId]);
   res.json({ ok: true });
-}));
-
-// ============================================
-// Les agendas où l'on peut écrire (le sien, et ceux qu'on nous a partagés)
-// ============================================
-
-router.get('/google-calendar/agendas', authMiddleware, asyncHandler(async (req, res) => {
-  res.json(await agendasAccessibles(req.user.id));
 }));
 
 // ============================================

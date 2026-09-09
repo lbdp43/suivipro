@@ -12,7 +12,7 @@ import CompteRenduModal from '../components/CompteRenduModal';
 import { useConflitsRdv, ConflitsRdv } from '../components/ChampsRdv';
 import { Appointment, AppointmentStatus, APPOINTMENT_STATUS_LABELS, APPOINTMENT_RESULT_LABELS, Prospect, EstablishmentType, ESTABLISHMENT_LABELS, EventType, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, RecurrenceType, DAYS_OF_WEEK_LABELS } from '../types';
 import { generateId, formatDate, downloadICSBatch } from '../utils/helpers';
-import ChoixAgenda from '../components/ChoixAgenda';
+import { ouvrirDansGoogleAgenda } from '../utils/agenda';
 import { usePersistedState } from '../hooks/usePersistedState';
 import CommercialAgenda from '../components/CommercialAgenda';
 import { PucesTourneesDuJour, InfoTourneeModal } from '../components/ResumeTournees';
@@ -24,8 +24,6 @@ export default function AppointmentsPage() {
   const { state, dispatchLocal, getProspect } = useApp();
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
-  // Le rendez-vous dont on choisit l'agenda de destination.
-  const [agendaPour, setAgendaPour] = useState<Appointment | null>(null);
   const [editing, setEditing] = useState<Appointment | null>(null);
 
   // Filtres persistants
@@ -449,7 +447,7 @@ export default function AppointmentsPage() {
           {prospect && (
             <button
               className="p-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600"
-              onClick={() => setAgendaPour(rdv)}
+              onClick={async () => { const m = await ouvrirDansGoogleAgenda(rdv.id); if (m.bon) toast.success(m.texte); else toast.info(m.texte); }}
               title="Envoyer dans l'agenda Google du commercial"
             >
               <CalendarPlus className="w-3.5 h-3.5" />
@@ -935,7 +933,7 @@ export default function AppointmentsPage() {
                                     {prospect && (
                                       <button
                                         className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"
-                                        onClick={() => setAgendaPour(rdv)}
+                                        onClick={async () => { const m = await ouvrirDansGoogleAgenda(rdv.id); if (m.bon) toast.success(m.texte); else toast.info(m.texte); }}
                                         title="Exporter vers agenda"
                                       >
                                         <CalendarPlus className="w-3.5 h-3.5" />
@@ -1536,16 +1534,6 @@ export default function AppointmentsPage() {
             </div>
           </div>
         </div>
-      )}
-
-
-      {agendaPour && (
-        <ChoixAgenda
-          rdv={agendaPour}
-          prospect={agendaPour.prospect_id ? getProspect(agendaPour.prospect_id) : undefined}
-          onFini={(texte, bon) => (bon ? toast.success(texte) : toast.info(texte))}
-          onFermer={() => setAgendaPour(null)}
-        />
       )}
     </div>
   );

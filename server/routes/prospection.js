@@ -6,7 +6,7 @@ import { logActivity } from '../lib/journal.js';
 import { cloreActionsAppel } from '../lib/tunnel.js';
 import { dateLocale } from '../../shared/regles.js';
 import { validateAppointment, validateCall, validateReminder, validationError } from '../lib/validation.js';
-import { poserRendezVous, retirerRendezVous } from '../lib/agendaGoogle.js';
+import { poserRendezVous, retirerRendezVous, lienGoogleAgenda } from '../lib/agendaGoogle.js';
 
 const router = Router();
 
@@ -101,6 +101,14 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   // ou passé à un autre commercial.
   const agenda = await poserRendezVous(req.params.id);
   res.json({ ok: true, agenda });
+}));
+
+// Le lien qui ouvre Google Agenda avec l'événement rempli : le chemin le plus court,
+// et le seul qui ne demande aucune connexion préalable.
+router.get('/appointments/:id/lien-agenda', authMiddleware, asyncHandler(async (req, res) => {
+  const lien = await lienGoogleAgenda(req.params.id);
+  if (!lien) return res.status(404).json({ error: 'Rendez-vous introuvable' });
+  return res.json(lien);
 }));
 
 // Renvoyer un rendez-vous dans l'agenda : pour ceux d'avant cette bascule, et pour

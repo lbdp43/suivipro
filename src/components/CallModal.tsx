@@ -8,7 +8,7 @@ import { useToast } from './Toast';
 import { Appointment, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, ISSUE_APPEL_CLIENT_LABELS } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, formatDate } from '../utils/helpers';
-import ChoixAgenda from './ChoixAgenda';
+import { ouvrirDansGoogleAgenda } from '../utils/agenda';
 import FicheProspect from './FicheProspect';
 import FicheClient from './FicheClient';
 import { telephoneDuClient } from '../utils/sessionAppel';
@@ -53,8 +53,6 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   const [showModal, setShowModal] = useState(false);
   const [prospectId, setProspectId] = useState('');
   // Ce qu'on fera une fois le rappel de saisie lu : l'appel, ou la session, qu'on a retenu.
-  // Le rendez-vous dont on choisit l'agenda de destination.
-  const [agendaPour, setAgendaPour] = useState<Appointment | null>(null);
   const [rappelAvant, setRappelAvant] = useState<
     | { genre: 'appel'; pid: string; avecFiche: boolean }
     | { genre: 'session'; ids: string[]; total: number }
@@ -537,14 +535,6 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       {children}
 
       {/* Sur quel agenda poser le rendez-vous qui vient d'être pris. */}
-      {agendaPour && (
-        <ChoixAgenda
-          rdv={agendaPour}
-          prospect={agendaPour.prospect_id ? state.prospects.find(p => p.id === agendaPour.prospect_id) : undefined}
-          onFini={(texte, bon) => (bon ? toast.success(texte) : toast.info(texte))}
-          onFermer={() => setAgendaPour(null)}
-        />
-      )}
 
       {/* Le rappel « nom et prénom », avant l'appel, tant qu'il reste des fiches à compléter. */}
       {rappelAvant && (
@@ -1129,7 +1119,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     {createdRdv && rdvProspect && (
                       <button
                         className="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
-                        onClick={() => setAgendaPour(createdRdv)}
+                        onClick={async () => { const m = await ouvrirDansGoogleAgenda(createdRdv.id); if (m.bon) toast.success(m.texte); else toast.info(m.texte); }}
                       >
                         <CalendarPlus className="w-4 h-4" /> Ajouter à l'agenda
                       </button>
