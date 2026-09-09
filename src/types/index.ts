@@ -652,6 +652,10 @@ export interface FicheSignalee {
   code_postal?: string;
   departement?: string;
   telephone?: string;
+  /** Renseignés quand la fiche vient d'un dépôt structuré (Claude) plutôt que d'un texte lu. */
+  email?: string;
+  nom_contact?: string;
+  source_url?: string;
   latitude?: number;
   longitude?: number;
   categorie_google?: string;
@@ -660,7 +664,7 @@ export interface FicheSignalee {
   /** Fiches existantes qui ressemblent (calculé à la réception). */
   doublons?: { genre: 'prospect' | 'client'; id: string; nom: string; ville: string; etape?: string }[];
 }
-export type SourceSignalement = 'google' | 'instagram' | 'facebook' | 'tiktok' | 'linkedin' | 'site' | 'texte' | 'photo';
+export type SourceSignalement = 'google' | 'instagram' | 'facebook' | 'tiktok' | 'linkedin' | 'site' | 'texte' | 'photo' | 'claude';
 export interface PhotoSignalement { id: string; type_mime: string; taille: number }
 export type StatutSignalement = 'a_qualifier' | 'traite' | 'ignore';
 /** Un partage de l'équipe qui attend d'être qualifié dans la boîte de prospection. */

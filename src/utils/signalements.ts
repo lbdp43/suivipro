@@ -10,6 +10,7 @@ export const LIBELLES_SOURCE: Record<SourceSignalement, string> = {
   site: 'Site ou article',
   texte: 'Texte',
   photo: 'Photo',
+  claude: 'Claude',
 };
 
 /** Ce qu'on affiche en titre d'un signalement : le nom lu, sinon le compte, sinon le début du texte. */
