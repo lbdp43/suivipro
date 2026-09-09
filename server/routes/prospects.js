@@ -10,6 +10,7 @@ import { changerEtape, terminerAction } from '../lib/tunnel.js';
 import { parseProspect, parseSessionAppel } from '../lib/parse.js';
 import { scoreProspect } from '../lib/scores.js';
 import { validateProspect, validationError } from '../lib/validation.js';
+import { archiver, Introuvable } from '../lib/corbeille.js';
 
 const router = Router();
 
@@ -54,8 +55,16 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Supprimer ne détruit plus : la fiche part dans la corbeille avec ses appels, ses
+// rendez-vous, ses rappels et son historique d'étapes, et l'administrateur peut la
+// remettre en place. Le journal retient qui a fait le geste.
 router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
-  await db.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
+  try {
+    await archiver('prospect', req.params.id, req.user.id);
+  } catch (err) {
+    if (err instanceof Introuvable) return res.status(404).json({ error: 'Prospect introuvable' });
+    throw err;
+  }
   res.json({ ok: true });
 }));
 
