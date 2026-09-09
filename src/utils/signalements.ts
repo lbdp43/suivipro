@@ -49,12 +49,39 @@ export function concerne(s: Signalement, moi: Commercial, prospection: boolean):
   return s.partage_par === moi.id || s.commercial_id === moi.id || (!s.commercial_id && prospection);
 }
 
-/** Clé de regroupement : le même lien, sinon le même nom normalisé. */
-export function cleDeGroupe(s: Signalement): string {
-  if (s.lien) {
-    try { const u = new URL(s.lien); return `lien:${u.hostname}${u.pathname}`.toLowerCase().replace(/\/+$/, ''); } catch { return `lien:${s.lien}`; }
+/** Ce qui, dans l'adresse d'un lien, désigne le lieu lui-même. */
+const PARAMS_DU_LIEU = ['query', 'q', 'cid', 'place_id', 'ftid'];
+
+/**
+ * La clé d'un lien.
+ *
+ * L'hôte et le chemin ne suffisent pas : une adresse « google.com/maps/search/?query=… »
+ * porte le lieu dans sa requête, pas dans son chemin. Sans ce détail, tous les
+ * établissements cherchés de cette façon partageaient une seule et même clé et se
+ * retrouvaient dans une seule fiche.
+ */
+function cleDuLien(lien: string): string {
+  try {
+    const u = new URL(lien);
+    const chemin = `${u.hostname}${u.pathname}`.toLowerCase().replace(/\/+$/, '');
+    const cle = PARAMS_DU_LIEU.map(p => u.searchParams.get(p)).find(v => v);
+    return `lien:${chemin}${cle ? `?${sansAccents(cle)}` : ''}`;
+  } catch {
+    return `lien:${lien}`;
   }
+}
+
+/**
+ * Clé de regroupement : le même lieu, sinon le même nom normalisé.
+ *
+ * Deux fiches qui ne portent pas le même nom ne sont pas le même établissement, quel que
+ * soit leur lien — le nom entre donc aussi dans la clé. Trop regrouper est bien pire que
+ * pas assez : une fiche de groupe cache les autres, et « Créer le prospect » n'en crée
+ * qu'un seul en rattachant tout le reste à lui.
+ */
+export function cleDeGroupe(s: Signalement): string {
   const nom = sansAccents(titreDuSignalement(s));
+  if (s.lien) return `${cleDuLien(s.lien)}${nom ? `|${nom}` : ''}`;
   return nom ? `nom:${nom}` : `id:${s.id}`;
 }
 
