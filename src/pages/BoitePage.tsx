@@ -7,7 +7,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPatch, apiDelete } from '../api/client';
 import { Client, EstablishmentType, ESTABLISHMENT_LABELS, Prospect, Signalement } from '../types';
-import { LIBELLES_SOURCE, aQualifier, concerne, grouper, titreDuSignalement } from '../utils/signalements';
+import { LIBELLES_SOURCE, aQualifier, concerne, estLienGoogle, grouper, titreDuSignalement } from '../utils/signalements';
 import { faitDeLaProspection } from '../utils/roles';
 import { formatDate } from '../utils/helpers';
 import { sansAccents } from '../../shared/normalisation';
@@ -27,6 +27,8 @@ const COULEUR_SOURCE: Record<Signalement['source'], string> = {
   site: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   texte: 'bg-gray-50 text-gray-600 border-gray-200',
   photo: 'bg-amber-50 text-amber-700 border-amber-200',
+  // Ce que Claude a déposé se repère au premier coup d'œil, comme n'importe quelle source.
+  claude: 'bg-violet-50 text-violet-700 border-violet-200',
 };
 
 function hier(iso: string): string {
@@ -135,7 +137,7 @@ export default function BoitePage() {
                   </p>
                 </div>
                 {s.lien && (
-                  <a href={s.lien} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline whitespace-nowrap"><ExternalLink className="w-3.5 h-3.5" /> Ouvrir</a>
+                  <a href={s.lien} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline whitespace-nowrap"><ExternalLink className="w-3.5 h-3.5" /> {estLienGoogle(s.lien) ? 'Fiche Google' : 'Ouvrir'}</a>
                 )}
               </div>
 
@@ -218,7 +220,8 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
     adresse: s.fiche.adresse || '',
     code_postal: s.fiche.code_postal || '',
     ville: s.fiche.ville || '',
-    nom_contact: '',
+    nom_contact: s.fiche.nom_contact || '',
+    email: s.fiche.email || '',
     commercial_id: s.commercial_id || moi?.id || '',
   });
   const [enCours, setEnCours] = useState(false);
@@ -264,6 +267,10 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
               <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
               <input className={champ} value={form.telephone} onChange={e => maj('telephone', e.target.value)} />
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+            <input className={champ} type="email" value={form.email} onChange={e => maj('email', e.target.value)} placeholder="Optionnel" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Adresse</label>

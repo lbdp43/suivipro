@@ -10,7 +10,13 @@ export const LIBELLES_SOURCE: Record<SourceSignalement, string> = {
   site: 'Site ou article',
   texte: 'Texte',
   photo: 'Photo',
+  claude: 'Claude',
 };
+
+/** Une fiche Google se dit par son nom : le lien mérite mieux qu'un « Ouvrir » anonyme. */
+export function estLienGoogle(lien: string): boolean {
+  return /(^|\.)google\.[a-z.]+\/|(^|\.)goo\.gl\/|maps\.app\.goo\.gl|business\.google\./i.test(lien || '');
+}
 
 /** Ce qu'on affiche en titre d'un signalement : le nom lu, sinon le compte, sinon le début du texte. */
 export function titreDuSignalement(s: Signalement): string {
