@@ -176,7 +176,7 @@ router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) =
     await client.query('BEGIN');
 
     const CHUNK_SIZE = 50;
-    const COLS = 20;
+    const COLS = 24;
     for (let i = 0; i < prospects.length; i += CHUNK_SIZE) {
       const chunk = prospects.slice(i, i + CHUNK_SIZE);
       const values = [];
@@ -188,11 +188,12 @@ router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) =
           p.id, p.nom_etablissement, p.type_etablissement, p.nom_contact || '', p.telephone || '', p.email || '',
           p.adresse || '', p.ville || '', p.code_postal || '', p.departement || '', p.secteur || '',
           p.latitude || 0, p.longitude || 0, p.etape_pipeline || 'nouveau', JSON.stringify(p.tags || []),
-          forcedCommercialId || p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50
+          forcedCommercialId || p.commercial_id, p.notes || '', p.date_creation, p.date_modification, p.score || 50,
+          p.raison_sociale || '', p.siren || '', p.siret || '', p.tva_intracom || ''
         );
       });
       await client.query(
-        `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score)
+        `INSERT INTO prospects (id, nom_etablissement, type_etablissement, nom_contact, telephone, email, adresse, ville, code_postal, departement, secteur, latitude, longitude, etape_pipeline, tags, commercial_id, notes, date_creation, date_modification, score, raison_sociale, siren, siret, tva_intracom)
         VALUES ${values.join(',')}
         ON CONFLICT (id) DO UPDATE SET
           nom_etablissement=EXCLUDED.nom_etablissement, type_etablissement=EXCLUDED.type_etablissement,
@@ -201,7 +202,9 @@ router.post('/prospects/import', authMiddleware, asyncHandler(async (req, res) =
           departement=EXCLUDED.departement, secteur=EXCLUDED.secteur, latitude=EXCLUDED.latitude,
           longitude=EXCLUDED.longitude, etape_pipeline=EXCLUDED.etape_pipeline, tags=EXCLUDED.tags,
           commercial_id=EXCLUDED.commercial_id, notes=EXCLUDED.notes, date_creation=EXCLUDED.date_creation,
-          date_modification=EXCLUDED.date_modification, score=EXCLUDED.score`,
+          date_modification=EXCLUDED.date_modification, score=EXCLUDED.score,
+          raison_sociale=EXCLUDED.raison_sociale, siren=EXCLUDED.siren, siret=EXCLUDED.siret,
+          tva_intracom=EXCLUDED.tva_intracom`,
         params
       );
     }

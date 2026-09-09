@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { ficheDepuisPartage, extraireLien, estLienGoogle, lireLienQuelconque, analyserTexte } from '../partage.js';
 import { doublonsDeFiche, nomComplet } from './fichePartagee.js';
+import { dejaEcarte } from './ecartes.js';
 import { logActivity } from './journal.js';
 
 export const TEXTE_MAX = 4000;
@@ -67,7 +68,7 @@ export async function lirePartage(texte) {
  * le téléphone, ses valeurs priment sur ce que la lecture du texte a deviné. La recherche de
  * doublons tourne dans tous les cas — c'est elle qui évite les fiches en double.
  *
- * @returns {{ id: string, fiche: object, doublons: Array, destinataires: string[] }}
+ * @returns {{ id: string, fiche: object, doublons: Array, ecartes: object, destinataires: string[] }}
  */
 export async function deposer({ texte = '', photos = [], commentaire = '', commercialId = '', parQui, source, ficheImposee = null }) {
   const t = String(texte || '').trim().slice(0, TEXTE_MAX);
@@ -92,8 +93,10 @@ export async function deposer({ texte = '', photos = [], commentaire = '', comme
     if (valeur !== undefined && valeur !== null && valeur !== '') base[cle] = valeur;
   }
   const titre = (ficheImposee && ficheImposee.nom_etablissement) || lu.titre;
-  const doublons = await doublonsDeFiche(base);
-  const fiche = { ...base, doublons, compte: lu.compte || '' };
+  // Deux questions au même moment : est-ce qu'une fiche lui ressemble déjà, et est-ce qu'on
+  // l'avait déjà écarté ? La seconde évite de retrancher une décision déjà prise.
+  const [doublons, ecartes] = await Promise.all([doublonsDeFiche(base), dejaEcarte(base)]);
+  const fiche = { ...base, doublons, ecartes, compte: lu.compte || '' };
 
   const id = `sig-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   const now = new Date().toISOString();
@@ -124,5 +127,5 @@ export async function deposer({ texte = '', photos = [], commentaire = '', comme
   destinataires = destinataires.filter(u => u !== parQui);
   await notifier(destinataires, `Nouveau signalement de ${qui}`, resume, { signalement_id: id });
 
-  return { id, fiche, doublons, destinataires };
+  return { id, fiche, doublons, ecartes, destinataires };
 }

@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Inbox, Share2, ExternalLink, MapPin, Phone, Building2, Landmark, AlertTriangle, Check, X, Link2, RotateCcw, Search, MessageSquare, UserPlus, Loader2, Trash2,
+  Inbox, Share2, ExternalLink, MapPin, Phone, Building2, Landmark, AlertTriangle, Check, X, Link2, RotateCcw, Search, MessageSquare, UserPlus, Loader2, Trash2, Undo2, CheckSquare, Square,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPatch, apiDelete } from '../api/client';
 import { Client, EstablishmentType, ESTABLISHMENT_LABELS, Prospect, Signalement } from '../types';
 import { LIBELLES_SOURCE, aQualifier, concerne, estLienGoogle, grouper, lienMapsDepuisAdresse, titreDuSignalement } from '../utils/signalements';
+import SelectionBoite, { ResultatMasse } from '../components/SelectionBoite';
+import { LIBELLES_MOTIF_ECART } from '../../shared/libelles';
 import { faitDeLaProspection } from '../utils/roles';
 import { formatDate } from '../utils/helpers';
 import ChampsIdentite from '../components/ChampsIdentite';
@@ -52,6 +54,9 @@ export default function BoitePage() {
   const [creation, setCreation] = useState<Signalement[] | null>(null);
   const [rattachement, setRattachement] = useState<Signalement[] | null>(null);
   const [occupe, setOccupe] = useState<string>('');
+  // La sélection porte sur des signalements, pas sur des groupes : cocher une carte coche
+  // tous les partages du même établissement, et le serveur les traite un par un.
+  const [selection, setSelection] = useState<Set<string> | null>(null);
   const prospection = faitDeLaProspection(moi);
 
   const nomDe = (id: string) => { const c = state.commerciaux.find(x => x.id === id); return c ? c.prenom : id || '—'; };
@@ -61,6 +66,33 @@ export default function BoitePage() {
     return moi && perimetre === 'moi' ? liste.filter(s => concerne(s, moi, prospection)) : liste;
   }, [onglet, enAttente, state.signalements, perimetre, moi, prospection]);
   const groupes = useMemo(() => grouper(visibles), [visibles]);
+  const enSelection = selection !== null;
+  const idsSelection = useMemo(() => (selection ? [...selection] : []), [selection]);
+  const nomsSelection = useMemo(() => {
+    const parId = new Map(visibles.map(s => [s.id, titreDuSignalement(s)]));
+    return idsSelection.map(id => parId.get(id) || id);
+  }, [idsSelection, visibles]);
+
+  const basculerGroupe = (groupe: Signalement[]) => setSelection(avant => {
+    const suivant = new Set(avant || []);
+    const dedans = groupe.every(s => suivant.has(s.id));
+    for (const s of groupe) { if (dedans) suivant.delete(s.id); else suivant.add(s.id); }
+    return suivant;
+  });
+
+  // Un lot traité : les signalements reviennent modifiés, les supprimés disparaissent, et
+  // les prospects créés rejoignent le pipeline sans attendre le prochain rafraîchissement.
+  const appliquerLot = (r: ResultatMasse) => {
+    for (const s of r.signalements as Signalement[]) dispatchLocal({ type: 'UPSERT_SIGNALEMENT', payload: s });
+    for (const id of r.supprimes) dispatchLocal({ type: 'DELETE_SIGNALEMENT', payload: id });
+    for (const p of r.prospects as Prospect[]) dispatchLocal({ type: 'ADD_PROSPECT', payload: p });
+    // Ce qui a été refusé reste coché : c'est ce qu'il reste à regarder.
+    const refuses = new Set(r.echecs.map(e => e.id));
+    setSelection(refuses.size > 0 ? refuses : new Set());
+    if (r.echecs.length > 0) {
+      toast.error(`${r.echecs.length} fiche(s) non traitée(s) : ${r.echecs.slice(0, 3).map(e => `${e.nom || e.id} (${e.raison})`).join(', ')}`);
+    }
+  };
 
   const appliquer = async (groupe: Signalement[], action: 'ignorer' | 'rouvrir') => {
     setOccupe(groupe[0].id);
@@ -76,7 +108,10 @@ export default function BoitePage() {
   };
 
   const supprimer = async (s: Signalement) => {
-    if (!window.confirm('Supprimer ce signalement ?')) return;
+    const message = `Supprimer « ${titreDuSignalement(s)} » ?\n\n`
+      + 'La suppression est définitive : ce signalement ne se rouvre pas. SuiviPro garde seulement son nom, '
+      + 'pour vous prévenir si le même établissement revient un jour dans la boîte.';
+    if (!window.confirm(message)) return;
     try {
       await apiDelete(`/signalements/${s.id}`);
       dispatchLocal({ type: 'DELETE_SIGNALEMENT', payload: s.id });
@@ -106,6 +141,15 @@ export default function BoitePage() {
           <button type="button" onClick={() => setPerimetre('moi')} className={`px-2.5 py-1 rounded-md ${perimetre === 'moi' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Pour moi</button>
           <button type="button" onClick={() => setPerimetre('tous')} className={`px-2.5 py-1 rounded-md ${perimetre === 'tous' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tous</button>
         </div>
+        {groupes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelection(enSelection ? null : new Set())}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-medium ${enSelection ? 'bg-brewery-50 border-brewery-200 text-brewery-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+            <CheckSquare className="w-3.5 h-3.5" /> Sélectionner
+          </button>
+        )}
       </div>
 
       {groupes.length === 0 && (
@@ -120,14 +164,28 @@ export default function BoitePage() {
           const autres = groupe.slice(1);
           const fiche = s.fiche;
           const doublons = fiche.doublons || [];
+          const ecartes = fiche.ecartes;
           const adresse = [fiche.adresse, [fiche.code_postal, fiche.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
           const prospectLie = s.prospect_id ? state.prospects.find(p => p.id === s.prospect_id) : undefined;
           const clientLie = s.client_id ? state.clients.find(c => c.id === s.client_id) : undefined;
           const enCours = occupe === s.id;
+          const coche = groupe.every(x => selection?.has(x.id));
           return (
-            <div key={s.id} className={`bg-white rounded-xl border p-4 space-y-3 ${s.statut === 'ignore' ? 'border-gray-200 opacity-70' : s.statut === 'traite' ? 'border-green-200' : 'border-gray-200'}`}>
+            <div key={s.id} className={`bg-white rounded-xl border p-4 space-y-3 ${coche ? 'border-brewery-300 ring-1 ring-brewery-200' : s.statut === 'ignore' ? 'border-gray-200 opacity-70' : s.statut === 'traite' ? 'border-green-200' : 'border-gray-200'}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex items-start gap-2">
+                  {enSelection && (
+                    <button
+                      type="button"
+                      onClick={() => basculerGroupe(groupe)}
+                      aria-pressed={coche}
+                      aria-label={coche ? `Décocher ${titreDuSignalement(s)}` : `Cocher ${titreDuSignalement(s)}`}
+                      className="mt-0.5 flex-shrink-0 text-gray-400 hover:text-brewery-600"
+                    >
+                      {coche ? <CheckSquare className="w-4 h-4 text-brewery-600" /> : <Square className="w-4 h-4" />}
+                    </button>
+                  )}
+                  <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`text-[11px] px-1.5 py-0.5 rounded-full border ${COULEUR_SOURCE[s.source]}`}>{LIBELLES_SOURCE[s.source]}</span>
                     <h2 className="font-semibold text-gray-900 truncate">{titreDuSignalement(s)}</h2>
@@ -137,6 +195,7 @@ export default function BoitePage() {
                   <p className="text-xs text-gray-500 mt-1">
                     Partagé par <span className="font-medium text-gray-700">{nomDe(s.partage_par)}</span> {hier(s.created_at)} · pour <span className="font-medium text-gray-700">{s.commercial_id ? nomDe(s.commercial_id) : 'la prospection'}</span>
                   </p>
+                  </div>
                 </div>
                 {s.lien && (
                   <a href={s.lien} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline whitespace-nowrap"><ExternalLink className="w-3.5 h-3.5" /> {estLienGoogle(s.lien) ? 'Fiche Google' : 'Ouvrir'}</a>
@@ -206,6 +265,25 @@ export default function BoitePage() {
                 <p className="text-xs text-gray-500">Aussi partagé par {autres.map(a => `${nomDe(a.partage_par)} ${hier(a.created_at)}`).join(', ')}.</p>
               )}
 
+              {/* Une décision déjà prise sur le même établissement. Elle est calculée au dépôt
+                  et gelée dans la fiche : c'est le moment où elle sert, quand l'établissement
+                  revient. On avertit, on ne tranche pas à la place de celui qui lit. */}
+              {s.statut === 'a_qualifier' && !!ecartes?.total && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-2.5 text-sm text-orange-900">
+                  <p className="font-medium flex items-center gap-2 text-xs"><Undo2 className="w-3.5 h-3.5" /> Déjà écarté par le passé</p>
+                  <ul className="mt-1 space-y-0.5 text-xs">
+                    {ecartes.lignes.map((e, i) => (
+                      <li key={`${e.nom}-${e.le}-${i}`}>
+                        {e.nom}{e.ville ? ` · ${e.ville}` : ''} — {LIBELLES_MOTIF_ECART[e.motif] || e.motif} par {nomDe(e.par_qui)} {hier(e.le)}
+                      </li>
+                    ))}
+                    {ecartes.total > ecartes.lignes.length && (
+                      <li className="text-orange-700">… et {ecartes.total - ecartes.lignes.length} autre(s)</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
               {s.statut === 'a_qualifier' && doublons.length > 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-sm text-amber-900">
                   <p className="font-medium flex items-center gap-2 text-xs"><AlertTriangle className="w-3.5 h-3.5" /> Ressemble à une fiche existante</p>
@@ -225,8 +303,10 @@ export default function BoitePage() {
                   <button type="button" disabled={enCours} onClick={() => setCreation(groupe)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700 disabled:opacity-50"><UserPlus className="w-3.5 h-3.5" /> Créer le prospect</button>
                   <button type="button" disabled={enCours} onClick={() => setRattachement(groupe)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"><Link2 className="w-3.5 h-3.5" /> Rattacher à une fiche</button>
                   <button type="button" disabled={enCours} onClick={() => appliquer(groupe, 'ignorer')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-500 text-xs font-medium hover:bg-gray-50 disabled:opacity-50">{enCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />} Ignorer</button>
-                  {(s.partage_par === moi.id || moi.role === 'admin') && groupe.length === 1 && (
-                    <button type="button" onClick={() => supprimer(s)} className="ml-auto flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-400 hover:text-red-600 text-xs" title="Supprimer ce signalement"><Trash2 className="w-3.5 h-3.5" /></button>
+                  {/* Supprimer détruit la ligne pour de bon, quand « Ignorer » se rouvre :
+                      c'est pour cela que le geste appartient à l'administrateur seul. */}
+                  {moi.role === 'admin' && groupe.length === 1 && (
+                    <button type="button" onClick={() => supprimer(s)} className="ml-auto flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-400 hover:text-red-600 text-xs" title="Supprimer définitivement ce signalement"><Trash2 className="w-3.5 h-3.5" /></button>
                   )}
                 </div>
               ) : (
@@ -242,6 +322,19 @@ export default function BoitePage() {
           );
         })}
       </div>
+
+      {enSelection && (
+        <SelectionBoite
+          ids={idsSelection}
+          noms={nomsSelection}
+          traites={onglet === 'traites'}
+          admin={moi.role === 'admin'}
+          onTout={() => setSelection(new Set(visibles.map(x => x.id)))}
+          onVider={() => setSelection(new Set())}
+          onFini={appliquerLot}
+          onFermer={() => setSelection(null)}
+        />
+      )}
 
       {creation && <CreationModal groupe={creation} onClose={() => setCreation(null)} />}
       {rattachement && <RattachementModal groupe={rattachement} onClose={() => setRattachement(null)} />}

@@ -677,6 +677,17 @@ export interface FicheSignalee {
   compte?: string;
   /** Fiches existantes qui ressemblent (calculé à la réception). */
   doublons?: { genre: 'prospect' | 'client'; id: string; nom: string; ville: string; etape?: string }[];
+  /** Ce qu'on avait déjà écarté et qui lui ressemble (calculé à la réception). */
+  ecartes?: { total: number; lignes: EcartPrecedent[] };
+}
+
+/** Une décision déjà prise sur le même établissement : ignoré, supprimé, mis à la corbeille. */
+export interface EcartPrecedent {
+  nom: string;
+  ville: string;
+  motif: string;
+  par_qui: string;
+  le: string;
 }
 export type SourceSignalement = 'google' | 'instagram' | 'facebook' | 'tiktok' | 'linkedin' | 'site' | 'texte' | 'photo' | 'claude';
 export interface PhotoSignalement { id: string; type_mime: string; taille: number }

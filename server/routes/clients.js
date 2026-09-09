@@ -288,15 +288,20 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
   try {
     await dbClient.query('BEGIN');
 
+    // L'identité légale suit la fiche : un prospect qui portait sa raison sociale, son
+    // SIRET et son numéro de TVA devenait un client au bloc identité vide, et il fallait
+    // tout retrouver une deuxième fois.
     await dbClient.query(
       `INSERT INTO clients (id, nom, ville, adresse, code_postal, telephone, email, contact,
        type_client, statut, commercial_id, next_visit, notes, custom_recurrence,
-       latitude, longitude, tournee, prospect_id, date_creation, date_modification)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+       latitude, longitude, tournee, prospect_id, date_creation, date_modification,
+       raison_sociale, siren, siret, tva_intracom)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
       [clientId, p.nom_etablissement, p.ville || '', p.adresse || '', p.code_postal || '',
        p.telephone || '', p.email || '', p.nom_contact || '', clientType, 'ACTIF',
        p.commercial_id, nextVisit || null, p.notes || '', custom_recurrence || null,
-       p.latitude || 0, p.longitude || 0, tournee || '', prospect_id, now, now]
+       p.latitude || 0, p.longitude || 0, tournee || '', prospect_id, now, now,
+       p.raison_sociale || '', p.siren || '', p.siret || '', p.tva_intracom || '']
     );
 
     // Le prospect passe en « Gagné » (historique et date d'entrée compris).

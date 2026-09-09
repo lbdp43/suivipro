@@ -13,3 +13,4 @@ export declare const LIBELLES_PRIORITE_TACHE: Record<string, string>;
 export declare const LIBELLES_ROLE: Record<string, string>;
 export declare const LIBELLES_SOURCE_SIGNALEMENT: Record<string, string>;
 export declare const LIBELLES_STATUT_SIGNALEMENT: Record<string, string>;
+export declare const LIBELLES_MOTIF_ECART: Record<string, string>;

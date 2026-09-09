@@ -11,6 +11,7 @@
 // l'identique depuis la page Administration.
 import db from '../db.js';
 import { logActivity } from './journal.js';
+import { noter, oublier } from './ecartes.js';
 import { oublierLesComptesRetires } from './auth.js';
 
 /** Ce qui part avec une fiche, et qu'il faut donc ranger avec elle. */
@@ -164,6 +165,22 @@ export async function archiver(type, entiteId, utilisateurId) {
     }
     await cx.query('COMMIT');
 
+    // Une fiche rangée à la corbeille laisse une trace d'identité : si le même
+    // établissement revient un jour dans la boîte de prospection, on saura le dire au lieu
+    // de laisser recréer ce qu'on venait d'écarter. Un membre n'en laisse pas : ce n'est
+    // pas un établissement.
+    if (type !== 'membre') {
+      await noter({
+        origine: type,
+        origineId: entiteId,
+        nom: nomDe(type, ligne),
+        ville: ligne.ville || '',
+        telephone: ligne.telephone || '',
+        motif: `${type}_corbeille`,
+        parQui: utilisateurId,
+      });
+    }
+
     await logActivity(
       utilisateurId,
       `${type}_supprime`,
@@ -255,6 +272,9 @@ export async function restaurer(ligneId, utilisateurId) {
     await cx.query('UPDATE corbeille SET restaure_par = $1, restaure_le = NOW() WHERE id = $2',
       [utilisateurId, ligneId]);
     await cx.query('COMMIT');
+
+    // La fiche est de retour : l'avertissement qui la disait écartée n'a plus lieu d'être.
+    await oublier(entree.type, entree.entite_id);
 
     await logActivity(
       utilisateurId,
