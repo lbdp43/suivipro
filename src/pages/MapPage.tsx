@@ -17,6 +17,7 @@ import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentTy
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { formatDate } from '../utils/helpers';
+import { estCommercial } from '../utils/roles';
 import { ouvrirDansGoogleAgenda } from '../utils/agenda';
 import FilterPresets from '../components/FilterPresets';
 
@@ -101,7 +102,10 @@ export default function MapPage() {
     try { dispatchLocal({ type: 'SET_ZONES', payload: await apiGet<CommercialZone[]>('/commercial-zones') }); }
     catch (err) { console.error('Erreur chargement zones:', err); }
   };
-  const peutModifierZone = (z: CommercialZone) => admin || z.commercial_id === moi?.id;
+  // Les zones sont un découpage de territoire : les commerciaux et l'administrateur les
+  // définissent, la prospection les lit — sa consigne reste visible, en lecture seule.
+  const peutDefinirZones = estCommercial(moi);
+  const peutModifierZone = (z: CommercialZone) => peutDefinirZones && (admin || z.commercial_id === moi?.id);
   const zonesModifiables = useMemo(() => zones.filter(z => admin ? z.commercial_id === dessinPour : z.commercial_id === moi?.id), [zones, admin, dessinPour, moi?.id]);
   const appelesAujourdhui = useMemo(() => sessionDuJour(state, moi?.id).appeles, [state, moi?.id]);
   const enregistrerPriorite = async (z: CommercialZone, prioritaire: boolean, consigne: string) => {
@@ -402,8 +406,8 @@ export default function MapPage() {
             <Layers className="w-4 h-4" />
             <span className="hidden sm:inline">Secteurs</span>
           </button>
-          {/* Dessiner une zone directement sur la carte */}
-          <button
+          {/* Dessiner une zone directement sur la carte — réservé aux commerciaux et à l'admin. */}
+          {peutDefinirZones && <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
               modeDessin ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'
             }`}
@@ -412,7 +416,7 @@ export default function MapPage() {
           >
             <Pencil className="w-4 h-4" />
             <span className="hidden sm:inline">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
-          </button>
+          </button>}
           {/* Bouton RDV */}
           <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
