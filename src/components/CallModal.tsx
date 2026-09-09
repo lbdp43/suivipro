@@ -534,8 +534,6 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     <CallModalContext.Provider value={{ startCall, startSession, startCallClient, startSessionClients, session }}>
       {children}
 
-      {/* Sur quel agenda poser le rendez-vous qui vient d'être pris. */}
-
       {/* Le rappel « nom et prénom », avant l'appel, tant qu'il reste des fiches à compléter. */}
       {rappelAvant && (
         <RappelContactRdv
