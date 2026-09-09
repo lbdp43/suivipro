@@ -11,7 +11,10 @@ import { z } from 'zod';
 import { LIBELLES_TYPE_ETABLISSEMENT } from '../../../shared/libelles.js';
 import { deposer, lirePartage, DepotRefuse } from '../../lib/boiteProspection.js';
 import { bloc, ligne, lib } from '../format.js';
-import { chiffres, sirenValide, siretValide, sirenDeSiret, tvaIntracom, formaterSiren, formaterSiret } from '../../../shared/siret.js';
+import {
+  chiffres, sirenValide, siretValide, sirenDeSiret, tvaIntracom, formaterSiren, formaterSiret,
+  normaliserTva, tvaPlausible, sirenDeTva,
+} from '../../../shared/siret.js';
 
 const TYPES = Object.keys(LIBELLES_TYPE_ETABLISSEMENT);
 
@@ -63,6 +66,7 @@ const deposerDansLaBoite = {
     'Ne crée pas de prospect : quelqu\'un relira et décidera.',
     'Donnez le nom de l\'établissement, ou à défaut un lien Google Maps ou Google Business : la fiche sera lue pour vous.',
     'Donnez tout ce que vous savez d\'autre, et rien de plus — ne devinez ni un téléphone ni une adresse.',
+    'L\'identité légale (raison sociale, SIRET, numéro de TVA) est facultative mais précieuse : elle suit la fiche jusqu\'au prospect créé depuis la boîte. Appelez « contexte » avec le sujet « identite » pour savoir ce que chaque numéro désigne.',
     'Les doublons avec les prospects et les clients existants sont signalés dans la réponse.',
   ].join(' '),
   ecrit: true,
@@ -77,9 +81,10 @@ const deposerDansLaBoite = {
     type_etablissement: z.enum(TYPES).optional().describe(`Un de : ${TYPES.join(', ')}. « autre » par défaut.`),
     lien: z.string().optional().describe('Google Maps, site, Instagram, Facebook : l\'adresse d\'où vient l\'information. Donnez le lien tel que la personne vous l\'a transmis (« share.google/… », « maps.app.goo.gl/… », une adresse de site). N\'en fabriquez jamais un à partir d\'un identifiant de lieu : il ne mènerait nulle part.'),
     commentaire: z.string().optional().describe('Pourquoi vous le signalez, ce qui peut aider celui qui le traitera.'),
-    raison_sociale: z.string().optional().describe('Facultatif. Le nom légal de la société, quand il diffère de l\'enseigne.'),
-    siret: z.string().optional().describe('Facultatif, mais précieux. Les 14 chiffres de l\'établissement. La clé est vérifiée : un numéro faux est écarté, ne devinez pas.'),
-    siren: z.string().optional().describe('Facultatif. Les 9 chiffres de l\'entreprise. Inutile si vous donnez le SIRET, il s\'en déduit. Le numéro de TVA intracommunautaire se calcule aussi tout seul : ne le donnez pas.'),
+    raison_sociale: z.string().optional().describe('Facultatif. Le nom légal de la société, quand il diffère de l\'enseigne : « SARL Les Trois Chênes » derrière « Le Mulligan ». Si c\'est le même nom, ne le répétez pas.'),
+    siret: z.string().optional().describe('Facultatif, mais précieux. Les 14 chiffres de l\'établissement — celui de l\'adresse visitée, pas celui du siège. La clé est vérifiée : un numéro faux est écarté. Ne le devinez pas et ne le fabriquez pas en ajoutant « 00001 » à un SIREN.'),
+    siren: z.string().optional().describe('Facultatif. Les 9 chiffres de l\'entreprise. Inutile si vous donnez le SIRET : il s\'en déduit tout seul. La clé est vérifiée ici aussi.'),
+    tva_intracom: z.string().optional().describe('Facultatif, et rarement utile : le numéro français se calcule depuis le SIREN, il n\'est donc pas à donner. Ne le renseignez que pour une société étrangère (« BE… », « IT… »), dont le numéro ne se déduit d\'aucun SIREN.'),
   },
   executer: async (a, { utilisateur }) => {
     let lien = NETTOYER(a.lien, 500);
@@ -110,10 +115,20 @@ const deposerDansLaBoite = {
     const siretDonne = chiffres(a.siret);
     const sirenDonne = chiffres(a.siren);
     const siret = siretValide(siretDonne) ? siretDonne : '';
-    const siren = siret ? sirenDeSiret(siret) : (sirenValide(sirenDonne) ? sirenDonne : '');
+    // Un numéro de TVA français porte son SIREN et sa propre clé : quand on n'a rien
+    // d'autre, il vaut un SIREN de plus — mais seulement s'il se recalcule.
+    const tvaDonnee = normaliserTva(a.tva_intracom);
+    const siren = siret ? sirenDeSiret(siret) : (sirenValide(sirenDonne) ? sirenDonne : sirenDeTva(tvaDonnee));
+
+    // Le numéro français se calcule : on ne stocke que ce qui ne se calcule pas, c'est-à-dire
+    // celui d'une société étrangère. C'est la règle des fiches, gardée à l'identique ici.
+    const calculee = tvaIntracom(siren);
+    const etrangere = !calculee && tvaPlausible(tvaDonnee) && !tvaDonnee.startsWith('FR') ? tvaDonnee : '';
+    const tvaRetenue = calculee || etrangere;
     const numerosEcartes = [
       siretDonne && !siret ? `SIRET ${siretDonne}` : '',
       sirenDonne && !siren ? `SIREN ${sirenDonne}` : '',
+      tvaDonnee && !tvaRetenue ? `TVA ${tvaDonnee}` : '',
     ].filter(Boolean);
 
     const { doublons, destinataires } = await deposer({
@@ -138,6 +153,7 @@ const deposerDansLaBoite = {
         raison_sociale: NETTOYER(a.raison_sociale, 200),
         siret,
         siren,
+        tva_intracom: etrangere,
       },
     });
 
@@ -152,13 +168,17 @@ const deposerDansLaBoite = {
             + doublons.map(d => `- ${d.genre} : ${d.nom}${d.ville ? ` (${d.ville})` : ''}`).join('\n')
             + '\nCelui qui traitera le signalement pourra rattacher plutôt que créer un doublon.'
           : 'Aucune fiche existante ne lui ressemble.',
-        siret || siren
+        siret || siren || tvaRetenue
           ? ligne(
               'Identité',
               NETTOYER(a.raison_sociale, 200),
-              siret ? `SIRET ${formaterSiret(siret)}` : `SIREN ${formaterSiren(siren)}`,
-              tvaIntracom(siren) ? `TVA ${tvaIntracom(siren)}` : '',
+              siret ? `SIRET ${formaterSiret(siret)}` : (siren ? `SIREN ${formaterSiren(siren)}` : ''),
+              tvaRetenue ? `TVA ${tvaRetenue}` : '',
             )
+          : '',
+        tvaDonnee && tvaRetenue && tvaDonnee !== tvaRetenue
+          ? `Le numéro de TVA donné (${tvaDonnee}) ne correspond pas au SIREN retenu : c'est ${tvaRetenue} qui a été gardé, `
+            + 'puisqu\'il se calcule. Vérifiez qu\'il s\'agit bien de la même société.'
           : '',
         numerosEcartes.length
           ? `Numéro écarté, la clé de contrôle ne tombe pas juste : ${numerosEcartes.join(', ')}. `

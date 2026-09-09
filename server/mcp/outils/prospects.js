@@ -17,7 +17,7 @@ import { clauseTexte, sansAccentsSql } from '../sql.js';
 import { journaliserContact } from '../journal.js';
 import {
   LIMITE_DEFAUT, LIMITE_MAX, MOIS_DEFAUT, MOIS_MAX, borner, dateFr, ilYaDesMois,
-  ligne, bloc, entete, extrait, lib, nommer, nombreDeJours,
+  ligne, bloc, entete, extrait, lib, nommer, nombreDeJours, identiteLegale,
 } from '../format.js';
 
 async function prenomsEquipe() {
@@ -175,7 +175,7 @@ const chercherProspect = {
 const ficheProspect = {
   nom: 'fiche_prospect',
   titre: 'La fiche et l\'histoire d\'un prospect',
-  description: 'Tout ce qui s\'est passé avec un prospect : étape actuelle et depuis quand, score, étiquettes, prochaine action, puis la frise — appels et leur résultat, mails envoyés, rendez-vous et comptes rendus, raison de perte.',
+  description: 'Tout ce qui s\'est passé avec un prospect : étape actuelle et depuis quand, score, étiquettes, identité légale (raison sociale, SIRET, numéro de TVA) quand elle est connue, prochaine action, puis la frise — appels et leur résultat, mails envoyés, rendez-vous et comptes rendus, raison de perte.',
   schema: {
     prospect: z.string().describe('Le nom du prospect (ou son identifiant).'),
     commercial: z.string().optional().describe('Le prénom du commercial qui suit ce prospect, quand ce n\'est pas vous.'),
@@ -238,6 +238,7 @@ const ficheProspect = {
         ),
         ligne(p.adresse, p.code_postal, p.ville, p.secteur ? `secteur ${p.secteur}` : ''),
         ligne(p.nom_contact && `contact ${p.nom_contact}`, p.telephone, p.email),
+        ligne('Identité légale', identiteLegale(p) || 'non renseignée'),
         p.raison_perte ? `Raison de perte : ${lib(RAISONS_PERTE, p.raison_perte)}` : '',
         p.source_url ? `Origine : ${extrait(p.source_url, 120)}` : '',
         ligne('Prochaine action', texteProchaineAction(p, rappels.rows, rdvs.rows)),
@@ -375,10 +376,16 @@ const prospectsQuiStagnent = {
   },
 };
 
+/** La fiche d'un signalement est rangée en JSON : une fiche illisible ne doit rien casser. */
+function lireFiche(valeur) {
+  if (valeur && typeof valeur === 'object') return valeur;
+  try { return JSON.parse(valeur || '{}') || {}; } catch { return {}; }
+}
+
 const boiteProspection = {
   nom: 'boite_prospection',
   titre: 'La boîte de prospection',
-  description: 'Ce que l\'équipe a partagé depuis son téléphone et qui attend d\'être qualifié : lien Google Maps, Instagram, article, photo. Les photos ne sont pas transmises — seul leur nombre est indiqué.',
+  description: 'Ce que l\'équipe a partagé depuis son téléphone, et ce que vous y avez déposé, qui attend d\'être qualifié : lien Google Maps, Instagram, article, photo. L\'identité légale est indiquée quand elle est connue — c\'est ainsi qu\'on voit ce qu\'il reste à chercher. Les photos ne sont pas transmises, seul leur nombre est indiqué.',
   schema: {
     statut: z.enum(['a_qualifier', 'qualifie', 'ecarte']).optional().describe('« a_qualifier » par défaut.'),
     pour: z.string().optional().describe('Le prénom du commercial destinataire.'),
@@ -415,6 +422,7 @@ const boiteProspection = {
           dateFr(s.created_at),
           lib(LIBELLES_SOURCE_SIGNALEMENT, s.source),
           s.titre || extrait(s.texte, 80) || 'sans titre',
+          identiteLegale(lireFiche(s.fiche)),
           s.commentaire ? `« ${extrait(s.commentaire, 160)} »` : '',
           `partagé par ${prenoms.get(s.partage_par) || '?'}`,
           s.commercial_id ? `pour ${prenoms.get(s.commercial_id) || s.commercial_id}` : 'sans destinataire',

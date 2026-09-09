@@ -5,8 +5,9 @@
 // de l'écrire dans une fiche — un SIRET faux est pire qu'un SIRET absent, parce qu'il a
 // l'air vrai.
 //
-// Le numéro de TVA intracommunautaire, lui, ne se stocke pas : c'est une fonction du SIREN.
-// Le calculer, c'est ne jamais l'avoir faux.
+// Le numéro de TVA intracommunautaire français, lui, ne se stocke pas : c'est une fonction
+// du SIREN. Le calculer, c'est ne jamais l'avoir faux. On ne garde un numéro saisi que
+// lorsqu'il ne se calcule pas — celui d'une société étrangère.
 
 /** Les chiffres seuls : on accepte « 123 456 789 » ou « 123-456-789 ». */
 export function chiffres(valeur) {
@@ -73,4 +74,28 @@ export function formaterSiren(valeur) {
 export function formaterSiret(valeur) {
   const n = chiffres(valeur);
   return n.length === 14 ? `${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6, 9)} ${n.slice(9)}` : n;
+}
+
+/** Un numéro de TVA écrit sans espaces ni points, en majuscules : « fr 03 552 081 317 » → « FR03552081317 ». */
+export function normaliserTva(valeur) {
+  return String(valeur ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/** La forme d'un numéro intracommunautaire : deux lettres de pays, puis 2 à 13 caractères. */
+export function tvaPlausible(valeur) {
+  return /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(normaliserTva(valeur));
+}
+
+/**
+ * Le SIREN caché dans un numéro de TVA français — utile quand on tient le numéro de TVA
+ * mais pas le SIREN. On ne le rend que si la clé se recalcule : un numéro qui ne retombe
+ * pas sur lui-même est faux, et en tirer un SIREN reviendrait à l'inventer.
+ * (Les vieux numéros dont la clé porte des lettres ne sont pas reconnus : on préfère ne
+ * rien rendre à rendre un SIREN douteux.)
+ */
+export function sirenDeTva(valeur) {
+  const t = normaliserTva(valeur);
+  if (!/^FR\d{11}$/.test(t)) return '';
+  const siren = t.slice(4);
+  return tvaIntracom(siren) === t ? siren : '';
 }

@@ -1,4 +1,4 @@
-// L'outil qui rend les onze autres compréhensibles : les règles de la maison, écrites une
+// L'outil qui rend les autres compréhensibles : les règles de la maison, écrites une
 // seule fois dans shared/ et lues ici. Il ne touche à aucune donnée.
 import { z } from 'zod';
 import { REGLES } from '../../../shared/regles.js';
@@ -70,6 +70,17 @@ const SUJETS = {
     `- ${LIBELLES_ROLE.commercial} : ses clients et ses prospects ; un collègue seulement s'il le nomme, et c'est journalisé.`,
     `- ${LIBELLES_ROLE.prospection} : prospects, pipeline, boîte de prospection et rendez-vous qu'elle a pris. Pas d'accès aux clients.`,
   ),
+  identite: () => bloc(
+    '# L\'identité légale d\'un établissement',
+    '- Enseigne : le nom sur la devanture. C\'est lui qui nomme la fiche.',
+    '- Raison sociale : le nom légal de la société. On ne l\'écrit que s\'il diffère de l\'enseigne — « SARL Les Trois Chênes » derrière « Le Mulligan ».',
+    '- SIREN : 9 chiffres, l\'entreprise. SIRET : 14 chiffres, l\'établissement — le SIREN suivi de 5 chiffres qui désignent le lieu.',
+    '- Une société de plusieurs établissements a un seul SIREN et un SIRET par adresse. C\'est le SIRET de l\'adresse où l\'on se rend qui compte : le siège n\'est pas forcément le bar.',
+    '- Le SIREN se déduit du SIRET, jamais l\'inverse : donner le SIRET suffit toujours.',
+    '- TVA intracommunautaire : « FR », une clé sur deux chiffres, puis le SIREN. Elle se calcule et n\'est pas stockée — sauf pour une société étrangère, dont le numéro ne se déduit d\'aucun SIREN.',
+    'Ces numéros portent leur propre clé de contrôle, et SuiviPro la vérifie : un numéro dont la clé ne tombe pas juste est écarté, et la réponse le dit. Ne devinez jamais un SIRET, et ne le reconstruisez pas en ajoutant « 00001 » à un SIREN — un faux numéro a l\'air vrai et se propage jusqu\'à la facturation. Pas de numéro vaut mieux qu\'un numéro inventé.',
+    'Ces quatre champs sont les mêmes partout : sur la fiche d\'un prospect, sur celle d\'un client, et dans « deposer_dans_la_boite » — le prospect créé depuis la boîte les garde. « fiche_prospect » et « fiche_client » les affichent, ou disent « non renseignée » : c\'est ainsi qu\'on voit ce qu\'il reste à trouver.',
+  ),
   vocabulaire: () => bloc(
     '# Vocabulaire',
     '- Prospect : établissement pas encore client, suivi dans le tunnel de vente.',
@@ -85,9 +96,9 @@ const SUJETS = {
 export default [{
   nom: 'contexte',
   titre: 'Les règles de SuiviPro',
-  description: 'Les règles métier de La Brasserie des Plantes : fréquences de visite, couleurs d\'un client, étapes du tunnel de vente, appels et relances, semaines de tournée, rôles, vocabulaire. À lire avant d\'interpréter les autres outils. Ne lit aucune donnée.',
+  description: 'Les règles métier de La Brasserie des Plantes : fréquences de visite, couleurs d\'un client, étapes du tunnel de vente, appels et relances, semaines de tournée, rôles, identité légale (raison sociale, SIREN, SIRET, TVA), vocabulaire. À lire avant d\'interpréter les autres outils. Ne lit aucune donnée.',
   schema: {
-    sujet: z.enum(['tout', 'frequences', 'couleurs', 'tunnel', 'appels', 'tournees', 'roles', 'vocabulaire'])
+    sujet: z.enum(['tout', 'frequences', 'couleurs', 'tunnel', 'appels', 'tournees', 'roles', 'identite', 'vocabulaire'])
       .optional().describe('Le sujet voulu ; « tout » par défaut.'),
   },
   executer: async ({ sujet }) => {

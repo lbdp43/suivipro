@@ -4,6 +4,7 @@
 // demandent rien à personne.
 import { dateLocale, jourDe } from '../../shared/regles.js';
 import { libelle } from '../../shared/libelles.js';
+import { chiffres, sirenDeSiret, tvaIntracom, formaterSiren, formaterSiret } from '../../shared/siret.js';
 
 export const LIMITE_DEFAUT = 50;
 export const LIMITE_MAX = 200;
@@ -83,6 +84,24 @@ export function lib(table, code) {
 /** Une fiche se nomme toujours par son nom et sa ville — jamais par son seul identifiant. */
 export function nommer(nom, ville) {
   return ville ? `${nom} (${ville})` : String(nom || '');
+}
+
+/**
+ * L'identité légale d'une fiche, en une ligne — vide quand rien n'est connu.
+ *
+ * Le SIRET porte déjà le SIREN dans ses neuf premiers chiffres : les dire tous les deux
+ * n'apprend rien. Le numéro de TVA français n'est pas stocké quand il se calcule, alors on
+ * le recalcule ici plutôt que de le taire ; un numéro étranger, lui, est écrit tel quel.
+ */
+export function identiteLegale(fiche) {
+  const siret = chiffres(fiche.siret);
+  const siren = chiffres(fiche.siren) || sirenDeSiret(siret);
+  const tva = String(fiche.tva_intracom || '').trim() || tvaIntracom(siren);
+  return ligne(
+    fiche.raison_sociale || '',
+    siret.length === 14 ? `SIRET ${formaterSiret(siret)}` : (siren.length === 9 ? `SIREN ${formaterSiren(siren)}` : ''),
+    tva ? `TVA ${tva}` : '',
+  );
 }
 
 /** La réponse que le MCP renvoie : du texte, rien d'autre. */

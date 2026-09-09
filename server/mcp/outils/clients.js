@@ -14,7 +14,7 @@ import { clauseTexte, sansAccentsSql } from '../sql.js';
 import { journaliserContact } from '../journal.js';
 import {
   LIMITE_DEFAUT, LIMITE_MAX, MOIS_DEFAUT, MOIS_MAX, borner, dateFr, ilYaDesMois,
-  ligne, bloc, entete, extrait, lib, nommer,
+  ligne, bloc, entete, extrait, lib, nommer, identiteLegale,
 } from '../format.js';
 
 const ETATS = { retard: 'RETARD', aujourdhui: 'AUJOURDHUI', a_venir: 'A_VENIR', sans_recurrence: 'SANS_RECURRENCE', inactif: 'INACTIF' };
@@ -101,7 +101,7 @@ const chercherClient = {
 const ficheClient = {
   nom: 'fiche_client',
   titre: 'La fiche d\'un client',
-  description: 'Tout ce qu\'il faut savoir avant d\'entrer chez un client : identité, contact, tournée, fréquence, état de visite, historique des visites et appels, tâches ouvertes, rendez-vous à venir.',
+  description: 'Tout ce qu\'il faut savoir avant d\'entrer chez un client : contact, identité légale (raison sociale, SIRET, numéro de TVA) quand elle est connue, tournée, fréquence, état de visite, historique des visites et appels, tâches ouvertes, rendez-vous à venir.',
   schema: {
     client: z.string().describe('Le nom du client (ou son identifiant). En cas d\'homonymes, la liste des candidats est renvoyée.'),
     commercial: z.string().optional().describe('Le prénom du commercial qui suit ce client, quand ce n\'est pas vous.'),
@@ -143,6 +143,7 @@ const ficheClient = {
         ligne(lib(LIBELLES_TYPE_CLIENT, c.type_client), c.statut === 'INACTIF' ? 'client inactif' : '', prenoms.get(c.commercial_id) || ''),
         ligne(c.adresse, c.code_postal, c.ville),
         ligne(c.contact && `contact ${c.contact}`, c.telephone, c.telephone_mobile, c.email),
+        ligne('Identité légale', identiteLegale(c) || 'non renseignée'),
         ligne(
           statut === 'RETARD' ? `EN RETARD de ${joursDeRetard(c)} jours` : lib(LIBELLES_STATUT_VISITE, statut),
           freq ? `visite tous les ${freq} jours` : 'sans récurrence',
