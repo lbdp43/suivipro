@@ -264,6 +264,11 @@ export default function TourneesPage() {
   const [editProspectionZones, setEditProspectionZones] = useState<{ zone: string; slots: number }[]>([]);
   const [zones, setZones] = useState<CommercialZone[]>([]);
   const [drawingForCommercial, setDrawingForCommercial] = useState<CommercialInfo | null>(null);
+  // Les tournées orphelines qu'on s'apprête à confier à quelqu'un, et à quel jour.
+  const [zonesChoisies, setZonesChoisies] = useState<Set<string>>(new Set());
+  const [affecterA, setAffecterA] = useState('');
+  const [affecterJour, setAffecterJour] = useState('');
+  const [affectationEnCours, setAffectationEnCours] = useState(false);
 
   // Unique zones from clients + tournee configs
   const allZones = useMemo(() => {
@@ -356,6 +361,46 @@ export default function TourneesPage() {
     }
   };
 
+
+  /**
+   * Confie des tournées orphelines à quelqu'un, un jour donné.
+   *
+   * Affecter une tournée, c'est l'ajouter à la journée d'un commercial : c'est le même
+   * réglage que le panneau du haut, en un geste et pour plusieurs zones à la fois. Le
+   * serveur garde la règle habituelle — chacun règle la sienne, l'administrateur règle
+   * celle des autres.
+   */
+  const affecterLesZones = async () => {
+    const cible = isAdmin ? affecterA : (currentUserId || '');
+    if (!cible || !affecterJour || zonesChoisies.size === 0) return;
+    setAffectationEnCours(true);
+    try {
+      const existante = configs.find(c => c.commercial_id === cible);
+      // On repart de la configuration entière : les autres jours et les zones de
+      // prospection doivent survivre à l'enregistrement.
+      const config: Record<string, any> = { ...(existante?.config || {}) };
+      const duJour: string[] = Array.isArray(config[affecterJour]) ? [...config[affecterJour]] : [];
+      const deja = new Set(duJour.map(z => z.toLowerCase()));
+      const ajoutees = [...zonesChoisies].filter(z => !deja.has(z.toLowerCase()));
+      config[affecterJour] = [...duJour, ...ajoutees];
+      await apiPost(`/tournee-config/${cible}`, {
+        config,
+        notes: existante?.notes || '',
+        tournee_info: existante?.tournee_info || '',
+        week_pattern: existante?.week_pattern || 'every',
+      });
+      const n = ajoutees.length;
+      toast.success(n === 0
+        ? `${nomCommercial(cible)} avait déjà ces tournées le ${DAY_LABELS[affecterJour].toLowerCase()}`
+        : `${n} tournée${n > 1 ? 's' : ''} affectée${n > 1 ? 's' : ''} à ${nomCommercial(cible)} le ${DAY_LABELS[affecterJour].toLowerCase()}`);
+      setZonesChoisies(new Set());
+      loadData();
+    } catch {
+      toast.error('Affectation impossible');
+    } finally {
+      setAffectationEnCours(false);
+    }
+  };
 
   const addZoneToDay = (day: string, zone: string) => {
     const trimmed = zone.trim();
@@ -1122,18 +1167,89 @@ export default function TourneesPage() {
             </h2>
           </button>
           {showUnassignedZones && (
-            <div className="bg-red-50 rounded-xl border border-red-200 p-3 sm:p-4">
-              <p className="text-xs text-red-700 mb-3">Ces zones existent sur des clients mais ne sont configurées dans aucune tournée de commercial.</p>
+            <div className="bg-red-50 rounded-xl border border-red-200 p-3 sm:p-4 space-y-3">
+              <p className="text-xs text-red-700">
+                Ces zones existent sur des clients mais ne sont configurées dans aucune tournée de commercial.
+                Cochez-les pour les confier à quelqu'un, un jour de la semaine.
+              </p>
+
+              {/* Cliquer une zone la coche : c'est le geste attendu quand on vient les affecter. */}
               <div className="flex flex-wrap gap-2">
-                {unassignedZones.map(zone => (
-                  <div key={zone} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg">
-                    <MapPin className="w-3.5 h-3.5 text-red-500" />
-                    <span className="text-sm font-medium text-gray-800">{zone}</span>
-                    <span className="text-xs text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full font-medium">
-                      {clientsPerUnassignedZone[zone] || 0} client{(clientsPerUnassignedZone[zone] || 0) > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                ))}
+                {unassignedZones.map(zone => {
+                  const cochee = zonesChoisies.has(zone);
+                  return (
+                    <button
+                      key={zone}
+                      type="button"
+                      aria-pressed={cochee}
+                      onClick={() => setZonesChoisies(avant => {
+                        const suivant = new Set(avant);
+                        if (suivant.has(zone)) suivant.delete(zone); else suivant.add(zone);
+                        return suivant;
+                      })}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors ${
+                        cochee ? 'bg-brewery-600 border-brewery-600 text-white' : 'bg-white border-red-200 text-gray-800 hover:bg-red-100/50'
+                      }`}
+                    >
+                      <MapPin className={`w-3.5 h-3.5 ${cochee ? 'text-white' : 'text-red-500'}`} />
+                      <span className="text-sm font-medium">{zone}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${cochee ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'}`}>
+                        {clientsPerUnassignedZone[zone] || 0} client{(clientsPerUnassignedZone[zone] || 0) > 1 ? 's' : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Affecter, c'est ajouter la tournée à la journée de quelqu'un. Un commercial
+                  ne peut se la donner qu'à lui-même — le serveur applique la même règle. */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-red-200">
+                <button
+                  type="button"
+                  onClick={() => setZonesChoisies(zonesChoisies.size === unassignedZones.length ? new Set() : new Set(unassignedZones))}
+                  className="text-xs font-medium text-red-700 hover:underline"
+                >
+                  {zonesChoisies.size === unassignedZones.length ? 'Tout décocher' : 'Tout cocher'}
+                </button>
+                <span className="text-xs text-gray-600">
+                  {zonesChoisies.size === 0 ? 'aucune tournée cochée' : `${zonesChoisies.size} tournée${zonesChoisies.size > 1 ? 's' : ''} cochée${zonesChoisies.size > 1 ? 's' : ''}`}
+                </span>
+
+                <div className="flex flex-wrap items-center gap-2 ml-auto">
+                  {isAdmin ? (
+                    <select
+                      value={affecterA}
+                      onChange={e => setAffecterA(e.target.value)}
+                      className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white"
+                    >
+                      <option value="">Affecter à…</option>
+                      {commercials.map(c => (
+                        <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-sm text-gray-700">Pour moi</span>
+                  )}
+                  <select
+                    value={affecterJour}
+                    onChange={e => setAffecterJour(e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white"
+                  >
+                    <option value="">Quel jour ?</option>
+                    {DAY_KEYS.map(j => (
+                      <option key={j} value={j}>{DAY_LABELS[j]}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={affecterLesZones}
+                    disabled={zonesChoisies.size === 0 || !affecterJour || (isAdmin && !affecterA) || affectationEnCours}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-semibold hover:bg-brewery-700 disabled:opacity-40 transition-colors"
+                  >
+                    {affectationEnCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                    Affecter
+                  </button>
+                </div>
               </div>
             </div>
           )}
