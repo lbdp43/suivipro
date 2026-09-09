@@ -13,7 +13,7 @@ export interface EntreeMenu {
   label: string;
   /** Autres adresses qui allument cette entrée (ex. /taches pour « Rappels et tâches »). */
   alias?: string[];
-  /** Rôles qui ne voient pas cette entrée (ex. Statistiques, réservées aux commerciaux et admins). */
+  /** Rôles qui ne voient pas cette entrée. */
   masquePour?: string[];
 }
 export interface GroupeMenu {
@@ -49,7 +49,6 @@ const COMMERCIAL: GroupeMenu = {
 const COMMUN: GroupeMenu = {
   id: 'commun', titre: 'Pour tous', icon: Bell, roles: [],
   entrees: [
-    { to: '/statistiques', icon: BarChart3, label: 'Statistiques', masquePour: ['prospection'] },
     { to: '/documents', icon: FileText, label: 'Documents' },
     { to: '/annuaire', icon: Contact, label: 'Annuaire' },
     { to: '/guide', icon: BookOpen, label: 'Guide' },
@@ -59,6 +58,7 @@ const ADMIN: GroupeMenu = {
   id: 'admin', titre: 'Administration', icon: Settings, roles: ['admin'], adminOnly: true,
   entrees: [
     { to: '/admin', icon: Settings, label: 'Équipe et réglages' },
+    { to: '/statistiques', icon: BarChart3, label: 'Statistiques' },
     { to: '/easybeer', icon: Link2, label: 'EasyBeer' },
     { to: '/import', icon: Upload, label: 'Import / Export' },
     { to: '/sirene', icon: ScanLine, label: 'SIRENE' },
@@ -72,9 +72,9 @@ export function groupesDuMenu(role: string | undefined): GroupeMenu[] {
   return groupes.map(g => ({ ...g, entrees: g.entrees.filter(e => !e.masquePour || !role || !e.masquePour.includes(role)) }));
 }
 
-/** La page Statistiques n'est pas pour la prospection : les chiffres de vente ne la concernent pas. */
+/** Les chiffres de toute l'équipe ne regardent que l'administrateur. */
 export function peutVoirLesStatistiques(role: string | undefined): boolean {
-  return role !== 'prospection';
+  return role === 'admin';
 }
 
 export function groupesOuvertsParDefaut(role: string | undefined, prospection = false): Set<string> {

@@ -1,17 +1,19 @@
 // Activité de prospection par membre — routes déplacées telles quelles depuis routes.js.
 import { Router } from 'express';
 import db from '../db.js';
-import { asyncHandler, authMiddleware } from '../lib/auth.js';
+import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { validationError } from '../lib/validation.js';
 
 const router = Router();
 
-// Compteurs d'activite de prospection de TOUTE l'equipe, pour le tableau du dashboard.
-// Volontairement limite a l'activite (appels, RDV pris, visites, prospects) : aucune
-// donnee client, aucun chiffre d'affaires. C'est ce qui permet de garder ce tableau
-// visible de tous alors que /state est cloisonne par commercial.
+// Compteurs d'activite de prospection de TOUTE l'equipe, pour la page Statistiques.
+// Les chiffres des collegues ne regardent que l'administrateur : la page lui est
+// reservee, et la porte est fermee ici aussi, pas seulement dans le menu.
 router.get('/prospection/activite', authMiddleware, asyncHandler(async (req, res) => {
+  if (!isAdmin(req)) {
+    return res.status(403).json({ error: "Les statistiques de l'equipe sont reservees a l'administrateur" });
+  }
   const debut = String(req.query.debut || '').slice(0, 10);
   const fin = String(req.query.fin || '').slice(0, 10);
   if (!debut || !fin) return validationError(res, ['debut et fin sont requis (AAAA-MM-JJ)']);
