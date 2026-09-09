@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Inbox, Share2, ExternalLink, MapPin, Phone, Building2, AlertTriangle, Check, X, Link2, RotateCcw, Search, MessageSquare, UserPlus, Loader2, Trash2,
+  Inbox, Share2, ExternalLink, MapPin, Phone, Building2, Landmark, AlertTriangle, Check, X, Link2, RotateCcw, Search, MessageSquare, UserPlus, Loader2, Trash2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPatch, apiDelete } from '../api/client';
 import { Client, EstablishmentType, ESTABLISHMENT_LABELS, Prospect, Signalement } from '../types';
-import { LIBELLES_SOURCE, aQualifier, concerne, estLienGoogle, grouper, titreDuSignalement } from '../utils/signalements';
+import { LIBELLES_SOURCE, aQualifier, concerne, estLienGoogle, grouper, lienMapsDepuisAdresse, titreDuSignalement } from '../utils/signalements';
 import { faitDeLaProspection } from '../utils/roles';
 import { formatDate } from '../utils/helpers';
+import { formaterSiren, formaterSiret, tvaIntracom } from '../../shared/siret';
 import { sansAccents } from '../../shared/normalisation';
 import { GaleriePhotos } from '../components/PhotosSignalement';
 
@@ -145,15 +146,53 @@ export default function BoitePage() {
 
               {(adresse || fiche.telephone || fiche.categorie_google) && (
                 <div className="text-sm text-gray-700 space-y-0.5">
-                  {adresse && <p className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-gray-400" /> {adresse}</p>}
-                  {fiche.telephone && <p className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-gray-400" /> {fiche.telephone}</p>}
+                  {/* L'adresse s'ouvre dans Google Maps, comme le téléphone appelle : une
+                      recherche par nom et adresse tombe sur la bonne fiche à tous les coups. */}
+                  {adresse && (
+                    <p className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <a
+                        href={lienMapsDepuisAdresse(titreDuSignalement(s), adresse)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {adresse}
+                      </a>
+                    </p>
+                  )}
+                  {/* Le téléphone appelle, comme partout ailleurs dans l'application : ici il
+                      avait l'icône sans le lien. */}
+                  {fiche.telephone && (
+                    <p className="flex items-center gap-2">
+                      <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <a href={`tel:${String(fiche.telephone).replace(/\s/g, '')}`} className="text-blue-600 hover:underline">
+                        {fiche.telephone}
+                      </a>
+                    </p>
+                  )}
                   {fiche.categorie_google && <p className="flex items-center gap-2"><Building2 className="w-3.5 h-3.5 text-gray-400" /> {fiche.categorie_google}</p>}
                 </div>
               )}
 
-              {(s.commentaire || autres.some(a => a.commentaire) || !s.lien) && (
+              {/* L'identité légale quand elle a été trouvée. Le numéro de TVA n'est pas
+                  stocké : il se calcule depuis le SIREN, donc il ne peut pas être faux. */}
+              {(fiche.raison_sociale || fiche.siret || fiche.siren) && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <Landmark className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                  {fiche.raison_sociale && <span className="text-gray-700 font-medium">{fiche.raison_sociale}</span>}
+                  {fiche.siret
+                    ? <span>SIRET {formaterSiret(fiche.siret)}</span>
+                    : fiche.siren ? <span>SIREN {formaterSiren(fiche.siren)}</span> : null}
+                  {tvaIntracom(fiche.siren || fiche.siret || '') && <span>TVA {tvaIntracom(fiche.siren || fiche.siret || '')}</span>}
+                </div>
+              )}
+
+              {/* Un dépôt de Claude est déjà structuré : son texte n'est que la mise bout à bout
+                  des champs affichés au-dessus, le répéter n'apprend rien. */}
+              {(s.commentaire || autres.some(a => a.commentaire) || (!s.lien && s.source !== 'claude')) && (
                 <div className="space-y-1">
-                  {!s.lien && s.texte && s.texte !== titreDuSignalement(s) && <p className="text-sm text-gray-600 whitespace-pre-wrap">{s.texte}</p>}
+                  {!s.lien && s.source !== 'claude' && s.texte && s.texte !== titreDuSignalement(s) && <p className="text-sm text-gray-600 whitespace-pre-wrap">{s.texte}</p>}
                   {[s, ...autres].filter(a => a.commentaire).map(a => (
                     <p key={a.id} className="text-sm text-gray-700 flex items-start gap-2"><MessageSquare className="w-3.5 h-3.5 text-gray-400 mt-1 flex-shrink-0" /><span>« {a.commentaire} » <span className="text-xs text-gray-500">— {nomDe(a.partage_par)}</span></span></p>
                   ))}
@@ -222,6 +261,8 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
     ville: s.fiche.ville || '',
     nom_contact: s.fiche.nom_contact || '',
     email: s.fiche.email || '',
+    raison_sociale: s.fiche.raison_sociale || '',
+    siret: s.fiche.siret || '',
     commercial_id: s.commercial_id || moi?.id || '',
   });
   const [enCours, setEnCours] = useState(false);
@@ -271,6 +312,16 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
             <input className={champ} type="email" value={form.email} onChange={e => maj('email', e.target.value)} placeholder="Optionnel" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Raison sociale</label>
+              <input className={champ} value={form.raison_sociale} onChange={e => maj('raison_sociale', e.target.value)} placeholder="Optionnel" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">SIRET</label>
+              <input className={champ} value={form.siret} onChange={e => maj('siret', e.target.value)} placeholder="Optionnel" />
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Adresse</label>

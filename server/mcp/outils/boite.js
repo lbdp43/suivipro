@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { LIBELLES_TYPE_ETABLISSEMENT } from '../../../shared/libelles.js';
 import { deposer, lirePartage, DepotRefuse } from '../../lib/boiteProspection.js';
 import { bloc, ligne, lib } from '../format.js';
+import { chiffres, sirenValide, siretValide, sirenDeSiret, tvaIntracom, formaterSiren, formaterSiret } from '../../../shared/siret.js';
 
 const TYPES = Object.keys(LIBELLES_TYPE_ETABLISSEMENT);
 
@@ -29,6 +30,29 @@ function texteDuDepot(a) {
     NETTOYER(a.nom_contact, 120),
     NETTOYER(a.lien, 500),
   ].filter(Boolean).join('\n');
+}
+
+// Les hôtes que Google sait résoudre lui-même — « share.google » est ce que donne le bouton
+// Partager de Google Maps sur Android. Un lien court est opaque, mais il redirige.
+const HOTES_COURTS = /(^|\.)(share\.google|goo\.gl|g\.co|g\.page)$/i;
+
+/**
+ * Un lien Google construit autour d'un identifiant de lieu ne mène nulle part : ouvert dans
+ * Maps, il cherche le jeton comme s'il s'agissait d'un nom et répond « aucun résultat ».
+ * On préfère donc n'en garder aucun : l'adresse, elle, retrouve toujours l'établissement.
+ */
+function lienInutilisable(lien) {
+  let u;
+  try { u = new URL(lien); } catch { return false; }
+  if (HOTES_COURTS.test(u.hostname)) return false;
+  if (!/(^|\.)google\.[a-z.]+$/i.test(u.hostname)) return false;
+  // Un chemin /maps/place/... ou des coordonnées @lat,lng désignent un lieu réel.
+  if (/\/maps\/place\//i.test(u.pathname) || /@-?\d+\.\d+,-?\d+\.\d+/.test(u.href)) return false;
+  const q = u.searchParams.get('query') || u.searchParams.get('q') || '';
+  if (!q || /^(place_id:|cid=)/i.test(q)) return false;
+  // Un vrai nom contient des espaces ou reste court. Une suite compacte de lettres, de
+  // majuscules et de chiffres est un identifiant.
+  return !q.includes(' ') && q.length >= 14 && /\d/.test(q) && /[A-Z]/.test(q);
 }
 
 const deposerDansLaBoite = {
@@ -51,11 +75,19 @@ const deposerDansLaBoite = {
     email: z.string().optional(),
     nom_contact: z.string().optional().describe('Nom et prénom de la personne, si vous les connaissez.'),
     type_etablissement: z.enum(TYPES).optional().describe(`Un de : ${TYPES.join(', ')}. « autre » par défaut.`),
-    lien: z.string().optional().describe('Google Maps, site, Instagram, Facebook : l\'adresse d\'où vient l\'information.'),
+    lien: z.string().optional().describe('Google Maps, site, Instagram, Facebook : l\'adresse d\'où vient l\'information. Donnez le lien tel que la personne vous l\'a transmis (« share.google/… », « maps.app.goo.gl/… », une adresse de site). N\'en fabriquez jamais un à partir d\'un identifiant de lieu : il ne mènerait nulle part.'),
     commentaire: z.string().optional().describe('Pourquoi vous le signalez, ce qui peut aider celui qui le traitera.'),
+    raison_sociale: z.string().optional().describe('Facultatif. Le nom légal de la société, quand il diffère de l\'enseigne.'),
+    siret: z.string().optional().describe('Facultatif, mais précieux. Les 14 chiffres de l\'établissement. La clé est vérifiée : un numéro faux est écarté, ne devinez pas.'),
+    siren: z.string().optional().describe('Facultatif. Les 9 chiffres de l\'entreprise. Inutile si vous donnez le SIRET, il s\'en déduit. Le numéro de TVA intracommunautaire se calcule aussi tout seul : ne le donnez pas.'),
   },
   executer: async (a, { utilisateur }) => {
-    const lien = NETTOYER(a.lien, 500);
+    let lien = NETTOYER(a.lien, 500);
+    // Un lien Google fabriqué autour d'un identifiant est pire que pas de lien : dans la
+    // boîte, il s'annonce « Fiche Google » et ne donne aucun résultat. On l'écarte, et
+    // l'adresse reste cliquable, elle.
+    const lienEcarte = lienInutilisable(lien);
+    if (lienEcarte) lien = '';
     let nom = NETTOYER(a.nom_etablissement, 200);
     // Un lien Google seul suffit : on lit la fiche, comme le fait l'application quand
     // quelqu'un partage depuis son téléphone. Ce qui en sort ne sert qu'à compléter —
@@ -72,6 +104,17 @@ const deposerDansLaBoite = {
         + 'le nom sera lu depuis la fiche. Ici, ni l\'un ni l\'autre n\'a donné de nom.'
       );
     }
+
+    // Ces numéros portent leur propre clé de contrôle : on refuse plutôt que d'écrire un
+    // SIRET inventé dans une fiche — un faux numéro a l'air vrai et se propage.
+    const siretDonne = chiffres(a.siret);
+    const sirenDonne = chiffres(a.siren);
+    const siret = siretValide(siretDonne) ? siretDonne : '';
+    const siren = siret ? sirenDeSiret(siret) : (sirenValide(sirenDonne) ? sirenDonne : '');
+    const numerosEcartes = [
+      siretDonne && !siret ? `SIRET ${siretDonne}` : '',
+      sirenDonne && !siren ? `SIREN ${sirenDonne}` : '',
+    ].filter(Boolean);
 
     const { doublons, destinataires } = await deposer({
       texte: texteDuDepot({ ...lue, ...a, nom_etablissement: nom, lien }),
@@ -90,7 +133,11 @@ const deposerDansLaBoite = {
         email: NETTOYER(a.email, 200),
         nom_contact: NETTOYER(a.nom_contact, 120),
         type_etablissement: TYPES.includes(a.type_etablissement) ? a.type_etablissement : 'autre',
-        source_url: NETTOYER(a.lien, 500),
+        // `lien`, pas `a.lien` : le lien écarté ne doit pas revenir par cette porte.
+        source_url: lien,
+        raison_sociale: NETTOYER(a.raison_sociale, 200),
+        siret,
+        siren,
       },
     });
 
@@ -105,6 +152,22 @@ const deposerDansLaBoite = {
             + doublons.map(d => `- ${d.genre} : ${d.nom}${d.ville ? ` (${d.ville})` : ''}`).join('\n')
             + '\nCelui qui traitera le signalement pourra rattacher plutôt que créer un doublon.'
           : 'Aucune fiche existante ne lui ressemble.',
+        siret || siren
+          ? ligne(
+              'Identité',
+              NETTOYER(a.raison_sociale, 200),
+              siret ? `SIRET ${formaterSiret(siret)}` : `SIREN ${formaterSiren(siren)}`,
+              tvaIntracom(siren) ? `TVA ${tvaIntracom(siren)}` : '',
+            )
+          : '',
+        numerosEcartes.length
+          ? `Numéro écarté, la clé de contrôle ne tombe pas juste : ${numerosEcartes.join(', ')}. `
+            + 'Un numéro faux vaut moins que pas de numéro : ne le devinez pas.'
+          : '',
+        lienEcarte
+          ? 'Le lien donné était construit autour d\'un identifiant de lieu : il ne mène nulle part, il n\'a pas été gardé. '
+            + 'L\'adresse reste cliquable dans la boîte. Ne transmettez qu\'un lien reçu tel quel.'
+          : '',
         'Rien n\'a été créé dans les prospects : quelqu\'un relira et décidera.',
       ),
     };
