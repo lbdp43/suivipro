@@ -4,13 +4,13 @@
 // parti avec elle — appels, rendez-vous, rappels pour un prospect ; visites, tâches,
 // commandes pour un client — et l'administrateur décide de ce qui revient.
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Undo2, Search, Building2, Users, Loader2, CheckCircle2 } from 'lucide-react';
+import { Trash2, Undo2, Search, Building2, Users, UserRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { apiGet, apiPost } from '../../api/client';
 import { useToast } from '../../components/Toast';
 
 interface Entree {
   id: number;
-  type: 'prospect' | 'client';
+  type: 'prospect' | 'client' | 'membre';
   entite_id: string;
   nom: string;
   ville: string;
@@ -41,6 +41,8 @@ const LIBELLES: Record<string, [string, string]> = {
   interactions: ['visite', 'visites'],
   tasks_client: ['tâche', 'tâches'],
   commandes: ['commande', 'commandes'],
+  google_calendar_tokens: ['lien Google Agenda retiré', 'liens Google Agenda retirés'],
+  mcp_jetons: ['accès Claude retiré', 'accès Claude retirés'],
 };
 
 function detailDuResume(resume: string): string {
@@ -80,7 +82,10 @@ export default function OngletCorbeille() {
   }, [entrees, recherche, voirRestaurees]);
 
   const restaurer = async (e: Entree) => {
-    if (!window.confirm(`Remettre « ${e.nom} » en place, avec tout ce qui a été rangé avec ?`)) return;
+    const message = e.type === 'membre'
+      ? `Remettre « ${e.nom} » dans l'équipe ? Son lien Google Agenda et son accès Claude ne sont pas rendus : à redonner si besoin.`
+      : `Remettre « ${e.nom} » en place, avec tout ce qui a été rangé avec ?`;
+    if (!window.confirm(message)) return;
     setEnCours(e.id);
     try {
       await apiPost(`/corbeille/${e.id}/restaurer`, {});
@@ -107,7 +112,7 @@ export default function OngletCorbeille() {
             <Trash2 className="w-4 h-4 text-gray-400" /> Corbeille
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Rien n'est détruit. Une fiche supprimée est rangée ici avec son histoire, et vous pouvez la remettre en place.
+            Rien n'est détruit. Une fiche supprimée — prospect, client ou membre de l'équipe — est rangée ici avec son histoire, et vous pouvez la remettre en place.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -151,8 +156,8 @@ export default function OngletCorbeille() {
                     <tr key={e.id} className="border-t border-gray-100">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          {e.type === 'client'
-                            ? <Building2 className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                          {e.type === 'client' ? <Building2 className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                            : e.type === 'membre' ? <UserRound className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
                             : <Users className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
                           <span className="font-medium text-gray-800 truncate">{e.nom || '(sans nom)'}</span>
                           {e.ville && <span className="text-xs text-gray-400 truncate">{e.ville}</span>}
