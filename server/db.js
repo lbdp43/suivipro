@@ -905,6 +905,13 @@ async function initDatabase(attempt = 1) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_mcp_jetons_empreinte ON mcp_jetons(empreinte)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_mcp_jetons_commercial ON mcp_jetons(commercial_id)');
     } catch (err) { console.log('mcp_jetons migration:', err.message); }
+    // L'événement Google Agenda posé pour ce rendez-vous : on garde son identifiant et le
+    // calendrier où il est, pour le modifier plus tard au lieu d'en créer un deuxième —
+    // et pour le retirer du bon agenda si le rendez-vous change de commercial.
+    try {
+      await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_event_id TEXT DEFAULT ''");
+      await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_commercial_id TEXT DEFAULT ''");
+    } catch (err) { console.log('appointments google migration:', err.message); }
     // Les photos partagées avec un signalement, rangées comme les documents (base64).
     try {
       await client.query(`CREATE TABLE IF NOT EXISTS signalement_photos (

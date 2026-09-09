@@ -79,7 +79,9 @@ router.get('/google-calendar/authorize', authMiddleware, (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar.readonly'],
+    // Écriture : SuiviPro pose les rendez-vous dans l'agenda, il ne fait plus que le lire.
+    // Ce changement de droit oblige chacun à reconnecter son agenda une fois.
+    scope: ['https://www.googleapis.com/auth/calendar.events'],
     state: statePayload,
   });
 

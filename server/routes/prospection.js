@@ -6,6 +6,7 @@ import { logActivity } from '../lib/journal.js';
 import { cloreActionsAppel } from '../lib/tunnel.js';
 import { dateLocale } from '../../shared/regles.js';
 import { validateAppointment, validateCall, validateReminder, validationError } from '../lib/validation.js';
+import { poserRendezVous, retirerRendezVous } from '../lib/agendaGoogle.js';
 
 const router = Router();
 
@@ -76,7 +77,10 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   }
 
   await logActivity(req.user.id, 'creation_rdv', `RDV le ${a.date} à ${a.lieu || 'N/A'}`, 'appointment', a.id);
-  res.json({ ok: true });
+  // L'agenda du commercial reçoit le rendez-vous. Le résultat est renvoyé pour que l'écran
+  // sache quoi dire, mais un échec n'empêche jamais l'enregistrement.
+  const agenda = await poserRendezVous(a.id);
+  res.json({ ok: true, agenda });
 }));
 
 router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -93,11 +97,25 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   } else {
     await logActivity(req.user.id, 'modification_rdv', `RDV le ${a.date}`, 'appointment', req.params.id);
   }
-  res.json({ ok: true });
+  // L'événement suit : déplacé, complété, retiré de l'agenda si le rendez-vous est annulé
+  // ou passé à un autre commercial.
+  const agenda = await poserRendezVous(req.params.id);
+  res.json({ ok: true, agenda });
+}));
+
+// Renvoyer un rendez-vous dans l'agenda : pour ceux d'avant cette bascule, et pour
+// réessayer après une reconnexion.
+router.post('/appointments/:id/agenda', authMiddleware, asyncHandler(async (req, res) => {
+  const r = await db.query('SELECT id FROM appointments WHERE id = $1', [req.params.id]);
+  if (r.rows.length === 0) return res.status(404).json({ error: 'Rendez-vous introuvable' });
+  return res.json(await poserRendezVous(req.params.id));
 }));
 
 router.delete('/appointments/:id', authMiddleware, asyncHandler(async (req, res) => {
+  // L'identifiant de l'événement disparaît avec la ligne : on le lit avant de supprimer.
+  const avant = await db.query('SELECT * FROM appointments WHERE id = $1', [req.params.id]);
   await db.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
+  if (avant.rows[0]) await retirerRendezVous(avant.rows[0]);
   res.json({ ok: true });
 }));
 
