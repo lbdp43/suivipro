@@ -7,7 +7,8 @@ import RappelContactRdv, { rdvSansContact } from './RappelContactRdv';
 import { useToast } from './Toast';
 import { Appointment, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, ISSUE_APPEL_CLIENT_LABELS } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
-import { generateId, formatDurationTimer, formatDate, downloadICS } from '../utils/helpers';
+import { generateId, formatDurationTimer, formatDate } from '../utils/helpers';
+import { envoyerDansAgenda } from '../utils/agenda';
 import FicheProspect from './FicheProspect';
 import FicheClient from './FicheClient';
 import { telephoneDuClient } from '../utils/sessionAppel';
@@ -1116,9 +1117,9 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     {createdRdv && rdvProspect && (
                       <button
                         className="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
-                        onClick={() => downloadICS(createdRdv, rdvProspect)}
+                        onClick={async () => { const m = await envoyerDansAgenda(createdRdv, rdvProspect, state.commerciaux.find(c => c.id === createdRdv.commercial_id)?.prenom); if (m.bon) toast.success(m.texte); else toast.info(m.texte); }}
                       >
-                        <CalendarPlus className="w-4 h-4" /> Ajouter a l'agenda
+                        <CalendarPlus className="w-4 h-4" /> Ajouter à l'agenda
                       </button>
                     )}
                     <button

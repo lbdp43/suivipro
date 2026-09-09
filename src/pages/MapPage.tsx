@@ -16,7 +16,8 @@ import { apiPut, apiGet } from '../api/client';
 import { ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, EstablishmentType, PipelineStage, APPOINTMENT_STATUS_LABELS, DEPARTEMENT_TO_REGION, REGION_LABELS, CLIENT_TYPE_LABELS, CommercialZone, colorForCommercial } from '../types';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatDate, downloadICS } from '../utils/helpers';
+import { formatDate } from '../utils/helpers';
+import { envoyerDansAgenda } from '../utils/agenda';
 import FilterPresets from '../components/FilterPresets';
 
 // Custom marker icon factory
@@ -926,8 +927,8 @@ export default function MapPage() {
                                   {prospect && (
                                     <button
                                       className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                      onClick={() => downloadICS(rdv, prospect)}
-                                      title="Ajouter a l'agenda"
+                                      onClick={async () => { const m = await envoyerDansAgenda(rdv, prospect, getCommercial(rdv.commercial_id)?.prenom); if (m.bon) toast.success(m.texte); else toast.info(m.texte); }}
+                                      title="Envoyer dans l'agenda Google du commercial"
                                     >
                                       <CalendarPlus className="w-3 h-3" />
                                     </button>
