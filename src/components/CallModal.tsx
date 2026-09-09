@@ -1,9 +1,11 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { dateLocale } from '../../shared/regles';
 import { Phone, PhoneOff, X, Save, CheckCircle, MessageSquare, PhoneMissed, Tag, Bell, Plus, Calendar, AlertTriangle, Users, CalendarPlus, MapPin, ThumbsDown, Ban, User, Mail, ListTodo } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { faitDeLaProspection } from '../utils/roles';
+import RappelContactRdv, { rdvSansContact } from './RappelContactRdv';
 import { useToast } from './Toast';
-import { CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, ISSUE_APPEL_CLIENT_LABELS } from '../types';
+import { Appointment, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, ISSUE_APPEL_CLIENT_LABELS } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, formatDate, downloadICS } from '../utils/helpers';
 import FicheProspect from './FicheProspect';
@@ -49,6 +51,10 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
 
   const [showModal, setShowModal] = useState(false);
   const [prospectId, setProspectId] = useState('');
+  // Ce qu'on fera une fois le rappel de saisie lu : l'appel, ou la session, qu'on a retenu.
+  const [rappelAvant, setRappelAvant] = useState<
+    { genre: 'appel'; pid: string; avecFiche: boolean } | { genre: 'session'; ids: string[]; total: number } | null
+  >(null);
   // Clients : même fenêtre, avec la fiche client entre deux appels et les tâches à cocher.
   const [genre, setGenre] = useState<'prospect' | 'client'>('prospect');
   const [clientId, setClientId] = useState('');
@@ -128,8 +134,8 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     if (telephone) window.location.href = `tel:${telephone.replace(/\s/g, '')}`;
   };
 
-  /** Ouvre l'appel d'un prospect. Avec `avecFiche`, on montre d'abord sa fiche et on compose sur « Appeler ». */
-  const startCall = (pid: string, avecFiche = false) => {
+  /** Ouvre vraiment l'appel, une fois le rappel de saisie passé. */
+  const lancerAppel = (pid: string, avecFiche = false) => {
     const prospect = state.prospects.find(p => p.id === pid);
     if (!prospect) return;
 
@@ -213,12 +219,41 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setCallActive(false);
   };
 
+  // Le rappel de saisie : tant que des rendez-vous qu'elle a pris partent sans contact
+  // nommé, on le redit avant chaque appel. Il s'éteint dès que les fiches sont complétées.
+  const rdvsIncomplets = useMemo(
+    () => (faitDeLaProspection(state.currentUser)
+      ? rdvSansContact(state.appointments, state.prospects, state.clients, state.currentUser?.id)
+      : []),
+    [state.appointments, state.prospects, state.clients, state.currentUser],
+  );
+
+  const nomDuRdv = (rdv: Appointment) => {
+    const c = rdv.client_id ? state.clients.find(x => x.id === rdv.client_id) : undefined;
+    const p = !c && rdv.prospect_id ? state.prospects.find(x => x.id === rdv.prospect_id) : undefined;
+    const nom = c?.nom || p?.nom_etablissement || 'Rendez-vous';
+    const ville = c?.ville || p?.ville || '';
+    return ville ? `${nom} (${ville})` : nom;
+  };
+
+  /** Ouvre l'appel d'un prospect, en rappelant d'abord la saisie du contact s'il le faut. */
+  const startCall = (pid: string, avecFiche = false) => {
+    if (rdvsIncomplets.length > 0) { setRappelAvant({ genre: 'appel', pid, avecFiche }); return; }
+    lancerAppel(pid, avecFiche);
+  };
+
+  const lancerSession = (ids: string[], total: number) => {
+    setSession({ ids, index: 0, genre: 'prospect' });
+    lancerAppel(ids[0], true);
+    if (ids.length < total) toast.info(`${total - ids.length} prospect(s) sans téléphone ignoré(s)`);
+  };
+
   const startSession = (prospectIds: string[]) => {
     const ids = prospectIds.filter(id => { const p = state.prospects.find(x => x.id === id); return p && p.telephone; });
     if (ids.length === 0) { toast.error('Aucun prospect avec un numéro de téléphone dans la sélection.'); return; }
-    setSession({ ids, index: 0, genre: 'prospect' });
-    startCall(ids[0], true);
-    if (ids.length < prospectIds.length) toast.info(`${prospectIds.length - ids.length} prospect(s) sans téléphone ignoré(s)`);
+    // Une session, c'est une suite d'appels : le rappel se fait une fois, au début.
+    if (rdvsIncomplets.length > 0) { setRappelAvant({ genre: 'session', ids, total: prospectIds.length }); return; }
+    lancerSession(ids, prospectIds.length);
   };
 
   const startSessionClients = (clientIds: string[], precochees: string[] = []) => {
@@ -249,7 +284,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
       startCallClient(session.ids[index], true);
       setTachesCochees(new Set(tachesPrecochees.filter(id => ouvertes.includes(id))));
     } else {
-      startCall(session.ids[index], true);
+      lancerAppel(session.ids[index], true);
     }
     return true;
   };
@@ -482,6 +517,21 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
   return (
     <CallModalContext.Provider value={{ startCall, startSession, startCallClient, startSessionClients, session }}>
       {children}
+
+      {/* Le rappel « nom et prénom », avant l'appel, tant qu'il reste des fiches à compléter. */}
+      {rappelAvant && (
+        <RappelContactRdv
+          rdvs={rdvsIncomplets}
+          nomDe={nomDuRdv}
+          onFermer={() => setRappelAvant(null)}
+          onContinuer={() => {
+            const suite = rappelAvant;
+            setRappelAvant(null);
+            if (suite.genre === 'appel') lancerAppel(suite.pid, suite.avecFiche);
+            else lancerSession(suite.ids, suite.total);
+          }}
+        />
+      )}
 
       {/* Fenêtre d'appel d'un client : fiche client entre deux appels, résultat, notes, tâches. */}
       {showModal && genre === 'client' && clientAppele && (
