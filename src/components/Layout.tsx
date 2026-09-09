@@ -223,6 +223,21 @@ export default function Layout() {
             )}
           </NavLink>
 
+          {/* La carte sert aux deux métiers : la prospection y cherche, le commercial y voit
+              son secteur. Elle reste donc en haut, hors des groupes, comme les rappels. */}
+          <NavLink
+            to="/carte"
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive ? 'bg-brewery-50 text-brewery-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`
+            }
+          >
+            <Map className="w-5 h-5 flex-shrink-0" />
+            <span>Carte</span>
+          </NavLink>
+
           {groupes.filter(g => !g.adminOnly || isAdmin).map(groupe => {
             const isOpen = ouverts.has(groupe.id);
             const estMonGroupe = groupe.roles.includes(role || '') || (groupe.id === 'prospection' && faitDeLaProspection(state.currentUser));

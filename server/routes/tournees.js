@@ -204,7 +204,20 @@ router.get('/commercial-zones', authMiddleware, asyncHandler(async (req, res) =>
   res.json(result.rows.map(z => ({ ...z, coordinates: JSON.parse(z.coordinates) })));
 }));
 
-router.post('/commercial-zones', authMiddleware, asyncHandler(async (req, res) => {
+/**
+ * Découper le territoire et décider où l'on pousse, c'est une décision de secteur : elle
+ * revient aux commerciaux et à l'administrateur. La prospection lit la consigne d'une zone
+ * prioritaire et appelle — elle ne trace pas les zones, qui ne correspondraient au
+ * territoire de personne.
+ */
+function zonesReserveesAuxCommerciaux(req, res, next) {
+  if (req.user.role === 'prospection') {
+    return res.status(403).json({ error: 'Les zones sont définies par les commerciaux et l\'administrateur' });
+  }
+  return next();
+}
+
+router.post('/commercial-zones', authMiddleware, zonesReserveesAuxCommerciaux, asyncHandler(async (req, res) => {
   const z = req.body;
   if (!z.commercial_id) return validationError(res, ['commercial_id est requis']);
   if (!Array.isArray(z.coordinates) || z.coordinates.length < 3) return validationError(res, ['coordinates doit contenir au moins 3 points']);
@@ -224,7 +237,7 @@ router.post('/commercial-zones', authMiddleware, asyncHandler(async (req, res) =
   res.json({ id, commercial_id: z.commercial_id, nom: z.nom || '', couleur: z.couleur || '#6366f1', coordinates: z.coordinates, created_at: now, updated_at: now, prioritaire, consigne });
 }));
 
-router.put('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/commercial-zones/:id', authMiddleware, zonesReserveesAuxCommerciaux, asyncHandler(async (req, res) => {
   const z = req.body;
   if (z.coordinates !== undefined && (!Array.isArray(z.coordinates) || z.coordinates.length < 3)) return validationError(res, ['coordinates doit contenir au moins 3 points']);
   const existing = await db.query('SELECT * FROM commercial_zones WHERE id = $1', [req.params.id]);
@@ -256,7 +269,7 @@ router.put('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res
   res.json({ ok: true, prioritaire, consigne, nom, commercial_id: commercialId });
 }));
 
-router.delete('/commercial-zones/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/commercial-zones/:id', authMiddleware, zonesReserveesAuxCommerciaux, asyncHandler(async (req, res) => {
   const existing = await db.query('SELECT commercial_id FROM commercial_zones WHERE id = $1', [req.params.id]);
   if (existing.rows.length === 0) return res.status(404).json({ error: 'Zone introuvable' });
   if (!isAdmin(req) && existing.rows[0].commercial_id !== req.user.id) {
