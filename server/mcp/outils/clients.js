@@ -241,7 +241,9 @@ function contourDeZone(brut) {
 
 /** Le contour en clair : centre, étendue, cadre, puis les sommets. */
 function decrireContour(c) {
-  if (!c) return '  contour indisponible';
+  // Dire pourquoi il n'y a rien, plutôt que « indisponible » : une zone sans contour n'a
+  // pas été dessinée sur la carte, c'est une information, pas une panne.
+  if (!c) return '  aucun contour : cette zone n\'a pas été dessinée sur la carte';
   return [
     `  centre ${c.centre[0]}, ${c.centre[1]} — environ ${c.largeur} km sur ${c.hauteur} km`,
     `  cadre sud-ouest ${c.cadre[0]}, ${c.cadre[1]} → nord-est ${c.cadre[2]}, ${c.cadre[3]}`,
@@ -253,7 +255,7 @@ function decrireContour(c) {
 const secteursEtZones = {
   nom: 'secteurs_et_zones',
   titre: 'Secteurs, zones et tournées',
-  description: 'Le découpage du terrain : le contour géographique de chaque zone dessinée sur la carte (coordonnées, centre, étendue en kilomètres), qui elle appartient, celles qui sont prioritaires et leur consigne, le nombre de fiches rattachées, et les jours de tournée avec le rythme des semaines paires ou impaires.',
+  description: 'Le découpage du terrain, personne par personne : les zones de chacun avec leur contour géographique (coordonnées du polygone, centre, étendue en kilomètres), celles qui sont prioritaires et leur consigne, le nombre de fiches rattachées, et les jours de tournée avec le rythme des semaines paires ou impaires. Dit aussi qui n\'a aucune zone dessinée.',
   schema: {
     commercial: z.string().optional().describe('Le prénom d\'un collègue ; sinon, les vôtres.'),
     prioritaires_seulement: z.boolean().optional().describe('Ne montrer que les zones prioritaires.'),
@@ -275,6 +277,47 @@ const secteursEtZones = {
     const nbP = new Map(prospects.rows.map(r => [r.zone_id, r.n]));
     const nbC = new Map(clients.rows.map(r => [r.zone_id, r.n]));
 
+    // Rangées par personne, et non par ordre de priorité : la question posée est presque
+    // toujours « c'est quoi le secteur d'un tel ? ». Éparpiller ses zones dans la liste
+    // obligeait à les recoller de tête, et deux d'entre elles n'ont même pas de nom.
+    const parCommercial = new Map();
+    for (const z of zones.rows) {
+      const cle = z.commercial_id || '';
+      if (!parCommercial.has(cle)) parCommercial.set(cle, []);
+      parCommercial.get(cle).push(z);
+    }
+
+    const decrireZone = (z, sansNom) => bloc(
+      ligne(
+        // Une zone sans nom reste une zone : sans ce repli, sa ligne commençait par le
+        // prénom de son propriétaire et se lisait comme un total, pas comme un secteur.
+        // On ne les numérote que s'il y en a plusieurs chez la même personne.
+        `**${z.nom || (sansNom ? `Zone sans nom n°${sansNom}` : 'Zone sans nom')}**`,
+        z.prioritaire ? 'PRIORITAIRE' : '',
+        `${nbP.get(z.id) || 0} prospect(s)`,
+        `${nbC.get(z.id) || 0} client(s)`,
+      ),
+      z.consigne ? `  consigne : ${extrait(z.consigne, 200)}` : '',
+      decrireContour(contourDeZone(z.coordinates)),
+    );
+
+    const parPersonne = [...parCommercial.entries()]
+      .sort((a, b) => (prenoms.get(a[0]) || 'zz').localeCompare(prenoms.get(b[0]) || 'zz'))
+      .map(([id, zs]) => {
+        const anonymes = zs.filter(z => !z.nom).length;
+        let vu = 0;
+        return bloc(
+          `## ${prenoms.get(id) || 'Zones sans propriétaire'} — ${zs.length} zone${zs.length > 1 ? 's' : ''}`,
+          zs.map(z => decrireZone(z, z.nom ? 0 : (anonymes > 1 ? ++vu : 0))).join('\n'),
+        );
+      });
+
+    // Qui n'a rien : c'est une réponse à part entière quand on demande le secteur de
+    // quelqu'un. On ne la donne que sur la liste entière, sans filtre pour la fausser.
+    const sansZone = (a.commercial || a.prioritaires_seulement)
+      ? []
+      : (await equipe()).filter(g => !parCommercial.has(g.id)).map(g => g.prenom);
+
     const tournees = configs.rows
       .filter(t => !cible || t.commercial_id === cible.id)
       .map(t => {
@@ -294,19 +337,9 @@ const secteursEtZones = {
       resultats: zones.rows.length,
       texte: bloc(
         entete(ligne('Zones', a.commercial, a.prioritaires_seulement ? 'prioritaires' : ''), zones.rows.length, zones.rows.length),
-        '',
-        zones.rows.map(z => bloc(
-          ligne(
-            `${z.prioritaire ? '★ ' : ''}${z.nom}`,
-            prenoms.get(z.commercial_id) || '',
-            `${nbP.get(z.id) || 0} prospect(s)`,
-            `${nbC.get(z.id) || 0} client(s)`,
-            z.consigne ? `consigne : ${extrait(z.consigne, 200)}` : '',
-          ),
-          decrireContour(contourDeZone(z.coordinates)),
-        )).join('\n') || 'Aucune zone dessinée.',
-        tournees.length ? bloc('', '## Tournées', tournees.join('\n')) : '',
-        '',
+        parPersonne.join('\n') || 'Aucune zone dessinée.',
+        sansZone.length ? `Sans aucune zone dessinée : ${sansZone.join(', ')}.` : '',
+        tournees.length ? bloc('## Tournées', tournees.join('\n')) : '',
         `${horsZone.rows[0]?.n || 0} client(s) géolocalisé(s) hors de toute zone.`,
       ),
     };
