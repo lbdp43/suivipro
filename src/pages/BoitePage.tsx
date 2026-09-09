@@ -176,16 +176,19 @@ export default function BoitePage() {
                 </div>
               )}
 
-              {/* L'identité légale quand elle a été trouvée. Le numéro de TVA n'est pas
-                  stocké : il se calcule depuis le SIREN, donc il ne peut pas être faux. */}
-              {(fiche.raison_sociale || fiche.siret || fiche.siren) && (
+              {/* L'identité légale quand elle a été trouvée. Le numéro de TVA français n'est
+                  pas stocké : il se calcule depuis le SIREN, donc il ne peut pas être faux.
+                  Seul celui d'une société étrangère est écrit, et c'est lui qu'on affiche. */}
+              {(fiche.raison_sociale || fiche.siret || fiche.siren || fiche.tva_intracom) && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                   <Landmark className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                   {fiche.raison_sociale && <span className="text-gray-700 font-medium">{fiche.raison_sociale}</span>}
                   {fiche.siret
                     ? <span>SIRET {formaterSiret(fiche.siret)}</span>
                     : fiche.siren ? <span>SIREN {formaterSiren(fiche.siren)}</span> : null}
-                  {tvaIntracom(fiche.siren || fiche.siret || '') && <span>TVA {tvaIntracom(fiche.siren || fiche.siret || '')}</span>}
+                  {(fiche.tva_intracom || tvaIntracom(fiche.siren || fiche.siret || '')) && (
+                    <span>TVA {fiche.tva_intracom || tvaIntracom(fiche.siren || fiche.siret || '')}</span>
+                  )}
                 </div>
               )}
 
@@ -265,7 +268,9 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
     raison_sociale: s.fiche.raison_sociale || '',
     siren: s.fiche.siren || '',
     siret: s.fiche.siret || '',
-    tva_intracom: '',
+    // Un numéro étranger a été déposé tel quel : il ne se recalcule pas, le reprendre est
+    // la seule façon de ne pas le perdre. Un numéro français, lui, reste vide et se calcule.
+    tva_intracom: s.fiche.tva_intracom || '',
     commercial_id: s.commercial_id || moi?.id || '',
   });
   const [enCours, setEnCours] = useState(false);

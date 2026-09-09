@@ -664,10 +664,12 @@ export interface FicheSignalee {
   email?: string;
   nom_contact?: string;
   source_url?: string;
-  /** Identité légale, quand elle a été trouvée. Le numéro de TVA se calcule depuis le SIREN. */
+  /** Identité légale, quand elle a été trouvée. Le numéro de TVA français se calcule depuis
+   *  le SIREN : seul celui d'une société étrangère est déposé tel quel. */
   siret?: string;
   siren?: string;
   raison_sociale?: string;
+  tva_intracom?: string;
   latitude?: number;
   longitude?: number;
   categorie_google?: string;

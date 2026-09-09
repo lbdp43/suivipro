@@ -5,3 +5,6 @@ export function sirenDeSiret(valeur: unknown): string;
 export function tvaIntracom(valeur: unknown): string;
 export function formaterSiren(valeur: unknown): string;
 export function formaterSiret(valeur: unknown): string;
+export function normaliserTva(valeur: unknown): string;
+export function tvaPlausible(valeur: unknown): boolean;
+export function sirenDeTva(valeur: unknown): string;

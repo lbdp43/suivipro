@@ -48,6 +48,7 @@ export function construireServeur(utilisateur) {
         'Un seul geste modifie quelque chose : « deposer_dans_la_boite », qui range un établissement dans la boîte de prospection, à qualifier par l\'équipe. Tout le reste est en lecture seule : aucun prospect, client, rendez-vous ou réglage ne peut être créé, modifié ni supprimé.',
         'Appelez « contexte » avant d\'interpréter des états, des étapes ou des couleurs : les règles de la maison y sont écrites.',
         'Les réponses citent les établissements par leur nom et leur ville. Les listes indiquent toujours le total réel, même tronquées.',
+        'L\'identité légale d\'un établissement (raison sociale, SIREN, SIRET, numéro de TVA) se lit sur sa fiche et se transmet au dépôt. Ces numéros sont vérifiés par leur clé de contrôle : un numéro faux est écarté et la réponse le dit. Ne les devinez jamais — le sujet « identite » de « contexte » explique ce que chacun désigne.',
         'Les photos ne sortent jamais du logiciel : seul leur nombre est indiqué.',
       ].join('\n'),
     }
