@@ -35,7 +35,6 @@ const PROSPECTION: GroupeMenu = {
     { to: '/appels', icon: Phone, label: 'Appels' },
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous' },
     { to: '/emails', icon: Mail, label: 'Emails' },
-    { to: '/carte', icon: Map, label: 'Carte' },
   ],
 };
 const COMMERCIAL: GroupeMenu = {
