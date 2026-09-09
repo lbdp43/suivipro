@@ -78,7 +78,7 @@ const chercherClient = {
     ville: z.string().optional().describe('Ville ou code postal.'),
     type: z.string().optional().describe('Type de client : bar, cave, souchon, distributeur, export…'),
     tournee: z.string().optional().describe('Nom de tournée ou de zone.'),
-    etat: z.enum(['retard', 'aujourdhui', 'a_venir', 'sans_recurrence', 'inactif']).optional().describe('N\'garder que les clients dans cet état de visite.'),
+    etat: z.enum(['retard', 'aujourdhui', 'a_venir', 'sans_recurrence', 'inactif']).optional().describe('Ne garder que les clients dans cet état de visite.'),
     commercial: z.string().optional().describe('Le prénom d\'un collègue pour voir ses clients ; sinon, les vôtres.'),
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },

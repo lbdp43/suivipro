@@ -139,7 +139,7 @@ const chercherProspect = {
   description: 'Retrouver des prospects par nom, ville, secteur, étape du tunnel, score ou étiquettes. Renvoie l\'étape, la prochaine action prévue et la dernière activité.',
   schema: {
     nom: z.string().optional().describe('Recherche partielle sur le nom ou la ville.'),
-    ville: z.string().optional(),
+    ville: z.string().optional().describe('Ville ou code postal.'),
     secteur: z.string().optional().describe('Le nom de la zone qui contient la fiche.'),
     etape: z.string().optional().describe('Une étape du tunnel : nouveau, a_contacter, contacte, proposition, negociation, gagne, client_gagne, perdu…'),
     score_min: z.number().optional().describe('Score minimum, de 0 à 100.'),
@@ -332,8 +332,8 @@ const prospectsQuiStagnent = {
   description: `Les fiches sur lesquelles il ne s'est rien passé depuis trop longtemps (${SEUIL_STAGNATION_JOURS} jours par défaut). Les étapes terminales (gagné, perdu, ne pas contacter) sont exclues.`,
   schema: {
     jours: z.number().optional().describe(`Seuil en jours sans activité, ${SEUIL_STAGNATION_JOURS} par défaut.`),
-    etape: z.string().optional(),
-    secteur: z.string().optional(),
+    etape: z.string().optional().describe('Pour ne regarder qu\'une étape du tunnel.'),
+    secteur: z.string().optional().describe('Le nom de la zone qui contient la fiche.'),
     commercial: z.string().optional().describe('Le prénom d\'un collègue ; sinon, les vôtres.'),
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },
@@ -387,7 +387,8 @@ const boiteProspection = {
   titre: 'La boîte de prospection',
   description: 'Ce que l\'équipe a partagé depuis son téléphone, et ce que vous y avez déposé, qui attend d\'être qualifié : lien Google Maps, Instagram, article, photo. L\'identité légale est indiquée quand elle est connue — c\'est ainsi qu\'on voit ce qu\'il reste à chercher. Les photos ne sont pas transmises, seul leur nombre est indiqué.',
   schema: {
-    statut: z.enum(['a_qualifier', 'qualifie', 'ecarte']).optional().describe('« a_qualifier » par défaut.'),
+    statut: z.enum(['a_qualifier', 'traite', 'ignore']).optional()
+      .describe('« a_qualifier » (en attente), « traite » (devenu prospect ou rattaché) ou « ignore » (écarté). « a_qualifier » par défaut.'),
     pour: z.string().optional().describe('Le prénom du commercial destinataire.'),
     depuis_jours: z.number().optional().describe('Fenêtre en jours, 30 par défaut.'),
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
