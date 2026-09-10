@@ -363,6 +363,61 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   );
 }
 
+/**
+ * Les comptes rendus qui manquent, en bas de l'accueil.
+ *
+ * Un rendez-vous passé sans compte rendu, c'est une visite dont personne ne sait ce qu'elle
+ * a donné : ni la relance à poser, ni la commande à attendre. Le tableau le comptait déjà
+ * (« 4 sans CR »), mais un compteur ne dit pas lesquels — on repartait les chercher dans le
+ * bilan de la semaine.
+ *
+ * Le bloc ne s'affiche que s'il y a quelque chose à rattraper : une carte qui n'apparaît
+ * que lorsqu'elle compte se lit, une carte toujours là se traverse.
+ */
+function ComptesRendusAFaire({ rdvs, surCompteRendu, avecQui }: {
+  rdvs: Appointment[];
+  /** Rend l'action quand cette personne peut écrire le compte rendu, sinon rien. */
+  surCompteRendu: (r: Appointment) => (() => void) | undefined;
+  /** En vue d'équipe : à qui appartient le rendez-vous. */
+  avecQui?: (r: Appointment) => string | undefined;
+}) {
+  const { getProspect, getClient } = useApp();
+  if (rdvs.length === 0) return null;
+  const montres = rdvs.slice(0, CR_MAX);
+  return (
+    <BlocErreur titre="Comptes rendus à faire">
+      <div className="bg-white rounded-xl border-2 border-amber-300 p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2 text-base">
+            <ClipboardCheck className="w-5 h-5 text-amber-600" /> Comptes rendus à faire
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 tabular-nums">{rdvs.length}</span>
+          </h3>
+          <Link to="/semaine/bilan" className="text-xs text-brewery-600 hover:underline flex items-center gap-0.5">Voir <ChevronRight className="w-3 h-3" /></Link>
+        </div>
+        <p className="text-xs text-amber-800 mb-2">Ces rendez-vous sont passés et personne n'a dit ce qu'ils ont donné. Les plus anciens d'abord.</p>
+        <div>
+          {montres.map(r => (
+            <LigneRdv
+              key={r.id}
+              rdv={r}
+              nom={nomDuRdv(r, getProspect, getClient)}
+              cible={cibleDuRdv(r, getProspect, getClient)}
+              aQui={[avecQui?.(r), formatDate(r.date)].filter(Boolean).join(' · ')}
+              surCompteRendu={surCompteRendu(r)}
+            />
+          ))}
+        </div>
+        {rdvs.length > montres.length && (
+          <p className="text-[11px] text-gray-500 mt-2">… et {rdvs.length - montres.length} autre{rdvs.length - montres.length > 1 ? 's' : ''} dans le bilan de la semaine.</p>
+        )}
+      </div>
+    </BlocErreur>
+  );
+}
+
+/** Au-delà, l'accueil devient une liste : le reste se traite dans le bilan de la semaine. */
+const CR_MAX = 15;
+
 // ============================================================================
 // COMMERCIAL
 // ============================================================================
@@ -399,6 +454,11 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
       return state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === ds && a.commercial_id === moi.id).length; });
   }, [state.appointments, moi.id]);
   const retards = useMemo(() => state.clients.filter(c => estEnRetard(c, today)).sort((a, b) => joursDeRetard(b, today) - joursDeRetard(a, today)), [state.clients, today]);
+  // Les plus anciens d'abord : c'est celui qu'on a le plus de mal à se rappeler.
+  const crAFaire = useMemo(() => state.appointments
+    .filter(a => (a.commercial_id === moi.id || (a.participants || []).includes(moi.id)) && rdvSansCompteRendu(a, now))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+  [state.appointments, moi.id, today]);
   const sansCr = useMemo(() => state.appointments.filter(a => a.commercial_id === moi.id && rdvSansCompteRendu(a, now)).sort((a, b) => b.date.localeCompare(a.date)), [state.appointments, moi.id]);
   const taches = useMemo(() => state.tasksClient.filter(t => t.commercial_id === moi.id && t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance <= today).sort((a, b) => (a.date_echeance || '').localeCompare(b.date_echeance || '')), [state.tasksClient, moi.id, today]);
   const rappels = useMemo(() => state.reminders.filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today), [state.reminders, moi.id, today]);
@@ -533,6 +593,8 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
           <BlocsProspection moi={moi} />
         </>
       )}
+
+      <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
 
       <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
@@ -892,6 +954,13 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
   // La ligne dépliée du tableau de l'équipe : une seule à la fois, c'est une lecture, pas
   // une comparaison — et deux panneaux ouverts repousseraient le tableau hors de l'écran.
   const [membreDeplie, setMembreDeplie] = useState<string | null>(null);
+  // Toute l'équipe : l'administrateur voit ce qui manque partout, et rend compte de ce qui
+  // lui appartient. Le compte rendu d'un collègue reste au collègue, comme sur les
+  // rendez-vous du jour — on ne raconte pas une visite qu'on n'a pas faite.
+  const crAFaire = useMemo(() => state.appointments
+    .filter(a => rdvSansCompteRendu(a, now))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+  [state.appointments, today]);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
@@ -1023,6 +1092,12 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
             })}
           </div>} />
       </BlocErreur>
+
+      <ComptesRendusAFaire
+        rdvs={crAFaire}
+        surCompteRendu={r => (estAMoi(r) ? () => setCompteRenduRdv(r) : undefined)}
+        avecQui={r => state.commerciaux.find(c => c.id === r.commercial_id)?.prenom}
+      />
 
       <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
