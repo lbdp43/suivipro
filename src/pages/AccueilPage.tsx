@@ -374,16 +374,40 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
  * Le bloc ne s'affiche que s'il y a quelque chose à rattraper : une carte qui n'apparaît
  * que lorsqu'elle compte se lit, une carte toujours là se traverse.
  */
-function ComptesRendusAFaire({ rdvs, surCompteRendu, avecQui }: {
+function ComptesRendusAFaire({ rdvs, surCompteRendu, proprietaire, moiId }: {
   rdvs: Appointment[];
   /** Rend l'action quand cette personne peut écrire le compte rendu, sinon rien. */
   surCompteRendu: (r: Appointment) => (() => void) | undefined;
-  /** En vue d'équipe : à qui appartient le rendez-vous. */
-  avecQui?: (r: Appointment) => string | undefined;
+  /** En vue d'équipe : à qui appartient le rendez-vous. Absent, tout est à soi. */
+  proprietaire?: (r: Appointment) => { id: string; nom: string };
+  moiId?: string;
 }) {
   const { getProspect, getClient } = useApp();
+
+  // Vu de l'administration, la question n'est pas « combien » mais « lesquels sont à moi ».
+  // Un prénom glissé en gris au bout de la ligne ne répond pas : on range par personne, et
+  // les siens passent devant — ce sont les seuls qu'on puisse écrire soi-même.
+  const groupes = useMemo(() => {
+    if (!proprietaire) return [{ id: '', titre: '', lignes: rdvs }];
+    const m = new Map<string, { id: string; titre: string; lignes: Appointment[] }>();
+    for (const r of rdvs) {
+      const q = proprietaire(r);
+      const g = m.get(q.id) || { id: q.id, titre: q.nom, lignes: [] };
+      g.lignes.push(r);
+      m.set(q.id, g);
+    }
+    return [...m.values()].sort((a, b) => {
+      if (a.id === moiId) return -1;
+      if (b.id === moiId) return 1;
+      return b.lignes.length - a.lignes.length || a.titre.localeCompare(b.titre);
+    });
+  }, [rdvs, proprietaire, moiId]);
+
   if (rdvs.length === 0) return null;
-  const montres = rdvs.slice(0, CR_MAX);
+  // Le plafond porte sur le total affiché, pas sur chaque personne : sinon une liste de
+  // quinze par tête remplirait la page.
+  let reste = CR_MAX;
+
   return (
     <BlocErreur titre="Comptes rendus à faire">
       <div className="bg-white rounded-xl border-2 border-amber-300 p-4">
@@ -395,20 +419,41 @@ function ComptesRendusAFaire({ rdvs, surCompteRendu, avecQui }: {
           <Link to="/semaine/bilan" className="text-xs text-brewery-600 hover:underline flex items-center gap-0.5">Voir <ChevronRight className="w-3 h-3" /></Link>
         </div>
         <p className="text-xs text-amber-800 mb-2">Ces rendez-vous sont passés et personne n'a dit ce qu'ils ont donné. Les plus anciens d'abord.</p>
-        <div>
-          {montres.map(r => (
-            <LigneRdv
-              key={r.id}
-              rdv={r}
-              nom={nomDuRdv(r, getProspect, getClient)}
-              cible={cibleDuRdv(r, getProspect, getClient)}
-              aQui={[avecQui?.(r), formatDate(r.date)].filter(Boolean).join(' · ')}
-              surCompteRendu={surCompteRendu(r)}
-            />
-          ))}
+
+        <div className="space-y-2">
+          {groupes.map(g => {
+            const montres = g.lignes.slice(0, Math.max(0, reste));
+            reste -= montres.length;
+            if (montres.length === 0) return null;
+            const aMoi = g.id === moiId;
+            return (
+              <div key={g.id || 'tous'}>
+                {g.titre && (
+                  <p className={`text-xs font-semibold flex items-center gap-1.5 pt-1 ${aMoi ? 'text-amber-900' : 'text-gray-600'}`}>
+                    {g.titre}
+                    {aMoi
+                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900">à vous</span>
+                      : <span className="text-[10px] font-normal text-gray-400">à relancer</span>}
+                    <span className="text-gray-400 font-normal tabular-nums">{g.lignes.length}</span>
+                  </p>
+                )}
+                {montres.map(r => (
+                  <LigneRdv
+                    key={r.id}
+                    rdv={r}
+                    nom={nomDuRdv(r, getProspect, getClient)}
+                    cible={cibleDuRdv(r, getProspect, getClient)}
+                    aQui={formatDate(r.date)}
+                    surCompteRendu={surCompteRendu(r)}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </div>
-        {rdvs.length > montres.length && (
-          <p className="text-[11px] text-gray-500 mt-2">… et {rdvs.length - montres.length} autre{rdvs.length - montres.length > 1 ? 's' : ''} dans le bilan de la semaine.</p>
+
+        {rdvs.length > CR_MAX && (
+          <p className="text-[11px] text-gray-500 mt-2">… et {rdvs.length - CR_MAX} autre{rdvs.length - CR_MAX > 1 ? 's' : ''} dans le bilan de la semaine.</p>
         )}
       </div>
     </BlocErreur>
@@ -1096,7 +1141,11 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
       <ComptesRendusAFaire
         rdvs={crAFaire}
         surCompteRendu={r => (estAMoi(r) ? () => setCompteRenduRdv(r) : undefined)}
-        avecQui={r => state.commerciaux.find(c => c.id === r.commercial_id)?.prenom}
+        moiId={moi.id}
+        proprietaire={r => {
+          const c = state.commerciaux.find(x => x.id === r.commercial_id);
+          return { id: r.commercial_id || '', nom: c ? `${c.prenom} ${c.nom}`.trim() : 'Sans commercial' };
+        }}
       />
 
       <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
