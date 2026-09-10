@@ -1,6 +1,7 @@
 import { useState, useMemo, DragEvent } from 'react';
 import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
+import { lienMapsDepuisAdresse } from '../utils/signalements';
 import { dateLocale } from '../../shared/regles';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -655,10 +656,38 @@ export default function PipelinePage() {
                           {ESTABLISHMENT_LABELS[prospect.type_etablissement]}
                           {prospect.secteur && <span> - {prospect.secteur}</span>}
                         </p>
-                        <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
-                          <MapPin className="w-3 h-3" />
-                          {prospect.ville || prospect.adresse}
-                        </div>
+                        {/* L'adresse ouvre Google Maps, comme dans la boîte de prospection : on
+                            cherche par le nom ET l'adresse, c'est ce qui tombe sur la bonne
+                            fiche. En mode sélection, elle redevient du texte — un clic doit
+                            cocher la carte, pas partir sur une autre application. */}
+                        {(() => {
+                          const situation = [prospect.ville, prospect.adresse].find(Boolean) || '';
+                          if (!situation) return null;
+                          const lien = selection ? '' : lienMapsDepuisAdresse(
+                            prospect.nom_etablissement, prospect.adresse, prospect.code_postal, prospect.ville,
+                          );
+                          return (
+                            <div className="flex items-center gap-1 mt-1 text-[10px]">
+                              <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              {lien ? (
+                                <a
+                                  href={lien}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  draggable={false}
+                                  onClick={e => e.stopPropagation()}
+                                  onDragStart={e => e.preventDefault()}
+                                  className="text-blue-600 hover:underline truncate"
+                                  title="Ouvrir dans Google Maps"
+                                >
+                                  {situation}
+                                </a>
+                              ) : (
+                                <span className="text-gray-400 truncate">{situation}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {(() => { const r = recits.get(prospect.id); const actif = !estTerminale(prospect.etape_pipeline); return (
                           <div className="mt-1.5 space-y-0.5">
                             <p className="text-[10px] text-gray-500 truncate" title={texteDerniere(r?.derniere ?? null)}>{texteDerniere(r?.derniere ?? null)}</p>

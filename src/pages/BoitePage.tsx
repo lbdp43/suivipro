@@ -21,6 +21,22 @@ import { GaleriePhotos } from '../components/PhotosSignalement';
 // groupe de signalements sur le même établissement) se qualifie en un geste : créer le
 // prospect, rattacher à une fiche existante, ou ignorer.
 type Onglet = 'a_qualifier' | 'traites';
+type Tri = 'tous' | 'doublons' | 'ecartes' | 'nets';
+
+/** Ce qui, dans un groupe, mérite un coup d'œil avant de créer la fiche. */
+function alertesDuGroupe(groupe: Signalement[]) {
+  return {
+    doublon: groupe.some(s => (s.fiche.doublons || []).length > 0),
+    ecart: groupe.some(s => !!s.fiche.ecartes?.total),
+  };
+}
+
+const LIBELLES_TRI: Record<Tri, string> = {
+  tous: 'Tout',
+  doublons: 'Doublons possibles',
+  ecartes: 'Déjà écartés',
+  nets: 'Rien à signaler',
+};
 
 const COULEUR_SOURCE: Record<Signalement['source'], string> = {
   google: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -57,6 +73,9 @@ export default function BoitePage() {
   // La sélection porte sur des signalements, pas sur des groupes : cocher une carte coche
   // tous les partages du même établissement, et le serveur les traite un par un.
   const [selection, setSelection] = useState<Set<string> | null>(null);
+  // Ce qu'on veut voir : tout, ce qui ressemble à une fiche existante, ce qu'on avait déjà
+  // écarté, ou au contraire ce qui ne pose aucune question et se crée les yeux fermés.
+  const [tri, setTri] = useState<Tri>('tous');
   const prospection = faitDeLaProspection(moi);
 
   const nomDe = (id: string) => { const c = state.commerciaux.find(x => x.id === id); return c ? c.prenom : id || '—'; };
@@ -65,9 +84,33 @@ export default function BoitePage() {
     const liste = onglet === 'a_qualifier' ? enAttente : state.signalements.filter(s => s.statut !== 'a_qualifier');
     return moi && perimetre === 'moi' ? liste.filter(s => concerne(s, moi, prospection)) : liste;
   }, [onglet, enAttente, state.signalements, perimetre, moi, prospection]);
-  const groupes = useMemo(() => grouper(visibles), [visibles]);
+  // On groupe d'abord, on trie ensuite : filtrer les signalements un par un couperait en
+  // deux un établissement partagé plusieurs fois, dont un seul dépôt porte l'alerte.
+  const tousLesGroupes = useMemo(() => grouper(visibles), [visibles]);
+  const comptes = useMemo(() => {
+    const c = { tous: tousLesGroupes.length, doublons: 0, ecartes: 0, nets: 0 };
+    for (const g of tousLesGroupes) {
+      const { doublon, ecart } = alertesDuGroupe(g);
+      if (doublon) c.doublons += 1;
+      if (ecart) c.ecartes += 1;
+      if (!doublon && !ecart) c.nets += 1;
+    }
+    return c;
+  }, [tousLesGroupes]);
+  const groupes = useMemo(() => {
+    if (tri === 'tous') return tousLesGroupes;
+    return tousLesGroupes.filter(g => {
+      const { doublon, ecart } = alertesDuGroupe(g);
+      if (tri === 'doublons') return doublon;
+      if (tri === 'ecartes') return ecart;
+      return !doublon && !ecart;
+    });
+  }, [tousLesGroupes, tri]);
+
   const enSelection = selection !== null;
   const idsSelection = useMemo(() => (selection ? [...selection] : []), [selection]);
+  // Ce qui est affiché, et rien d'autre : « tout cocher » suit le tri en cours.
+  const affiches = useMemo(() => groupes.flat(), [groupes]);
   const nomsSelection = useMemo(() => {
     const parId = new Map(visibles.map(s => [s.id, titreDuSignalement(s)]));
     return idsSelection.map(id => parId.get(id) || id);
@@ -141,7 +184,25 @@ export default function BoitePage() {
           <button type="button" onClick={() => setPerimetre('moi')} className={`px-2.5 py-1 rounded-md ${perimetre === 'moi' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Pour moi</button>
           <button type="button" onClick={() => setPerimetre('tous')} className={`px-2.5 py-1 rounded-md ${perimetre === 'tous' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tous</button>
         </div>
-        {groupes.length > 0 && (
+        {/* Trier ce qui reste à qualifier : d'un côté ce qui demande un arbitrage — une fiche
+            existante qui ressemble, une décision déjà prise — de l'autre ce qui ne pose
+            aucune question et part en lot sans qu'on ait à le relire. */}
+        {tousLesGroupes.length > 0 && (
+          <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 font-medium" role="group" aria-label="Trier">
+            {(Object.keys(LIBELLES_TRI) as Tri[]).map(cle => (
+              <button
+                key={cle}
+                type="button"
+                onClick={() => setTri(cle)}
+                className={`px-2.5 py-1 rounded-md ${tri === cle ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {LIBELLES_TRI[cle]}
+                <span className={`ml-1 ${tri === cle ? 'text-brewery-500' : 'text-gray-400'}`}>{comptes[cle]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {tousLesGroupes.length > 0 && (
           <button
             type="button"
             onClick={() => setSelection(enSelection ? null : new Set())}
@@ -154,7 +215,11 @@ export default function BoitePage() {
 
       {groupes.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-500">
-          {onglet === 'a_qualifier' ? 'Rien à qualifier. Ce qui est partagé depuis le téléphone ou collé dans « Signaler un prospect » arrive ici.' : 'Aucun signalement traité ce mois-ci.'}
+          {tousLesGroupes.length > 0
+            ? `Aucune fiche dans « ${LIBELLES_TRI[tri].toLowerCase()} ». Il y en a ${tousLesGroupes.length} en tout.`
+            : onglet === 'a_qualifier'
+              ? 'Rien à qualifier. Ce qui est partagé depuis le téléphone ou collé dans « Signaler un prospect » arrive ici.'
+              : 'Aucun signalement traité ce mois-ci.'}
         </div>
       )}
 
@@ -329,7 +394,7 @@ export default function BoitePage() {
           noms={nomsSelection}
           traites={onglet === 'traites'}
           admin={moi.role === 'admin'}
-          onTout={() => setSelection(new Set(visibles.map(x => x.id)))}
+          onTout={() => setSelection(new Set(affiches.map(x => x.id)))}
           onVider={() => setSelection(new Set())}
           onFini={appliquerLot}
           onFermer={() => setSelection(null)}
