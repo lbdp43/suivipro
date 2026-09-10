@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
-  ChevronRight, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
+  ChevronRight, ChevronDown, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
@@ -214,6 +214,153 @@ function zonesDuJour(config: Record<string, unknown>, dayKey: string): string[] 
 function zoneConfiguree(config: Record<string, unknown>, tournee: string): boolean {
   const t = tournee.trim().toLowerCase();
   return Object.entries(config).some(([k, zones]) => k !== 'prospection' && Array.isArray(zones) && zones.some(z => typeof z === 'string' && z.trim().toLowerCase() === t));
+}
+
+/**
+ * Le détail d'une journée ou d'une semaine, pour une personne de l'équipe.
+ *
+ * Le tableau de l'accueil compte : 23 appels, 3 RDV pris. Utile pour repérer, inutile pour
+ * comprendre — d'où viennent ces appels, dans quel secteur, et à qui profitent les
+ * rendez-vous. On déplie la ligne plutôt que d'ouvrir un autre écran : la question naît
+ * devant le tableau, elle se répond devant le tableau.
+ *
+ * Tout se lit dans l'état déjà chargé : aucun aller-retour serveur pour ouvrir une ligne.
+ */
+const DETAIL_MAX = 12;
+
+function Section({ titre, compte, enfants }: { titre: string; compte: number; enfants: React.ReactNode }) {
+  if (compte === 0) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">{titre} <span className="text-gray-400 font-normal tabular-nums">{compte}</span></p>
+      {enfants}
+    </div>
+  );
+}
+
+function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
+  personne: Commercial; prosp: boolean; comm: boolean;
+  debut: string; fin: string; today: string;
+}) {
+  const { state, getProspect, getClient } = useApp();
+  const [periode, setPeriode] = useState<'jour' | 'semaine'>('jour');
+  const dedans = (d: string) => (periode === 'jour' ? d === today : d >= debut && d <= fin);
+  const prenom = (id: string) => state.commerciaux.find(c => c.id === id)?.prenom || '—';
+
+  // Les appels, rangés par secteur du prospect appelé : c'est la question posée devant le
+  // tableau — « elle a passé ses 23 appels où ? ».
+  const parSecteur = useMemo(() => {
+    const m = new Map<string, { total: number; repondus: number }>();
+    for (const c of state.calls) {
+      if (c.commercial_id !== personne.id || !dedans(jourDe(c.date))) continue;
+      const secteur = (getProspect(c.prospect_id)?.secteur || '').trim() || 'Sans secteur';
+      const e = m.get(secteur) || { total: 0, repondus: 0 };
+      e.total += 1;
+      if (c.resultat === 'repondu') e.repondus += 1;
+      m.set(secteur, e);
+    }
+    return [...m.entries()].sort((a, b) => b[1].total - a[1].total);
+  }, [state.calls, personne.id, periode, debut, fin, today]);
+  const totalAppels = parSecteur.reduce((n, [, e]) => n + e.total, 0);
+
+  const rdvPris = useMemo(() => state.appointments
+    .filter(a => a.prospecteur_id === personne.id && dedans(jourDe(a.created_at)) && !rdvAnnule(a))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+  [state.appointments, personne.id, periode, debut, fin, today]);
+
+  const mesRdv = useMemo(() => state.appointments
+    .filter(a => a.commercial_id === personne.id && dedans(jourDe(a.date)) && !rdvAnnule(a))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+  [state.appointments, personne.id, periode, debut, fin, today]);
+
+  const visites = useMemo(() => state.interactions
+    .filter(i => i.commercial_id === personne.id && dedans(jourDe(i.date)))
+    .sort((a, b) => b.date.localeCompare(a.date)),
+  [state.interactions, personne.id, periode, debut, fin, today]);
+  const surLeTerrain = visites.filter(i => i.type === 'VISITE');
+  const auTelephone = visites.filter(i => i.type === 'APPEL');
+
+  const nomDeLaCible = (a: Appointment) => (a.client_id
+    ? getClient(a.client_id)?.nom
+    : getProspect(a.prospect_id)?.nom_etablissement) || a.titre || 'Établissement';
+  const lienDeLaCible = (a: Appointment) => (a.client_id
+    ? (getClient(a.client_id) ? `/clients?id=${a.client_id}` : '')
+    : (getProspect(a.prospect_id) ? `/prospects?id=${a.prospect_id}` : ''));
+
+  const ligneRdv = (a: Appointment, montrerPour: boolean) => {
+    const lien = lienDeLaCible(a);
+    const nom = nomDeLaCible(a);
+    return (
+      <li key={a.id} className="flex flex-wrap items-baseline gap-x-1.5">
+        <span className="text-gray-500 tabular-nums">{formatDate(a.date)}{a.heure_debut ? ` ${a.heure_debut}` : ''}</span>
+        {lien ? <Link to={lien} className="text-gray-800 hover:text-brewery-700 hover:underline">{nom}</Link> : <span className="text-gray-800">{nom}</span>}
+        {montrerPour
+          ? <span className="text-gray-400">pour {prenom(a.commercial_id)}</span>
+          : (a.prospecteur_id && a.prospecteur_id !== a.commercial_id && <span className="text-gray-400">pris par {prenom(a.prospecteur_id)}</span>)}
+        {a.compte_rendu && <span className="text-green-700">· {APPOINTMENT_RESULT_LABELS[a.compte_rendu] || a.compte_rendu}</span>}
+      </li>
+    );
+  };
+
+  const coupee = (n: number) => (n > DETAIL_MAX ? <li className="text-gray-400">… et {n - DETAIL_MAX} autre{n - DETAIL_MAX > 1 ? 's' : ''}</li> : null);
+  const rien = totalAppels === 0 && rdvPris.length === 0 && mesRdv.length === 0 && visites.length === 0;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3 space-y-3 text-[11px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5 font-medium" role="group" aria-label="Période">
+          <button type="button" onClick={() => setPeriode('jour')} className={`px-2 py-0.5 rounded-md ${periode === 'jour' ? 'bg-brewery-50 text-brewery-700' : 'text-gray-500 hover:text-gray-700'}`}>Aujourd'hui</button>
+          <button type="button" onClick={() => setPeriode('semaine')} className={`px-2 py-0.5 rounded-md ${periode === 'semaine' ? 'bg-brewery-50 text-brewery-700' : 'text-gray-500 hover:text-gray-700'}`}>La semaine</button>
+        </div>
+        <span className="text-gray-400">{periode === 'jour' ? formatDate(today) : `du ${formatDate(debut)} au ${formatDate(fin)}`}</span>
+      </div>
+
+      {rien && <p className="text-gray-400">Rien d'enregistré sur cette période.</p>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+        {prosp && (
+          <Section titre="Appels de prospection" compte={totalAppels} enfants={
+            <ul className="space-y-0.5">
+              {parSecteur.slice(0, DETAIL_MAX).map(([secteur, e]) => (
+                <li key={secteur} className="flex items-baseline justify-between gap-2">
+                  <span className="text-gray-700 truncate">{secteur}</span>
+                  <span className="text-gray-500 tabular-nums whitespace-nowrap">{e.total} · {e.repondus} répondu{e.repondus > 1 ? 's' : ''}</span>
+                </li>
+              ))}
+              {coupee(parSecteur.length)}
+            </ul>
+          } />
+        )}
+        {prosp && (
+          <Section titre="Rendez-vous pris" compte={rdvPris.length} enfants={
+            <ul className="space-y-0.5">{rdvPris.slice(0, DETAIL_MAX).map(a => ligneRdv(a, true))}{coupee(rdvPris.length)}</ul>
+          } />
+        )}
+        {comm && (
+          <Section titre="Ses rendez-vous" compte={mesRdv.length} enfants={
+            <ul className="space-y-0.5">{mesRdv.slice(0, DETAIL_MAX).map(a => ligneRdv(a, false))}{coupee(mesRdv.length)}</ul>
+          } />
+        )}
+        {comm && (
+          <Section titre="Visites et appels clients" compte={visites.length} enfants={
+            <ul className="space-y-0.5">
+              {[...surLeTerrain, ...auTelephone].slice(0, DETAIL_MAX).map(i => {
+                const c = getClient(i.client_id);
+                return (
+                  <li key={i.id} className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-gray-500 tabular-nums">{formatDate(i.date)}</span>
+                    <span className={i.type === 'VISITE' ? 'text-brewery-700' : 'text-gray-400'}>{i.type === 'VISITE' ? 'visite' : 'appel'}</span>
+                    {c ? <Link to={`/clients?id=${c.id}`} className="text-gray-800 hover:text-brewery-700 hover:underline">{c.nom}</Link> : <span className="text-gray-400">client retiré</span>}
+                  </li>
+                );
+              })}
+              {coupee(visites.length)}
+            </ul>
+          } />
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -742,6 +889,9 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
   // rendent compte ici, sur leur ligne, comme pour un commercial.
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
   const estAMoi = (r: Appointment) => r.commercial_id === moi.id || (r.participants || []).includes(moi.id);
+  // La ligne dépliée du tableau de l'équipe : une seule à la fois, c'est une lecture, pas
+  // une comparaison — et deux panneaux ouverts repousseraient le tableau hors de l'écran.
+  const [membreDeplie, setMembreDeplie] = useState<string | null>(null);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
@@ -803,10 +953,19 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
               </tr>
             </thead>
             <tbody>
-              {equipe.map(({ p, prosp, comm, appels, rdvPris, rdvJour, visites, appelsClients, sem, retards, sansCr, rappels, objectifs, derive }) => (
-                <tr key={p.id} className="border-b border-gray-50 last:border-0 align-top">
+              {equipe.map(({ p, prosp, comm, appels, rdvPris, rdvJour, visites, appelsClients, sem, retards, sansCr, rappels, objectifs, derive }) => {
+                const deplie = membreDeplie === p.id;
+                return (
+                <Fragment key={p.id}>
+                <tr
+                  className={`border-b border-gray-50 last:border-0 align-top cursor-pointer ${deplie ? 'bg-brewery-50/40' : 'hover:bg-gray-50'}`}
+                  onClick={() => setMembreDeplie(deplie ? null : p.id)}
+                >
                   <td className="py-2 pr-2">
-                    <p className="font-semibold text-gray-800">{p.prenom} {p.nom}</p>
+                    <p className="font-semibold text-gray-800 flex items-center gap-1">
+                      <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${deplie ? '' : '-rotate-90'}`} />
+                      {p.prenom} {p.nom}
+                    </p>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : p.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{libelleRole(p)}</span>
                   </td>
                   <td className="py-2 px-2 text-center text-gray-700 whitespace-nowrap">
@@ -839,7 +998,15 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                {deplie && (
+                  <tr className="border-b border-gray-100">
+                    <td colSpan={5} className="p-2">
+                      <DetailMembre personne={p} prosp={prosp} comm={comm} debut={semaine.debut} fin={semaine.fin} today={today} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+              ); })}
             </tbody>
           </table>
         </div>
