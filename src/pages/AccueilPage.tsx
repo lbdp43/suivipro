@@ -431,9 +431,7 @@ function ComptesRendusAFaire({ rdvs, surCompteRendu, proprietaire, moiId }: {
                 {g.titre && (
                   <p className={`text-xs font-semibold flex items-center gap-1.5 pt-1 ${aMoi ? 'text-amber-900' : 'text-gray-600'}`}>
                     {g.titre}
-                    {aMoi
-                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900">à vous</span>
-                      : <span className="text-[10px] font-normal text-gray-400">à relancer</span>}
+                    {aMoi && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900">à vous</span>}
                     <span className="text-gray-400 font-normal tabular-nums">{g.lignes.length}</span>
                   </p>
                 )}
@@ -995,7 +993,12 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
   // L'administrateur fait aussi du terrain : ses propres rendez-vous du jour se
   // rendent compte ici, sur leur ligne, comme pour un commercial.
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
-  const estAMoi = (r: Appointment) => r.commercial_id === moi.id || (r.participants || []).includes(moi.id);
+  // L'administrateur écrit n'importe quel compte rendu, y compris celui d'un collègue :
+  // c'est souvent lui qui a l'information, et un rendez-vous sans compte rendu ne se
+  // débloque pas tout seul. Rien ne se déplace pour autant — le rendez-vous garde son
+  // commercial (les compteurs de l'équipe ne bougent pas), le journal enregistre qui a
+  // écrit, et le rappel de relance part au propriétaire, pas à celui qui a saisi.
+  const ouvrirCompteRendu = (r: Appointment) => () => setCompteRenduRdv(r);
   // La ligne dépliée du tableau de l'équipe : une seule à la fois, c'est une lecture, pas
   // une comparaison — et deux panneaux ouverts repousseraient le tableau hors de l'écran.
   const [membreDeplie, setMembreDeplie] = useState<string | null>(null);
@@ -1133,14 +1136,14 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
             {state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === today).sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || '')).map(r => {
               const c = state.commerciaux.find(x => x.id === r.commercial_id);
               return <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} cible={cibleDuRdv(r, getProspect, getClient)} aQui={c ? c.prenom : undefined}
-                surCompteRendu={estAMoi(r) ? () => setCompteRenduRdv(r) : undefined} />;
+                surCompteRendu={ouvrirCompteRendu(r)} />;
             })}
           </div>} />
       </BlocErreur>
 
       <ComptesRendusAFaire
         rdvs={crAFaire}
-        surCompteRendu={r => (estAMoi(r) ? () => setCompteRenduRdv(r) : undefined)}
+        surCompteRendu={ouvrirCompteRendu}
         moiId={moi.id}
         proprietaire={r => {
           const c = state.commerciaux.find(x => x.id === r.commercial_id);
