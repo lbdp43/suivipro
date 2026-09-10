@@ -7,7 +7,7 @@ import {
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
 import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire } from '../utils/zones';
-import { aQualifier, concerne, titreDuSignalement, LIBELLES_SOURCE } from '../utils/signalements';
+import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
@@ -112,19 +112,72 @@ function nomDuRdv(rdv: Appointment, getProspect: (id: string) => Prospect | unde
   if (rdv.client_id) return getClient(rdv.client_id)?.nom || 'Client';
   return getProspect(rdv.prospect_id)?.nom_etablissement || 'Prospect';
 }
-function telDuRdv(rdv: Appointment, getProspect: (id: string) => Prospect | undefined, getClient: (id: string) => Client | undefined) {
-  if (rdv.client_id) { const c = getClient(rdv.client_id); return c?.telephone_mobile || c?.telephone || ''; }
-  return getProspect(rdv.prospect_id)?.telephone || '';
+/**
+ * L'établissement d'un rendez-vous : sa fiche, son téléphone, son adresse.
+ *
+ * Rend `null` pour un évènement sans établissement (réunion, salon), et pour un client
+ * quand l'appelant ne donne pas accès aux clients — la prospection lit ses rendez-vous
+ * sans voir les fiches clients, et ce n'est pas ici qu'on ouvrira la porte.
+ */
+function cibleDuRdv(
+  rdv: Appointment,
+  getProspect: (id: string) => Prospect | undefined,
+  getClient: (id: string) => Client | undefined,
+): { genre: 'prospect' | 'client'; id: string; nom: string; telephone: string; adresse: string } | null {
+  const morceaux = (...parts: (string | undefined)[]) => parts.map(x => (x || '').trim()).filter(Boolean).join(' ');
+  if (rdv.client_id) {
+    const c = getClient(rdv.client_id);
+    if (!c) return null;
+    return {
+      genre: 'client', id: c.id, nom: c.nom,
+      telephone: c.telephone_mobile || c.telephone || '',
+      adresse: morceaux(c.adresse, c.code_postal, c.ville),
+    };
+  }
+  const p = getProspect(rdv.prospect_id);
+  if (!p) return null;
+  return {
+    genre: 'prospect', id: p.id, nom: p.nom_etablissement,
+    telephone: p.telephone || '',
+    adresse: morceaux(p.adresse, p.code_postal, p.ville),
+  };
 }
 // `surCompteRendu` n'est fourni que pour les rendez-vous dont on a soi-même la charge :
 // le compte rendu se saisit alors depuis l'accueil, sans passer par la page Rendez-vous.
-function LigneRdv({ rdv, nom, tel, aQui, surCompteRendu }: { rdv: Appointment; nom: string; tel: string; aQui?: string; surCompteRendu?: () => void }) {
+function LigneRdv({ rdv, nom, cible, aQui, surCompteRendu }: {
+  rdv: Appointment; nom: string;
+  cible: ReturnType<typeof cibleDuRdv>;
+  aQui?: string; surCompteRendu?: () => void;
+}) {
+  // Avant d'y aller, on veut trois gestes : ouvrir la fiche, appeler, se faire guider.
+  // Le lieu saisi sur le rendez-vous prime — c'est là qu'on est attendu ; à défaut,
+  // l'adresse de l'établissement, qui est presque toujours la bonne.
+  const lieu = (rdv.lieu || '').trim() || cible?.adresse || '';
+  const lienMaps = lieu ? lienMapsDepuisAdresse(cible?.nom || nom, lieu) : '';
+  const tel = cible?.telephone || '';
   return (
     <div className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
       <span className="text-xs font-semibold text-gray-700 tabular-nums w-12">{rdv.heure_debut || '—'}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-800 truncate">{nom}{aQui && <span className="text-xs text-gray-400"> · {aQui}</span>}</p>
-        {rdv.lieu && <p className="text-[11px] text-gray-400 truncate flex items-center gap-1"><MapPin className="w-3 h-3" />{rdv.lieu}</p>}
+        <p className="text-sm truncate">
+          {cible ? (
+            <Link
+              to={cible.genre === 'client' ? `/clients?id=${cible.id}` : `/prospects?id=${cible.id}`}
+              className="text-gray-800 hover:text-brewery-700 hover:underline"
+            >
+              {nom}
+            </Link>
+          ) : <span className="text-gray-800">{nom}</span>}
+          {aQui && <span className="text-xs text-gray-400"> · {aQui}</span>}
+        </p>
+        {lieu && (
+          <p className="text-[11px] truncate flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+            {lienMaps
+              ? <a href={lienMaps} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate" title="Ouvrir dans Google Maps">{lieu}</a>
+              : <span className="text-gray-400 truncate">{lieu}</span>}
+          </p>
+        )}
       </div>
       {rdv.compte_rendu && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}</span>}
       {surCompteRendu && (
@@ -137,7 +190,16 @@ function LigneRdv({ rdv, nom, tel, aQui, surCompteRendu }: { rdv: Appointment; n
           <span className="hidden sm:inline">{rdv.compte_rendu ? 'Modifier' : 'Compte rendu'}</span>
         </button>
       )}
-      {tel && <a href={`tel:${tel.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>}
+      {/* Le numéro tient rarement sur la ligne : l'icône appelle, l'infobulle le donne. */}
+      {tel && (
+        <a
+          href={`tel:${tel.replace(/\s/g, '')}`}
+          title={`Appeler ${tel}`}
+          className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 flex-shrink-0"
+        >
+          <Phone className="w-3.5 h-3.5" />
+        </a>
+      )}
     </div>
   );
 }
@@ -211,7 +273,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Rendez-vous du jour">
           <Carte titre="Rendez-vous aujourd'hui" icone={Calendar} lien="/rdv" compte={rdvDuJour.length} vide="Aucun rendez-vous aujourd'hui." teinte="brewery"
-            enfants={<div>{rdvDuJour.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} tel={telDuRdv(r, getProspect, getClient)} surCompteRendu={() => setCompteRenduRdv(r)} />)}</div>} />
+            enfants={<div>{rdvDuJour.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} cible={cibleDuRdv(r, getProspect, getClient)} surCompteRendu={() => setCompteRenduRdv(r)} />)}</div>} />
         </BlocErreur>
         <BlocErreur titre="Tournée du jour">
           <Carte titre={tournee.zones.length ? `Tournée du jour · ${tournee.zones.join(', ')}` : 'Clients à visiter aujourd\'hui'} icone={MapPin} lien="/semaine" compte={tournee.clients.length}
@@ -578,7 +640,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
               {parCommercial.map(([cid, liste]) => { const c = getCommercial(cid); return (
                 <div key={cid}>
                   <p className="text-xs font-semibold text-gray-700 flex items-center gap-1"><Users className="w-3 h-3" /> {c ? `${c.prenom} ${c.nom}` : 'Commercial'} <span className="text-gray-400 font-normal">· {liste.length}</span></p>
-                  {liste.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, () => undefined)} tel="" aQui={formatDate(r.date)} />)}
+                  {liste.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, () => undefined)} cible={cibleDuRdv(r, getProspect, () => undefined)} aQui={formatDate(r.date)} />)}
                 </div>); })}
             </div>} />
         </BlocErreur>
@@ -789,7 +851,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
           enfants={<div>
             {state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === today).sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || '')).map(r => {
               const c = state.commerciaux.find(x => x.id === r.commercial_id);
-              return <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} tel="" aQui={c ? c.prenom : undefined}
+              return <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} cible={cibleDuRdv(r, getProspect, getClient)} aQui={c ? c.prenom : undefined}
                 surCompteRendu={estAMoi(r) ? () => setCompteRenduRdv(r) : undefined} />;
             })}
           </div>} />
