@@ -19,8 +19,10 @@ interface Props {
   /** Vrai dans l'onglet « Traités » : on y rouvre au lieu de créer et d'ignorer. */
   traites: boolean;
   admin: boolean;
-  onTout: () => void;
-  onVider: () => void;
+  /** Combien de signalements le tri en cours laisse à l'écran. */
+  affiches: number;
+  /** Coche tout ce qui est affiché, ou décoche si c'est déjà le cas. */
+  onToutBasculer: () => void;
   onFini: (resultat: ResultatMasse) => void;
   onFermer: () => void;
 }
@@ -44,10 +46,11 @@ function compte(n: number, singulier: string, pluriel: string): string {
   return `${n} ${n > 1 ? pluriel : singulier}`;
 }
 
-export default function SelectionBoite({ ids, noms, traites, admin, onTout, onVider, onFini, onFermer }: Props) {
+export default function SelectionBoite({ ids, noms, traites, admin, affiches, onToutBasculer, onFini, onFermer }: Props) {
   const toast = useToast();
   const [enCours, setEnCours] = useState<string | null>(null);
   const rien = ids.length === 0;
+  const tout = affiches > 0 && ids.length >= affiches;
   const combien = compte(ids.length, 'signalement', 'signalements');
 
   const lancer = async (action: ResultatMasse['action']) => {
@@ -89,17 +92,20 @@ export default function SelectionBoite({ ids, noms, traites, admin, onTout, onVi
       <div className="flex items-center gap-2 flex-wrap max-w-4xl mx-auto">
         <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 flex-shrink-0">
           <CheckSquare className="w-4 h-4 text-brewery-600" />
-          {rien ? 'Cochez les fiches à traiter' : combien}
+          {rien ? 'Rien de coché' : combien}
         </span>
 
-        <button onClick={onTout} className="text-xs font-medium text-brewery-700 hover:underline flex-shrink-0">
-          Tout ce qui est affiché
+        {/* Un seul bouton, et il dit combien il prend : après un tri, « tout » ne veut pas
+            dire la même chose d'un instant à l'autre, et c'est justement le nombre qu'on
+            veut lire avant de créer ou d'écarter le lot. */}
+        <button
+          onClick={onToutBasculer}
+          disabled={affiches === 0}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-brewery-200 bg-brewery-50 text-xs font-semibold text-brewery-700 hover:bg-brewery-100 disabled:opacity-40 flex-shrink-0"
+        >
+          <CheckSquare className="w-3.5 h-3.5" />
+          {tout ? 'Tout décocher' : `Tout cocher (${affiches})`}
         </button>
-        {!rien && (
-          <button onClick={onVider} className="text-xs font-medium text-gray-500 hover:underline flex-shrink-0">
-            Vider
-          </button>
-        )}
 
         <div className="flex-1" />
 

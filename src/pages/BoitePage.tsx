@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Inbox, Share2, ExternalLink, MapPin, Phone, Building2, Landmark, AlertTriangle, Check, X, Link2, RotateCcw, Search, MessageSquare, UserPlus, Loader2, Trash2, Undo2, CheckSquare, Square,
@@ -115,6 +115,12 @@ export default function BoitePage() {
     const parId = new Map(visibles.map(s => [s.id, titreDuSignalement(s)]));
     return idsSelection.map(id => parId.get(id) || id);
   }, [idsSelection, visibles]);
+
+  // Changer de tri, d'onglet ou de périmètre vide la sélection : garder cochée une fiche
+  // qu'on ne voit plus, c'est agir sur ce qu'on ne lit pas. Le mode sélection, lui, reste.
+  useEffect(() => {
+    setSelection(avant => (avant && avant.size > 0 ? new Set() : avant));
+  }, [tri, onglet, perimetre]);
 
   const basculerGroupe = (groupe: Signalement[]) => setSelection(avant => {
     const suivant = new Set(avant || []);
@@ -394,8 +400,10 @@ export default function BoitePage() {
           noms={nomsSelection}
           traites={onglet === 'traites'}
           admin={moi.role === 'admin'}
-          onTout={() => setSelection(new Set(affiches.map(x => x.id)))}
-          onVider={() => setSelection(new Set())}
+          affiches={affiches.length}
+          onToutBasculer={() => setSelection(avant => (
+            avant && avant.size >= affiches.length ? new Set() : new Set(affiches.map(x => x.id))
+          ))}
           onFini={appliquerLot}
           onFermer={() => setSelection(null)}
         />
