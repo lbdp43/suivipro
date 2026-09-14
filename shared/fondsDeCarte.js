@@ -19,24 +19,26 @@
 /**
  * Les fonds, dans l'ordre où on les essaie.
  *
- * Carto d'abord : c'est le fond sans clé le plus répandu, celui qui a le moins de chances
- * de refuser un logiciel métier. L'IGN ensuite — service public français, ouvert, sans clé
- * — puis Esri. Trois maisons différentes : si l'une ferme sa porte, les deux autres ne
- * ferment pas en même temps.
+ * L'IGN d'abord : c'est un service public français, ouvert, sans clé et sans restriction
+ * d'usage commercial. C'est le seul de la liste dont rien ne peut nous couper l'accès du
+ * jour au lendemain. Son seul défaut : il s'arrête aux frontières, donc la Suisse et
+ * l'Italie apparaissent vides sur une vue large — sans conséquence, la prospection est en
+ * France.
  *
- * Les serveurs d'OpenStreetMap ne sont plus dans la liste : leur politique d'usage les
- * réserve aux essais et aux petits projets, et ils ont fini par bloquer l'application.
+ * Esri ensuite, qui couvre le monde entier, au cas où la Géoplateforme serait indisponible.
+ *
+ * Deux fournisseurs écartés, et pourquoi — pour ne pas y revenir :
+ * — OpenStreetMap : leur politique d'usage réserve leurs serveurs, tenus par des bénévoles,
+ *   aux essais et aux petits projets. Ils ont fini par bloquer l'application, et le blocage
+ *   s'affichait à la place de chaque tuile : « Access blocked ».
+ * — Carto : demande désormais une clé d'API. Sans clé, il répond quand même — mais chaque
+ *   tuile porte « API KEY REQUIRED » en travers. C'est le pire cas pour la bascule
+ *   automatique plus bas : le serveur répond correctement, l'image s'affiche, rien ne
+ *   ressemble à une panne. Aucun code ne peut rattraper ça ; seul un œil le voit.
  *
  * @type {FondDeCarte[]}
  */
 export const FONDS_DE_CARTE = [
-  {
-    nom: 'Carto',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    sousDomaines: 'abcd',
-    zoomMax: 20,
-  },
   {
     nom: 'IGN',
     url: 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
