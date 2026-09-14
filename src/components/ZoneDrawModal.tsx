@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Polygon, Tooltip, CircleMarker } from 'react-leaflet';
+import { MapContainer, Polygon, Tooltip, CircleMarker } from 'react-leaflet';
+import TuilesCarte from './TuilesCarte';
 import { X, Info, Building2 } from 'lucide-react';
 import { CommercialZone, colorForCommercial } from '../types';
 import { useApp } from '../store/AppContext';
@@ -96,10 +97,7 @@ export default function ZoneDrawModal({ commercialId, commercialName, color, ini
 
         <div className="flex-1 relative">
           <MapContainer center={center} zoom={9} style={{ height: '100%', width: '100%' }}>
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; OpenStreetMap contributors'
-            />
+            <TuilesCarte />
             {otherZones.map(z => (
               <Polygon
                 key={z.id}

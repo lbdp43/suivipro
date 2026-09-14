@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { dateLocale } from '../../shared/regles';
-import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
+import { MapContainer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
+import TuilesCarte from '../components/TuilesCarte';
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
@@ -996,10 +997,7 @@ export default function MapPage() {
       {/* Map */}
       <div className="flex-1">
         <MapContainer center={center} zoom={9} style={{ height: '100%', width: '100%' }}>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <TuilesCarte />
           {modeDessin && (
             <DessinZones
               commercialId={admin ? dessinPour : (moi?.id || '')}
