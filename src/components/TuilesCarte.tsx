@@ -27,7 +27,22 @@ interface Fournisseur {
  * commercial — et SuiviPro ne sort pas de France. Carto ensuite, au cas où la Géoplateforme
  * serait indisponible : c'est le fond sans clé le plus répandu.
  */
+/**
+ * Les fonds, dans l'ordre où on les essaie.
+ *
+ * Carto d'abord : c'est le fond sans clé le plus répandu, celui qui a le moins de chances
+ * de refuser un logiciel métier. L'IGN ensuite — service public français, ouvert, sans clé
+ * — puis Esri. Trois maisons différentes : si l'une ferme sa porte, les deux autres ne
+ * ferment pas en même temps.
+ */
 const FOURNISSEURS: Fournisseur[] = [
+  {
+    nom: 'Carto',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    sousDomaines: 'abcd',
+    zoomMax: 20,
+  },
   {
     nom: 'IGN',
     url: 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
@@ -37,18 +52,18 @@ const FOURNISSEURS: Fournisseur[] = [
     zoomMax: 19,
   },
   {
-    nom: 'Carto',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    sousDomaines: 'abcd',
-    zoomMax: 20,
+    nom: 'Esri',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>',
+    zoomMax: 19,
   },
 ];
 
 /**
- * Un fond imposé par la configuration du serveur (VITE_TUILES_URL), qui passe devant tout
- * le reste. C'est la porte de sortie : si un fournisseur bloque à son tour, une variable
- * d'environnement suffit à en changer, sans attendre une mise en production.
+ * Un fond imposé par la configuration (VITE_TUILES_URL), qui passe devant tout le reste.
+ * C'est la porte de sortie quand un fournisseur bloque à son tour. Attention : Vite fige
+ * ces valeurs au moment de la construction — changer la variable demande un redéploiement,
+ * pas seulement un redémarrage.
  */
 function fondImpose(): Fournisseur | null {
   const url = String(import.meta.env.VITE_TUILES_URL || '').trim();
@@ -64,17 +79,47 @@ function fondImpose(): Fournisseur | null {
 /** Au-delà, ce n'est plus une tuile qui manque, c'est le fournisseur qui ne répond pas. */
 const ERREURS_AVANT_BASCULE = 8;
 
+/**
+ * Et surtout : le délai sans la moindre tuile affichée.
+ *
+ * Un fournisseur ne tombe pas toujours en erreur. Il peut répondre « poliment » quelque
+ * chose que le navigateur n'affiche pas, ou ne jamais répondre du tout — et là, aucun
+ * événement d'erreur ne part, la bascule ne se déclenche pas, et la carte reste blanche
+ * indéfiniment. C'est exactement ce qui s'est produit en production. On ne surveille donc
+ * pas les échecs, on surveille l'absence de réussite.
+ */
+const DELAI_SANS_TUILE_MS = 6000;
+
 export default function TuilesCarte() {
   const impose = fondImpose();
   const liste = impose ? [impose, ...FOURNISSEURS] : FOURNISSEURS;
   const [rang, setRang] = useState(0);
+  const dernier = rang >= liste.length - 1;
   const fournisseur = liste[Math.min(rang, liste.length - 1)];
+
   // Les tuiles en échec se comptent hors du rendu : une carte entière qui rate, c'est des
   // centaines d'événements, et autant de rendus qu'on ne veut pas déclencher.
   const rates = useRef(0);
+  const auMoinsUne = useRef(false);
 
-  // Chaque fournisseur repart à zéro : les erreurs de l'un ne condamnent pas le suivant.
-  useEffect(() => { rates.current = 0; }, [rang]);
+  // Les compteurs se remettent à zéro ICI, au moment de la bascule, et pas dans un effet
+  // qui ne s'exécuterait qu'après le rendu : entre les deux, le fournisseur suivant a le
+  // temps de lever ses premières erreurs, et il hériterait des échecs du précédent — il
+  // serait condamné avant d'avoir servi une seule tuile. C'est ce qui le faisait sauter.
+  const suivant = () => setRang(r => {
+    if (r >= liste.length - 1) return r;
+    rates.current = 0;
+    auMoinsUne.current = false;
+    return r + 1;
+  });
+
+  // Le garde-fou : si rien ne s'est affiché au bout de quelques secondes, on passe au
+  // fournisseur d'après sans attendre une erreur qui ne viendra peut-être jamais.
+  useEffect(() => {
+    if (dernier) return undefined;
+    const t = setTimeout(() => { if (!auMoinsUne.current) suivant(); }, DELAI_SANS_TUILE_MS);
+    return () => clearTimeout(t);
+  }, [rang, dernier]);
 
   return (
     <TileLayer
@@ -84,9 +129,10 @@ export default function TuilesCarte() {
       {...(fournisseur.sousDomaines ? { subdomains: fournisseur.sousDomaines } : {})}
       maxZoom={fournisseur.zoomMax || 19}
       eventHandlers={{
+        tileload: () => { auMoinsUne.current = true; },
         tileerror: () => {
           rates.current += 1;
-          if (rates.current >= ERREURS_AVANT_BASCULE && rang < liste.length - 1) setRang(r => r + 1);
+          if (rates.current >= ERREURS_AVANT_BASCULE) suivant();
         },
       }}
     />
