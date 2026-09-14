@@ -1,71 +1,21 @@
-// Le fond de carte, déclaré à un seul endroit.
+// Le fond de carte côté navigateur : quel fournisseur on affiche, et comment on en change
+// tout seul quand il ne répond pas.
 //
-// Les tuiles venaient des serveurs d'OpenStreetMap, qui ont fini par bloquer l'application :
-// leur politique d'usage réserve ces serveurs, tenus par des bénévoles, aux essais et aux
-// petits projets — pas à un logiciel qui tourne tous les jours. Le blocage ne se voit pas
-// dans les journaux, il s'affiche : chaque tuile devient une image « Access blocked ».
-//
-// On prend donc un fournisseur qui accepte cet usage, et on garde de quoi en changer sans
-// toucher au code — parce que ce genre de blocage revient, et qu'il ne doit plus jamais
-// falloir une mise en production pour le débloquer.
+// La liste des fournisseurs n'est pas ici : elle est dans shared/fondsDeCarte.js, parce
+// que le serveur doit l'autoriser dans sa politique de sécurité (Content-Security-Policy).
+// Deux listes qui divergent, c'est une carte blanche sans le moindre message d'erreur.
 import { useEffect, useRef, useState } from 'react';
 import { TileLayer } from 'react-leaflet';
-
-interface Fournisseur {
-  nom: string;
-  url: string;
-  attribution: string;
-  /** Sous-domaines pour répartir les requêtes, quand le fournisseur en propose. */
-  sousDomaines?: string;
-  zoomMax?: number;
-}
-
-/**
- * Les fonds, dans l'ordre où on les essaie.
- *
- * L'IGN d'abord : c'est un service public français, ouvert, sans clé et sans limite d'usage
- * commercial — et SuiviPro ne sort pas de France. Carto ensuite, au cas où la Géoplateforme
- * serait indisponible : c'est le fond sans clé le plus répandu.
- */
-/**
- * Les fonds, dans l'ordre où on les essaie.
- *
- * Carto d'abord : c'est le fond sans clé le plus répandu, celui qui a le moins de chances
- * de refuser un logiciel métier. L'IGN ensuite — service public français, ouvert, sans clé
- * — puis Esri. Trois maisons différentes : si l'une ferme sa porte, les deux autres ne
- * ferment pas en même temps.
- */
-const FOURNISSEURS: Fournisseur[] = [
-  {
-    nom: 'Carto',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    sousDomaines: 'abcd',
-    zoomMax: 20,
-  },
-  {
-    nom: 'IGN',
-    url: 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
-      + '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM'
-      + '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png',
-    attribution: '&copy; <a href="https://www.ign.fr/">IGN</a> — Géoplateforme',
-    zoomMax: 19,
-  },
-  {
-    nom: 'Esri',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>',
-    zoomMax: 19,
-  },
-];
+import { FONDS_DE_CARTE, type FondDeCarte } from '../../shared/fondsDeCarte';
 
 /**
  * Un fond imposé par la configuration (VITE_TUILES_URL), qui passe devant tout le reste.
- * C'est la porte de sortie quand un fournisseur bloque à son tour. Attention : Vite fige
- * ces valeurs au moment de la construction — changer la variable demande un redéploiement,
- * pas seulement un redémarrage.
+ * C'est la porte de sortie quand un fournisseur bloque à son tour. Deux pièges :
+ * — Vite fige ces valeurs à la construction, donc il faut redéployer, pas juste redémarrer ;
+ * — le serveur doit AUSSI connaître ce domaine, par la variable TUILES_HOTES, sinon sa
+ *   politique de sécurité refusera les tuiles et la carte restera blanche.
  */
-function fondImpose(): Fournisseur | null {
+function fondImpose(): FondDeCarte | null {
   const url = String(import.meta.env.VITE_TUILES_URL || '').trim();
   if (!url) return null;
   return {
@@ -85,14 +35,13 @@ const ERREURS_AVANT_BASCULE = 8;
  * Un fournisseur ne tombe pas toujours en erreur. Il peut répondre « poliment » quelque
  * chose que le navigateur n'affiche pas, ou ne jamais répondre du tout — et là, aucun
  * événement d'erreur ne part, la bascule ne se déclenche pas, et la carte reste blanche
- * indéfiniment. C'est exactement ce qui s'est produit en production. On ne surveille donc
- * pas les échecs, on surveille l'absence de réussite.
+ * indéfiniment. On ne surveille donc pas les échecs, on surveille l'absence de réussite.
  */
 const DELAI_SANS_TUILE_MS = 6000;
 
 export default function TuilesCarte() {
   const impose = fondImpose();
-  const liste = impose ? [impose, ...FOURNISSEURS] : FOURNISSEURS;
+  const liste = impose ? [impose, ...FONDS_DE_CARTE] : FONDS_DE_CARTE;
   const [rang, setRang] = useState(0);
   const dernier = rang >= liste.length - 1;
   const fournisseur = liste[Math.min(rang, liste.length - 1)];
@@ -105,7 +54,7 @@ export default function TuilesCarte() {
   // Les compteurs se remettent à zéro ICI, au moment de la bascule, et pas dans un effet
   // qui ne s'exécuterait qu'après le rendu : entre les deux, le fournisseur suivant a le
   // temps de lever ses premières erreurs, et il hériterait des échecs du précédent — il
-  // serait condamné avant d'avoir servi une seule tuile. C'est ce qui le faisait sauter.
+  // serait condamné avant d'avoir servi une seule tuile.
   const suivant = () => setRang(r => {
     if (r >= liste.length - 1) return r;
     rates.current = 0;

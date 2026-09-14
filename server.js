@@ -13,6 +13,7 @@ import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux } from './
 import { rattacherTout } from './server/lib/zones.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 import mcpRoutes from './server/mcp/index.js';
+import { hotesDesFonds } from './shared/fondsDeCarte.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
@@ -35,6 +36,18 @@ app.use((req, res, next) => {
   return res.status(404).json({ error: 'SuiviPro n\'utilise pas OAuth : l\'accès au MCP se fait par un jeton d\'en-tête.' });
 });
 
+// Les domaines des fonds de carte, autorisés pour les images.
+//
+// C'est ici que la carte s'est retrouvée entièrement blanche : le code demandait Carto,
+// l'IGN et Esri pendant que cette liste n'autorisait encore qu'OpenStreetMap. Le navigateur
+// refusait chaque tuile en silence — rien dans les journaux du serveur, aucune erreur
+// réseau, juste un fond vide. La liste vient donc du même fichier que les fournisseurs
+// (shared/fondsDeCarte.js) : elle ne peut plus diverger.
+//
+// TUILES_HOTES ajoute un domaine sans passer par le code, pour aller avec VITE_TUILES_URL
+// quand il faut changer de fournisseur en urgence. Un domaine par espace ou par virgule.
+const hotesTuiles = hotesDesFonds(String(process.env.TUILES_HOTES || '').split(/[\s,]+/).filter(Boolean));
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
@@ -42,7 +55,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://unpkg.com", ...hotesTuiles],
       connectSrc: ["'self'", "https://api-adresse.data.gouv.fr", "https://recherche-entreprises.api.gouv.fr", "https://api.insee.fr"],
       fontSrc: ["'self'"],
       frameSrc: ["'self'"],
