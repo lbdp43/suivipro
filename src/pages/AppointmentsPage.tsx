@@ -18,6 +18,7 @@ import CommercialAgenda from '../components/CommercialAgenda';
 import { PucesTourneesDuJour, InfoTourneeModal } from '../components/ResumeTournees';
 import { resumeTournees, lundiDe, JOURS_SEMAINE, type ResumeTournee } from '../utils/resumeTournees';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
+import RepertoireGooglePanel from '../components/RepertoireGooglePanel';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
@@ -532,6 +533,11 @@ export default function AppointmentsPage() {
 
       {/* Google Calendar Panel */}
       <GoogleCalendarPanel />
+
+      {/* Le repertoire Google : les clients dans les contacts du telephone. Range ici avec
+          l'agenda parce que c'est la seule page ou chacun, et pas seulement l'administrateur,
+          peut brancher son compte Google. */}
+      <RepertoireGooglePanel />
 
       {/* Filtres */}
       <div className="space-y-3">
