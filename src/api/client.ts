@@ -28,6 +28,23 @@ export function getToken(): string | null {
   return authToken;
 }
 
+/**
+ * Le serveur prolonge la session tant qu'on s'en sert : quand il juge le jeton proche de sa
+ * fin, il en renvoie un neuf dans l'en-tete X-Jeton. On le range a la place de l'ancien.
+ *
+ * Sans ca, le jeton expirait sept jours apres la connexion quoi qu'il arrive, et toute
+ * l'equipe retapait son mot de passe une fois par semaine, meme en se servant de
+ * l'application tous les jours.
+ *
+ * Appele sur TOUTES les reponses, pas seulement celles de `request` : l'etat complet et les
+ * appels bruts passent par d'autres chemins, et quelqu'un qui ne fait que consulter ses
+ * ecrans doit voir sa session se prolonger comme les autres.
+ */
+function rangerJetonRenouvele(res: Response) {
+  const neuf = res.headers.get('X-Jeton');
+  if (neuf && neuf !== authToken) setToken(neuf);
+}
+
 async function request(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -42,6 +59,7 @@ async function request(path: string, options: RequestInit = {}) {
     headers,
   });
   noterVersion(res.headers.get('X-Version'));
+  rangerJetonRenouvele(res);
 
   if (res.status === 401) {
     // Token expired or invalid
@@ -89,6 +107,7 @@ export async function loadFullState(forcer = false): Promise<any | null> {
   if (!forcer && empreinteEtat) headers['If-None-Match'] = empreinteEtat;
   const res = await fetch(`${API_BASE}/state`, { headers, cache: 'no-store' });
   noterVersion(res.headers.get('X-Version'));
+  rangerJetonRenouvele(res);
   if (res.status === 304) return null;
   if (res.status === 401) {
     setToken(null);
@@ -111,7 +130,10 @@ export function apiFetch(path: string, init: RequestInit = {}): Promise<Response
   const headers: Record<string, string> = { ...((init.headers as Record<string, string>) || {}) };
   if (init.body && !(init.body instanceof FormData) && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-  return fetch(`${API_BASE}${path}`, { ...init, headers });
+  return fetch(`${API_BASE}${path}`, { ...init, headers }).then(res => {
+    rangerJetonRenouvele(res);
+    return res;
+  });
 }
 
 /** Lecture simple : en-tête d'authentification, erreur lisible, JSON déjà décodé. */
@@ -219,7 +241,7 @@ export interface BilanSync {
   notes: string[];
 }
 
-export async function getRepertoireConfigStatus(): Promise<{ configured: boolean }> {
+export async function getRepertoireConfigStatus(): Promise<{ configured: boolean; retour: string }> {
   return request('/google-contacts/config-status');
 }
 

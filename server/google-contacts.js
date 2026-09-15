@@ -92,8 +92,12 @@ function connexion(jeton) {
   return google.people({ version: 'v1', auth: oauth });
 }
 
+// On renvoie aussi l'adresse de retour attendue. Elle n'est pas secrete — elle figure en
+// clair dans l'URL d'autorisation — et c'est la seule chose a savoir quand Google refuse
+// avec « redirect_uri_mismatch » : il suffit de la declarer dans la console. Sans ca, il
+// faut la deviner.
 router.get('/google-contacts/config-status', authMiddleware, (req, res) => {
-  res.json({ configured: configure() });
+  res.json({ configured: configure(), retour: REDIRECT_URI });
 });
 
 router.get('/google-contacts/status', authMiddleware, asyncHandler(async (req, res) => {
