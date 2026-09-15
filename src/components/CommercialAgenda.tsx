@@ -3,6 +3,7 @@ import { dateLocale } from '../../shared/regles';
 import { MapPin, AlertTriangle, CalendarPlus } from 'lucide-react';
 import { Appointment, AppointmentStatus, Prospect, Commercial, Client, EVENT_TYPE_LABELS } from '../types';
 import { downloadICS } from '../utils/helpers';
+import type { GoogleCalendarEvent } from '../api/client';
 
 interface Props {
   appointments: Appointment[];
@@ -12,6 +13,14 @@ interface Props {
   filterCommercial: string;
   weekOffset: number;
   onEditRdv?: (rdv: Appointment) => void;
+  /**
+   * Les agendas Google des commerciaux connectés, par identifiant.
+   *
+   * La grille les ignorait complètement : les événements Google n'étaient dessinés que dans
+   * la vue Planning. Quelqu'un qui reste sur la vue Agenda voyait un agenda vide et en
+   * concluait que la connexion Google ne marchait pas.
+   */
+  evenementsGoogle?: Record<string, { events: GoogleCalendarEvent[]; calendar_email?: string }>;
 }
 
 const HOUR_START = 8;
@@ -66,6 +75,7 @@ export default function CommercialAgenda({
   filterCommercial,
   weekOffset,
   onEditRdv,
+  evenementsGoogle = {},
 }: Props) {
   const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
   const hours = useMemo(() => Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i), []);
@@ -82,6 +92,24 @@ export default function CommercialAgenda({
     }
     return map;
   }, [appointments, weekDays, filterCommercial]);
+
+  // Les événements Google de la semaine, rangés par jour.
+  //
+  // L'heure est lue telle que Google l'écrit (« 2026-09-16T11:00:00+02:00 » → 11:00) : c'est
+  // l'heure du calendrier, donc celle que le commercial a sous les yeux dans son téléphone.
+  // Même lecture que la vue Planning, pour que les deux vues ne se contredisent jamais.
+  const googleParJour = useMemo(() => {
+    const map: Record<string, { evt: GoogleCalendarEvent; commercialId: string }[]> = {};
+    for (const day of weekDays) map[toDateStr(day)] = [];
+    for (const [commercialId, data] of Object.entries(evenementsGoogle)) {
+      if (filterCommercial && commercialId !== filterCommercial) continue;
+      for (const evt of (data?.events || [])) {
+        const jour = String(evt.start || '').split('T')[0];
+        if (map[jour]) map[jour].push({ evt, commercialId });
+      }
+    }
+    return map;
+  }, [evenementsGoogle, weekDays, filterCommercial]);
 
   // Detect conflicts: same commercial, same day, overlapping times
   const conflictIds = useMemo(() => {
@@ -212,6 +240,56 @@ export default function CommercialAgenda({
                 }
                 return null;
               })()}
+
+              {/* Les evenements Google, dessines SOUS les rendez-vous de SuiviPro (z-0 contre
+                  z-10). Quand les deux se chevauchent, c'est le rendez-vous du logiciel qui
+                  reste lisible : c'est celui sur lequel on travaille. */}
+              {(googleParJour[dateStr] || []).map(({ evt, commercialId }) => {
+                const commercial = commerciaux.find(c => c.id === commercialId);
+                const qui = commercial ? commercial.prenom : '';
+
+                if (evt.allDay) {
+                  return (
+                    <div
+                      key={`g-${evt.id}`}
+                      className="absolute left-0.5 right-0.5 top-0 rounded border border-dashed border-purple-300 bg-purple-50/70 px-1.5 py-0.5 z-0"
+                      title={`${evt.summary} — toute la journée${qui ? ` (${qui})` : ''}`}
+                    >
+                      <p className="text-[9px] font-medium text-purple-800 truncate">{evt.summary}</p>
+                    </div>
+                  );
+                }
+
+                const heureDebut = String(evt.start).split('T')[1]?.substring(0, 5) || '';
+                const heureFin = String(evt.end).split('T')[1]?.substring(0, 5) || '';
+                if (!heureDebut) return null;
+                const debutMin = timeToMinutes(heureDebut);
+                const finMin = heureFin ? timeToMinutes(heureFin) : debutMin + 60;
+                const hautGoogle = ((debutMin / 60) - HOUR_START) * SLOT_HEIGHT;
+                const hauteurGoogle = Math.max(((finMin - debutMin) / 60) * SLOT_HEIGHT, 20);
+                // La grille s'arrete a 19h : un evenement plus tard serait dessine dans le
+                // vide, sous le dernier trait. On le ramene dans la grille plutot que de le
+                // faire disparaitre sans rien dire.
+                if (hautGoogle > totalHeight) return null;
+
+                return (
+                  <div
+                    key={`g-${evt.id}`}
+                    className="absolute left-0.5 right-0.5 rounded border border-dashed border-purple-300 border-l-[3px] border-l-purple-400 bg-purple-50/70 overflow-hidden z-0"
+                    style={{ top: Math.max(hautGoogle, 0), height: hauteurGoogle }}
+                    title={`${evt.summary} — ${heureDebut}${heureFin ? `-${heureFin}` : ''}${qui ? ` (${qui})` : ''} — Google Agenda`}
+                  >
+                    <div className="px-1.5 py-0.5">
+                      <p className="text-[10px] font-semibold text-purple-900 truncate">{evt.summary}</p>
+                      {hauteurGoogle >= 36 && (
+                        <p className="text-[9px] text-purple-600 truncate">
+                          {heureDebut}{heureFin ? `-${heureFin}` : ''}{!filterCommercial && qui ? ` · ${qui}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
 
               {/* Appointment blocks */}
               {dayRdvs.map(rdv => {

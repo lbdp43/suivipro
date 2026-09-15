@@ -1027,6 +1027,7 @@ export default function AppointmentsPage() {
             filterCommercial={filterCommercial}
             weekOffset={weekOffset}
             onEditRdv={openEditForm}
+            evenementsGoogle={showGoogleEvents ? googleEventsMap : {}}
           />
           </div>
           </div>
