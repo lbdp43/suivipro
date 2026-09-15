@@ -191,6 +191,57 @@ export async function disconnectGoogleCalendar(commercialId: string): Promise<{ 
   });
 }
 
+// ============================================
+// Repertoire Google (contacts)
+// ============================================
+
+export interface EtatRepertoire {
+  connected: boolean;
+  contacts_email: string;
+  connected_at: string;
+  derniere_sync: string;
+  dernier_bilan: string;
+}
+
+export interface BilanSync {
+  ok?: boolean;
+  resume?: string;
+  error?: string;
+  crees: number;
+  mis_a_jour: number;
+  retires: number;
+  readoptes: number;
+  rapatries: number;
+  ignores: number;
+  refuses_vides: number;
+  supprimes_chez_google: number;
+  champs_rapatries: string[];
+  notes: string[];
+}
+
+export async function getRepertoireConfigStatus(): Promise<{ configured: boolean }> {
+  return request('/google-contacts/config-status');
+}
+
+export async function getRepertoireStatus(): Promise<Record<string, EtatRepertoire>> {
+  return request('/google-contacts/status');
+}
+
+export async function getRepertoireAuthUrl(): Promise<{ url: string }> {
+  return request('/google-contacts/authorize');
+}
+
+export async function disconnectRepertoire(commercialId: string): Promise<{ ok: boolean }> {
+  return request('/google-contacts/disconnect', {
+    method: 'POST',
+    body: JSON.stringify({ commercial_id: commercialId }),
+  });
+}
+
+export async function synchroniserRepertoire(): Promise<BilanSync> {
+  return request('/google-contacts/sync', { method: 'POST' });
+}
+
 export async function getGoogleCalendarEvents(
   commercialId: string,
   timeMin: string,

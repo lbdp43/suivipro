@@ -12,6 +12,7 @@ import { dbReady } from './server/db.js';
 import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux } from './server/routes.js';
 import { rattacherTout } from './server/lib/zones.js';
 import googleCalendarRoutes from './server/google-calendar.js';
+import googleContactsRoutes from './server/google-contacts.js';
 import mcpRoutes from './server/mcp/index.js';
 import { hotesDesFonds } from './shared/fondsDeCarte.js';
 
@@ -131,6 +132,7 @@ app.use('/api', (_req, res, next) => { res.setHeader('X-Version', VERSION_APPLI)
 // API routes
 app.use('/api', apiRoutes);
 app.use('/api', googleCalendarRoutes);
+app.use('/api', googleContactsRoutes);
 
 // Serve static files from dist (production)
 if (existsSync(DIST)) {

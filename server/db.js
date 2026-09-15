@@ -994,6 +994,41 @@ async function initDatabase(attempt = 1) {
       )`);
       await client.query('CREATE INDEX IF NOT EXISTS idx_signalement_photos_signalement ON signalement_photos(signalement_id)');
     } catch (err) { console.log('signalement_photos migration:', err.message); }
+    // Le repertoire Google : une connexion par personne, et un lien par (personne, client).
+    //
+    // Un lien par paire, et non une colonne sur le client : tout le monde recoit tous les
+    // clients, donc une meme fiche existe dans autant de repertoires Google qu'il y a de
+    // connectes. L'empreinte garde ce qu'on a depose la derniere fois — c'est elle qui
+    // permet de reconnaitre nos propres ecritures et de ne jamais ecraser une correction
+    // faite dans SuiviPro avec une valeur que personne n'a touchee dans Google.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS google_contacts_tokens (
+        commercial_id TEXT PRIMARY KEY REFERENCES commerciaux(id) ON DELETE CASCADE,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expiry_date BIGINT NOT NULL DEFAULT 0,
+        contacts_email TEXT DEFAULT '',
+        groupe_resource TEXT DEFAULT '',
+        jeton_sync TEXT DEFAULT '',
+        derniere_sync TEXT DEFAULT '',
+        dernier_bilan TEXT DEFAULT '',
+        connected_at TEXT NOT NULL
+      )`);
+      await client.query(`CREATE TABLE IF NOT EXISTS google_contacts_liens (
+        commercial_id TEXT NOT NULL REFERENCES commerciaux(id) ON DELETE CASCADE,
+        client_id TEXT NOT NULL,
+        resource_name TEXT NOT NULL,
+        etag TEXT DEFAULT '',
+        empreinte TEXT DEFAULT '',
+        PRIMARY KEY (commercial_id, client_id)
+      )`);
+      // Volontairement SANS cle etrangere vers clients : le lien doit survivre a la fiche.
+      // C'est lui qui dit « ce contact Google correspondait au client supprime » et permet
+      // de le retirer du repertoire. Avec une cascade, il disparaitrait avec la fiche et le
+      // contact resterait dans le telephone sans que rien ne puisse plus le retrouver.
+      await client.query('ALTER TABLE google_contacts_liens DROP CONSTRAINT IF EXISTS google_contacts_liens_client_id_fkey');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_google_contacts_liens_resource ON google_contacts_liens(commercial_id, resource_name)');
+    } catch (err) { console.log('google_contacts migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.
