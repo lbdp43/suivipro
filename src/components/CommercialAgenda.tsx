@@ -67,6 +67,35 @@ function timeToMinutes(time: string): number {
 
 const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
+interface EvenementGooglePlace {
+  evt: GoogleCalendarEvent;
+  commercialId: string;
+  heureDebut: string;
+  heureFin: string;
+  debutMin: number;
+  finMin: number;
+}
+
+/** Deux creneaux se chevauchent-ils ? */
+function seChevauchent(aDebut: number, aFin: number, bDebut: number, bFin: number): boolean {
+  return aDebut < bFin && bDebut < aFin;
+}
+
+/**
+ * Quand un evenement Google tombe en meme temps qu'un rendez-vous de SuiviPro, les deux se
+ * partagent la largeur de la colonne. Sinon chacun la prend entiere.
+ *
+ * Les empiler l'un sur l'autre — ce qui etait fait au depart — revenait a en cacher un :
+ * dans la vraie vie le meme rendez-vous existe souvent des deux cotes, aux memes heures,
+ * et c'est donc le cas le plus frequent qui devenait invisible.
+ */
+// Exprimes en retrait depuis le bord, comme les attend le style : le rendez-vous s'arrete a
+// 38 % du bord droit (il occupe donc les 62 % de gauche), l'evenement Google commence a 64 %
+// du bord gauche (il occupe les 36 % de droite). Les deux pour cent d'ecart evitent que les
+// bordures ne se touchent.
+const RETRAIT_DROIT_RDV = '38%';
+const RETRAIT_GAUCHE_GOOGLE = '64%';
+
 export default function CommercialAgenda({
   appointments,
   commerciaux,
@@ -99,13 +128,21 @@ export default function CommercialAgenda({
   // l'heure du calendrier, donc celle que le commercial a sous les yeux dans son téléphone.
   // Même lecture que la vue Planning, pour que les deux vues ne se contredisent jamais.
   const googleParJour = useMemo(() => {
-    const map: Record<string, { evt: GoogleCalendarEvent; commercialId: string }[]> = {};
+    const map: Record<string, EvenementGooglePlace[]> = {};
     for (const day of weekDays) map[toDateStr(day)] = [];
     for (const [commercialId, data] of Object.entries(evenementsGoogle)) {
       if (filterCommercial && commercialId !== filterCommercial) continue;
       for (const evt of (data?.events || [])) {
         const jour = String(evt.start || '').split('T')[0];
-        if (map[jour]) map[jour].push({ evt, commercialId });
+        if (!map[jour]) continue;
+        const heureDebut = String(evt.start).split('T')[1]?.substring(0, 5) || '';
+        const heureFin = String(evt.end).split('T')[1]?.substring(0, 5) || '';
+        const debutMin = heureDebut ? timeToMinutes(heureDebut) : 0;
+        map[jour].push({
+          evt, commercialId, heureDebut, heureFin,
+          debutMin,
+          finMin: heureFin ? timeToMinutes(heureFin) : debutMin + 60,
+        });
       }
     }
     return map;
@@ -244,7 +281,7 @@ export default function CommercialAgenda({
               {/* Les evenements Google, dessines SOUS les rendez-vous de SuiviPro (z-0 contre
                   z-10). Quand les deux se chevauchent, c'est le rendez-vous du logiciel qui
                   reste lisible : c'est celui sur lequel on travaille. */}
-              {(googleParJour[dateStr] || []).map(({ evt, commercialId }) => {
+              {(googleParJour[dateStr] || []).map(({ evt, commercialId, heureDebut, heureFin, debutMin, finMin }) => {
                 const commercial = commerciaux.find(c => c.id === commercialId);
                 const qui = commercial ? commercial.prenom : '';
 
@@ -260,11 +297,7 @@ export default function CommercialAgenda({
                   );
                 }
 
-                const heureDebut = String(evt.start).split('T')[1]?.substring(0, 5) || '';
-                const heureFin = String(evt.end).split('T')[1]?.substring(0, 5) || '';
                 if (!heureDebut) return null;
-                const debutMin = timeToMinutes(heureDebut);
-                const finMin = heureFin ? timeToMinutes(heureFin) : debutMin + 60;
                 const hautGoogle = ((debutMin / 60) - HOUR_START) * SLOT_HEIGHT;
                 const hauteurGoogle = Math.max(((finMin - debutMin) / 60) * SLOT_HEIGHT, 20);
                 // La grille s'arrete a 19h : un evenement plus tard serait dessine dans le
@@ -272,11 +305,20 @@ export default function CommercialAgenda({
                 // faire disparaitre sans rien dire.
                 if (hautGoogle > totalHeight) return null;
 
+                // S'il tombe en meme temps qu'un rendez-vous, on se range a droite pour
+                // laisser voir les deux. Sinon on prend toute la colonne.
+                const partage = dayRdvs.some(rdv =>
+                  seChevauchent(debutMin, finMin, timeToMinutes(rdv.heure_debut), timeToMinutes(rdv.heure_fin)));
+
                 return (
                   <div
                     key={`g-${evt.id}`}
                     className="absolute left-0.5 right-0.5 rounded border border-dashed border-purple-300 border-l-[3px] border-l-purple-400 bg-purple-50/70 overflow-hidden z-0"
-                    style={{ top: Math.max(hautGoogle, 0), height: hauteurGoogle }}
+                    style={{
+                      top: Math.max(hautGoogle, 0),
+                      height: hauteurGoogle,
+                      ...(partage ? { left: RETRAIT_GAUCHE_GOOGLE } : {}),
+                    }}
                     title={`${evt.summary} — ${heureDebut}${heureFin ? `-${heureFin}` : ''}${qui ? ` (${qui})` : ''} — Google Agenda`}
                   >
                     <div className="px-1.5 py-0.5">
@@ -305,6 +347,8 @@ export default function CommercialAgenda({
                 const isConflict = conflictIds.has(rdv.id);
                 const sc = STATUS_COLORS[rdv.statut];
                 const comColor = commercialColorMap[rdv.commercial_id] || 'border-l-gray-400';
+                const partageAvecGoogle = (googleParJour[dateStr] || []).some(g =>
+                  !g.evt.allDay && g.heureDebut && seChevauchent(startMin, endMin, g.debutMin, g.finMin));
                 const eventStyle = agendaIsEvent ? {
                   backgroundColor: rdv.event_type === 'reunion' ? '#f3e8ff' : rdv.event_type === 'boutique' ? '#fef3c7' : rdv.event_type === 'depot' ? '#ffedd5' : rdv.event_type === 'marche' ? '#dcfce7' : '#f3f4f6',
                   borderColor: rdv.event_type === 'reunion' ? '#c084fc' : rdv.event_type === 'boutique' ? '#fbbf24' : rdv.event_type === 'depot' ? '#fb923c' : rdv.event_type === 'marche' ? '#4ade80' : '#9ca3af',
@@ -316,7 +360,7 @@ export default function CommercialAgenda({
                     className={`absolute left-0.5 right-0.5 rounded border-l-[3px] ${comColor} ${
                       isConflict ? 'bg-red-50 border border-red-300 ring-1 ring-red-300' : agendaIsEvent ? 'border' : `${sc.bg} border ${sc.border}`
                     } cursor-pointer hover:shadow-md transition-shadow overflow-hidden z-10 group`}
-                    style={{ top: Math.max(top, 0), height, ...eventStyle }}
+                    style={{ top: Math.max(top, 0), height, ...eventStyle, ...(partageAvecGoogle ? { right: RETRAIT_DROIT_RDV } : {}) }}
                     onClick={() => onEditRdv?.(rdv)}
                     title={`${agendaName} (${commercial?.prenom || '?'}) - ${rdv.heure_debut}-${rdv.heure_fin}`}
                   >
