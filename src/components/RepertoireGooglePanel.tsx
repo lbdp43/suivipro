@@ -28,6 +28,7 @@ export default function RepertoireGooglePanel() {
   const { state } = useApp();
   const toast = useToast();
   const [configure, setConfigure] = useState<boolean | null>(null);
+  const [retour, setRetour] = useState('');
   const [etats, setEtats] = useState<Record<string, EtatRepertoire>>({});
   const [ouvert, setOuvert] = useState(false);
   const [connexion, setConnexion] = useState(false);
@@ -38,6 +39,7 @@ export default function RepertoireGooglePanel() {
     try {
       const [config, etat] = await Promise.all([getRepertoireConfigStatus(), getRepertoireStatus()]);
       setConfigure(config.configured);
+      setRetour(config.retour || '');
       setEtats(etat);
     } catch {
       setConfigure(false);
@@ -144,8 +146,8 @@ export default function RepertoireGooglePanel() {
               <div>
                 <p className="text-xs font-medium text-amber-800">Configuration requise</p>
                 <p className="text-[11px] text-amber-700 mt-0.5">
-                  Les mêmes identifiants Google que l'agenda, et l'adresse de retour
-                  <code className="mx-1">/api/google-contacts/callback</code>
+                  Les mêmes identifiants Google que l'agenda, et une adresse de retour se
+                  terminant par <code className="mx-1">/api/google-contacts/callback</code>
                   déclarée dans la console Google.
                 </p>
               </div>
@@ -171,6 +173,18 @@ export default function RepertoireGooglePanel() {
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Connexion en cours...</>
                   : <><LinkIcon className="w-4 h-4" /> Connecter mon répertoire Google</>}
               </button>
+              {retour && (
+                <div className="p-2.5 bg-amber-50 rounded-lg">
+                  <p className="text-[11px] text-amber-800">
+                    Si Google répond <strong>« Accès bloqué — redirect_uri_mismatch »</strong>, c'est que
+                    cette adresse n'est pas encore déclarée dans la console Google
+                    (Identifiants → votre ID client OAuth → URI de redirection autorisés) :
+                  </p>
+                  <code className="block mt-1 text-[10px] text-amber-900 bg-amber-100 rounded px-2 py-1 break-all">
+                    {retour}
+                  </code>
+                </div>
+              )}
             </>
           ) : (
             <>

@@ -45,9 +45,21 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
+                id="email"
+                name="email"
                 type="email"
+                // Sans name, id et autoComplete, le trousseau de l'iPhone ne reconnait pas ce
+                // formulaire comme une connexion : il ne propose jamais d'enregistrer le mot
+                // de passe, et ne le remplit jamais. Il fallait le retaper a la main a chaque
+                // fois. Ces attributs sont ce que Safari, Chrome et les gestionnaires de mots
+                // de passe cherchent.
+                autoComplete="username"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
                 placeholder="votre@email.fr"
                 value={email}
@@ -58,10 +70,13 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
               <div className="relative">
                 <input
+                  id="password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500 pr-10"
                   placeholder="Votre mot de passe"
                   value={password}
@@ -70,6 +85,8 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   onClick={() => setShowPassword(!showPassword)}
                 >

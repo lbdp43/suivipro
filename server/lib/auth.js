@@ -35,6 +35,21 @@ export function oublierLesComptesRetires() {
   retires = { le: 0, ids: retires.ids };
 }
 
+/** La durée d'une session. Volontairement courte : un jeton volé ne sert pas longtemps. */
+export const DUREE_SESSION = '7d';
+
+// Une session qui se prolonge tant qu'on s'en sert.
+//
+// Sans ça, le jeton expirait sept jours après la connexion, quoi qu'il arrive : toute
+// l'équipe retapait son mot de passe chaque semaine, même en utilisant l'application tous
+// les jours. Le jeton est donc réémis quand il a entamé sa dernière journée — au plus une
+// fois par jour, sur n'importe quel appel — et renvoyé dans l'en-tête X-Jeton, que le
+// navigateur range à la place de l'ancien.
+//
+// Ce qui ne change pas : quelqu'un qui ne vient pas pendant une semaine devra se
+// reconnecter, et un jeton volé reste bon sept jours au plus.
+const RENOUVELER_SOUS_MS = 24 * 60 * 60 * 1000;
+
 export async function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Token manquant' });
@@ -48,6 +63,13 @@ export async function authMiddleware(req, res, next) {
     return res.status(401).json({ error: "Ce compte a ete retire de l'equipe" });
   }
   req.user = decoded;
+
+  const resteMs = (decoded.exp || 0) * 1000 - Date.now();
+  if (resteMs > 0 && resteMs < RENOUVELER_SOUS_MS) {
+    try {
+      res.setHeader('X-Jeton', jwt.sign({ id: decoded.id, role: decoded.role }, JWT_SECRET, { expiresIn: DUREE_SESSION }));
+    } catch { /* un renouvellement raté n'empêche pas la requête : le jeton actuel vaut encore */ }
+  }
   next();
 }
 

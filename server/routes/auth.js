@@ -3,7 +3,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import db from '../db.js';
-import { JWT_SECRET, asyncHandler, authMiddleware } from '../lib/auth.js';
+import { JWT_SECRET, DUREE_SESSION, asyncHandler, authMiddleware } from '../lib/auth.js';
 import { logActivity } from '../lib/journal.js';
 
 const router = Router();
@@ -22,7 +22,7 @@ router.post('/auth/login', asyncHandler(async (req, res) => {
   const valid = bcrypt.compareSync(password, user.password);
   if (!valid) return res.status(401).json({ error: 'Identifiants incorrects' });
 
-  const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: DUREE_SESSION });
   const { password: _, ...userWithoutPwd } = user;
   userWithoutPwd.objectifs = JSON.parse(userWithoutPwd.objectifs || '{}');
 

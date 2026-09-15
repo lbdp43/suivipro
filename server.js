@@ -69,7 +69,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
-  exposedHeaders: ['X-Non-Lues', 'X-Version'],
+  exposedHeaders: ['X-Non-Lues', 'X-Version', 'X-Jeton'],
 }));
 
 // Rate limiting global — PAR UTILISATEUR, sur l'API seulement.
