@@ -16,6 +16,8 @@ import { ListChecks, ExternalLink } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import CompteRenduModal from '../components/CompteRenduModal';
+import CarteFiche from '../components/CarteFiche';
+import { lienMapsDepuisAdresse } from '../utils/signalements';
 import FriseProspect from '../components/FriseProspect';
 import { libelleRaisonPerte } from '../components/RaisonPerte';
 import { ocrProspect, convertProspectToClient, apiGet, apiPost, apiPut, apiDelete } from '../api/client';
@@ -1285,6 +1287,21 @@ export default function ProspectsPage() {
             </div>
 
             <FriseProspect prospect={selectedProspect} onCompteRendu={rdv => setCrRdv(rdv)} />
+
+            {/* Ou c'est, tout en bas du panneau. Cette page a son propre panneau de detail
+                et n'utilise pas le composant FicheProspect : la carte doit donc etre posee
+                ici aussi, sinon elle manquerait a l'endroit ou on clique le plus souvent. */}
+            <div className="px-4 pb-4">
+              <CarteFiche
+                latitude={selectedProspect.latitude}
+                longitude={selectedProspect.longitude}
+                nom={selectedProspect.nom_etablissement}
+                adresse={[selectedProspect.adresse, selectedProspect.code_postal, selectedProspect.ville].filter(Boolean).join(', ')}
+                lienMaps={lienMapsDepuisAdresse(selectedProspect.nom_etablissement, selectedProspect.adresse, selectedProspect.code_postal, selectedProspect.ville)}
+                couleur={getStageInfo(selectedProspect.etape_pipeline).color}
+                hauteur={240}
+              />
+            </div>
           </div>
         </div>
       ) : (

@@ -5,6 +5,7 @@ import { formatDate, formatDateTime } from '../utils/helpers';
 import { dateLocale, jourDe } from '../../shared/regles';
 import { prochaineActionDe } from '../../shared/tunnel';
 import { libelleRaisonPerte } from './RaisonPerte';
+import CarteFiche from './CarteFiche';
 
 // La fiche d'un établissement, telle qu'on veut l'avoir sous les yeux avant de composer :
 // qui c'est, où, ce qu'on sait déjà (tags, notes) et ce qui s'est passé avec lui
@@ -116,6 +117,18 @@ export default function FicheProspect({ prospect }: { prospect: Prospect }) {
           ))}
         </div>
       )}
+
+      {/* Ou c'est. En bas de la fiche, apres l'historique : on regarde d'abord qui c'est
+          et ce qui s'est passe, la carte repond ensuite au « c'est ou, exactement ? ». */}
+      <CarteFiche
+        latitude={prospect.latitude}
+        longitude={prospect.longitude}
+        nom={prospect.nom_etablissement}
+        adresse={adresse}
+        lienMaps={lienMaps}
+        couleur={couleur}
+        hauteur={200}
+      />
     </div>
   );
 }
