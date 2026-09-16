@@ -11,6 +11,8 @@ import { generateId, formatDate } from '../utils/helpers';
 import { decrocheDuClient } from '../utils/commandes';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 import { PhotosPartagees } from './PhotosSignalement';
+import CarteFiche from './CarteFiche';
+import { lienMapsDepuisAdresse } from '../utils/signalements';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
 // ouverte depuis Semaine : identité, contact, visites, actions rapides, notes, tâches,
@@ -406,6 +408,19 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
               })}
             </div>
           )}
+        </div>
+
+        {/* Ou c'est, en grand et tout en bas : une adresse ecrite ne dit pas si
+            l'etablissement est sur la route de la tournee de jeudi. */}
+        <div className="px-4 pt-3 pb-4 border-t border-gray-100">
+          <CarteFiche
+            latitude={client.latitude}
+            longitude={client.longitude}
+            nom={client.nom}
+            adresse={[client.adresse, client.code_postal, client.ville].filter(Boolean).join(', ')}
+            lienMaps={lienMapsDepuisAdresse(client.nom, client.adresse, client.code_postal, client.ville)}
+            hauteur={240}
+          />
         </div>
       </div>
     </div>
