@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Phone, Mail, MapPin, User, Bell, Calendar, ExternalLink, StickyNote } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Prospect, ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, CALL_RESULT_LABELS, APPOINTMENT_RESULT_LABELS } from '../types';
@@ -6,6 +7,7 @@ import { dateLocale, jourDe } from '../../shared/regles';
 import { prochaineActionDe } from '../../shared/tunnel';
 import { libelleRaisonPerte } from './RaisonPerte';
 import CarteFiche from './CarteFiche';
+import { voisinsAutour } from '../utils/voisinage';
 
 // La fiche d'un établissement, telle qu'on veut l'avoir sous les yeux avant de composer :
 // qui c'est, où, ce qu'on sait déjà (tags, notes) et ce qui s'est passé avec lui
@@ -23,6 +25,13 @@ export default function FicheProspect({ prospect }: { prospect: Prospect }) {
   const lienMaps = prospect.source_url || (adresse ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}` : '');
   const qui = (id: string) => { const c = getCommercial(id); return c ? c.prenom : ''; };
   const prochaine = prochaineActionDe(prospect, state.reminders, state.appointments, aujourdhui);
+
+  // Ce qu'il y a autour et qui justifie deja un deplacement : un rendez-vous de l'equipe
+  // deja cale a cote, ou un client qu'on aurait du revoir. Voir utils/voisinage.
+  const voisins = useMemo(() => voisinsAutour(
+    { id: prospect.id, latitude: prospect.latitude, longitude: prospect.longitude },
+    { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: aujourdhui },
+  ), [prospect, state.prospects, state.clients, state.appointments, state.commerciaux]);
 
   return (
     <div className="space-y-3 text-sm">
@@ -121,6 +130,7 @@ export default function FicheProspect({ prospect }: { prospect: Prospect }) {
       {/* Ou c'est. En bas de la fiche, apres l'historique : on regarde d'abord qui c'est
           et ce qui s'est passe, la carte repond ensuite au « c'est ou, exactement ? ». */}
       <CarteFiche
+        voisins={voisins}
         latitude={prospect.latitude}
         longitude={prospect.longitude}
         nom={prospect.nom_etablissement}

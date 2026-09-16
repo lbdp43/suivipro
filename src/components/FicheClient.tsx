@@ -12,6 +12,7 @@ import { decrocheDuClient } from '../utils/commandes';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 import { PhotosPartagees } from './PhotosSignalement';
 import CarteFiche from './CarteFiche';
+import { voisinsAutour } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
@@ -38,6 +39,13 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
   const interactions = getInteractionsForClient(client.id);
   const tasks = getTasksForClient(client.id);
   const commandes = getCommandesForClient(client.id);
+
+  // Ce qu'il y a autour et qui justifie deja un deplacement : un rendez-vous de l'equipe
+  // deja cale a cote, ou un client qu'on aurait du revoir. Voir utils/voisinage.
+  const voisins = useMemo(() => voisinsAutour(
+    { id: client.id, latitude: client.latitude, longitude: client.longitude },
+    { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: dateLocale(new Date()) },
+  ), [client, state.prospects, state.clients, state.appointments, state.commerciaux]);
 
   // Chiffres EasyBeer pour préparer la visite (calculés sur les commandes synchronisées)
   const statsCommandes = useMemo(() => {
@@ -414,6 +422,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             l'etablissement est sur la route de la tournee de jeudi. */}
         <div className="px-4 pt-3 pb-4 border-t border-gray-100">
           <CarteFiche
+            voisins={voisins}
             latitude={client.latitude}
             longitude={client.longitude}
             nom={client.nom}

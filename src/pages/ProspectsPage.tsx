@@ -17,6 +17,7 @@ import { sessionDuJour } from '../utils/sessionAppel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import CompteRenduModal from '../components/CompteRenduModal';
 import CarteFiche from '../components/CarteFiche';
+import { voisinsAutour } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import FriseProspect from '../components/FriseProspect';
 import { libelleRaisonPerte } from '../components/RaisonPerte';
@@ -461,6 +462,13 @@ export default function ProspectsPage() {
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
+
+  // Ce qu'il y a autour du prospect affiche et qui justifie deja un deplacement.
+  const voisinsDuProspect = useMemo(() => (selectedProspect ? voisinsAutour(
+    { id: selectedProspect.id, latitude: selectedProspect.latitude, longitude: selectedProspect.longitude },
+    { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: dateLocale(new Date()) },
+  ) : []), [selectedProspect, state.prospects, state.clients, state.appointments, state.commerciaux]);
+
 
 
   const [formData, setFormData] = useState<Partial<Prospect>>({});
@@ -1293,6 +1301,7 @@ export default function ProspectsPage() {
                 ici aussi, sinon elle manquerait a l'endroit ou on clique le plus souvent. */}
             <div className="px-4 pb-4">
               <CarteFiche
+                voisins={voisinsDuProspect}
                 latitude={selectedProspect.latitude}
                 longitude={selectedProspect.longitude}
                 nom={selectedProspect.nom_etablissement}

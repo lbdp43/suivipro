@@ -3,7 +3,9 @@
 // Une adresse écrite ne dit pas grand-chose : savoir qu'un bar est à Riom ne dit pas s'il
 // est sur la route de la tournée de jeudi. La carte répond à ça d'un coup d'œil.
 import { lazy, Suspense } from 'react';
-import { MapPin, ExternalLink } from 'lucide-react';
+import { MapPin, ExternalLink, Calendar, AlertTriangle } from 'lucide-react';
+import { distanceLisible, VOISINS_MAX, type Voisin } from '../utils/voisinage';
+import { formatDate } from '../utils/helpers';
 
 // Chargee seulement quand une fiche s'ouvre : Leaflet ne doit pas peser sur le demarrage
 // de l'application pour tous ceux qui n'ouvriront aucune fiche.
@@ -18,6 +20,7 @@ export function estLocalise(latitude?: number | null, longitude?: number | null)
 
 export default function CarteFiche({
   latitude, longitude, nom, adresse = '', lienMaps = '', couleur = '#16a34a', hauteur = 220,
+  voisins = [],
 }: {
   latitude?: number | null;
   longitude?: number | null;
@@ -26,8 +29,11 @@ export default function CarteFiche({
   lienMaps?: string;
   couleur?: string;
   hauteur?: number;
+  /** Ce qu'il y a autour et qui justifie déjà un déplacement. Voir utils/voisinage. */
+  voisins?: Voisin[];
 }) {
   const localise = estLocalise(latitude, longitude);
+  const montres = voisins.slice(0, VOISINS_MAX);
 
   return (
     <div className="space-y-1.5">
@@ -64,8 +70,37 @@ export default function CarteFiche({
               nom={nom}
               couleur={couleur}
               hauteur={hauteur}
+              voisins={montres}
             />
           </Suspense>
+        </div>
+      )}
+
+      {/* Les raisons d'aller dans le coin, ecrites en toutes lettres : un point sur une
+          carte ne dit ni quel jour, ni avec qui. */}
+      {localise && montres.length > 0 && (
+        <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
+          {montres.map(v => (
+            <div key={v.cle} className="flex items-start gap-2 px-2.5 py-1.5">
+              {v.genre === 'rdv'
+                ? <Calendar className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+                : <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-gray-900 truncate">{v.nom}</p>
+                <p className="text-[11px] text-gray-500">
+                  {v.genre === 'rdv'
+                    ? <>RDV {formatDate(v.date || '')}{v.heure ? ` à ${v.heure}` : ''}{v.qui ? ` · ${v.qui}` : ''}</>
+                    : <>Visite en retard{v.jours ? ` de ${v.jours} j` : ''}</>}
+                  {' · '}<span className="text-gray-400">{distanceLisible(v.km)}</span>
+                </p>
+              </div>
+            </div>
+          ))}
+          {voisins.length > montres.length && (
+            <p className="text-[11px] text-gray-400 px-2.5 py-1.5">
+              +{voisins.length - montres.length} autre{voisins.length - montres.length > 1 ? 's' : ''} dans le secteur
+            </p>
+          )}
         </div>
       )}
     </div>
