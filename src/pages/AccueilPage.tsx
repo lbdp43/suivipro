@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
   ChevronRight, ChevronDown, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
+  Navigation,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
-import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire } from '../utils/zones';
+import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire, ETAPES_A_APPELER } from '../utils/zones';
+import { tourneesAGarnir, RAYON_KM } from '../utils/voisinage';
 import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
@@ -796,6 +798,19 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
     .slice(0, 8), [state, moi.id]);
   // Zones prioritaires : ce qu'il reste à y appeler, et une session d'appel par zone.
   const zonesPrio = useMemo(() => zonesPrioritaires(state).map(z => ({ zone: z, aAppeler: prospectsAAppelerDansLaZone(state, z.id, maSession.appeles) })), [state, maSession.appeles]);
+  // Les journees ou quelqu'un se deplace deja, et les prospects a appeler autour.
+  //
+  // C'est l'information qui manquait a la prospection : le rendez-vous est dans l'agenda
+  // d'Alban, mais c'est Eva qui telephone. Sans ce bloc, personne ne sait que jeudi est le
+  // bon jour pour appeler Riom. On l'affiche plutot que de creer des taches automatiques :
+  // une tache que personne ne traite devient du bruit, alors qu'une liste qui se vide toute
+  // seule quand la date passe ne laisse rien derriere elle.
+  const tournees = useMemo(() => tourneesAGarnir(
+    { prospects: state.prospects, clients: state.clients, appointments: state.appointments,
+      commerciaux: state.commerciaux, aujourdhui: today, etapesAAppeler: ETAPES_A_APPELER },
+    maSession.appeles,
+  ).slice(0, 5), [state.prospects, state.clients, state.appointments, state.commerciaux, today, maSession.appeles]);
+
   const sessionZone = async (ids: string[]) => {
     if (ids.length === 0) { toast.info('Tout le monde a déjà été appelé dans cette zone'); return; }
     try {
@@ -839,6 +854,43 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
           </div>
         </BlocErreur>
       )}
+
+      {tournees.length > 0 && (
+        <BlocErreur titre="Tournées à garnir">
+          <div className="bg-white rounded-xl border border-blue-200 p-4">
+            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+                <Navigation className="w-4 h-4 text-blue-600" /> Ils passent déjà par là
+              </h3>
+            </div>
+            <p className="text-[11px] text-gray-500 mb-2.5">
+              Un rendez-vous est déjà posé : c'est le bon moment pour appeler les prospects du secteur et remplir la journée.
+            </p>
+            <div className="space-y-2">
+              {tournees.map(t => (
+                <div key={t.cle} className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50/60 border border-blue-100">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {formatDate(t.date)} · {t.prenom}
+                      {t.villes.length > 0 && <span className="text-[11px] text-gray-500 font-normal"> · {t.villes.slice(0, 2).join(', ')}{t.villes.length > 2 ? '…' : ''}</span>}
+                    </p>
+                    <p className="text-[11px] text-gray-500">
+                      {t.rdvPoses} RDV déjà posé{t.rdvPoses > 1 ? 's' : ''} · {t.aAppeler.length} prospect{t.aAppeler.length > 1 ? 's' : ''} à appeler dans les {RAYON_KM} km
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => sessionZone(t.aAppeler.map(p => p.id))}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 whitespace-nowrap"
+                  >
+                    <Phone className="w-3.5 h-3.5" /> Session d'appel ({t.aAppeler.length})
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </BlocErreur>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Boîte de prospection"><BoiteDeProspection moi={moi} /></BlocErreur>
         <BlocErreur titre="Rappels">

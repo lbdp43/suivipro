@@ -138,3 +138,94 @@ export function voisinsAutour(
   // Le plus proche d'abord : c'est la seule question qu'on se pose vraiment.
   return voisins.sort((a, b) => a.km - b.km);
 }
+
+// ----------------------------------------------------------------------------
+// L'AUTRE SENS : partir d'une tournée pour trouver qui appeler
+//
+// Un rendez-vous cale jeudi a Riom, c'est une voiture qui monte la-bas de toute
+// facon. C'est le moment d'appeler les prospects du coin pour remplir la journee —
+// mais personne ne le sait, parce que le rendez-vous est dans l'agenda d'Alban et
+// que c'est Eva qui telephone. Ce calcul apporte l'information a la prospection.
+// ----------------------------------------------------------------------------
+
+/** Au-dela, c'est trop tot pour appeler « pour jeudi » : la personne n'a pas encore son planning en tete. */
+export const HORIZON_JOURS = 14;
+
+export interface TourneeAGarnir {
+  cle: string;
+  /** Le jour de la tournee, au format d'un jour SuiviPro. */
+  date: string;
+  /** Qui y va. */
+  commercialId: string;
+  prenom: string;
+  /** Les villes ou il a deja des rendez-vous ce jour-la. */
+  villes: string[];
+  /** Combien de rendez-vous sont deja poses ce jour-la. */
+  rdvPoses: number;
+  /** Les prospects a appeler autour, les plus prometteurs d'abord. */
+  aAppeler: Prospect[];
+}
+
+/**
+ * Les journees ou quelqu'un se deplace deja, et les prospects a appeler autour.
+ *
+ * Groupees par PERSONNE et par JOUR, et non par rendez-vous : trois rendez-vous
+ * d'Alban le meme jour a Riom, c'est une seule tournee a remplir, pas trois lignes
+ * identiques. Les prospects des environs de chacun de ces rendez-vous sont reunis,
+ * sans doublon.
+ *
+ * Qui est appelable : exactement la meme regle que pour les zones prioritaires —
+ * la bonne etape, un telephone, pas deja appele aujourd'hui. Il n'y a qu'une seule
+ * definition de « a appeler » dans le logiciel, et ce n'est pas ici qu'elle change.
+ */
+export function tourneesAGarnir(
+  sources: SourcesVoisinage & { etapesAAppeler: string[] },
+  appelesAujourdhui: Set<string> = new Set(),
+  rayonKm: number = RAYON_KM,
+  horizonJours: number = HORIZON_JOURS,
+): TourneeAGarnir[] {
+  const { prospects, clients, appointments, commerciaux, aujourdhui, etapesAAppeler } = sources;
+  const limite = new Date(`${aujourdhui}T00:00:00`);
+  limite.setDate(limite.getDate() + horizonJours);
+  const finHorizon = limite.toISOString().slice(0, 10);
+
+  const pClients = new Map(clients.map(c => [c.id, c]));
+  const pProspects = new Map(prospects.map(p => [p.id, p]));
+
+  // Un point de passage par rendez-vous localise, range par personne et par jour.
+  const groupes = new Map<string, { date: string; commercialId: string; points: { lat: number; lon: number }[]; villes: Set<string>; rdvPoses: number }>();
+  for (const rdv of appointments) {
+    if (rdv.statut === 'annule' || rdv.date < aujourdhui || rdv.date > finHorizon) continue;
+    const lieuId = rdv.client_id || rdv.prospect_id;
+    const etab = lieuId ? (pClients.get(lieuId) || pProspects.get(lieuId)) : undefined;
+    if (!localise(etab)) continue;
+    const cle = `${rdv.date}|${rdv.commercial_id}`;
+    const g = groupes.get(cle) || { date: rdv.date, commercialId: rdv.commercial_id, points: [], villes: new Set<string>(), rdvPoses: 0 };
+    g.points.push({ lat: Number(etab!.latitude), lon: Number(etab!.longitude) });
+    if (etab!.ville) g.villes.add(etab!.ville);
+    g.rdvPoses += 1;
+    groupes.set(cle, g);
+  }
+
+  const appelables = prospects.filter(p =>
+    p.telephone && etapesAAppeler.includes(p.etape_pipeline) && !appelesAujourdhui.has(p.id) && localise(p));
+
+  const tournees: TourneeAGarnir[] = [];
+  for (const [cle, g] of groupes) {
+    const autour = appelables.filter(p =>
+      g.points.some(pt => distanceKm(pt.lat, pt.lon, Number(p.latitude), Number(p.longitude)) <= rayonKm));
+    if (autour.length === 0) continue;
+    tournees.push({
+      cle,
+      date: g.date,
+      commercialId: g.commercialId,
+      prenom: commerciaux.find(c => c.id === g.commercialId)?.prenom || '',
+      villes: [...g.villes],
+      rdvPoses: g.rdvPoses,
+      // Le meilleur score d'abord : c'est l'ordre dans lequel la session les enchainera.
+      aAppeler: autour.sort((a, b) => (b.score || 0) - (a.score || 0)),
+    });
+  }
+  // La tournee la plus proche dans le temps d'abord : c'est celle qu'il faut remplir maintenant.
+  return tournees.sort((a, b) => a.date.localeCompare(b.date) || a.prenom.localeCompare(b.prenom));
+}
