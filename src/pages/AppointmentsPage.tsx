@@ -19,6 +19,7 @@ import { PucesTourneesDuJour, InfoTourneeModal } from '../components/ResumeTourn
 import { resumeTournees, lundiDe, JOURS_SEMAINE, type ResumeTournee } from '../utils/resumeTournees';
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import RepertoireGooglePanel from '../components/RepertoireGooglePanel';
+import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 
 export default function AppointmentsPage() {
@@ -335,6 +336,17 @@ export default function AppointmentsPage() {
     return `${fmt(monday)} - ${fmt(sunday)}`;
   };
 
+  // Le point d'un rendez-vous : les coordonnees de l'etablissement ou il a lieu. C'est
+  // autour de LUI qu'on cherche qui appeler, pas autour du bureau.
+  const pointDuRdv = (rdv: Appointment): { lat: number; lon: number }[] => {
+    const lieu = rdv.client_id
+      ? state.clients.find(c => c.id === rdv.client_id)
+      : (rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined);
+    const lat = Number(lieu?.latitude);
+    const lon = Number(lieu?.longitude);
+    return (lat && lon && Number.isFinite(lat) && Number.isFinite(lon)) ? [{ lat, lon }] : [];
+  };
+
   const renderRdvCard = (rdv: Appointment) => {
     const isEvent = rdv.event_type && rdv.event_type !== 'rdv';
     const prospect = rdv.prospect_id ? getProspect(rdv.prospect_id) : undefined;
@@ -462,6 +474,8 @@ export default function AppointmentsPage() {
               <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
             </button>
           )}
+          {/* Quelqu'un monte la-bas : c'est le moment d'appeler le secteur. */}
+          <BoutonAppelerAutour points={pointDuRdv(rdv)} />
           <button
             className="p-1.5 rounded bg-red-50 hover:bg-red-100 text-red-500"
             onClick={() => deleteAppointment(rdv.id)}
@@ -921,6 +935,8 @@ export default function AppointmentsPage() {
 
                                   {/* Actions */}
                                   <div className="flex items-center gap-1 flex-shrink-0">
+                                    {/* Quelqu'un monte la-bas : c'est le moment d'appeler le secteur. */}
+                                    <BoutonAppelerAutour points={pointDuRdv(rdv)} compact />
                                     <button
                                       className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                                       onClick={() => openEditForm(rdv)}

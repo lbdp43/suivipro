@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, Users, Check, Building2, Layers, Pencil, Star, CheckSquare,
 } from 'lucide-react';
 import DessinZones from '../components/DessinZones';
+import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { prospectsAAppelerDansLaZone } from '../utils/zones';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { useApp } from '../store/AppContext';
@@ -1160,6 +1161,11 @@ export default function MapPage() {
                       >
                         <ExternalLink className="w-3 h-3" /> Voir
                       </Link>
+                      {/* Toute la poignee de prospects du secteur, d'un coup. */}
+                      <BoutonAppelerAutour
+                        points={[{ lat: prospect.latitude, lon: prospect.longitude }]}
+                        className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-[10px] font-medium hover:bg-purple-700"
+                      />
                     </div>
                   </div>
                 </Popup>}
@@ -1211,6 +1217,11 @@ export default function MapPage() {
                     >
                       <ExternalLink className="w-3 h-3" /> Voir
                     </Link>
+                    {/* Un client a visiter, c'est aussi un secteur a prospecter. */}
+                    <BoutonAppelerAutour
+                      points={[{ lat: client.latitude, lon: client.longitude }]}
+                      className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-[10px] font-medium hover:bg-purple-700"
+                    />
                   </div>
                 </div>
               </Popup>}
