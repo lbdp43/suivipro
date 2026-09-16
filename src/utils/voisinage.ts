@@ -11,8 +11,18 @@
 import { statutVisite } from '../../shared/regles';
 import type { Appointment, Client, Prospect, Commercial } from '../types';
 
-/** Rayon par défaut : de quoi couvrir une ville et ses abords, pas un département. */
+/**
+ * Deux rayons, parce que ce sont deux questions differentes.
+ *
+ * « Qu'est-ce qu'il y a autour de cette fiche ? » : 3 km. Au-dela ce n'est plus un detour
+ * qu'on greffe sur un trajet, c'est un autre trajet.
+ *
+ * « Qui puis-je appeler pour remplir cette journee-la ? » : 10 km. Quand on monte a Riom
+ * pour la journee, on accepte de rouler dans tout le secteur — la question n'est pas le
+ * detour, c'est la tournee.
+ */
 export const RAYON_KM = 3;
+export const RAYON_APPELS_KM = 10;
 
 /** Au-delà, la liste sous la carte devient illisible ; le total réel reste annoncé. */
 export const VOISINS_MAX = 8;
@@ -139,6 +149,49 @@ export function voisinsAutour(
   return voisins.sort((a, b) => a.km - b.km);
 }
 
+
+/**
+ * Les prospects a appeler autour d'un point. LA definition, utilisee partout : le bouton
+ * « Appeler autour » d'un rendez-vous, celui de la carte, et le bloc des tournees a garnir.
+ *
+ * Qui sort de la liste :
+ * — les mauvaises etapes, au sens de ETAPES_A_APPELER : perdu, gagne, « ne pas contacter »,
+ *   et tout ce qui est deja engage (proposition, negociation, rendez-vous pris) ;
+ * — ceux qui n'ont pas de numero — on ne peut rien en faire au telephone ;
+ * — ceux qui ont deja un rendez-vous a venir : il est deja pris, le rappeler serait au mieux
+ *   inutile, au pire genant ;
+ * — ceux deja appeles aujourd'hui, pour ne pas les appeler deux fois dans la journee.
+ *
+ * Qui RESTE dans la liste, volontairement : ceux qui ont un rappel en cours. C'est de la
+ * prospection — un rappel note « rappeler en septembre » n'est pas une raison de sauter
+ * quelqu'un quand on a justement une voiture qui monte dans son secteur.
+ */
+export function prospectsAAppelerAutourDe(
+  points: { lat: number; lon: number }[],
+  sources: { prospects: Prospect[]; appointments: Appointment[]; aujourdhui: string; etapesAAppeler: string[] },
+  appelesAujourdhui: Set<string> = new Set(),
+  rayonKm: number = RAYON_APPELS_KM,
+): Prospect[] {
+  const { prospects, appointments, aujourdhui, etapesAAppeler } = sources;
+  if (points.length === 0) return [];
+
+  const dejaUnRdv = new Set(
+    appointments
+      .filter(a => a.statut !== 'annule' && a.date >= aujourdhui && a.prospect_id)
+      .map(a => a.prospect_id),
+  );
+
+  return prospects
+    .filter(p => p.telephone
+      && etapesAAppeler.includes(p.etape_pipeline)
+      && !dejaUnRdv.has(p.id)
+      && !appelesAujourdhui.has(p.id)
+      && localise(p)
+      && points.some(pt => distanceKm(pt.lat, pt.lon, Number(p.latitude), Number(p.longitude)) <= rayonKm))
+    // Le meilleur score d'abord : c'est l'ordre dans lequel la session les enchainera.
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+}
+
 // ----------------------------------------------------------------------------
 // L'AUTRE SENS : partir d'une tournée pour trouver qui appeler
 //
@@ -181,7 +234,7 @@ export interface TourneeAGarnir {
 export function tourneesAGarnir(
   sources: SourcesVoisinage & { etapesAAppeler: string[] },
   appelesAujourdhui: Set<string> = new Set(),
-  rayonKm: number = RAYON_KM,
+  rayonKm: number = RAYON_APPELS_KM,
   horizonJours: number = HORIZON_JOURS,
 ): TourneeAGarnir[] {
   const { prospects, clients, appointments, commerciaux, aujourdhui, etapesAAppeler } = sources;
@@ -207,13 +260,11 @@ export function tourneesAGarnir(
     groupes.set(cle, g);
   }
 
-  const appelables = prospects.filter(p =>
-    p.telephone && etapesAAppeler.includes(p.etape_pipeline) && !appelesAujourdhui.has(p.id) && localise(p));
-
   const tournees: TourneeAGarnir[] = [];
   for (const [cle, g] of groupes) {
-    const autour = appelables.filter(p =>
-      g.points.some(pt => distanceKm(pt.lat, pt.lon, Number(p.latitude), Number(p.longitude)) <= rayonKm));
+    // La meme regle que le bouton « Appeler autour » : il n'y en a qu'une.
+    const autour = prospectsAAppelerAutourDe(
+      g.points, { prospects, appointments, aujourdhui, etapesAAppeler }, appelesAujourdhui, rayonKm);
     if (autour.length === 0) continue;
     tournees.push({
       cle,
@@ -222,8 +273,7 @@ export function tourneesAGarnir(
       prenom: commerciaux.find(c => c.id === g.commercialId)?.prenom || '',
       villes: [...g.villes],
       rdvPoses: g.rdvPoses,
-      // Le meilleur score d'abord : c'est l'ordre dans lequel la session les enchainera.
-      aAppeler: autour.sort((a, b) => (b.score || 0) - (a.score || 0)),
+      aAppeler: autour,
     });
   }
   // La tournee la plus proche dans le temps d'abord : c'est celle qu'il faut remplir maintenant.

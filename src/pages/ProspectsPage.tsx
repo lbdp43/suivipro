@@ -1301,6 +1301,7 @@ export default function ProspectsPage() {
                 ici aussi, sinon elle manquerait a l'endroit ou on clique le plus souvent. */}
             <div className="px-4 pb-4">
               <CarteFiche
+                appelerAutour
                 voisins={voisinsDuProspect}
                 latitude={selectedProspect.latitude}
                 longitude={selectedProspect.longitude}

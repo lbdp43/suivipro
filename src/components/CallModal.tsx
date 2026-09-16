@@ -686,7 +686,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
               {/* Session : la fiche de l'établissement avant de composer */}
               {fiche && (
                 <>
-                  <FicheProspect prospect={prospect} />
+                  <FicheProspect prospect={prospect} pendantUnAppel />
                   <div className="flex gap-2 pt-1">
                     <button
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50"

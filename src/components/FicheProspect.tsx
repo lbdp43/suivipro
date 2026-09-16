@@ -12,7 +12,12 @@ import { voisinsAutour } from '../utils/voisinage';
 // La fiche d'un établissement, telle qu'on veut l'avoir sous les yeux avant de composer :
 // qui c'est, où, ce qu'on sait déjà (tags, notes) et ce qui s'est passé avec lui
 // (derniers appels, rendez-vous, rappels). Utilisée entre deux appels d'une session.
-export default function FicheProspect({ prospect }: { prospect: Prospect }) {
+/**
+ * `pendantUnAppel` : la meme fiche sert entre deux appels d'une session. On y cache alors
+ * le bouton « Appeler autour », qui proposerait de demarrer une seconde session au milieu
+ * de la premiere.
+ */
+export default function FicheProspect({ prospect, pendantUnAppel = false }: { prospect: Prospect; pendantUnAppel?: boolean }) {
   const { state, getCallsForProspect, getAppointmentsForProspect, getRemindersForProspect, getCommercial } = useApp();
   const colonne = state.pipelineColumns.find(c => c.id === prospect.etape_pipeline);
   const etape = colonne?.label || PIPELINE_LABELS[prospect.etape_pipeline] || prospect.etape_pipeline;
@@ -130,6 +135,7 @@ export default function FicheProspect({ prospect }: { prospect: Prospect }) {
       {/* Ou c'est. En bas de la fiche, apres l'historique : on regarde d'abord qui c'est
           et ce qui s'est passe, la carte repond ensuite au « c'est ou, exactement ? ». */}
       <CarteFiche
+        appelerAutour={!pendantUnAppel}
         voisins={voisins}
         latitude={prospect.latitude}
         longitude={prospect.longitude}

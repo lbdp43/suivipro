@@ -5,6 +5,7 @@
 import { lazy, Suspense } from 'react';
 import { MapPin, ExternalLink, Calendar, AlertTriangle } from 'lucide-react';
 import { distanceLisible, VOISINS_MAX, type Voisin } from '../utils/voisinage';
+import BoutonAppelerAutour from './BoutonAppelerAutour';
 import { formatDate } from '../utils/helpers';
 
 // Chargee seulement quand une fiche s'ouvre : Leaflet ne doit pas peser sur le demarrage
@@ -20,7 +21,7 @@ export function estLocalise(latitude?: number | null, longitude?: number | null)
 
 export default function CarteFiche({
   latitude, longitude, nom, adresse = '', lienMaps = '', couleur = '#16a34a', hauteur = 220,
-  voisins = [],
+  voisins = [], appelerAutour = false,
 }: {
   latitude?: number | null;
   longitude?: number | null;
@@ -31,6 +32,13 @@ export default function CarteFiche({
   hauteur?: number;
   /** Ce qu'il y a autour et qui justifie déjà un déplacement. Voir utils/voisinage. */
   voisins?: Voisin[];
+  /**
+   * Proposer de lancer une session d'appel sur tout le secteur.
+   *
+   * Éteint par défaut : la fiche s'affiche aussi PENDANT une session d'appel, et proposer
+   * d'en démarrer une autre au milieu d'un appel n'a pas de sens.
+   */
+  appelerAutour?: boolean;
 }) {
   const localise = estLocalise(latitude, longitude);
   const montres = voisins.slice(0, VOISINS_MAX);
@@ -39,6 +47,10 @@ export default function CarteFiche({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Où c'est</p>
+        <div className="flex items-center gap-2">
+        {appelerAutour && localise && (
+          <BoutonAppelerAutour points={[{ lat: Number(latitude), lon: Number(longitude) }]} compact />
+        )}
         {lienMaps && (
           <a
             href={lienMaps}
@@ -49,6 +61,7 @@ export default function CarteFiche({
             Itinéraire <ExternalLink className="w-3 h-3" />
           </a>
         )}
+        </div>
       </div>
 
       {!localise ? (

@@ -422,6 +422,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             l'etablissement est sur la route de la tournee de jeudi. */}
         <div className="px-4 pt-3 pb-4 border-t border-gray-100">
           <CarteFiche
+            appelerAutour
             voisins={voisins}
             latitude={client.latitude}
             longitude={client.longitude}
