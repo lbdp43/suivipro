@@ -24,6 +24,18 @@ import type { Appointment, Client, Prospect, Commercial } from '../types';
 export const RAYON_KM = 3;
 export const RAYON_APPELS_KM = 10;
 
+/**
+ * Une session d'appel ne prend que les cinquante meilleurs scores.
+ *
+ * Autour de Saint-Étienne, dix kilomètres donnent deux cents prospects. Personne ne passe
+ * deux cents appels : une session de cette taille ne se termine jamais, et son compteur
+ * reste bloqué pour toujours. Cinquante, c'est une bonne matinée — et comme les appelés du
+ * jour sortent de la liste, le clic suivant reprend là où on s'était arrêté.
+ *
+ * Le nombre réel, lui, reste affiché : le plafond limite ce qu'on décroche, pas ce qu'on sait.
+ */
+export const SESSION_MAX = 50;
+
 /** Au-delà, la liste sous la carte devient illisible ; le total réel reste annoncé. */
 export const VOISINS_MAX = 8;
 

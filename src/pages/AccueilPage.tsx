@@ -8,7 +8,7 @@ import {
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
 import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire, ETAPES_A_APPELER } from '../utils/zones';
-import { tourneesAGarnir, RAYON_KM } from '../utils/voisinage';
+import { tourneesAGarnir, RAYON_APPELS_KM, SESSION_MAX } from '../utils/voisinage';
 import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
@@ -875,14 +875,15 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                       {t.villes.length > 0 && <span className="text-[11px] text-gray-500 font-normal"> · {t.villes.slice(0, 2).join(', ')}{t.villes.length > 2 ? '…' : ''}</span>}
                     </p>
                     <p className="text-[11px] text-gray-500">
-                      {t.rdvPoses} RDV déjà posé{t.rdvPoses > 1 ? 's' : ''} · {t.aAppeler.length} prospect{t.aAppeler.length > 1 ? 's' : ''} à appeler dans les {RAYON_KM} km
+                      {t.rdvPoses} RDV déjà posé{t.rdvPoses > 1 ? 's' : ''} · {t.aAppeler.length} prospect{t.aAppeler.length > 1 ? 's' : ''} à appeler dans les {RAYON_APPELS_KM} km
+                      {t.aAppeler.length > SESSION_MAX && <span> · les {SESSION_MAX} meilleurs d'abord</span>}
                     </p>
                   </div>
                   <button
-                    onClick={() => sessionZone(t.aAppeler.map(p => p.id))}
+                    onClick={() => sessionZone(t.aAppeler.slice(0, SESSION_MAX).map(p => p.id))}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 whitespace-nowrap"
                   >
-                    <Phone className="w-3.5 h-3.5" /> Session d'appel ({t.aAppeler.length})
+                    <Phone className="w-3.5 h-3.5" /> Session d'appel ({Math.min(t.aAppeler.length, SESSION_MAX)})
                   </button>
                 </div>
               ))}
