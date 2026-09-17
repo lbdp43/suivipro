@@ -7,7 +7,7 @@ import { dateLocale, jourDe } from '../../shared/regles';
 import { prochaineActionDe } from '../../shared/tunnel';
 import { libelleRaisonPerte } from './RaisonPerte';
 import CarteFiche from './CarteFiche';
-import { voisinsAutour } from '../utils/voisinage';
+import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 
 // La fiche d'un établissement, telle qu'on veut l'avoir sous les yeux avant de composer :
 // qui c'est, où, ce qu'on sait déjà (tags, notes) et ce qui s'est passé avec lui
@@ -36,7 +36,10 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
   const voisins = useMemo(() => voisinsAutour(
     { id: prospect.id, latitude: prospect.latitude, longitude: prospect.longitude },
     { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: aujourdhui },
-  ), [prospect, state.prospects, state.clients, state.appointments, state.commerciaux]);
+    RAYON_KM,
+    // La prospection ne visite pas les clients : pas de visites en retard chez elle.
+    state.currentUser?.role !== 'prospection',
+  ), [prospect, state.prospects, state.clients, state.appointments, state.commerciaux, state.currentUser?.role]);
 
   return (
     <div className="space-y-3 text-sm">

@@ -17,7 +17,7 @@ import { sessionDuJour } from '../utils/sessionAppel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import CompteRenduModal from '../components/CompteRenduModal';
 import CarteFiche from '../components/CarteFiche';
-import { voisinsAutour } from '../utils/voisinage';
+import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import FriseProspect from '../components/FriseProspect';
 import { libelleRaisonPerte } from '../components/RaisonPerte';
@@ -467,7 +467,10 @@ export default function ProspectsPage() {
   const voisinsDuProspect = useMemo(() => (selectedProspect ? voisinsAutour(
     { id: selectedProspect.id, latitude: selectedProspect.latitude, longitude: selectedProspect.longitude },
     { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: dateLocale(new Date()) },
-  ) : []), [selectedProspect, state.prospects, state.clients, state.appointments, state.commerciaux]);
+    RAYON_KM,
+    // La prospection ne visite pas les clients : pas de visites en retard chez elle.
+    state.currentUser?.role !== 'prospection',
+  ) : []), [selectedProspect, state.prospects, state.clients, state.appointments, state.commerciaux, state.currentUser?.role]);
 
 
 

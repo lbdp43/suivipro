@@ -84,6 +84,15 @@ export function voisinsAutour(
   centre: { latitude?: number | null; longitude?: number | null; id: string },
   sources: SourcesVoisinage,
   rayonKm: number = RAYON_KM,
+  /**
+   * Les visites clients en retard n'apparaissent que pour ceux qui les feront.
+   *
+   * Quelqu'un qui fait de la prospection ne visite pas les clients : lui annoncer qu'une
+   * visite traine depuis quinze jours ne lui apprend rien qu'il puisse traiter, et ca
+   * encombre la seule ligne qui le concerne — le rendez-vous deja cale a cote, autour
+   * duquel il peut appeler.
+   */
+  avecClientsEnRetard: boolean = true,
 ): Voisin[] {
   if (!localise(centre)) return [];
   const laC = Number(centre.latitude);
@@ -123,8 +132,8 @@ export function voisinsAutour(
     });
   }
 
-  // 2. Les clients dont la visite est en retard.
-  for (const client of clients) {
+  // 2. Les clients dont la visite est en retard — sauf pour la prospection.
+  for (const client of (avecClientsEnRetard ? clients : [])) {
     if (dejaVus.has(client.id) || !localise(client)) continue;
     if (statutVisite({ statut: client.statut, next_visit: client.next_visit }, aujourdhui) !== 'RETARD') continue;
     const km = distanceKm(laC, loC, Number(client.latitude), Number(client.longitude));

@@ -12,7 +12,7 @@ import { decrocheDuClient } from '../utils/commandes';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 import { PhotosPartagees } from './PhotosSignalement';
 import CarteFiche from './CarteFiche';
-import { voisinsAutour } from '../utils/voisinage';
+import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
@@ -45,7 +45,10 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
   const voisins = useMemo(() => voisinsAutour(
     { id: client.id, latitude: client.latitude, longitude: client.longitude },
     { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: dateLocale(new Date()) },
-  ), [client, state.prospects, state.clients, state.appointments, state.commerciaux]);
+    RAYON_KM,
+    // La prospection ne visite pas les clients : pas de visites en retard chez elle.
+    state.currentUser?.role !== 'prospection',
+  ), [client, state.prospects, state.clients, state.appointments, state.commerciaux, state.currentUser?.role]);
 
   // Chiffres EasyBeer pour préparer la visite (calculés sur les commandes synchronisées)
   const statsCommandes = useMemo(() => {
