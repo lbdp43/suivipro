@@ -321,6 +321,11 @@ export async function resolveCommercialFromEasybeer(easybeerCommercialId) {
   return r.rows.length > 0 ? r.rows[0].suivipro_commercial_id : null;
 }
 
+// Normalise pour comparaison : minuscules, accents retires (Loïc -> loic).
+function normalizeNom(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
 // Resolve a SuiviPro commercial id from the commercial_email/commercial_name text fields
 // that EasyBeer sends (unreliable — emails/names can differ between the two systems).
 // Tried in order: assignment_rules by email, fuzzy name match, direct email match.
@@ -333,18 +338,24 @@ export async function resolveCommercialFromEmailOrName(commercialEmail, commerci
   }
 
   if (commercialName) {
-    const nameParts = commercialName.toLowerCase().trim().split(/\s+/);
+    const nameParts = normalizeNom(commercialName).split(/\s+/).filter(Boolean);
     if (nameParts.length >= 2) {
       // ⚠️ pas d'affectation sur un nom partiel (un seul mot) : trop de
       // faux positifs -> le client part en attente, l'admin choisit.
-      const comResult = await db.query(
-        `SELECT id FROM commerciaux WHERE actif AND (
-          (LOWER(prenom) = $1 AND LOWER(nom) = $2) OR (LOWER(prenom) = $2 AND LOWER(nom) = $1)
-          OR LOWER(prenom || ' ' || nom) = $3 OR LOWER(nom || ' ' || prenom) = $3
-        ) LIMIT 1`,
-        [nameParts[0], nameParts.slice(1).join(' '), commercialName.toLowerCase().trim()]
-      );
-      if (comResult.rows.length > 0) return comResult.rows[0].id;
+      // Comparaison en JS (et non en SQL) pour ignorer les accents (Loïc = Loic).
+      const prenom1 = nameParts[0];
+      const nom1 = nameParts.slice(1).join(' ');
+      const nom2 = nameParts[nameParts.length - 1];
+      const prenom2 = nameParts.slice(0, -1).join(' ');
+      const full = nameParts.join(' ');
+      const actifs = (await db.query('SELECT id, prenom, nom FROM commerciaux WHERE actif')).rows;
+      const match = actifs.find(c => {
+        const p = normalizeNom(c.prenom);
+        const n = normalizeNom(c.nom);
+        return (p === prenom1 && n === nom1) || (p === prenom2 && n === nom2)
+          || `${p} ${n}` === full || `${n} ${p}` === full;
+      });
+      if (match) return match.id;
     }
   }
 

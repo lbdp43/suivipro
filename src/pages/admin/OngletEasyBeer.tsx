@@ -132,6 +132,8 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
 
   const [newMappingDenomination, setNewMappingDenomination] = useState('');
 
+  const [retryingEbAssignment, setRetryingEbAssignment] = useState(false);
+
   const [ebImportType, setEbImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
 
   const [ebImportCommercial, setEbImportCommercial] = useState('');
@@ -564,6 +566,26 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       });
       setEbMapping(prev => prev.filter(m => m.suivipro_commercial_id !== commercialId));
     } catch { /* ignore */ }
+  };
+
+  const retryEbAssignment = async () => {
+    setRetryingEbAssignment(true);
+    try {
+      const res = await apiFetch('/easybeer/pending-clients/retry-assignment', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.imported > 0) {
+          toast.success(`${data.imported} client(s) affecte(s) et importe(s)${data.stillPending > 0 ? `, ${data.stillPending} toujours en attente` : ''}`);
+          setEbPending(prev => prev.filter(c => !data.importedNames.includes(c.name)));
+          window.location.reload();
+        } else {
+          toast.info('Aucun client supplementaire n\'a pu etre affecte automatiquement');
+        }
+      } else {
+        toast.error('Erreur lors du retraitement');
+      }
+    } catch { toast.error('Erreur reseau'); }
+    setRetryingEbAssignment(false);
   };
 
   return (
@@ -1071,12 +1093,25 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Building2 className="w-4 h-4" /> Clients en attente d'import ({ebPending.length})
               </h3>
-              <button
-                className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
-                onClick={loadEasyBeerData}
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
-              </button>
+              <div className="flex items-center gap-2">
+                {ebPending.length > 0 && (
+                  <button
+                    className="px-3 py-1.5 text-xs text-brewery-700 bg-brewery-50 hover:bg-brewery-100 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                    onClick={retryEbAssignment}
+                    disabled={retryingEbAssignment}
+                    title="Retente l'affectation automatique (email, nom ou identifiant EasyBeer) sur tous les clients en attente, sans rien reimporter a la main"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${retryingEbAssignment ? 'animate-spin' : ''}`} />
+                    Reessayer l'affectation automatique
+                  </button>
+                )}
+                <button
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1"
+                  onClick={loadEasyBeerData}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Rafraichir
+                </button>
+              </div>
             </div>
 
             {ebPending.length > 0 && (

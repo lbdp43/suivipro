@@ -6,7 +6,7 @@ import * as eb from '../easybeer-client.js';
 import db from '../db.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
-import { SITE_INTERNET_CLIENT_ID, extractEbFieldsSync, findMatchingClient, findMatchingProspect, linkClientToProspect, resolveCommercialFromEmailOrName } from '../lib/easybeer-sync.js';
+import { SITE_INTERNET_CLIENT_ID, extractEbFieldsSync, findMatchingClient, findMatchingProspect, linkClientToProspect, resolveCommercialFromEasybeer, resolveCommercialFromEmailOrName } from '../lib/easybeer-sync.js';
 import { geocodeServer } from '../lib/geo.js';
 import { rattacherEntite, rattacherTout } from '../lib/zones.js';
 import { changerEtape } from '../lib/tunnel.js';
@@ -263,12 +263,11 @@ router.get('/easybeer/pending-clients', authMiddleware, asyncHandler(async (req,
   res.json(result.rows);
 }));
 
-router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler(async (req, res) => {
-  const ebClient = await db.query('SELECT * FROM easybeer_clients WHERE id = $1', [req.params.id]);
-  if (ebClient.rows.length === 0) return res.status(404).json({ error: 'Client EasyBeer non trouve' });
-
-  const eb = ebClient.rows[0];
-  const { commercial_id, type_client, tournee } = req.body;
+// Tente d'importer un client EasyBeer "en attente" : lie a un client existant si
+// trouve, sinon en cree un nouveau. resolvedOnly=true (retraitement en masse) ->
+// n'importe que si un commercial a pu etre resolu automatiquement, sinon laisse
+// le client en attente au lieu de l'assigner par defaut a quelqu'un au hasard.
+async function importPendingEbClient(eb, ebRowId, { commercial_id, type_client, tournee, actingUserId, resolvedOnly = false }) {
   const now = new Date().toISOString();
 
   // Check if a matching client already exists (imported from Excel)
@@ -276,7 +275,6 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
   const existingClient = match?.client;
 
   if (existingClient) {
-    // Link to existing client instead of creating a duplicate (admin action, always proceed)
     await db.query(
       `UPDATE clients SET
         telephone_mobile = CASE WHEN (telephone_mobile IS NULL OR telephone_mobile = '') AND $2 != '' THEN $2 ELSE telephone_mobile END,
@@ -291,15 +289,14 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
        eb.latitude || 0, eb.longitude || 0, eb.contact_name || '', now]
     );
 
-    await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [existingClient.id, req.params.id]);
+    await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [existingClient.id, ebRowId]);
 
-    // Link prospect too if exists
     const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
     if (prospect && !existingClient.prospect_id) {
       await linkClientToProspect(existingClient.id, prospect, now);
     }
 
-    return res.json({ ok: true, client_id: existingClient.id, linked_existing: true, linked_prospect: prospect?.id || null, match_type: match.matchType, confidence: match.confidence });
+    return { ok: true, client_id: existingClient.id, linked_existing: true, linked_prospect: prospect?.id || null, match_type: match.matchType, confidence: match.confidence };
   }
 
   // No existing client found - create new one
@@ -309,13 +306,19 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
 
   const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
 
-  // Si l'admin n'a pas explicitement choisi de commercial, on retente la meme
-  // resolution que le webhook (email/nom EasyBeer) avant de se rabattre sur le
-  // prospect rapproche, puis en dernier recours sur l'admin qui importe.
-  const resolvedCommercialId = commercial_id
+  // Meme ordre de resolution que le webhook : identifiant EasyBeer natif (le
+  // plus fiable), puis email/nom EasyBeer, puis le prospect rapproche.
+  const autoResolvedCommercialId = commercial_id
+    || await resolveCommercialFromEasybeer(eb.commercial_easybeer_id)
     || await resolveCommercialFromEmailOrName(eb.commercial_email, eb.commercial_name)
     || prospect?.commercial_id
-    || req.user.id;
+    || null;
+
+  if (!autoResolvedCommercialId && resolvedOnly) {
+    return { ok: false, reason: 'no_commercial' };
+  }
+
+  const resolvedCommercialId = autoResolvedCommercialId || actingUserId;
 
   let lat = eb.latitude || prospect?.latitude || 0;
   let lng = eb.longitude || prospect?.longitude || 0;
@@ -343,9 +346,46 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
     await linkClientToProspect(clientId, prospect, now);
   }
 
-  await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, req.params.id]);
+  await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, ebRowId]);
   await rattacherEntite('clients', clientId);
-  res.json({ ok: true, client_id: clientId, linked_prospect: prospect?.id || null });
+  return { ok: true, client_id: clientId, linked_prospect: prospect?.id || null, commercial_id: resolvedCommercialId };
+}
+
+router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler(async (req, res) => {
+  const ebClient = await db.query('SELECT * FROM easybeer_clients WHERE id = $1', [req.params.id]);
+  if (ebClient.rows.length === 0) return res.status(404).json({ error: 'Client EasyBeer non trouve' });
+
+  const { commercial_id, type_client, tournee } = req.body;
+  const result = await importPendingEbClient(ebClient.rows[0], req.params.id, {
+    commercial_id, type_client, tournee, actingUserId: req.user.id,
+  });
+  res.json(result);
+}));
+
+// Retente l'affectation automatique de tous les clients en attente, avec les
+// donnees deja en base (pas de nouvel appel a l'API EasyBeer) : utile apres
+// avoir ajoute une correspondance commercial <-> EasyBeer ou une regle
+// d'affectation, pour rattraper le stock accumule sans tout reprendre a la main.
+router.post('/easybeer/pending-clients/retry-assignment', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const pending = await db.query("SELECT * FROM easybeer_clients WHERE status = 'pending' ORDER BY synced_at ASC");
+  let imported = 0;
+  let stillPending = 0;
+  const importedNames = [];
+  for (const eb of pending.rows) {
+    try {
+      const result = await importPendingEbClient(eb, eb.id, { actingUserId: req.user.id, resolvedOnly: true });
+      if (result.ok) {
+        imported++;
+        importedNames.push(eb.name);
+      } else {
+        stillPending++;
+      }
+    } catch (err) {
+      console.error(`[EasyBeer] Retry affectation echoue pour ${eb.name} (id=${eb.id}):`, err.message);
+      stillPending++;
+    }
+  }
+  res.json({ ok: true, imported, stillPending, importedNames });
 }));
 
 router.delete('/easybeer/pending-clients/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -391,11 +431,12 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
         tournee = COALESCE(NULLIF($14, ''), tournee),
         latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
         longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
-        raw_data = $17, updated_at = $18, commercial_name = COALESCE(NULLIF($19, ''), commercial_name)
+        raw_data = $17, updated_at = $18, commercial_name = COALESCE(NULLIF($19, ''), commercial_name),
+        commercial_easybeer_id = COALESCE(NULLIF($20, ''), commercial_easybeer_id)
       WHERE id = $1`,
       [req.params.id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
        f.city, f.address, f.postal_code, f.notes, f.commercial_email,
-       f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(data), now, f.commercial_name]
+       f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(data), now, f.commercial_name, f.commercial_easybeer_id]
     );
     return res.json({ ok: true, message: `Synchronise via ${path}`, name: f.name });
   };

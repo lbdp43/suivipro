@@ -485,6 +485,12 @@ async function handleEasyBeerWebhook(req, res) {
       directCommercialName = payloadData.commercial;
     }
 
+    // Identifiant EasyBeer natif du commercial (cle la plus fiable, cf. easybeer_commerciaux)
+    let directCommercialEasybeerId = '';
+    if (payloadData.commercial && typeof payloadData.commercial === 'object' && payloadData.commercial.id != null) {
+      directCommercialEasybeerId = String(payloadData.commercial.id);
+    }
+
     // Handle SIRET from payload
     const directSiret = payloadData.siret || payloadData.siren || '';
 
@@ -504,8 +510,8 @@ async function handleEasyBeerWebhook(req, res) {
 
     // Insert/update pending client with whatever info we have from the payload
     await db.query(
-      `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, commercial_name, siret, raw_data, status, synced_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      `INSERT INTO easybeer_clients (easybeer_id, name, type, contact_name, phone, email, city, address, postal_code, notes, commercial_email, commercial_name, siret, raw_data, status, synced_at, updated_at, commercial_easybeer_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       ON CONFLICT (easybeer_id) DO UPDATE SET
         name = CASE WHEN $2 != '' THEN $2 ELSE easybeer_clients.name END,
         type = CASE WHEN $3 != '' THEN $3 ELSE easybeer_clients.type END,
@@ -518,12 +524,13 @@ async function handleEasyBeerWebhook(req, res) {
         commercial_email = CASE WHEN $11 != '' THEN $11 ELSE easybeer_clients.commercial_email END,
         commercial_name = CASE WHEN $12 != '' THEN $12 ELSE easybeer_clients.commercial_name END,
         siret = CASE WHEN $13 != '' THEN $13 ELSE easybeer_clients.siret END,
-        raw_data = $14, updated_at = $17`,
+        raw_data = $14, updated_at = $17,
+        commercial_easybeer_id = CASE WHEN $18 != '' THEN $18 ELSE easybeer_clients.commercial_easybeer_id END`,
       [id, directName, String(directType), contactFromPayload, finalPhone, finalEmail,
        directCity, directAddress, directPostalCode, payloadData.notes || payloadData.commentaire || payloadData.observation || '',
-       directCommercialEmail, directCommercialName, directSiret, JSON.stringify(body), 'pending', now, now]
+       directCommercialEmail, directCommercialName, directSiret, JSON.stringify(body), 'pending', now, now, directCommercialEasybeerId]
     );
-    console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name="${directName || '(depuis webhook)'}", type="${directType}", commercial="${directCommercialEmail}" (${directCommercialName}), siret="${directSiret}", email="${finalEmail}", phone="${finalPhone}"`);
+    console.log(`[EasyBeer Webhook] Client en attente cree/maj: easybeer_id=${id}, name="${directName || '(depuis webhook)'}", type="${directType}", commercial="${directCommercialEmail}" (${directCommercialName}, id=${directCommercialEasybeerId}), siret="${directSiret}", email="${finalEmail}", phone="${finalPhone}"`);
   }
 
   // Use shared extractEbFieldsSync function (defined above)
@@ -562,11 +569,12 @@ async function handleEasyBeerWebhook(req, res) {
               tournee = COALESCE(NULLIF($14, ''), tournee),
               latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
               longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
-              raw_data = $17, updated_at = $18, commercial_name = COALESCE(NULLIF($19, ''), commercial_name)
+              raw_data = $17, updated_at = $18, commercial_name = COALESCE(NULLIF($19, ''), commercial_name),
+              commercial_easybeer_id = COALESCE(NULLIF($20, ''), commercial_easybeer_id)
             WHERE easybeer_id = $1`,
             [id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
              f.city, f.address, f.postal_code, f.notes, f.commercial_email,
-             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow, f.commercial_name]
+             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow, f.commercial_name, f.commercial_easybeer_id]
           );
           console.log(`[EasyBeer Webhook] Enrichi: ${f.name}, GPS=${f.latitude},${f.longitude}, tournee=${f.tournee}, mobile=${f.phone_mobile}`);
 
