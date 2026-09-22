@@ -1226,19 +1226,33 @@ router.get('/easybeer/audit-commerciaux', authMiddleware, asyncHandler(async (re
 
 // Corrige le commercial d'un ou plusieurs clients vers celui suggere par leur
 // identifiant EasyBeer natif (mêmes lignes que retourne l'audit ci-dessus).
+// Initialise aussi la prochaine visite si elle n'a jamais ete calculee : un
+// client cree sans commercial (via la synchro complete) n'en a jamais recu -
+// affecter le commercial apres coup ne suffit pas a la faire apparaitre.
 router.post('/easybeer/audit-commerciaux/corriger', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const { client_ids } = req.body || {};
   if (!Array.isArray(client_ids) || client_ids.length === 0) return res.status(400).json({ error: 'client_ids requis' });
   const now = new Date().toISOString();
-  const result = await db.query(`
-    UPDATE clients c SET commercial_id = m.suivipro_commercial_id, date_modification = $2
-    FROM easybeer_commerciaux m
-    WHERE m.easybeer_id = c.easybeer_commercial_id AND m.actif = TRUE
-      AND c.id = ANY($1::text[])
-    RETURNING c.id, c.nom, c.commercial_id
-  `, [client_ids, now]);
-  console.log(`[EasyBeer Audit] Commercial corrige pour ${result.rows.length} client(s): ${result.rows.map(r => r.nom).join(', ')}`);
-  res.json({ ok: true, corrected: result.rows.length });
+
+  const clients = (await db.query(
+    `SELECT c.id, c.type_client, c.custom_recurrence, c.next_visit, c.last_visit, m.suivipro_commercial_id
+     FROM clients c
+     JOIN easybeer_commerciaux m ON m.easybeer_id = c.easybeer_commercial_id AND m.actif = TRUE
+     WHERE c.id = ANY($1::text[])`,
+    [client_ids]
+  )).rows;
+
+  let corrected = 0;
+  for (const c of clients) {
+    const nextVisit = c.next_visit || await calculateNextVisit(c.type_client, c.custom_recurrence, c.last_visit);
+    await db.query(
+      'UPDATE clients SET commercial_id = $2, next_visit = COALESCE(next_visit, $3), date_modification = $4 WHERE id = $1',
+      [c.id, c.suivipro_commercial_id, nextVisit, now]
+    );
+    corrected++;
+  }
+  console.log(`[EasyBeer Audit] Commercial corrige (et recurrence initialisee si besoin) pour ${corrected} client(s)`);
+  res.json({ ok: true, corrected });
 }));
 
 // Délier un client Easybeer (le lien redevient « pending », les futures commandes

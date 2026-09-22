@@ -398,6 +398,14 @@ export async function upsertClientFromEasybeer(cli, { forceClient = false } = {}
   }
 
   if (existing) {
+    // Si le client n'avait encore aucun commercial (donc jamais de recurrence
+    // calculee) et qu'on peut desormais lui en attribuer un, on initialise sa
+    // prochaine visite au meme moment - sinon la recurrence reste vide meme
+    // apres l'affectation, jusqu'a une correction manuelle.
+    const commercialPourRecurrence = (existing.commercial_id && existing.commercial_id !== '') ? existing.commercial_id : mappedCommercial;
+    const nextVisitSiVide = commercialPourRecurrence
+      ? await calculateNextVisit(clientType, existing.custom_recurrence, existing.last_visit || null)
+      : null;
     await db.query(
       `UPDATE clients SET
          nom = COALESCE(NULLIF($2,''), nom),
@@ -418,11 +426,12 @@ export async function upsertClientFromEasybeer(cli, { forceClient = false } = {}
          easybeer_type_id = COALESCE(NULLIF($17,''), easybeer_type_id),
          easybeer_tournee_id = COALESCE(NULLIF($18,''), easybeer_tournee_id),
          commercial_id = CASE WHEN (commercial_id IS NULL OR commercial_id = '') AND $19 <> '' THEN $19 ELSE commercial_id END,
+         next_visit = COALESCE(next_visit, $21),
          date_modification = $20
        WHERE id = $1`,
       [existing.id, f.name, f.city, f.address, f.postal_code, f.phone, f.phone_mobile, f.email, f.contact_name,
        f.siret, f.tournee, f.latitude, f.longitude, f.easybeer_id, f.numero, f.commercial_easybeer_id, f.type_id, f.tournee_id,
-       mappedCommercial || '', now]
+       mappedCommercial || '', now, nextVisitSiVide]
     );
     if (f.easybeer_id) {
       try { await db.query("UPDATE easybeer_clients SET status='imported', imported_client_id=$1 WHERE easybeer_id=$2", [existing.id, f.easybeer_id]); } catch { /* staging row may be absent */ }
