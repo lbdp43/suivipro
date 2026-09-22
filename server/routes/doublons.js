@@ -6,7 +6,7 @@ import * as eb from '../easybeer-client.js';
 import db from '../db.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
-import { SITE_INTERNET_CLIENT_ID, extractEbFieldsSync, findMatchingClient, findMatchingProspect, linkClientToProspect } from '../lib/easybeer-sync.js';
+import { SITE_INTERNET_CLIENT_ID, extractEbFieldsSync, findMatchingClient, findMatchingProspect, linkClientToProspect, resolveCommercialFromEmailOrName } from '../lib/easybeer-sync.js';
 import { geocodeServer } from '../lib/geo.js';
 import { rattacherEntite, rattacherTout } from '../lib/zones.js';
 import { changerEtape } from '../lib/tunnel.js';
@@ -309,6 +309,14 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
 
   const prospect = await findMatchingProspect(eb.name, eb.email, eb.phone);
 
+  // Si l'admin n'a pas explicitement choisi de commercial, on retente la meme
+  // resolution que le webhook (email/nom EasyBeer) avant de se rabattre sur le
+  // prospect rapproche, puis en dernier recours sur l'admin qui importe.
+  const resolvedCommercialId = commercial_id
+    || await resolveCommercialFromEmailOrName(eb.commercial_email, eb.commercial_name)
+    || prospect?.commercial_id
+    || req.user.id;
+
   let lat = eb.latitude || prospect?.latitude || 0;
   let lng = eb.longitude || prospect?.longitude || 0;
   if ((!lat || !lng) && (eb.address || eb.city)) {
@@ -323,7 +331,7 @@ router.post('/easybeer/pending-clients/:id/import', authMiddleware, asyncHandler
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [clientId, eb.name, eb.city || '', eb.address || '', eb.postal_code || '',
      eb.phone || '', eb.phone_mobile || '', eb.email || '', eb.contact_name || '', clientType, 'ACTIF',
-     commercial_id || prospect?.commercial_id || req.user.id, nextVisit || null,
+     resolvedCommercialId, nextVisit || null,
      [prospect?.notes, eb.notes].filter(Boolean).join('\n') || '',
      eb.siret || prospect?.siret || '', tournee || prospect?.tournee || eb.tournee || '', lat, lng,
      prospect?.id || null, now, now,
@@ -383,11 +391,11 @@ router.post('/easybeer/pending-clients/:id/sync', authMiddleware, asyncHandler(a
         tournee = COALESCE(NULLIF($14, ''), tournee),
         latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
         longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
-        raw_data = $17, updated_at = $18
+        raw_data = $17, updated_at = $18, commercial_name = COALESCE(NULLIF($19, ''), commercial_name)
       WHERE id = $1`,
       [req.params.id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
        f.city, f.address, f.postal_code, f.notes, f.commercial_email,
-       f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(data), now]
+       f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(data), now, f.commercial_name]
     );
     return res.json({ ok: true, message: `Synchronise via ${path}`, name: f.name });
   };

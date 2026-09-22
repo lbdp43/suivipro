@@ -321,6 +321,41 @@ export async function resolveCommercialFromEasybeer(easybeerCommercialId) {
   return r.rows.length > 0 ? r.rows[0].suivipro_commercial_id : null;
 }
 
+// Resolve a SuiviPro commercial id from the commercial_email/commercial_name text fields
+// that EasyBeer sends (unreliable — emails/names can differ between the two systems).
+// Tried in order: assignment_rules by email, fuzzy name match, direct email match.
+// Shared between the automatic webhook and the manual "pending clients" import so both
+// paths suggest/assign the same commercial for the same EasyBeer data.
+export async function resolveCommercialFromEmailOrName(commercialEmail, commercialName) {
+  if (commercialEmail) {
+    const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE LOWER(email) = LOWER($1)', [commercialEmail]);
+    if (ruleResult.rows.length > 0) return ruleResult.rows[0].commercial_id;
+  }
+
+  if (commercialName) {
+    const nameParts = commercialName.toLowerCase().trim().split(/\s+/);
+    if (nameParts.length >= 2) {
+      // ⚠️ pas d'affectation sur un nom partiel (un seul mot) : trop de
+      // faux positifs -> le client part en attente, l'admin choisit.
+      const comResult = await db.query(
+        `SELECT id FROM commerciaux WHERE actif AND (
+          (LOWER(prenom) = $1 AND LOWER(nom) = $2) OR (LOWER(prenom) = $2 AND LOWER(nom) = $1)
+          OR LOWER(prenom || ' ' || nom) = $3 OR LOWER(nom || ' ' || prenom) = $3
+        ) LIMIT 1`,
+        [nameParts[0], nameParts.slice(1).join(' '), commercialName.toLowerCase().trim()]
+      );
+      if (comResult.rows.length > 0) return comResult.rows[0].id;
+    }
+  }
+
+  if (commercialEmail) {
+    const comResult = await db.query('SELECT id FROM commerciaux WHERE actif AND LOWER(email) = LOWER($1) LIMIT 1', [commercialEmail]);
+    if (comResult.rows.length > 0) return comResult.rows[0].id;
+  }
+
+  return null;
+}
+
 // Insert/update one client from an EasyBeer client object. Returns 'created' | 'updated' | 'skipped'.
 // Clients only (never prospects). Attribution by native idCommercial, else keeps existing.
 // forceClient : importer la fiche meme si EasyBeer la classe en prospect. Reserve aux

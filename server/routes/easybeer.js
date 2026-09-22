@@ -6,7 +6,7 @@ import db from '../db.js';
 import { preuvesDeLien, verdictDeLien } from '../../shared/rapprochement.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { adminOnly, asyncHandler, authMiddleware } from '../lib/auth.js';
-import { clientLocalDepuisEasybeerId, createVisiteFromCommandeRow, createVisitesFromCommandes, ensureSiteInternetGroup, estCommandeWeb, extractEbFieldsSync, findMatchingClient, findMatchingProspect, importerClientDepuisCommande, linkClientToProspect, mapEasyBeerTypeToClientType, resolveCommercialFromEasybeer, upsertClientFromEasybeer } from '../lib/easybeer-sync.js';
+import { clientLocalDepuisEasybeerId, createVisiteFromCommandeRow, createVisitesFromCommandes, ensureSiteInternetGroup, estCommandeWeb, extractEbFieldsSync, findMatchingClient, findMatchingProspect, importerClientDepuisCommande, linkClientToProspect, mapEasyBeerTypeToClientType, resolveCommercialFromEasybeer, resolveCommercialFromEmailOrName, upsertClientFromEasybeer } from '../lib/easybeer-sync.js';
 import { notifyAdmins } from '../lib/journal.js';
 import { calculateNextVisit } from '../lib/visites.js';
 
@@ -562,11 +562,11 @@ async function handleEasyBeerWebhook(req, res) {
               tournee = COALESCE(NULLIF($14, ''), tournee),
               latitude = CASE WHEN $15::double precision != 0 THEN $15 ELSE latitude END,
               longitude = CASE WHEN $16::double precision != 0 THEN $16 ELSE longitude END,
-              raw_data = $17, updated_at = $18
+              raw_data = $17, updated_at = $18, commercial_name = COALESCE(NULLIF($19, ''), commercial_name)
             WHERE easybeer_id = $1`,
             [id, f.name, f.type, f.contact_name, f.phone, f.phone_mobile, f.email,
              f.city, f.address, f.postal_code, f.notes, f.commercial_email,
-             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow]
+             f.siret, f.tournee, f.latitude, f.longitude, JSON.stringify(found), clientNow, f.commercial_name]
           );
           console.log(`[EasyBeer Webhook] Enrichi: ${f.name}, GPS=${f.latitude},${f.longitude}, tournee=${f.tournee}, mobile=${f.phone_mobile}`);
 
@@ -626,42 +626,12 @@ async function handleEasyBeerWebhook(req, res) {
               }
             }
 
-            // 1. Match by commercial email via assignment_rules
-            if (!commercialId && f.commercial_email) {
-              const ruleResult = await db.query('SELECT * FROM assignment_rules WHERE LOWER(email) = LOWER($1)', [f.commercial_email]);
-              if (ruleResult.rows.length > 0) {
-                commercialId = ruleResult.rows[0].commercial_id;
-                console.log(`[EasyBeer Webhook] Commercial trouve via assignment_rule email: ${f.commercial_email} -> ${commercialId}`);
-              }
-            }
-
-            // 2. Match by commercial name against commerciaux table (fuzzy)
-            if (!commercialId && f.commercial_name) {
-              const nameParts = f.commercial_name.toLowerCase().trim().split(/\s+/);
-              if (nameParts.length >= 2) {
-                // Try matching prenom + nom or nom + prenom
-                const comResult = await db.query(
-                  `SELECT id FROM commerciaux WHERE actif AND (
-                    (LOWER(prenom) = $1 AND LOWER(nom) = $2) OR (LOWER(prenom) = $2 AND LOWER(nom) = $1)
-                    OR LOWER(prenom || ' ' || nom) = $3 OR LOWER(nom || ' ' || prenom) = $3
-                  ) LIMIT 1`,
-                  [nameParts[0], nameParts.slice(1).join(' '), f.commercial_name.toLowerCase().trim()]
-                );
-                if (comResult.rows.length > 0) {
-                  commercialId = comResult.rows[0].id;
-                  console.log(`[EasyBeer Webhook] Commercial trouve par nom: "${f.commercial_name}" -> ${commercialId}`);
-                }
-              }
-              // ⚠️ pas d'affectation sur un nom partiel (un seul mot) : trop de
-              // faux positifs -> le client part en attente, l'admin choisit.
-            }
-
-            // 3. Match by commercial email directly against commerciaux table
-            if (!commercialId && f.commercial_email) {
-              const comResult = await db.query('SELECT id FROM commerciaux WHERE actif AND LOWER(email) = LOWER($1) LIMIT 1', [f.commercial_email]);
-              if (comResult.rows.length > 0) {
-                commercialId = comResult.rows[0].id;
-                console.log(`[EasyBeer Webhook] Commercial trouve par email direct: ${f.commercial_email} -> ${commercialId}`);
+            // 1-3. Match by commercial email (assignment_rules puis direct) ou nom (fuzzy)
+            if (!commercialId && (f.commercial_email || f.commercial_name)) {
+              const resolved = await resolveCommercialFromEmailOrName(f.commercial_email, f.commercial_name);
+              if (resolved) {
+                commercialId = resolved;
+                console.log(`[EasyBeer Webhook] Commercial trouve via email/nom: email="${f.commercial_email}" nom="${f.commercial_name}" -> ${commercialId}`);
               }
             }
 

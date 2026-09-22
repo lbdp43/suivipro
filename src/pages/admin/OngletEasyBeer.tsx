@@ -319,9 +319,12 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
 
   const importEbClient = async (ebId: number) => {
     try {
+      // Si aucun commercial n'est explicitement choisi dans le menu, on ne l'envoie
+      // pas : le serveur retente alors lui-meme l'affectation via l'email/le nom
+      // EasyBeer du client, avant de se rabattre sur l'admin qui importe.
       const res = await apiFetch(`/easybeer/pending-clients/${ebId}/import`, {
         method: 'POST',
-        body: JSON.stringify({ commercial_id: ebImportCommercial || state.currentUser?.id, type_client: ebImportType }),
+        body: JSON.stringify({ commercial_id: ebImportCommercial || undefined, type_client: ebImportType }),
       });
       if (res.ok) {
         setEbPending(prev => prev.filter(c => c.id !== ebId));
