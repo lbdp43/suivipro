@@ -124,6 +124,14 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
 
   const [newRuleCommercial, setNewRuleCommercial] = useState('');
 
+  const [ebMapping, setEbMapping] = useState<{ suivipro_commercial_id: string; easybeer_id: string; denomination: string; actif: boolean; prenom: string; nom: string }[]>([]);
+
+  const [newMappingCommercial, setNewMappingCommercial] = useState('');
+
+  const [newMappingEasybeerId, setNewMappingEasybeerId] = useState('');
+
+  const [newMappingDenomination, setNewMappingDenomination] = useState('');
+
   const [ebImportType, setEbImportType] = useState<ClientType>('BAR_RESTAURANT_GENERAL');
 
   const [ebImportCommercial, setEbImportCommercial] = useState('');
@@ -272,12 +280,13 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
   const loadEasyBeerData = async () => {
     try {
 
-      const [configRes, pendingRes, rulesRes, logsRes, orphanRes] = await Promise.all([
+      const [configRes, pendingRes, rulesRes, logsRes, orphanRes, mappingRes] = await Promise.all([
         apiFetch('/easybeer/config'),
         apiFetch('/easybeer/pending-clients'),
         apiFetch('/assignment-rules'),
         apiFetch('/easybeer/webhook-logs'),
         apiFetch('/commandes/orphelines'),
+        apiFetch('/easybeer-commercial-mapping'),
       ]);
       if (configRes.ok) {
         const config = await configRes.json();
@@ -287,6 +296,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       if (rulesRes.ok) setAssignmentRules(await rulesRes.json());
       if (logsRes.ok) setWebhookLogs(await logsRes.json());
       if (orphanRes.ok) setOrphanCommandes(await orphanRes.json());
+      if (mappingRes.ok) setEbMapping(await mappingRes.json());
       setEbConfigLoaded(true);
     } catch { /* ignore */ }
   };
@@ -509,6 +519,50 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
         method: 'DELETE',
       });
       setAssignmentRules(prev => prev.filter(r => r.id !== ruleId));
+    } catch { /* ignore */ }
+  };
+
+  const addEbMapping = async () => {
+    if (!newMappingCommercial || !newMappingEasybeerId.trim()) return;
+    try {
+      const res = await apiFetch('/easybeer-commercial-mapping', {
+        method: 'POST',
+        body: JSON.stringify({
+          suivipro_commercial_id: newMappingCommercial,
+          easybeer_id: newMappingEasybeerId.trim(),
+          denomination: newMappingDenomination.trim(),
+        }),
+      });
+      if (res.ok) {
+        const com = state.commerciaux.find(c => c.id === newMappingCommercial);
+        setEbMapping(prev => [
+          ...prev.filter(m => m.suivipro_commercial_id !== newMappingCommercial),
+          {
+            suivipro_commercial_id: newMappingCommercial,
+            easybeer_id: newMappingEasybeerId.trim(),
+            denomination: newMappingDenomination.trim(),
+            actif: true,
+            prenom: com?.prenom || '',
+            nom: com?.nom || '',
+          },
+        ]);
+        setNewMappingCommercial('');
+        setNewMappingEasybeerId('');
+        setNewMappingDenomination('');
+        toast.success('Correspondance enregistree');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Erreur lors de l\'enregistrement');
+      }
+    } catch { toast.error('Erreur'); }
+  };
+
+  const deleteEbMapping = async (commercialId: string) => {
+    try {
+      await apiFetch(`/easybeer-commercial-mapping/${commercialId}`, {
+        method: 'DELETE',
+      });
+      setEbMapping(prev => prev.filter(m => m.suivipro_commercial_id !== commercialId));
     } catch { /* ignore */ }
   };
 
@@ -929,6 +983,80 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                 className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50"
                 onClick={addAssignmentRule}
                 disabled={!newRuleEmail || !newRuleCommercial}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Correspondance commercial <-> identifiant EasyBeer natif */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Users className="w-4 h-4" /> Correspondance commercial ↔ EasyBeer
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Methode la plus fiable pour l'affectation automatique : les emails peuvent
+              differer entre les deux systemes, mais l'identifiant EasyBeer (idCommercial)
+              d'un commercial ne change pas. Un commercial sans correspondance ici passera
+              par la regle d'affectation par email ci-dessus, puis par le nom.
+            </p>
+
+            {ebMapping.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {ebMapping.map(m => (
+                  <div key={m.suivipro_commercial_id} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg text-sm">
+                    <span className="font-medium text-gray-900 flex-1">
+                      {m.prenom} {m.nom}
+                      {m.denomination && <span className="text-gray-400 font-normal ml-1">({m.denomination})</span>}
+                    </span>
+                    <span className="text-gray-400">→</span>
+                    <span className="text-gray-600 font-mono text-xs">{m.easybeer_id}</span>
+                    <button className="p-1 rounded hover:bg-red-50" onClick={() => deleteEbMapping(m.suivipro_commercial_id)}>
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Commercial SuiviPro</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={newMappingCommercial}
+                  onChange={e => setNewMappingCommercial(e.target.value)}
+                >
+                  <option value="">Choisir...</option>
+                  {state.commerciaux.map(c => (
+                    <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Identifiant EasyBeer (idCommercial)</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={newMappingEasybeerId}
+                  onChange={e => setNewMappingEasybeerId(e.target.value)}
+                  placeholder="ex: 31537"
+                />
+              </div>
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Denomination (optionnel)</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={newMappingDenomination}
+                  onChange={e => setNewMappingDenomination(e.target.value)}
+                  placeholder="ex: Louis Pacalon"
+                />
+              </div>
+              <button
+                className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50"
+                onClick={addEbMapping}
+                disabled={!newMappingCommercial || !newMappingEasybeerId.trim()}
               >
                 <Plus className="w-4 h-4" />
               </button>

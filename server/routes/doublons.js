@@ -477,6 +477,40 @@ router.delete('/assignment-rules/:id', authMiddleware, adminOnly, asyncHandler(a
   res.json({ ok: true });
 }));
 
+// Mapping SuiviPro commercial <-> EasyBeer idCommercial natif (cle la plus fiable
+// pour l'affectation automatique - voir resolveCommercialFromEasybeer).
+router.get('/easybeer-commercial-mapping', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query(
+    `SELECT m.*, c.prenom, c.nom FROM easybeer_commerciaux m
+     JOIN commerciaux c ON c.id = m.suivipro_commercial_id
+     ORDER BY c.prenom`
+  );
+  res.json(result.rows);
+}));
+
+router.post('/easybeer-commercial-mapping', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { suivipro_commercial_id, easybeer_id, denomination } = req.body;
+  if (!suivipro_commercial_id || !easybeer_id) return res.status(400).json({ error: 'Commercial et identifiant EasyBeer requis' });
+  const now = new Date().toISOString();
+  try {
+    await db.query(
+      `INSERT INTO easybeer_commerciaux (suivipro_commercial_id, easybeer_id, denomination, actif, updated_at)
+       VALUES ($1,$2,$3,TRUE,$4)
+       ON CONFLICT (suivipro_commercial_id) DO UPDATE SET easybeer_id = $2, denomination = $3, actif = TRUE, updated_at = $4`,
+      [suivipro_commercial_id, String(easybeer_id).trim(), denomination || '', now]
+    );
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Cet identifiant EasyBeer est deja associe a un autre commercial' });
+    throw err;
+  }
+  res.json({ ok: true });
+}));
+
+router.delete('/easybeer-commercial-mapping/:commercialId', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM easybeer_commerciaux WHERE suivipro_commercial_id = $1', [req.params.commercialId]);
+  res.json({ ok: true });
+}));
+
 // Import clients from Excel (bulk)
 router.post('/clients/import', authMiddleware, asyncHandler(async (req, res) => {
   const { clients, newCommerciaux } = req.body;
