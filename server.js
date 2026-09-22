@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import cron from 'node-cron';
 import { dbReady } from './server/db.js';
-import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux } from './server/routes.js';
+import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux, runClientSync } from './server/routes.js';
 import { rattacherTout } from './server/lib/zones.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 import googleContactsRoutes from './server/google-contacts.js';
@@ -182,6 +182,16 @@ dbReady.then(() => {
   cron.schedule('30 2 * * *', async () => {
     console.log('[CRON] Synchro nocturne Easybeer...');
     try { await syncNocturneEasybeer(); } catch (e) { console.error('[CRON] Sync nocturne échec:', e.message); }
+  });
+
+  // CRON: Synchro nocturne des clients Easybeer (filet de sécurité) — tous les
+  // jours 02:45 UTC. Contrairement à syncNocturneEasybeer (commandes, fenêtre de
+  // 7 jours), un client manqué par le webhook (secret invalide, rate-limit, etc.)
+  // n'avait jusqu'ici AUCUN rattrapage automatique. Pull complet et non filtré
+  // par date, comme le bouton "Synchroniser les clients" de l'admin.
+  cron.schedule('45 2 * * *', async () => {
+    console.log('[CRON] Synchro nocturne clients Easybeer...');
+    try { await runClientSync(); } catch (e) { console.error('[CRON] Sync nocturne clients échec:', e.message); }
   });
 
   // CRON: Sync zone INSEE every Monday at 6:00 UTC

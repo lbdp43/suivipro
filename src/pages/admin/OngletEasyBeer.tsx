@@ -19,6 +19,18 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
 
   const [ebAuditLoading, setEbAuditLoading] = useState(false);
 
+  const [ebAuditCommerciaux, setEbAuditCommerciaux] = useState<{
+    client_id: string; client_nom: string;
+    current_commercial_id: string | null; current_prenom: string | null; current_nom: string | null;
+    suggested_commercial_id: string; suggested_prenom: string; suggested_nom: string;
+  }[] | null>(null);
+
+  const [ebAuditCommerciauxLoading, setEbAuditCommerciauxLoading] = useState(false);
+
+  const [ebCorrectingClientId, setEbCorrectingClientId] = useState<string | null>(null);
+
+  const [ebCorrectingAll, setEbCorrectingAll] = useState(false);
+
   const [doublons, setDoublons] = useState<{ total_clients: number; total_paires: number; certains: number; affichees?: number; par_score?: Record<string, number>; identifiants_partages?: { emails: { valeur: string; clients: number }[]; telephones: { valeur: string; clients: number }[] }; paires: any[] } | null>(null);
 
   const [doublonsRecherche, setDoublonsRecherche] = useState('');
@@ -171,6 +183,51 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       if (res.ok) setEbAudit(await res.json());
     } catch { /* silencieux */ }
     setEbAuditLoading(false);
+  };
+
+  const chargerAuditCommerciaux = async () => {
+    setEbAuditCommerciauxLoading(true);
+    try {
+      const res = await apiFetch('/easybeer/audit-commerciaux');
+      if (res.ok) setEbAuditCommerciaux(await res.json());
+    } catch { /* silencieux */ }
+    setEbAuditCommerciauxLoading(false);
+  };
+
+  const corrigerCommercial = async (clientId: string) => {
+    setEbCorrectingClientId(clientId);
+    try {
+      const res = await apiFetch('/easybeer/audit-commerciaux/corriger', {
+        method: 'POST',
+        body: JSON.stringify({ client_ids: [clientId] }),
+      });
+      if (res.ok) {
+        setEbAuditCommerciaux(prev => prev?.filter(l => l.client_id !== clientId) || null);
+        toast.success('Commercial corrige');
+      } else {
+        toast.error('Erreur lors de la correction');
+      }
+    } catch { toast.error('Erreur reseau'); }
+    setEbCorrectingClientId(null);
+  };
+
+  const corrigerTousLesCommerciaux = async () => {
+    if (!ebAuditCommerciaux || ebAuditCommerciaux.length === 0) return;
+    setEbCorrectingAll(true);
+    try {
+      const res = await apiFetch('/easybeer/audit-commerciaux/corriger', {
+        method: 'POST',
+        body: JSON.stringify({ client_ids: ebAuditCommerciaux.map(l => l.client_id) }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(`${data.corrected} client(s) corrige(s)`);
+        setEbAuditCommerciaux([]);
+      } else {
+        toast.error('Erreur lors de la correction');
+      }
+    } catch { toast.error('Erreur reseau'); }
+    setEbCorrectingAll(false);
   };
 
   const chargerDoublons = async () => {
@@ -735,6 +792,63 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                     <p className="text-sm text-green-700">Tous les liens sont cohérents ✓</p>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Audit des commerciaux : commercial assigne vs identifiant EasyBeer natif */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <Users className="w-4 h-4" /> Audit des commerciaux EasyBeer
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Compare le commercial actuellement assigne a chaque client relie a EasyBeer
+              avec celui que suggere aujourd'hui son identifiant EasyBeer natif (le plus
+              fiable). Utile pour rattraper les clients assignes par une ancienne
+              resolution moins fiable (email/nom, ou prospect rapproche) avant que la
+              correspondance native n'existe pour ce commercial.
+            </p>
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50"
+                onClick={chargerAuditCommerciaux}
+                disabled={ebAuditCommerciauxLoading}
+              >
+                {ebAuditCommerciauxLoading ? 'Analyse…' : ebAuditCommerciaux ? 'Relancer l\'audit' : 'Lancer l\'audit'}
+              </button>
+              {ebAuditCommerciaux && ebAuditCommerciaux.length > 0 && (
+                <button
+                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm disabled:opacity-50"
+                  onClick={corrigerTousLesCommerciaux}
+                  disabled={ebCorrectingAll}
+                >
+                  {ebCorrectingAll ? 'Correction…' : `Tout corriger (${ebAuditCommerciaux.length})`}
+                </button>
+              )}
+            </div>
+
+            {ebAuditCommerciaux && (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {ebAuditCommerciaux.map(l => (
+                  <div key={l.client_id} className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm">
+                    <span className="font-medium text-gray-900 flex-1">{l.client_nom}</span>
+                    <span className="text-gray-500">
+                      {l.current_prenom ? `${l.current_prenom} ${l.current_nom}` : 'Aucun commercial'}
+                    </span>
+                    <span className="text-gray-400">→</span>
+                    <span className="font-medium text-green-700">{l.suggested_prenom} {l.suggested_nom}</span>
+                    <button
+                      className="px-2 py-1.5 bg-brewery-600 text-white rounded-lg text-xs hover:bg-brewery-700 disabled:opacity-50"
+                      onClick={() => corrigerCommercial(l.client_id)}
+                      disabled={ebCorrectingClientId === l.client_id}
+                    >
+                      Corriger
+                    </button>
+                  </div>
+                ))}
+                {ebAuditCommerciaux.length === 0 && (
+                  <p className="text-sm text-green-700">Tous les commerciaux sont cohérents ✓</p>
+                )}
               </div>
             )}
           </div>

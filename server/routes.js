@@ -50,4 +50,5 @@ router.use(masse);
 export { runZoneSync } from './routes/sirene.js';
 export { syncNocturneEasybeer } from './routes/crons.js';
 export { purgerJournaux } from './routes/crons.js';
+export { runClientSync } from './routes/easybeer.js';
 export default router;

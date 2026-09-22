@@ -24,7 +24,7 @@ async function easybeerAuthHeaders() {
 // Background job: pull all EasyBeer clients (verified endpoint) and upsert them. Clients only.
 let clientSyncRunning = false;
 
-async function runClientSync() {
+export async function runClientSync() {
   if (clientSyncRunning) return { ok: false, message: 'Synchronisation deja en cours' };
   const auth = await easybeerAuthHeaders();
   if (!auth) return { ok: false, message: 'Configuration EasyBeer incomplete' };
@@ -98,6 +98,15 @@ async function handleEasyBeerWebhook(req, res) {
   const config = configResult.rows[0];
   if (config?.webhook_secret && webhookSecret !== config.webhook_secret) {
     console.log('[EasyBeer Webhook] Secret invalide recu:', webhookSecret?.substring(0, 8) + '...');
+    // Journalise le rejet (sans le secret refuse, ni le corps du message) pour que
+    // ce ne soit pas invisible en dehors des logs serveur : un secret perime cote
+    // EasyBeer rejetterait SILENCIEUSEMENT tous les webhooks sans cette trace.
+    try {
+      await db.query(
+        'INSERT INTO webhooks (source, type, external_id, payload, received_at, processing_result) VALUES ($1,$2,$3,$4,$5,$6)',
+        ['easybeer', 'secret_invalide', '', '{}', new Date().toISOString(), 'REJETE: secret webhook invalide ou perime — verifier la config EasyBeer']
+      );
+    } catch (e) { console.error('[EasyBeer Webhook] Log secret invalide echoue:', e.message); }
     return res.status(403).json({ error: 'Invalid webhook secret' });
   }
 
@@ -1192,6 +1201,44 @@ router.get('/easybeer/audit-liens', authMiddleware, asyncHandler(async (req, res
     a_verifier: resultats.filter(r => r.verdict === 'a_verifier').length,
     liens: resultats,
   });
+}));
+
+// Audit des commerciaux : compare le commercial actuellement assigne a chaque
+// client relie a EasyBeer avec celui que l'identifiant EasyBeer natif du client
+// (le plus fiable, cf. easybeer_commerciaux) suggere aujourd'hui. Utile pour
+// rattraper les clients assignes par une ancienne resolution moins fiable
+// (email/nom, ou prospect rapproche) avant que le mapping natif n'existe.
+router.get('/easybeer/audit-commerciaux', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.query(`
+    SELECT c.id AS client_id, c.nom AS client_nom,
+           c.commercial_id AS current_commercial_id, cur.prenom AS current_prenom, cur.nom AS current_nom,
+           m.suivipro_commercial_id AS suggested_commercial_id, sug.prenom AS suggested_prenom, sug.nom AS suggested_nom
+    FROM clients c
+    JOIN easybeer_commerciaux m ON m.easybeer_id = c.easybeer_commercial_id AND m.actif = TRUE
+    JOIN commerciaux sug ON sug.id = m.suivipro_commercial_id
+    LEFT JOIN commerciaux cur ON cur.id = c.commercial_id
+    WHERE c.easybeer_commercial_id IS NOT NULL AND c.easybeer_commercial_id != ''
+      AND (c.commercial_id IS NULL OR c.commercial_id != m.suivipro_commercial_id)
+    ORDER BY c.nom
+  `);
+  res.json(result.rows);
+}));
+
+// Corrige le commercial d'un ou plusieurs clients vers celui suggere par leur
+// identifiant EasyBeer natif (mêmes lignes que retourne l'audit ci-dessus).
+router.post('/easybeer/audit-commerciaux/corriger', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
+  const { client_ids } = req.body || {};
+  if (!Array.isArray(client_ids) || client_ids.length === 0) return res.status(400).json({ error: 'client_ids requis' });
+  const now = new Date().toISOString();
+  const result = await db.query(`
+    UPDATE clients c SET commercial_id = m.suivipro_commercial_id, date_modification = $2
+    FROM easybeer_commerciaux m
+    WHERE m.easybeer_id = c.easybeer_commercial_id AND m.actif = TRUE
+      AND c.id = ANY($1::text[])
+    RETURNING c.id, c.nom, c.commercial_id
+  `, [client_ids, now]);
+  console.log(`[EasyBeer Audit] Commercial corrige pour ${result.rows.length} client(s): ${result.rows.map(r => r.nom).join(', ')}`);
+  res.json({ ok: true, corrected: result.rows.length });
 }));
 
 // Délier un client Easybeer (le lien redevient « pending », les futures commandes

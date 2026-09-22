@@ -283,10 +283,16 @@ async function importPendingEbClient(eb, ebRowId, { commercial_id, type_client, 
         latitude = CASE WHEN (latitude IS NULL OR latitude = 0) AND $5::double precision != 0 THEN $5 ELSE latitude END,
         longitude = CASE WHEN (longitude IS NULL OR longitude = 0) AND $6::double precision != 0 THEN $6 ELSE longitude END,
         contact = CASE WHEN (contact IS NULL OR contact = '') AND $7 != '' THEN $7 ELSE contact END,
+        easybeer_id = COALESCE(NULLIF(easybeer_id,''), $9),
+        easybeer_numero = COALESCE(NULLIF(easybeer_numero,''), $10),
+        easybeer_commercial_id = COALESCE(NULLIF(easybeer_commercial_id,''), $11),
+        easybeer_type_id = COALESCE(NULLIF(easybeer_type_id,''), $12),
+        easybeer_tournee_id = COALESCE(NULLIF(easybeer_tournee_id,''), $13),
         date_modification = $8
       WHERE id = $1`,
       [existingClient.id, eb.phone_mobile || '', eb.siret || '', tournee || eb.tournee || '',
-       eb.latitude || 0, eb.longitude || 0, eb.contact_name || '', now]
+       eb.latitude || 0, eb.longitude || 0, eb.contact_name || '', now,
+       eb.easybeer_id || '', eb.numero || '', eb.commercial_easybeer_id || '', eb.type_id || '', eb.tournee_id || '']
     );
 
     await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [existingClient.id, ebRowId]);
@@ -344,6 +350,16 @@ async function importPendingEbClient(eb, ebRowId, { commercial_id, type_client, 
 
   if (prospect) {
     await linkClientToProspect(clientId, prospect, now);
+  }
+
+  // Identifiants natifs EasyBeer sur la fiche client, comme le fait le webhook -
+  // indispensables pour matcher les commandes plus tard et pour les futurs audits
+  // de commercial (comparaison easybeer_commercial_id vs commercial_id).
+  if (eb.easybeer_id) {
+    await db.query(
+      `UPDATE clients SET easybeer_id=$2, easybeer_numero=$3, easybeer_commercial_id=$4, easybeer_type_id=$5, easybeer_tournee_id=$6 WHERE id=$1`,
+      [clientId, eb.easybeer_id, eb.numero || '', eb.commercial_easybeer_id || '', eb.type_id || '', eb.tournee_id || '']
+    );
   }
 
   await db.query("UPDATE easybeer_clients SET status = 'imported', imported_client_id = $1 WHERE id = $2", [clientId, ebRowId]);
