@@ -8,7 +8,7 @@ import {
   Edit2, Trash2, Save, Filter, User,
   Calendar, CheckCircle2, AlertTriangle, Navigation,
   Download, ListTodo, CheckSquare, Square, XCircle,
-  Users, CalendarPlus, StickyNote, CalendarDays, Link2,
+  Users, CalendarPlus, StickyNote, CalendarDays, Link2, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import ChampsIdentite from '../components/ChampsIdentite';
@@ -176,6 +176,22 @@ export default function ClientsPage() {
   const [tourneeConfigs, setTourneeConfigs] = useState<Record<string, { config: Record<string, string[]>; week_pattern: string }>>({});
 
   const isAdmin = state.currentUser?.role === 'admin';
+
+  const [recalculatingRecurrence, setRecalculatingRecurrence] = useState(false);
+
+  const recalculerRecurrences = async () => {
+    setRecalculatingRecurrence(true);
+    try {
+      const data = await apiPost('/clients/recalculer-recurrence', {}) as { corrected: number; sansRecurrenceParDefaut: number; total: number };
+      if (data.total === 0) {
+        toast.info('Aucun client sans recurrence a corriger');
+      } else {
+        toast.success(`${data.corrected} client(s) corrige(s)${data.sansRecurrenceParDefaut > 0 ? ` (${data.sansRecurrenceParDefaut} sans recurrence par defaut pour leur type)` : ''}`);
+        if (data.corrected > 0) window.location.reload();
+      }
+    } catch { toast.error('Erreur lors du recalcul'); }
+    setRecalculatingRecurrence(false);
+  };
 
   // Tournée editing state
   const [editingTournee, setEditingTournee] = useState<string | null>(null);
@@ -914,6 +930,17 @@ export default function ClientsPage() {
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">Export</span>
               </button>
+              {isAdmin && (
+                <button
+                  onClick={recalculerRecurrences}
+                  disabled={recalculatingRecurrence}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  title="Recalcule la prochaine visite pour les clients sans recurrence (commercial assigne, mais date jamais calculee)"
+                >
+                  <RefreshCw className={`w-4 h-4 ${recalculatingRecurrence ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Récurrences</span>
+                </button>
+              )}
               <button onClick={openNewForm} className="flex items-center gap-1.5 px-3 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 transition-colors">
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Nouveau client</span>

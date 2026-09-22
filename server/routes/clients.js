@@ -108,6 +108,36 @@ router.delete('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Recalcule la prochaine visite pour des clients sans recurrence (statut ACTIF,
+// commercial assigne, mais next_visit jamais calcule - typiquement des clients
+// crees sans commercial resolu au moment de leur synchro, puis affectes plus
+// tard). Ne force rien pour les types dont la recurrence est volontairement
+// nulle (Grand Public, Mariage...) : calculateNextVisit renvoie null pour eux.
+router.post('/clients/recalculer-recurrence', authMiddleware, asyncHandler(async (req, res) => {
+  const { client_ids } = req.body || {};
+  const clients = Array.isArray(client_ids) && client_ids.length > 0
+    ? (await db.query(
+        `SELECT id, type_client, custom_recurrence, last_visit FROM clients
+         WHERE id = ANY($1::text[]) AND next_visit IS NULL AND statut = 'ACTIF'`,
+        [client_ids]
+      )).rows
+    : (await db.query(
+        `SELECT id, type_client, custom_recurrence, last_visit FROM clients
+         WHERE next_visit IS NULL AND statut = 'ACTIF' AND commercial_id IS NOT NULL AND commercial_id != ''`
+      )).rows;
+
+  let corrected = 0;
+  let sansRecurrenceParDefaut = 0;
+  const now = new Date().toISOString();
+  for (const c of clients) {
+    const nextVisit = await calculateNextVisit(c.type_client, c.custom_recurrence, c.last_visit);
+    if (!nextVisit) { sansRecurrenceParDefaut++; continue; }
+    await db.query('UPDATE clients SET next_visit = $2, date_modification = $3 WHERE id = $1', [c.id, nextVisit, now]);
+    corrected++;
+  }
+  res.json({ ok: true, corrected, sansRecurrenceParDefaut, total: clients.length });
+}));
+
 router.get('/interactions', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM interactions ORDER BY date DESC');
   res.json(result.rows);
