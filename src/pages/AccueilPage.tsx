@@ -14,7 +14,7 @@ import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
 import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
 import { formatDate } from '../utils/helpers';
-import { dateLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
+import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import BlocErreur from '../components/BlocErreur';
 import BilanDuSoir from '../components/BilanDuSoir';
@@ -463,6 +463,24 @@ function ComptesRendusAFaire({ rdvs, surCompteRendu, proprietaire, moiId }: {
 /** Au-delà, l'accueil devient une liste : le reste se traite dans le bilan de la semaine. */
 const CR_MAX = 15;
 
+/**
+ * La minute en cours, « AAAA-MM-JJ HH:MM », qui fait se redessiner la page chaque minute.
+ *
+ * Un rendez-vous réclame son compte rendu dès son heure de début (`rdvPasse`). Or la liste
+ * n'était recalculée que lorsque les rendez-vous changeaient : l'accueil laissé ouvert,
+ * celui de 14 h n'apparaissait qu'au prochain rechargement — et celui de la veille au soir
+ * pas davantage le lendemain matin. Mise dans les dépendances, cette clé suffit.
+ */
+function useMinuteCourante(): string {
+  const lire = () => { const d = new Date(); return `${dateLocale(d)} ${heureLocale(d)}`; };
+  const [minute, setMinute] = useState(lire);
+  useEffect(() => {
+    const id = setInterval(() => setMinute(lire()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  return minute;
+}
+
 // ============================================================================
 // COMMERCIAL
 // ============================================================================
@@ -500,11 +518,12 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
   }, [state.appointments, moi.id]);
   const retards = useMemo(() => state.clients.filter(c => estEnRetard(c, today)).sort((a, b) => joursDeRetard(b, today) - joursDeRetard(a, today)), [state.clients, today]);
   // Les plus anciens d'abord : c'est celui qu'on a le plus de mal à se rappeler.
+  const minute = useMinuteCourante();
   const crAFaire = useMemo(() => state.appointments
     .filter(a => (a.commercial_id === moi.id || (a.participants || []).includes(moi.id)) && rdvSansCompteRendu(a, now))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
-  [state.appointments, moi.id, today]);
-  const sansCr = useMemo(() => state.appointments.filter(a => a.commercial_id === moi.id && rdvSansCompteRendu(a, now)).sort((a, b) => b.date.localeCompare(a.date)), [state.appointments, moi.id]);
+  [state.appointments, moi.id, minute]);
+  const sansCr = useMemo(() => state.appointments.filter(a => a.commercial_id === moi.id && rdvSansCompteRendu(a, now)).sort((a, b) => b.date.localeCompare(a.date)), [state.appointments, moi.id, minute]);
   const taches = useMemo(() => state.tasksClient.filter(t => t.commercial_id === moi.id && t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance <= today).sort((a, b) => (a.date_echeance || '').localeCompare(b.date_echeance || '')), [state.tasksClient, moi.id, today]);
   const rappels = useMemo(() => state.reminders.filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today), [state.reminders, moi.id, today]);
 
@@ -963,10 +982,11 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
   // participant) doit voir les siens ici : sinon ils ne s'affichent nulle
   // part sur son accueil, faute du bloc "Comptes rendus a faire" reserve
   // jusqu'ici a AccueilCommercial et AccueilAdmin.
+  const minute = useMinuteCourante();
   const crAFaire = useMemo(() => state.appointments
     .filter(a => (a.commercial_id === moi.id || (a.participants || []).includes(moi.id)) && rdvSansCompteRendu(a, now))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
-  [state.appointments, moi.id]);
+  [state.appointments, moi.id, minute]);
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
 
   return (
@@ -1072,10 +1092,11 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
   // Toute l'équipe : l'administrateur voit ce qui manque partout, et rend compte de ce qui
   // lui appartient. Le compte rendu d'un collègue reste au collègue, comme sur les
   // rendez-vous du jour — on ne raconte pas une visite qu'on n'a pas faite.
+  const minute = useMinuteCourante();
   const crAFaire = useMemo(() => state.appointments
     .filter(a => rdvSansCompteRendu(a, now))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
-  [state.appointments, today]);
+  [state.appointments, minute]);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
