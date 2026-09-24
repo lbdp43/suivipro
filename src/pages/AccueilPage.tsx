@@ -957,11 +957,31 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
 }
 
 function AccueilProspection({ moi }: { moi: Commercial }) {
+  const { state } = useApp();
+  const now = new Date();
+  const today = dateLocale(now);
+
+  // Qui fait de la prospection va aussi en rendez-vous, et ces rendez-vous-là demandent un
+  // compte rendu comme les autres. Le bloc manquait ici : on voyait le rendez-vous passer
+  // dans l'agenda, puis plus rien ne rappelait qu'il restait à raconter.
+  // Le rendez-vous seulement pris pour quelqu'un d'autre ne compte pas : le compte rendu
+  // revient à celui qui y est allé.
+  const crAFaire = useMemo(() => state.appointments
+    .filter(a => (a.commercial_id === moi.id || (a.participants || []).includes(moi.id)) && rdvSansCompteRendu(a, now))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+  [state.appointments, moi.id, today]);
+
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
       <Bonjour personne={moi} sousTitre="prospection" />
       <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
       <BlocsProspection moi={moi} />
+
+      <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
+
+      <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
   );
 }
