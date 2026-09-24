@@ -957,11 +957,25 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
 }
 
 function AccueilProspection({ moi }: { moi: Commercial }) {
+  const { state } = useApp();
+  const now = new Date();
+  // Un prospecteur qui fait aussi des visites (RDV pris pour lui-meme, ou
+  // participant) doit voir les siens ici : sinon ils ne s'affichent nulle
+  // part sur son accueil, faute du bloc "Comptes rendus a faire" reserve
+  // jusqu'ici a AccueilCommercial et AccueilAdmin.
+  const crAFaire = useMemo(() => state.appointments
+    .filter(a => (a.commercial_id === moi.id || (a.participants || []).includes(moi.id)) && rdvSansCompteRendu(a, now))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
+  [state.appointments, moi.id]);
+  const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
       <Bonjour personne={moi} sousTitre="prospection" />
       <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
       <BlocsProspection moi={moi} />
+      <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
+      <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
   );
 }
