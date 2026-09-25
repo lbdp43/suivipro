@@ -42,6 +42,7 @@ type Action =
   | { type: 'ADD_PIPELINE_COLUMN'; payload: PipelineColumn }
   | { type: 'REORDER_PIPELINE_COLUMNS'; payload: PipelineColumn[] }
   | { type: 'ADD_DOCUMENT'; payload: Document }
+  | { type: 'UPDATE_DOCUMENT'; payload: Document }
   | { type: 'DELETE_DOCUMENT'; payload: string }
   | { type: 'ADD_CLIENT'; payload: Client }
   | { type: 'UPDATE_CLIENT'; payload: Client }
@@ -141,6 +142,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, pipelineColumns: action.payload };
     case 'ADD_DOCUMENT':
       return { ...state, documents: [action.payload, ...state.documents] };
+    case 'UPDATE_DOCUMENT':
+      return { ...state, documents: state.documents.map(d => d.id === action.payload.id ? action.payload : d) };
     case 'DELETE_DOCUMENT':
       return { ...state, documents: state.documents.filter(d => d.id !== action.payload) };
     // Clients

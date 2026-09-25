@@ -338,19 +338,19 @@ export function getDocumentDownloadUrl(documentId: string): string {
 }
 
 export async function downloadDocument(documentId: string, filename: string) {
-  const res = await fetch(`${API_BASE}/documents/${documentId}/download`, {
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-  });
-  if (!res.ok) throw new Error('Erreur de telechargement');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  // Navigation directe (pas fetch+blob+clic simule) : Safari iOS ignore
+  // l'attribut download d'un <a> genere en JS et ouvre juste le blob dans
+  // un onglet au lieu de l'enregistrer. En laissant le navigateur naviguer
+  // lui-meme vers l'URL, l'en-tete Content-Disposition: attachment du
+  // serveur declenche l'enregistrement natif, sur mobile comme sur ordi.
+  const url = `${API_BASE}/documents/${documentId}/download${authToken ? `?token=${encodeURIComponent(authToken)}` : ''}`;
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.rel = 'noreferrer';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 // ============================================

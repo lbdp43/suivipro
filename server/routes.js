@@ -60,7 +60,11 @@ if (!JWT_SECRET) {
 // ============================================
 
 function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  // Le telechargement de fichier navigue directement le navigateur vers cette
+  // URL (pour que Content-Disposition: attachment declenche l'enregistrement
+  // natif, seule methode fiable sur Safari iOS) : impossible d'y joindre un
+  // header Authorization, d'ou ce fallback sur un jeton en parametre d'URL.
+  const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
   if (!token) return res.status(401).json({ error: 'Token manquant' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -667,7 +671,16 @@ router.delete('/commerciaux/:id', authMiddleware, adminOnly, asyncHandler(async 
 // ============================================
 
 router.get('/documents', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC');
+  const result = await db.query(`
+    SELECT d.id, d.nom, d.categorie, d.description, d.nom_fichier, d.type_mime, d.taille, d.uploaded_by, d.date_creation, d.necessite_accord,
+      COALESCE(
+        (SELECT json_agg(json_build_object('commercial_id', da.commercial_id, 'date_accord', da.date_accord))
+         FROM document_accords da WHERE da.document_id = d.id),
+        '[]'
+      ) AS accords
+    FROM documents d
+    ORDER BY d.date_creation DESC
+  `);
   res.json(result.rows);
 }));
 
@@ -683,7 +696,7 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024; // 5MB
 
 router.post('/documents', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
-  const { id, nom, categorie, description, nom_fichier, type_mime, taille, contenu } = req.body;
+  const { id, nom, categorie, description, nom_fichier, type_mime, taille, contenu, necessite_accord } = req.body;
   if (!nom || !nom_fichier || !contenu) {
     return res.status(400).json({ error: 'nom, nom_fichier et contenu sont requis' });
   }
@@ -693,12 +706,34 @@ router.post('/documents', authMiddleware, adminOnly, asyncHandler(async (req, re
   if (taille && taille > MAX_DOCUMENT_SIZE) {
     return res.status(400).json({ error: 'Fichier trop volumineux (max 5 Mo)' });
   }
+  const dateCreation = new Date().toISOString();
   await db.query(
-    `INSERT INTO documents (id, nom, categorie, description, nom_fichier, type_mime, taille, contenu, uploaded_by, date_creation)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id, nom, categorie || 'autre', description || '', nom_fichier, type_mime || 'application/pdf', taille || 0, contenu, req.user.id, new Date().toISOString()]
+    `INSERT INTO documents (id, nom, categorie, description, nom_fichier, type_mime, taille, contenu, uploaded_by, date_creation, necessite_accord)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [id, nom, categorie || 'autre', description || '', nom_fichier, type_mime || 'application/pdf', taille || 0, contenu, req.user.id, dateCreation, !!necessite_accord]
   );
-  res.json({ ok: true });
+  res.json({
+    id, nom, categorie: categorie || 'autre', description: description || '', nom_fichier,
+    type_mime: type_mime || 'application/pdf', taille: taille || 0, uploaded_by: req.user.id,
+    date_creation: dateCreation, necessite_accord: !!necessite_accord, accords: [],
+  });
+}));
+
+// Accuse de lecture d'un document (equivalent d'une signature electronique) :
+// chacun ne peut accuser reception que pour son propre compte, une seule fois
+// (la contrainte UNIQUE fait du second clic un no-op idempotent).
+router.post('/documents/:id/accord', authMiddleware, asyncHandler(async (req, res) => {
+  const doc = (await db.query('SELECT id FROM documents WHERE id = $1', [req.params.id])).rows[0];
+  if (!doc) return res.status(404).json({ error: 'Document non trouve' });
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO document_accords (id, document_id, commercial_id, date_accord)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (document_id, commercial_id) DO NOTHING`,
+    [`accord-${req.params.id}-${req.user.id}`, req.params.id, req.user.id, now]
+  );
+  const accords = (await db.query('SELECT commercial_id, date_accord FROM document_accords WHERE document_id = $1', [req.params.id])).rows;
+  res.json({ ok: true, accords });
 }));
 
 router.get('/documents/:id/download', authMiddleware, asyncHandler(async (req, res) => {
