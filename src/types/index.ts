@@ -598,6 +598,8 @@ export interface Document {
   taille: number;
   uploaded_by: string;
   date_creation: string;
+  necessite_accord: boolean;
+  accords: { commercial_id: string; date_accord: string }[];
 }
 
 // ============================================

@@ -694,6 +694,21 @@ async function initDatabase(attempt = 1) {
       }
     } catch (err) { console.log('Pipeline datagouv migration:', err.message); }
 
+    // Migration: accord de lecture sur les documents (equivalent d'une
+    // signature electronique - qui a pris connaissance d'un document, et quand).
+    try {
+      await client.query("ALTER TABLE documents ADD COLUMN IF NOT EXISTS necessite_accord BOOLEAN DEFAULT FALSE");
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS document_accords (
+          id TEXT PRIMARY KEY,
+          document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+          commercial_id TEXT NOT NULL REFERENCES commerciaux(id) ON DELETE CASCADE,
+          date_accord TEXT NOT NULL,
+          UNIQUE (document_id, commercial_id)
+        )
+      `);
+    } catch (err) { console.log('document_accords migration:', err.message); }
+
     // ============================================
     // Seed data (only if empty)
     // ============================================

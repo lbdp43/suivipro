@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, Upload, Download, Trash2, Search, Filter, Plus, X, File, Image, FileSpreadsheet } from 'lucide-react';
+import { FileText, Upload, Download, Trash2, Search, Filter, Plus, X, File, Image, FileSpreadsheet, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { Document, DocumentCategory, DOCUMENT_CATEGORY_LABELS } from '../types';
@@ -34,6 +34,10 @@ export default function DocumentsPage() {
   const [uploadCategorie, setUploadCategorie] = useState<DocumentCategory>('autre');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadNecessiteAccord, setUploadNecessiteAccord] = useState(false);
+
+  const [accordingDocId, setAccordingDocId] = useState<string | null>(null);
+  const [expandedAccords, setExpandedAccords] = useState<string | null>(null);
 
   const filteredDocs = state.documents.filter(doc => {
     if (filterCategory && doc.categorie !== filterCategory) return false;
@@ -64,6 +68,8 @@ export default function DocumentsPage() {
         taille: uploadFile.size,
         uploaded_by: state.currentUser?.id || '',
         date_creation: new Date().toISOString(),
+        necessite_accord: uploadNecessiteAccord,
+        accords: [],
         contenu: base64,
       };
       const saved = await apiPost('/documents', newDoc) as Document;
@@ -73,10 +79,25 @@ export default function DocumentsPage() {
       setUploadCategorie('autre');
       setUploadDescription('');
       setUploadFile(null);
+      setUploadNecessiteAccord(false);
     } catch {
       toast.error('Erreur lors de l\'envoi du document');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleAccord = async (doc: Document) => {
+    if (!state.currentUser) return;
+    setAccordingDocId(doc.id);
+    try {
+      const data = await apiPost(`/documents/${doc.id}/accord`, {}) as { accords: { commercial_id: string; date_accord: string }[] };
+      dispatchLocal({ type: 'ADD_DOCUMENT', payload: { ...doc, accords: data.accords } });
+      toast.success('Prise de connaissance enregistree');
+    } catch {
+      toast.error('Erreur lors de la confirmation');
+    } finally {
+      setAccordingDocId(null);
     }
   };
 
@@ -229,6 +250,56 @@ export default function DocumentsPage() {
                           )}
                         </div>
                       </div>
+                      {doc.necessite_accord && (() => {
+                        const monAccord = doc.accords.find(a => a.commercial_id === state.currentUser?.id);
+                        const aConfirme = state.commerciaux.filter(c => doc.accords.some(a => a.commercial_id === c.id));
+                        const manquants = state.commerciaux.filter(c => !doc.accords.some(a => a.commercial_id === c.id));
+                        const estDeplie = expandedAccords === doc.id;
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            {monAccord ? (
+                              <p className="text-xs text-green-700 flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                Vous avez pris connaissance le {new Date(monAccord.date_accord).toLocaleDateString('fr-FR')}
+                              </p>
+                            ) : (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-amber-700 font-medium">A lire et confirmer</span>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1"
+                                  onClick={() => handleAccord(doc)}
+                                  disabled={accordingDocId === doc.id}
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  {accordingDocId === doc.id ? 'Confirmation...' : 'J\'ai pris connaissance'}
+                                </button>
+                              </div>
+                            )}
+                            {isAdmin && (
+                              <div className="mt-1.5">
+                                <button
+                                  className="text-[11px] text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                                  onClick={() => setExpandedAccords(estDeplie ? null : doc.id)}
+                                >
+                                  {aConfirme.length}/{state.commerciaux.length} ont confirme
+                                  {estDeplie ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+                                {estDeplie && (
+                                  <div className="mt-1.5 flex flex-wrap gap-1">
+                                    {manquants.length === 0 ? (
+                                      <span className="text-[11px] text-green-600">Tout le monde a confirme</span>
+                                    ) : manquants.map(c => (
+                                      <span key={c.id} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                                        {c.prenom} {c.nom}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -321,6 +392,18 @@ export default function DocumentsPage() {
                   )}
                 </div>
               </div>
+              <label className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={uploadNecessiteAccord}
+                  onChange={e => setUploadNecessiteAccord(e.target.checked)}
+                />
+                <span className="text-xs text-amber-800">
+                  <span className="font-medium">Necessite une prise de connaissance</span><br />
+                  Chaque personne devra confirmer avoir lu ce document (comme une signature electronique). Vous pourrez suivre qui l'a fait.
+                </span>
+              </label>
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button
