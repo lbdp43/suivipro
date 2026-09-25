@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
   ChevronRight, ChevronDown, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
-  Navigation,
+  Navigation, FileSignature,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
@@ -21,6 +21,7 @@ import BilanDuSoir from '../components/BilanDuSoir';
 import CompteRenduModal from '../components/CompteRenduModal';
 import { useCallModal } from '../components/CallModal';
 import { faitDeLaProspection, estCommercial, libelleRole } from '../utils/roles';
+import { aSigne, doitSigner } from '../../shared/documents';
 
 // ============================================================================
 // Accueil « Ma journée » : une porte d'entrée par rôle. Pas d'itinéraire, pas de graphiques :
@@ -464,6 +465,31 @@ function ComptesRendusAFaire({ rdvs, surCompteRendu, proprietaire, moiId }: {
 const CR_MAX = 15;
 
 /**
+ * « Documents à lire et signer » : tant qu'il en reste, un bandeau en haut de l'accueil.
+ * Il disparaît de lui-même une fois tout signé.
+ */
+function DocumentsASigner({ moi }: { moi: Commercial }) {
+  const { state } = useApp();
+  const aSigner = useMemo(
+    () => state.documents.filter(d => doitSigner(d, moi.id) && !aSigne(d, moi.id, state.documentSignatures)),
+    [state.documents, state.documentSignatures, moi.id],
+  );
+  if (aSigner.length === 0) return null;
+  return (
+    <Link to="/documents" className="flex items-center gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4 hover:bg-amber-100 transition-colors">
+      <FileSignature className="w-6 h-6 text-amber-700 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-amber-900">
+          {aSigner.length === 1 ? '1 document à lire et signer' : `${aSigner.length} documents à lire et signer`}
+        </p>
+        <p className="text-xs text-amber-800 truncate">{aSigner.map(d => d.nom).join(' · ')}</p>
+      </div>
+      <ChevronRight className="w-5 h-5 text-amber-700 flex-shrink-0" />
+    </Link>
+  );
+}
+
+/**
  * La minute en cours, « AAAA-MM-JJ HH:MM », qui fait se redessiner la page chaque minute.
  *
  * Un rendez-vous réclame son compte rendu dès son heure de début (`rdvPasse`). Or la liste
@@ -534,6 +560,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
       <Bonjour personne={moi} sousTitre={(perimetre === 'equipe' ? 'vue de toute l\'équipe' : 'mes clients') + (faitDeLaProspection(moi) ? ' · prospection' : '')} />
+      <DocumentsASigner moi={moi} />
 
       <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
 
@@ -992,6 +1019,7 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
       <Bonjour personne={moi} sousTitre="prospection" />
+      <DocumentsASigner moi={moi} />
       <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
       <BlocsProspection moi={moi} />
       <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
@@ -1111,6 +1139,8 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
           <Link to="/admin" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50"><Users className="w-4 h-4" /> Équipe</Link>
         </div>
       </div>
+
+      <DocumentsASigner moi={moi} />
 
       <BlocErreur titre="Problèmes à régler">
         <div className={`bg-white rounded-xl border ${nbProblemes ? 'border-amber-200' : 'border-gray-200'} p-4`}>
