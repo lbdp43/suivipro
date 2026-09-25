@@ -453,7 +453,7 @@ export async function downloadDocument(documentId: string, filename: string) {
   const res = await fetch(`${API_BASE}/documents/${documentId}/download`, {
     headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
   });
-  if (!res.ok) throw new Error('Erreur de telechargement');
+  if (!res.ok) throw new Error(await messageDErreur(res, 'Le document n\'a pas pu être récupéré'));
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -462,7 +462,28 @@ export async function downloadDocument(documentId: string, filename: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Pas tout de suite : Safari lit le fichier APRÈS le clic. Le libérer dans la foulée
+  // donnait un téléchargement vide, sans aucun message.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function messageDErreur(res: Response, parDefaut: string): Promise<string> {
+  try { const j = await res.json(); if (j && typeof j.error === 'string') return j.error; } catch { /* pas du JSON */ }
+  return parDefaut;
+}
+
+/** Les liens d'ouverture des documents (un par document, valables deux heures). */
+export function liensDesDocuments(): Promise<Record<string, string>> {
+  return apiGet<Record<string, string>>('/documents/liens');
+}
+
+/** Le contenu d'un document pour la visionneuse de SuiviPro (PDF ou image). */
+export async function apercuDuDocument(documentId: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(documentId)}/apercu`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+  if (!res.ok) throw new Error(await messageDErreur(res, 'Le document n\'a pas pu être ouvert'));
+  return res.blob();
 }
 
 // ============================================

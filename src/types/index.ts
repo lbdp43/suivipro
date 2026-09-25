@@ -633,6 +633,26 @@ export interface Document {
   taille: number;
   uploaded_by: string;
   date_creation: string;
+  /** À lire et signer (« J'ai lu et je prends connaissance »). */
+  a_signer?: boolean;
+  /** Les personnes qui doivent signer ; null = toute l'équipe (sauf qui l'a publié). */
+  signataires?: string[] | null;
+  /** Remplacer le fichier crée une nouvelle version, à signer de nouveau. */
+  version?: number;
+  /** Lisible dans la visionneuse de SuiviPro, jamais remis tel quel (sauf aux admins). */
+  consultation_seule?: boolean;
+}
+
+export interface DocumentSignature {
+  doc_id: string;
+  user_id: string;
+  version: number;
+  signe_le: string;
+}
+
+export interface DocumentOuverture {
+  doc_id: string;
+  version: number;
 }
 
 /** « Ma session d'appel du jour » : la liste qu'une personne s'est choisie pour un jour. */
@@ -725,6 +745,9 @@ export interface AppState {
   currentUser: Commercial | null;
   pipelineColumns: PipelineColumn[];
   documents: Document[];
+  documentSignatures: DocumentSignature[];
+  /** Ce que la personne connectée a déjà ouvert. */
+  documentOuvertures: DocumentOuverture[];
   clients: Client[];
   interactions: Interaction[];
   tasksClient: TaskClient[];

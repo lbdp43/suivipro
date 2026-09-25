@@ -1029,6 +1029,37 @@ async function initDatabase(attempt = 1) {
       await client.query('ALTER TABLE google_contacts_liens DROP CONSTRAINT IF EXISTS google_contacts_liens_client_id_fkey');
       await client.query('CREATE INDEX IF NOT EXISTS idx_google_contacts_liens_resource ON google_contacts_liens(commercial_id, resource_name)');
     } catch (err) { console.log('google_contacts migration:', err.message); }
+    // Documents à lire et signer. Une signature porte sur UNE version du fichier : on garde
+    // l'empreinte (SHA-256) de ce qui a été signé, la date, l'adresse IP et le navigateur —
+    // les éléments de preuve d'une signature électronique simple. L'ouverture est tracée à
+    // part : on ne signe qu'un document qu'on a ouvert.
+    try {
+      await client.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS a_signer BOOLEAN NOT NULL DEFAULT false');
+      await client.query("ALTER TABLE documents ADD COLUMN IF NOT EXISTS signataires TEXT NOT NULL DEFAULT ''");
+      await client.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1');
+      await client.query("ALTER TABLE documents ADD COLUMN IF NOT EXISTS empreinte TEXT NOT NULL DEFAULT ''");
+      // Consultation seule : lisible dans la visionneuse de SuiviPro, jamais remis tel quel
+      // (sauf aux administrateurs). Réservé aux PDF et aux images, les seuls qu'elle affiche.
+      await client.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS consultation_seule BOOLEAN NOT NULL DEFAULT false');
+      await client.query(`CREATE TABLE IF NOT EXISTS document_ouvertures (
+        doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES commerciaux(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL,
+        ouvert_le TEXT NOT NULL,
+        PRIMARY KEY (doc_id, user_id, version)
+      )`);
+      await client.query(`CREATE TABLE IF NOT EXISTS document_signatures (
+        doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES commerciaux(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL,
+        empreinte TEXT NOT NULL,
+        nom_fichier TEXT NOT NULL DEFAULT '',
+        signe_le TEXT NOT NULL,
+        ip TEXT NOT NULL DEFAULT '',
+        navigateur TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (doc_id, user_id, version)
+      )`);
+    } catch (err) { console.log('documents a signer migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.

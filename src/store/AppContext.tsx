@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, ReactNode, use
 import { dateLocale } from '../../shared/regles';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
-  PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document,
+  PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document, DocumentSignature, DocumentOuverture,
   Client, Interaction, TaskClient, TourneeConfig, Commande, CommercialZone, Signalement,
 } from '../types';
 import { faitDeLaProspection } from '../utils/roles';
@@ -81,6 +81,9 @@ type Action =
   | { type: 'REORDER_PIPELINE_COLUMNS'; payload: PipelineColumn[] }
   | { type: 'ADD_DOCUMENT'; payload: Document }
   | { type: 'DELETE_DOCUMENT'; payload: string }
+  | { type: 'UPDATE_DOCUMENT'; payload: Document }
+  | { type: 'ADD_DOCUMENT_SIGNATURE'; payload: DocumentSignature }
+  | { type: 'ADD_DOCUMENT_OUVERTURE'; payload: DocumentOuverture }
   | { type: 'ADD_CLIENT'; payload: Client }
   | { type: 'UPDATE_CLIENT'; payload: Client }
   | { type: 'DELETE_CLIENT'; payload: string }
@@ -125,6 +128,8 @@ function reducer(state: AppState, action: Action): AppState {
         sessionsAppel: action.payload.sessionsAppel || [],
         commercialZones: action.payload.commercialZones || [],
         signalements: action.payload.signalements || [],
+        documentSignatures: action.payload.documentSignatures || [],
+        documentOuvertures: action.payload.documentOuvertures || [],
       };
       return fusionnerCollections(state, suivant);
     }
@@ -218,6 +223,13 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, documents: [action.payload, ...state.documents] };
     case 'DELETE_DOCUMENT':
       return { ...state, documents: state.documents.filter(d => d.id !== action.payload) };
+    case 'UPDATE_DOCUMENT':
+      return { ...state, documents: state.documents.map(d => d.id === action.payload.id ? action.payload : d) };
+    case 'ADD_DOCUMENT_SIGNATURE':
+      return { ...state, documentSignatures: [...(state.documentSignatures || []).filter(s => !(s.doc_id === action.payload.doc_id && s.user_id === action.payload.user_id && s.version === action.payload.version)), action.payload] };
+    case 'ADD_DOCUMENT_OUVERTURE':
+      if ((state.documentOuvertures || []).some(o => o.doc_id === action.payload.doc_id && o.version === action.payload.version)) return state;
+      return { ...state, documentOuvertures: [...(state.documentOuvertures || []), action.payload] };
     // Clients
     case 'ADD_CLIENT':
       return { ...state, clients: [action.payload, ...state.clients] };
@@ -333,6 +345,8 @@ const emptyState: AppState = {
   currentUser: null,
   pipelineColumns: defaultPipelineColumns,
   documents: [],
+  documentSignatures: [],
+  documentOuvertures: [],
   clients: [],
   interactions: [],
   tasksClient: [],

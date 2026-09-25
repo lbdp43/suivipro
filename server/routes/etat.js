@@ -6,6 +6,7 @@ import { asyncHandler, authMiddleware } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { parseCommercial, parseProspect, parseSessionAppel } from '../lib/parse.js';
 import { parseSignalement, SELECT_SIGNALEMENTS } from './signalements.js';
+import { COLONNES_DOCUMENT, documentPourEcran } from './documents.js';
 
 const router = Router();
 
@@ -17,7 +18,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const hier = dateLocale(new Date(Date.now() - 86400000));
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones, signalements] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones, signalements, documentSignatures, documentOuvertures] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -28,7 +29,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     db.query('SELECT * FROM tags'),
     db.query('SELECT * FROM email_templates'),
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
-    db.query('SELECT id, nom, categorie, description, nom_fichier, type_mime, taille, uploaded_by, date_creation FROM documents ORDER BY date_creation DESC'),
+    db.query(`SELECT ${COLONNES_DOCUMENT} FROM documents ORDER BY date_creation DESC`),
     db.query('SELECT * FROM clients ORDER BY date_modification DESC'),
     db.query('SELECT * FROM interactions ORDER BY date DESC'),
     db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
@@ -41,6 +42,10 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     // La boîte de prospection : tout ce qui attend, un mois de traités, et ce qui est rattaché à
     // une fiche (ses photos restent visibles sur la fiche).
     db.query(`${SELECT_SIGNALEMENTS} WHERE s.statut = 'a_qualifier' OR s.created_at >= $1 OR s.prospect_id <> '' OR s.client_id <> '' ORDER BY s.created_at DESC`, [dateLocale(new Date(Date.now() - 30 * 86400000))]),
+    // Qui a signé quoi (toutes versions : l'historique), et ce que la personne a déjà ouvert
+    // — le bouton « J'ai lu » ne s'allume qu'après l'ouverture.
+    db.query('SELECT doc_id, user_id, version, signe_le FROM document_signatures ORDER BY signe_le'),
+    db.query('SELECT doc_id, version FROM document_ouvertures WHERE user_id = $1', [req.user.id]),
   ]);
 
   const etat = {
@@ -52,7 +57,9 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     tags: tags.rows,
     emailTemplates: emailTemplates.rows,
     pipelineColumns: pipelineColumns.rows,
-    documents: documents.rows,
+    documents: documents.rows.map(documentPourEcran),
+    documentSignatures: documentSignatures.rows,
+    documentOuvertures: documentOuvertures.rows,
     clients: clients.rows,
     interactions: interactions.rows,
     tasksClient: tasksClient.rows,
