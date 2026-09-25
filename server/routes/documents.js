@@ -42,10 +42,15 @@ function empreinteDe(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-/** Nom de fichier lisible par tous les téléphones, accents compris. */
+/**
+ * Nom du fichier enregistré, sans accents : « catalogue-été.pdf » → « catalogue-ete.pdf ».
+ * La forme accentuée (filename*) n'est pas lue partout : un navigateur qui ne la décode pas
+ * jette tout l'en-tête et appelle le fichier « download ». Sans accents, chacun le lit.
+ */
 function disposition(mode, nom) {
-  const ascii = String(nom || 'document').replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
-  return `${mode}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nom || 'document')}`;
+  const ascii = String(nom || 'document').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `${mode}; filename="${ascii}"`;
 }
 
 function lireFichier(body) {
@@ -162,7 +167,10 @@ router.get('/documents/:id/fichier', asyncHandler(async (req, res) => {
     return res.status(403).type('text/plain; charset=utf-8').send('Ce document se consulte seulement dans SuiviPro.');
   }
   await noterOuverture(doc, personne.id);
-  envoyer(res, doc, affichable(doc.type_mime) || doc.type_mime === 'text/plain' ? 'inline' : 'attachment');
+  // « telecharger=1 » : le téléphone enregistre le fichier (dossier Téléchargements, app
+  // Fichiers). Sans lui, un PDF ou une image s'ouvre pour être lu.
+  const telecharger = req.query.telecharger === '1';
+  envoyer(res, doc, !telecharger && (affichable(doc.type_mime) || doc.type_mime === 'text/plain') ? 'inline' : 'attachment');
 }));
 
 // La visionneuse de SuiviPro : le seul accès aux documents en consultation seule.

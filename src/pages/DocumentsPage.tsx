@@ -364,25 +364,28 @@ export default function DocumentsPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {(lectureSeule || (isAdmin && doc.consultation_seule)) && (
+                          {/* Lire : dans SuiviPro, pour les PDF et les images. Télécharger : le fichier
+                              est enregistré sur le téléphone. Deux gestes, deux boutons. */}
+                          {affichable(doc.type_mime) && (
                             <button
                               className="p-2 rounded-lg text-gray-500 hover:text-brewery-600 hover:bg-brewery-50 transition-colors"
                               onClick={() => setVisionneuse(doc)}
-                              title="Consulter"
-                              aria-label="Consulter"
+                              title="Lire"
+                              aria-label="Lire"
                             >
                               <Eye className="w-5 h-5" />
                             </button>
                           )}
                           {!lectureSeule && (lien ? (
                             <a
-                              href={lien}
+                              href={`${lien}&telecharger=1`}
+                              download={doc.nom_fichier}
                               target="_blank"
                               rel="noopener"
                               className="p-2 rounded-lg text-gray-500 hover:text-brewery-600 hover:bg-brewery-50 transition-colors"
                               onClick={() => noterOuverture(doc)}
-                              title="Ouvrir / télécharger"
-                              aria-label="Ouvrir ou télécharger"
+                              title="Télécharger"
+                              aria-label="Télécharger"
                             >
                               <Download className="w-5 h-5" />
                             </a>
@@ -429,7 +432,7 @@ export default function DocumentsPage() {
                           <p className="text-xs font-semibold text-amber-900">À lire et signer{version > 1 ? ` (version ${version})` : ''}</p>
                           {!ouvert && (
                             <p className="text-xs text-amber-800 mt-0.5">
-                              {lectureSeule ? 'Consultez le document (bouton œil) pour pouvoir le signer.' : 'Ouvrez le document pour pouvoir le signer.'}
+                              {affichable(doc.type_mime) ? 'Lisez le document (bouton œil) pour pouvoir le signer.' : 'Téléchargez le document pour pouvoir le signer.'}
                             </p>
                           )}
                           <button
