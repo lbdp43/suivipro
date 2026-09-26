@@ -6,7 +6,7 @@ import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Calendar, MessageSquare, ArrowUpDown,
   CheckSquare, Square, XCircle, Settings, Bell, UserCheck, User,
-  Camera, Loader2, Building2,
+  Camera, Loader2, Building2, PhoneOff,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import ChampsIdentite from '../components/ChampsIdentite';
@@ -34,6 +34,7 @@ import {
 import { generateId, formatDate, formatTimeAgo, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { aUnNumero } from '../../shared/normalisation';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { estEnZonePrioritaire } from '../utils/zones';
@@ -115,6 +116,8 @@ export default function ProspectsPage() {
   const [sortScore, setSortScore] = usePersistedState<'none' | 'asc' | 'desc'>('prospects_sortScore', 'none');
   const [sortDate, setSortDate] = usePersistedState<'none' | 'recent' | 'ancien'>('prospects_sortDate', 'none');
   const [filterAvecRdv, setFilterAvecRdv] = usePersistedState('prospects_filterAvecRdv', false);
+  // « Sans numéro » : les fiches à compléter avant de pouvoir les appeler.
+  const [filterSansNumero, setFilterSansNumero] = usePersistedState('prospects_filterSansNumero', false);
   // Zones dessinées sur la carte ; « __hors__ » = géolocalisé mais dans aucune zone.
   const [filterZonesArr, setFilterZonesArr] = usePersistedState<string[]>('prospects_filterZones', []);
   const filterZones = useMemo(() => new Set(filterZonesArr), [filterZonesArr]);
@@ -381,7 +384,7 @@ export default function ProspectsPage() {
     return ids;
   }, [state.appointments]);
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '' || filterZones.size > 0;
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '' || filterZones.size > 0;
   const optionsZones = useMemo(() => {
     const compte = new Map<string, number>();
     let hors = 0; let nonPlaces = 0;
@@ -403,6 +406,7 @@ export default function ProspectsPage() {
     setFilterPostalCodes(new Set());
     setFilterDepartments(new Set());
     setFilterAvecRdv(false);
+    setFilterSansNumero(false);
     setFilterCommercial('');
   };
 
@@ -432,6 +436,7 @@ export default function ProspectsPage() {
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (filterSansNumero && aUnNumero(p.telephone)) return false;
       if (filterZones.size > 0 && !filterZones.has(p.zone_id || ((p.latitude && p.longitude) ? '__hors__' : '__nonplace__'))) return false;
       if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       if (searchTerm) {
@@ -451,12 +456,12 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
     if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterCommercial, sortScore, sortDate, pageSize]);
+  }, [searchTerm, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, filterCommercial, sortScore, sortDate, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -728,6 +733,15 @@ export default function ProspectsPage() {
             >
               <Calendar className="w-3 h-3" /> Avec RDV
             </button>
+            <button
+              className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+                filterSansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => setFilterSansNumero(!filterSansNumero)}
+              title="Les prospects sans numéro de téléphone, à compléter"
+            >
+              <PhoneOff className="w-3 h-3" /> Sans numéro
+            </button>
             {hasActiveFilters && (
               <button
                 className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
@@ -744,6 +758,7 @@ export default function ProspectsPage() {
                 secteurs: [...filterSecteurs],
                 postalCodes: [...filterPostalCodes],
                 departments: [...filterDepartments],
+                sansNumero: filterSansNumero,
               })}
               applyFilters={(f) => {
                 setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
@@ -751,6 +766,7 @@ export default function ProspectsPage() {
                 setFilterSecteurs(new Set((f.secteurs as string[]) || []));
                 setFilterPostalCodes(new Set((f.postalCodes as string[]) || []));
                 setFilterDepartments(new Set((f.departments as string[]) || []));
+                setFilterSansNumero(!!f.sansNumero);
               }}
             />
           </div>

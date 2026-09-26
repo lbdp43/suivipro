@@ -42,6 +42,14 @@ export function chiffresTelephone(tel) {
   return chiffres.replace(/^0033/, '0').replace(/^33(?=\d{9}$)/, '0');
 }
 
+/**
+ * Une fiche « a un numéro » dès que son téléphone contient un chiffre. Vide, un tiret, « ? » :
+ * pas de numéro. Même règle pour le filtre « Sans numéro » et pour les sessions d'appel.
+ */
+export function aUnNumero(tel) {
+  return /\d/.test(String(tel || ''));
+}
+
 /** Deux numéros désignent la même ligne : mêmes neuf derniers chiffres. */
 export function memeTelephone(a, b) {
   const x = chiffresTelephone(a).slice(-9), y = chiffresTelephone(b).slice(-9);

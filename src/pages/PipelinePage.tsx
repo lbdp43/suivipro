@@ -1,5 +1,6 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock, PhoneOff } from 'lucide-react';
+import { aUnNumero } from '../../shared/normalisation';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import { dateLocale } from '../../shared/regles';
@@ -47,6 +48,8 @@ export default function PipelinePage() {
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
   const [filterDepartments, setFilterDepartments] = useState<Set<string>>(new Set());
   const [filterAvecRdv, setFilterAvecRdv] = useState(false);
+  // « Sans numéro » : les fiches à compléter avant de pouvoir les appeler.
+  const [filterSansNumero, setFilterSansNumero] = useState(false);
   const [filterCommercial, setFilterCommercial] = useState<string>('');
   // Sélection multiple : on coche des cartes, puis « Ajouter à ma session du jour » (à reprendre depuis l'accueil) ou « Appeler maintenant ».
   const [selection, setSelection] = useState(false);
@@ -140,7 +143,7 @@ export default function PipelinePage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterSecteurs.size > 0 || filterZones.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterCommercial !== '';
+  const hasActiveFilters = filterSecteurs.size > 0 || filterZones.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '';
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -182,6 +185,7 @@ export default function PipelinePage() {
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
       if (filterAvecRdv && !prospectIdsWithRdv.has(p.id)) return false;
+      if (filterSansNumero && aUnNumero(p.telephone)) return false;
       if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
       return true;
     });
@@ -196,7 +200,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, prospectIdsForCommercial, prospectIdsWithRdv, filterZones]);
+  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, prospectIdsForCommercial, prospectIdsWithRdv, filterZones]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -378,6 +382,15 @@ export default function PipelinePage() {
           >
             <Calendar className="w-3 h-3" /> Avec RDV
           </button>
+          <button
+            className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors flex-shrink-0 ${
+              filterSansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterSansNumero(!filterSansNumero)}
+            title="Les prospects sans numéro de téléphone, à compléter"
+          >
+            <PhoneOff className="w-3 h-3" /> Sans numéro
+          </button>
           <select
             className={`text-[10px] sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
               filterCommercial ? 'border-brewery-500 text-brewery-700' : 'border-gray-200 text-gray-500'
@@ -393,7 +406,7 @@ export default function PipelinePage() {
           {hasActiveFilters && (
             <button
               className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterCommercial(''); }}
+              onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
             >
               <X className="w-3 h-3" />
             </button>
