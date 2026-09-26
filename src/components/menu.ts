@@ -1,6 +1,6 @@
 import {
   Users, Kanban, Phone, Calendar, Mail, Map, Building2, CalendarDays, GitBranch,
-  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3, Inbox,
+  Bell, FileText, Contact, BookOpen, Settings, Link2, Upload, ScanLine, BarChart3, Inbox, ShieldCheck,
 } from 'lucide-react';
 
 // Le menu : « Accueil » et « Rappels et tâches » toujours visibles en tête, puis quatre
@@ -15,6 +15,8 @@ export interface EntreeMenu {
   alias?: string[];
   /** Rôles qui ne voient pas cette entrée. */
   masquePour?: string[];
+  /** Réservée à qui fait de la prospection (rôle ou case cochée) et aux administrateurs. */
+  prospectionSeulement?: boolean;
 }
 export interface GroupeMenu {
   id: 'prospection' | 'commercial' | 'commun' | 'admin';
@@ -32,6 +34,7 @@ const PROSPECTION: GroupeMenu = {
     { to: '/boite', icon: Inbox, label: 'Boîte de prospection', alias: ['/partage'] },
     { to: '/prospects', icon: Users, label: 'Prospects' },
     { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
+    { to: '/qualite', icon: ShieldCheck, label: 'Qualité des fiches', prospectionSeulement: true },
     { to: '/appels', icon: Phone, label: 'Appels' },
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous' },
     { to: '/emails', icon: Mail, label: 'Emails' },
@@ -65,11 +68,13 @@ const ADMIN: GroupeMenu = {
   ],
 };
 
-export function groupesDuMenu(role: string | undefined): GroupeMenu[] {
+export function groupesDuMenu(role: string | undefined, prospection = false): GroupeMenu[] {
   const groupes = role === 'prospection' ? [PROSPECTION, COMMERCIAL, COMMUN]
     : role === 'admin' ? [COMMERCIAL, PROSPECTION, COMMUN, ADMIN]
     : [COMMERCIAL, PROSPECTION, COMMUN];
-  return groupes.map(g => ({ ...g, entrees: g.entrees.filter(e => !e.masquePour || !role || !e.masquePour.includes(role)) }));
+  const faitDeLaProspection = role === 'admin' || role === 'prospection' || prospection;
+  return groupes.map(g => ({ ...g, entrees: g.entrees.filter(e =>
+    (!e.masquePour || !role || !e.masquePour.includes(role)) && (!e.prospectionSeulement || faitDeLaProspection)) }));
 }
 
 /** Les chiffres de toute l'équipe ne regardent que l'administrateur. */
