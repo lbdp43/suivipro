@@ -364,22 +364,30 @@ function Manques({ p }: { p: Prospect }) {
 function OngletACompleter({ liste }: { liste: Prospect[] }) {
   const { dispatchLocal } = useApp();
   const toast = useToast();
-  const [filtre, setFiltre] = usePersistedState<Manque | ''>('qualite_filtre_manque', '');
+  // Plusieurs manques cochés = les fiches qui les cumulent tous (sans téléphone ET sans commune).
+  const [filtresChoisis, setFiltresChoisis] = usePersistedState<Manque[]>('qualite_filtres_manques', []);
+  const choisis = Array.isArray(filtresChoisis) ? filtresChoisis : [];
+  const basculer = (f: Manque) => setFiltresChoisis(choisis.includes(f) ? choisis.filter(x => x !== f) : [...choisis, f]);
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [saisie, setSaisie] = useState<Saisie | null>(null);
   const [nb, setNb] = useState(30);
   const [enCours, setEnCours] = useState(false);
 
   const filtres: Manque[] = ['telephone', 'commune', 'type', 'nom', 'carte'];
+  const correspond = (p: Prospect, filtres: Manque[]) => { const m = manquesDeLaFiche(p); return filtres.every(f => m.includes(f)); };
+  // Le chiffre d'un filtre = ce qu'on obtiendrait en l'ajoutant à ceux déjà cochés.
   const comptes = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const p of liste) for (const m of manquesDeLaFiche(p)) c[m] = (c[m] || 0) + 1;
+    for (const f of filtres) {
+      const avec = choisis.includes(f) ? choisis : [...choisis, f];
+      c[f] = liste.filter(p => correspond(p, avec)).length;
+    }
     return c;
-  }, [liste]);
+  }, [liste, choisis.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
   const visibles = useMemo(
-    () => liste.filter(p => !filtre || manquesDeLaFiche(p).includes(filtre))
+    () => liste.filter(p => correspond(p, choisis))
       .sort((a, b) => manquesBloquants(b).length - manquesBloquants(a).length || a.nom_etablissement.localeCompare(b.nom_etablissement)),
-    [liste, filtre],
+    [liste, choisis.join(',')], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const ouvrir = (p: Prospect) => { setOuvert(p.id); setSaisie(saisieDe(p)); };
@@ -398,13 +406,17 @@ function OngletACompleter({ liste }: { liste: Prospect[] }) {
     <div className="space-y-3">
       <p className="text-sm text-gray-600"><strong className="tabular-nums">{liste.length}</strong> fiche(s) en cours à compléter. Une fiche est qualifiable avec un téléphone, une commune et un type.</p>
       <div className="flex gap-1.5 flex-wrap">
-        <button onClick={() => setFiltre('')} className={`px-2.5 py-1 rounded-full text-xs font-medium ${!filtre ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>Toutes</button>
+        <button onClick={() => setFiltresChoisis([])} className={`px-2.5 py-1 rounded-full text-xs font-medium ${choisis.length === 0 ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>Toutes</button>
         {filtres.map(f => (
-          <button key={f} onClick={() => setFiltre(f)} className={`px-2.5 py-1 rounded-full text-xs font-medium ${filtre === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+          <button key={f} aria-pressed={choisis.includes(f)} onClick={() => basculer(f)} className={`px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${choisis.includes(f) ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            {choisis.includes(f) && <Check className="w-3 h-3" />}
             Sans {LIBELLES_MANQUE[f]} <span className="tabular-nums opacity-70">{comptes[f] || 0}</span>
           </button>
         ))}
       </div>
+      {choisis.length > 1 && (
+        <p className="text-xs text-gray-600"><strong className="tabular-nums">{visibles.length}</strong> fiche(s) sans {choisis.map(f => LIBELLES_MANQUE[f]).join(' ni ')}.</p>
+      )}
       {visibles.length === 0 && <Vide texte="Rien à compléter ici." />}
       <div className="space-y-2">
         {visibles.slice(0, nb).map(p => (
