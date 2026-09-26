@@ -109,9 +109,6 @@ export default function QualitePage() {
   );
 }
 
-// ---------------------------------------------------------------------------------------
-// Doublons
-// ---------------------------------------------------------------------------------------
 function BadgeScore({ score, motif }: { score: number; motif: string }) {
   const certain = score === 100;
   return (
@@ -142,6 +139,70 @@ function CarteFiche({ f, choisie, onChoisir, lienFiche = true }: { f: FicheVue; 
   );
 }
 
+// ---------------------------------------------------------------------------------------
+// Sélection multiple : une case par élément, une barre d'actions pour toute la sélection.
+// Chaque élément passe par la même route qu'à l'unité, l'un après l'autre : un geste par
+// fiche au journal, donc chacun s'annule séparément.
+// ---------------------------------------------------------------------------------------
+function useSelection() {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+  return {
+    ids,
+    a: (id: string) => ids.has(id),
+    basculer: (id: string) => setIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
+    tout: (liste: string[]) => setIds(new Set(liste)),
+    vider: () => setIds(new Set()),
+    retirer: (liste: string[]) => setIds(prev => { const n = new Set(prev); liste.forEach(x => n.delete(x)); return n; }),
+  };
+}
+
+/** Fait `action` pour chaque élément, l'un après l'autre, en disant où on en est. */
+async function enSerie<T>(elements: T[], action: (e: T) => Promise<void>, progression: (fait: number) => void) {
+  let ok = 0; const echecs: string[] = [];
+  for (let i = 0; i < elements.length; i++) {
+    try { await action(elements[i]); ok += 1; } catch (e) { echecs.push(messageDe(e, 'échec')); }
+    progression(i + 1);
+  }
+  return { ok, echecs };
+}
+
+function CaseACocher({ coche, onChange, label }: { coche: boolean; onChange: () => void; label: string }) {
+  return (
+    <label className="inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+      <input type="checkbox" className="w-4 h-4 accent-brewery-600" checked={coche} onChange={onChange} aria-label={label} />
+      {label}
+    </label>
+  );
+}
+
+/** La barre du haut : tout cocher, le nombre coché, les actions, l'avancement. */
+function BarreSelection({ total, coches, onTout, onVider, avancement, children }: {
+  total: number; coches: number; onTout: () => void; onVider: () => void;
+  avancement: { fait: number; sur: number } | null; children: React.ReactNode;
+}) {
+  const toutCoche = total > 0 && coches === total;
+  return (
+    <div className={`sticky top-0 z-10 rounded-xl border p-2.5 flex flex-wrap items-center gap-2 ${coches ? 'bg-brewery-50 border-brewery-200' : 'bg-white border-gray-200'}`}>
+      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+        <input type="checkbox" className="w-4 h-4 accent-brewery-600" checked={toutCoche} onChange={() => (toutCoche ? onVider() : onTout())} aria-label="Tout cocher" />
+        {coches ? <span className="tabular-nums">{coches} coché(s)</span> : <span>Tout cocher ({total})</span>}
+      </label>
+      {avancement && (
+        <span className="text-xs text-brewery-800 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {avancement.fait} / {avancement.sur}</span>
+      )}
+      {coches > 0 && !avancement && <div className="flex flex-wrap gap-2 sm:ml-auto w-full sm:w-auto min-w-0">{children}</div>}
+    </div>
+  );
+}
+
+function bilan(toast: ReturnType<typeof useToast>, fait: string, r: { ok: number; echecs: string[] }) {
+  if (r.echecs.length === 0) toast.success(`${r.ok} ${fait}`);
+  else toast.error(`${r.ok} ${fait}, ${r.echecs.length} en échec : ${[...new Set(r.echecs)].slice(0, 2).join(' ; ')}`);
+}
+
+// ---------------------------------------------------------------------------------------
+// Doublons
+// ---------------------------------------------------------------------------------------
 function OngletDoublons({ donnees, recharger }: { donnees: { total: number; certains: number; paires: PaireDoublon[] } | null; recharger: () => void }) {
   const { dispatchLocal } = useApp();
   const toast = useToast();
@@ -149,12 +210,23 @@ function OngletDoublons({ donnees, recharger }: { donnees: { total: number; cert
   const [choix, setChoix] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState('');
   const [retires, setRetires] = useState<Set<string>>(new Set());
+  const sel = useSelection();
+  const [avancement, setAvancement] = useState<{ fait: number; sur: number } | null>(null);
 
   if (!donnees) return <Chargement />;
   const cle = (p: PaireDoublon) => p.fiches.map(f => f.id).sort().join('|');
   const paires = donnees.paires
     .filter(p => !retires.has(cle(p)) && !p.fiches.some(f => retires.has(f.id)))
     .filter(p => filtre === 'tous' || (filtre === 'certains' ? p.score === 100 : p.score < 100));
+  const cochees = paires.filter(p => sel.a(cle(p)));
+
+  // Une fusion : renvoie l'id de la fiche absorbée.
+  const fusionnerUne = async (garderId: string, absorberId: string) => {
+    const r = await apiPost('/qualite/fusionner', { garder_id: garderId, absorber_id: absorberId }) as { prospect: Prospect; absorbe_id: string };
+    dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
+    dispatchLocal({ type: 'DELETE_PROSPECT', payload: r.absorbe_id });
+    return r.absorbe_id;
+  };
 
   const fusionner = async (p: PaireDoublon) => {
     const garderId = choix[cle(p)] || p.suggestion_garder;
@@ -163,15 +235,38 @@ function OngletDoublons({ donnees, recharger }: { donnees: { total: number; cert
     if (!confirm(`« ${absorbe.nom} » sera fusionnée dans « ${garder.nom} ».\n\nSes appels, rendez-vous, rappels, étiquettes et notes passent sur la fiche gardée ; ses informations complètent les champs vides. La fiche « ${absorbe.nom} » part à la corbeille.`)) return;
     setEnCours(cle(p));
     try {
-      const r = await apiPost('/qualite/fusionner', { garder_id: garder.id, absorber_id: absorbe.id }) as { prospect: Prospect; absorbe_id: string };
-      dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
-      dispatchLocal({ type: 'DELETE_PROSPECT', payload: r.absorbe_id });
+      await fusionnerUne(garder.id, absorbe.id);
       setRetires(prev => new Set([...prev, cle(p), absorbe.id]));
       toast.success(`Fusionnée dans « ${garder.nom} »`);
       recharger();
     } catch (e) {
       toast.error(messageDe(e, 'La fusion a échoué'));
     } finally { setEnCours(''); }
+  };
+
+  // En série, une fiche peut être dans deux paires (A–B puis B–C) : une fois B fusionnée
+  // dans A, « B » veut dire A. On suit donc où chaque fiche absorbée est partie.
+  const fusionnerLaSelection = async () => {
+    const aVerifier = cochees.filter(p => p.score < 100).length;
+    if (!confirm(`Fusionner ${cochees.length} paire(s)${aVerifier ? `, dont ${aVerifier} « à vérifier »` : ''} ?\n\nPour chacune, la fiche marquée « Garder celle-ci » est gardée ; l'autre lui donne son historique et part à la corbeille. Chaque fusion s'annule séparément depuis le Journal.`)) return;
+    const devenu = new Map<string, string>();
+    const ou = (id: string) => { let x = id; while (devenu.has(x)) x = devenu.get(x)!; return x; };
+    const retirees: string[] = [];
+    setAvancement({ fait: 0, sur: cochees.length });
+    const r = await enSerie(cochees, async p => {
+      const garderChoisie = choix[cle(p)] || p.suggestion_garder;
+      const autre = p.fiches.find(f => f.id !== garderChoisie)!.id;
+      const g = ou(garderChoisie), a = ou(autre);
+      if (g === a) return; // déjà réunies par une fusion précédente de la série
+      const absorbe = await fusionnerUne(g, a);
+      devenu.set(absorbe, g);
+      retirees.push(cle(p), absorbe);
+    }, fait => setAvancement({ fait, sur: cochees.length }));
+    setAvancement(null);
+    setRetires(prev => new Set([...prev, ...retirees]));
+    sel.vider();
+    bilan(toast, 'fusion(s) faite(s)', r);
+    recharger();
   };
 
   const pasDoublon = async (p: PaireDoublon) => {
@@ -184,33 +279,55 @@ function OngletDoublons({ donnees, recharger }: { donnees: { total: number; cert
     } finally { setEnCours(''); }
   };
 
+  const pasDoublonsLaSelection = async () => {
+    setAvancement({ fait: 0, sur: cochees.length });
+    const faites: string[] = [];
+    const r = await enSerie(cochees, async p => {
+      await apiPost('/qualite/pas-doublons', { a: p.fiches[0].id, b: p.fiches[1].id });
+      faites.push(cle(p));
+    }, fait => setAvancement({ fait, sur: cochees.length }));
+    setAvancement(null);
+    setRetires(prev => new Set([...prev, ...faites]));
+    sel.vider();
+    bilan(toast, 'paire(s) écartée(s)', r);
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-gray-600"><strong className="tabular-nums">{donnees.total}</strong> paire(s), dont <strong className="tabular-nums">{donnees.certains}</strong> certaine(s)</span>
         <div className="flex gap-1 ml-auto">
           {(['tous', 'certains', 'verifier'] as const).map(f => (
-            <button key={f} onClick={() => setFiltre(f)} className={`px-2.5 py-1 rounded-full text-xs font-medium ${filtre === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            <button key={f} onClick={() => { setFiltre(f); sel.vider(); }} className={`px-2.5 py-1 rounded-full text-xs font-medium ${filtre === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
               {f === 'tous' ? 'Toutes' : f === 'certains' ? 'Certaines' : 'À vérifier'}
             </button>
           ))}
         </div>
       </div>
       <p className="text-xs text-gray-500">Certaine : même SIRET, mail ou téléphone. À vérifier : même nom ou nom proche, dans la même commune. Dans le doute, ne fusionnez pas.</p>
+      {paires.length > 0 && (
+        <BarreSelection total={paires.length} coches={cochees.length} onTout={() => sel.tout(paires.map(cle))} onVider={sel.vider} avancement={avancement}>
+          <button onClick={fusionnerLaSelection} className="px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-sm font-semibold flex items-center gap-1.5"><Merge className="w-4 h-4" /> Fusionner ({cochees.length})</button>
+          <button onClick={pasDoublonsLaSelection} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-sm font-medium flex items-center gap-1.5"><X className="w-4 h-4" /> Pas des doublons ({cochees.length})</button>
+        </BarreSelection>
+      )}
       {paires.length === 0 && <Vide texte="Aucun doublon à traiter." />}
       {paires.map(p => {
         const garderId = choix[cle(p)] || p.suggestion_garder;
         return (
-          <div key={cle(p)} className="bg-white rounded-xl border border-gray-200 p-3 space-y-3">
-            <BadgeScore score={p.score} motif={p.motif} />
+          <div key={cle(p)} className={`bg-white rounded-xl border p-3 space-y-3 ${sel.a(cle(p)) ? 'border-brewery-400' : 'border-gray-200'}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <CaseACocher coche={sel.a(cle(p))} onChange={() => sel.basculer(cle(p))} label="Cocher" />
+              <BadgeScore score={p.score} motif={p.motif} />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {p.fiches.map(f => <CarteFiche key={f.id} f={f} choisie={f.id === garderId} onChoisir={() => setChoix(c => ({ ...c, [cle(p)]: f.id }))} />)}
             </div>
             <div className="flex flex-wrap gap-2">
-              <button disabled={!!enCours} onClick={() => fusionner(p)} className="px-3 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50">
+              <button disabled={!!enCours || !!avancement} onClick={() => fusionner(p)} className="px-3 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50">
                 {enCours === cle(p) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Merge className="w-4 h-4" />} Fusionner
               </button>
-              <button disabled={!!enCours} onClick={() => pasDoublon(p)} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50">
+              <button disabled={!!enCours || !!avancement} onClick={() => pasDoublon(p)} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50">
                 <X className="w-4 h-4" /> Ce ne sont pas des doublons
               </button>
             </div>
@@ -229,15 +346,21 @@ function OngletDejaClients({ donnees, recharger }: { donnees: { total: number; c
   const toast = useToast();
   const [retires, setRetires] = useState<Set<string>>(new Set());
   const [enCours, setEnCours] = useState('');
+  const sel = useSelection();
+  const [avancement, setAvancement] = useState<{ fait: number; sur: number } | null>(null);
   if (!donnees) return <Chargement />;
   const cle = (p: PaireClient) => `${p.prospect.id}|${p.client.id}`;
   const paires = donnees.paires.filter(p => !retires.has(cle(p)) && !retires.has(p.prospect.id));
+  const cochees = paires.filter(p => sel.a(cle(p)));
 
+  const confirmerUne = async (p: PaireClient) => {
+    const r = await apiPost('/qualite/deja-client', { prospect_id: p.prospect.id, client_id: p.client.id }) as { prospect: Prospect };
+    dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
+  };
   const confirmer = async (p: PaireClient) => {
     setEnCours(cle(p));
     try {
-      const r = await apiPost('/qualite/deja-client', { prospect_id: p.prospect.id, client_id: p.client.id }) as { prospect: Prospect };
-      dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
+      await confirmerUne(p);
       setRetires(prev => new Set([...prev, p.prospect.id]));
       toast.success(`« ${p.prospect.nom} » passé en Gagné`);
       recharger();
@@ -251,13 +374,44 @@ function OngletDejaClients({ donnees, recharger }: { donnees: { total: number; c
     } catch (e) { toast.error(messageDe(e, 'Échec')); } finally { setEnCours(''); }
   };
 
+  const confirmerLaSelection = async () => {
+    // Un prospect coché deux fois (deux clients proches) n'est passé en Gagné qu'une fois.
+    const faits = new Set<string>();
+    const uniques = cochees.filter(p => (faits.has(p.prospect.id) ? false : (faits.add(p.prospect.id), true)));
+    if (!confirm(`Passer ${uniques.length} prospect(s) en Gagné et les rattacher à leur client ?`)) return;
+    setAvancement({ fait: 0, sur: uniques.length });
+    const r = await enSerie(uniques, confirmerUne, fait => setAvancement({ fait, sur: uniques.length }));
+    setAvancement(null);
+    setRetires(prev => new Set([...prev, ...uniques.map(p => p.prospect.id)]));
+    sel.vider();
+    bilan(toast, 'prospect(s) passé(s) en Gagné', r);
+    recharger();
+  };
+  const pasLesMemesLaSelection = async () => {
+    setAvancement({ fait: 0, sur: cochees.length });
+    const r = await enSerie(cochees, async p => { await apiPost('/qualite/pas-doublons', { a: p.prospect.id, b: p.client.id }); }, fait => setAvancement({ fait, sur: cochees.length }));
+    setAvancement(null);
+    setRetires(prev => new Set([...prev, ...cochees.map(cle)]));
+    sel.vider();
+    bilan(toast, 'rapprochement(s) écarté(s)', r);
+  };
+
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-600"><strong className="tabular-nums">{donnees.total}</strong> prospect(s) en cours qui ressemblent à un client. On ne démarche pas un client comme un inconnu.</p>
+      {paires.length > 0 && (
+        <BarreSelection total={paires.length} coches={cochees.length} onTout={() => sel.tout(paires.map(cle))} onVider={sel.vider} avancement={avancement}>
+          <button onClick={confirmerLaSelection} className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-semibold flex items-center gap-1.5"><Check className="w-4 h-4" /> Ce sont ces clients ({cochees.length})</button>
+          <button onClick={pasLesMemesLaSelection} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-sm font-medium flex items-center gap-1.5"><X className="w-4 h-4" /> Pas les mêmes ({cochees.length})</button>
+        </BarreSelection>
+      )}
       {paires.length === 0 && <Vide texte="Aucun prospect ne ressemble à un client." />}
       {paires.map(p => (
-        <div key={cle(p)} className="bg-white rounded-xl border border-gray-200 p-3 space-y-3">
-          <BadgeScore score={p.score} motif={p.motif} />
+        <div key={cle(p)} className={`bg-white rounded-xl border p-3 space-y-3 ${sel.a(cle(p)) ? 'border-brewery-400' : 'border-gray-200'}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <CaseACocher coche={sel.a(cle(p))} onChange={() => sel.basculer(cle(p))} label="Cocher" />
+            <BadgeScore score={p.score} motif={p.motif} />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <CarteFiche f={p.prospect} />
             <div className="rounded-lg border border-green-200 bg-green-50/50 p-3 text-sm space-y-1 min-w-0">
@@ -269,10 +423,10 @@ function OngletDejaClients({ donnees, recharger }: { donnees: { total: number; c
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button disabled={!!enCours} onClick={() => confirmer(p)} className="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50">
+            <button disabled={!!enCours || !!avancement} onClick={() => confirmer(p)} className="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50">
               {enCours === cle(p) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} C'est ce client → Gagné
             </button>
-            <button disabled={!!enCours} onClick={() => pasLeMeme(p)} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50">
+            <button disabled={!!enCours || !!avancement} onClick={() => pasLeMeme(p)} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50">
               <X className="w-4 h-4" /> Pas le même
             </button>
           </div>
@@ -364,23 +518,50 @@ function Manques({ p }: { p: Prospect }) {
 function OngletACompleter({ liste }: { liste: Prospect[] }) {
   const { dispatchLocal } = useApp();
   const toast = useToast();
-  const [filtre, setFiltre] = usePersistedState<Manque | ''>('qualite_filtre_manque', '');
+  // Plusieurs manques cochés = les fiches qui les cumulent tous (sans téléphone ET sans commune).
+  const [filtresChoisis, setFiltresChoisis] = usePersistedState<Manque[]>('qualite_filtres_manques', []);
+  const choisis = Array.isArray(filtresChoisis) ? filtresChoisis : [];
+  const basculer = (f: Manque) => setFiltresChoisis(choisis.includes(f) ? choisis.filter(x => x !== f) : [...choisis, f]);
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [saisie, setSaisie] = useState<Saisie | null>(null);
   const [nb, setNb] = useState(30);
   const [enCours, setEnCours] = useState(false);
+  const sel = useSelection();
+  const [avancement, setAvancement] = useState<{ fait: number; sur: number } | null>(null);
+  const [typeMasse, setTypeMasse] = useState<string>('bar_restaurant');
+  const [cpMasse, setCpMasse] = useState('');
+  const [villeMasse, setVilleMasse] = useState('');
 
   const filtres: Manque[] = ['telephone', 'commune', 'type', 'nom', 'carte'];
+  const correspond = (p: Prospect, filtres: Manque[]) => { const m = manquesDeLaFiche(p); return filtres.every(f => m.includes(f)); };
+  // Le chiffre d'un filtre = ce qu'on obtiendrait en l'ajoutant à ceux déjà cochés.
   const comptes = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const p of liste) for (const m of manquesDeLaFiche(p)) c[m] = (c[m] || 0) + 1;
+    for (const f of filtres) {
+      const avec = choisis.includes(f) ? choisis : [...choisis, f];
+      c[f] = liste.filter(p => correspond(p, avec)).length;
+    }
     return c;
-  }, [liste]);
+  }, [liste, choisis.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
   const visibles = useMemo(
-    () => liste.filter(p => !filtre || manquesDeLaFiche(p).includes(filtre))
+    () => liste.filter(p => correspond(p, choisis))
       .sort((a, b) => manquesBloquants(b).length - manquesBloquants(a).length || a.nom_etablissement.localeCompare(b.nom_etablissement)),
-    [liste, filtre],
+    [liste, choisis.join(',')], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const cochees = visibles.filter(p => sel.a(p.id));
+
+  // La même valeur sur toutes les fiches cochées, une par une (une ligne de journal chacune).
+  const appliquer = async (champs: Record<string, string>, fait: string) => {
+    setAvancement({ fait: 0, sur: cochees.length });
+    const r = await enSerie(cochees, async p => {
+      const res = await apiPost(`/qualite/completer/${encodeURIComponent(p.id)}`, champs) as { prospect: Prospect };
+      dispatchLocal({ type: 'UPDATE_PROSPECT', payload: res.prospect });
+    }, n => setAvancement({ fait: n, sur: cochees.length }));
+    setAvancement(null);
+    sel.vider();
+    bilan(toast, fait, r);
+  };
 
   const ouvrir = (p: Prospect) => { setOuvert(p.id); setSaisie(saisieDe(p)); };
   const enregistrer = async (p: Prospect) => {
@@ -398,17 +579,38 @@ function OngletACompleter({ liste }: { liste: Prospect[] }) {
     <div className="space-y-3">
       <p className="text-sm text-gray-600"><strong className="tabular-nums">{liste.length}</strong> fiche(s) en cours à compléter. Une fiche est qualifiable avec un téléphone, une commune et un type.</p>
       <div className="flex gap-1.5 flex-wrap">
-        <button onClick={() => setFiltre('')} className={`px-2.5 py-1 rounded-full text-xs font-medium ${!filtre ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>Toutes</button>
+        <button onClick={() => setFiltresChoisis([])} className={`px-2.5 py-1 rounded-full text-xs font-medium ${choisis.length === 0 ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>Toutes</button>
         {filtres.map(f => (
-          <button key={f} onClick={() => setFiltre(f)} className={`px-2.5 py-1 rounded-full text-xs font-medium ${filtre === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+          <button key={f} aria-pressed={choisis.includes(f)} onClick={() => basculer(f)} className={`px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${choisis.includes(f) ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            {choisis.includes(f) && <Check className="w-3 h-3" />}
             Sans {LIBELLES_MANQUE[f]} <span className="tabular-nums opacity-70">{comptes[f] || 0}</span>
           </button>
         ))}
       </div>
+      {choisis.length > 1 && (
+        <p className="text-xs text-gray-600"><strong className="tabular-nums">{visibles.length}</strong> fiche(s) sans {choisis.map(f => LIBELLES_MANQUE[f]).join(' ni ')}.</p>
+      )}
+      {visibles.length > 0 && (
+        <BarreSelection total={visibles.length} coches={cochees.length} onTout={() => sel.tout(visibles.map(p => p.id))} onVider={sel.vider} avancement={avancement}>
+          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
+            <select aria-label="Type à donner" className="min-w-0 max-w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white" value={typeMasse} onChange={e => setTypeMasse(e.target.value)}>
+              {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).filter(t => t !== 'autre').map(t => <option key={t} value={t}>{ESTABLISHMENT_LABELS[t]}</option>)}
+            </select>
+            <button onClick={() => appliquer({ type_etablissement: typeMasse }, `fiche(s) passée(s) en « ${ESTABLISHMENT_LABELS[typeMasse as EstablishmentType]} »`)} className="px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-sm font-semibold whitespace-nowrap">Donner ce type</button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
+            <input aria-label="Code postal à donner" inputMode="numeric" placeholder="CP" className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" value={cpMasse} onChange={e => setCpMasse(e.target.value)} />
+            <input aria-label="Commune à donner" placeholder="Commune" className="w-32 min-w-0 flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" value={villeMasse} onChange={e => setVilleMasse(e.target.value)} />
+            <button disabled={!villeMasse.trim()} onClick={() => appliquer({ ville: villeMasse.trim(), ...(cpMasse.trim() ? { code_postal: cpMasse.trim() } : {}) }, `fiche(s) rattachée(s) à ${villeMasse.trim()}`)} className="px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-sm font-semibold whitespace-nowrap disabled:opacity-40">Donner cette commune</button>
+          </div>
+        </BarreSelection>
+      )}
       {visibles.length === 0 && <Vide texte="Rien à compléter ici." />}
       <div className="space-y-2">
         {visibles.slice(0, nb).map(p => (
-          <div key={p.id} className="bg-white rounded-xl border border-gray-200">
+          <div key={p.id} className={`bg-white rounded-xl border flex items-start ${sel.a(p.id) ? 'border-brewery-400' : 'border-gray-200'}`}>
+            <div className="pl-3 pt-3.5"><input type="checkbox" className="w-4 h-4 accent-brewery-600" checked={sel.a(p.id)} onChange={() => sel.basculer(p.id)} aria-label={`Cocher ${p.nom_etablissement}`} /></div>
+            <div className="flex-1 min-w-0">
             <button className="w-full text-left p-3 flex items-start gap-2" onClick={() => (ouvert === p.id ? setOuvert(null) : ouvrir(p))}>
               <div className="flex-1 min-w-0 space-y-1">
                 <p className="font-medium text-gray-900 truncate">{p.nom_etablissement}</p>
@@ -429,6 +631,7 @@ function OngletACompleter({ liste }: { liste: Prospect[] }) {
                 </div>
               </div>
             )}
+            </div>
           </div>
         ))}
       </div>
@@ -445,6 +648,79 @@ function OngletACompleter({ liste }: { liste: Prospect[] }) {
 // À trier : une fiche partagée à la fois
 // ---------------------------------------------------------------------------------------
 function OngletATrier({ liste, apresFusion }: { liste: Prospect[]; apresFusion: () => void }) {
+  const [mode, setMode] = usePersistedState<'une' | 'liste'>('qualite_tri_mode', 'une');
+  return (
+    <div className="space-y-3">
+      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-sm">
+        {(['une', 'liste'] as const).map(m => (
+          <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 rounded-md font-medium ${mode === m ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>
+            {m === 'une' ? 'Une à la fois' : 'En liste'}
+          </button>
+        ))}
+      </div>
+      {mode === 'liste' ? <TriEnListe liste={liste} /> : <TriUneAUne liste={liste} apresFusion={apresFusion} />}
+    </div>
+  );
+}
+
+/** Trier plusieurs fiches d'un coup. « Qualifiée » ne s'applique qu'à celles qui sont complètes. */
+function TriEnListe({ liste }: { liste: Prospect[] }) {
+  const { dispatchLocal } = useApp();
+  const toast = useToast();
+  const sel = useSelection();
+  const [avancement, setAvancement] = useState<{ fait: number; sur: number } | null>(null);
+  const [nb, setNb] = useState(30);
+  const cochees = liste.filter(p => sel.a(p.id));
+  const qualifiables = cochees.filter(p => estQualifiable(p));
+
+  const trier = async (decision: 'qualifiee' | 'pas_pour_nous' | 'ferme', fiches: Prospect[], fait: string) => {
+    if (fiches.length === 0) return;
+    if (!confirm(`${fait[0].toUpperCase()}${fait.slice(1)} : ${fiches.length} fiche(s) ?`)) return;
+    setAvancement({ fait: 0, sur: fiches.length });
+    const r = await enSerie(fiches, async p => {
+      const res = await apiPost(`/qualite/trier/${encodeURIComponent(p.id)}`, { decision }) as { prospect: Prospect };
+      dispatchLocal({ type: 'UPDATE_PROSPECT', payload: res.prospect });
+    }, n => setAvancement({ fait: n, sur: fiches.length }));
+    setAvancement(null);
+    sel.retirer(fiches.map(p => p.id));
+    bilan(toast, `fiche(s) : ${fait}`, r);
+  };
+
+  if (liste.length === 0) return <Vide texte="Rien à trier : toutes les fiches partagées ont été traitées." />;
+  return (
+    <div className="space-y-3">
+      <BarreSelection total={liste.length} coches={cochees.length} onTout={() => sel.tout(liste.map(p => p.id))} onVider={sel.vider} avancement={avancement}>
+        <button disabled={qualifiables.length === 0} onClick={() => trier('qualifiee', qualifiables, 'qualifiée → À contacter')} title="Seulement les fiches qui ont téléphone, commune, type et vrai nom" className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-40">
+          <Check className="w-4 h-4" /> Qualifiée ({qualifiables.length}{qualifiables.length < cochees.length ? ` sur ${cochees.length}` : ''})
+        </button>
+        <button onClick={() => trier('pas_pour_nous', cochees, 'pas pour nous → Ne pas contacter')} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 text-sm font-medium">Pas pour nous ({cochees.length})</button>
+        <button onClick={() => trier('ferme', cochees, 'fermé → Perdu')} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 text-sm font-medium">Fermé ({cochees.length})</button>
+      </BarreSelection>
+      {cochees.length > qualifiables.length && qualifiables.length > 0 && (
+        <p className="text-xs text-gray-600">{cochees.length - qualifiables.length} fiche(s) cochée(s) incomplète(s) : « Qualifiée » les laisse de côté. Complète-les en mode « Une à la fois ».</p>
+      )}
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+        {liste.slice(0, nb).map(p => (
+          <label key={p.id} className={`flex items-start gap-3 p-3 cursor-pointer ${sel.a(p.id) ? 'bg-brewery-50/60' : ''}`}>
+            <input type="checkbox" className="w-4 h-4 mt-0.5 accent-brewery-600" checked={sel.a(p.id)} onChange={() => sel.basculer(p.id)} aria-label={`Cocher ${p.nom_etablissement}`} />
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="font-medium text-gray-900 truncate">{p.nom_etablissement}</p>
+              <p className="text-xs text-gray-500 truncate">{[p.ville, p.telephone, p.date_creation && `partagée le ${new Date(p.date_creation).toLocaleDateString('fr-FR')}`].filter(Boolean).join(' · ')}</p>
+              {estQualifiable(p) ? <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">complète</span> : <Manques p={p} />}
+            </div>
+          </label>
+        ))}
+      </div>
+      {liste.length > nb && (
+        <button onClick={() => setNb(n => n + 30)} className="w-full py-2 text-sm text-brewery-700 font-medium bg-white border border-gray-200 rounded-lg">
+          Voir 30 de plus ({liste.length - nb} restantes)
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TriUneAUne({ liste, apresFusion }: { liste: Prospect[]; apresFusion: () => void }) {
   const { state, dispatchLocal } = useApp();
   const toast = useToast();
   const [passees, setPassees] = useState<Set<string>>(new Set());

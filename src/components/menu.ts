@@ -32,9 +32,9 @@ const PROSPECTION: GroupeMenu = {
   id: 'prospection', titre: 'Prospection', icon: Phone, roles: ['prospection'],
   entrees: [
     { to: '/boite', icon: Inbox, label: 'Boîte de prospection', alias: ['/partage'] },
+    { to: '/qualite', icon: ShieldCheck, label: 'Qualité des fiches', prospectionSeulement: true },
     { to: '/prospects', icon: Users, label: 'Prospects' },
     { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
-    { to: '/qualite', icon: ShieldCheck, label: 'Qualité des fiches', prospectionSeulement: true },
     { to: '/appels', icon: Phone, label: 'Appels' },
     { to: '/rdv', icon: Calendar, label: 'Rendez-vous' },
     { to: '/emails', icon: Mail, label: 'Emails' },
