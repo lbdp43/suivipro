@@ -88,10 +88,10 @@ router.put('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res)
   // Seules les fiches existantes, avec un numéro, valent la peine d'être dans une session.
   // On garde l'ordre choisi à l'écran (la base renvoie les lignes dans n'importe quel ordre).
   const prospectsOk = new Set(prospectsDemandes.length
-    ? (await db.query(`SELECT id FROM prospects WHERE id = ANY($1) AND telephone <> ''`, [prospectsDemandes])).rows.map(r => r.id)
+    ? (await db.query(`SELECT id FROM prospects WHERE id = ANY($1) AND COALESCE(telephone, '') ~ '[0-9]'`, [prospectsDemandes])).rows.map(r => r.id)
     : []);
   const clientsOk = new Set(clientsDemandes.length
-    ? (await db.query(`SELECT id FROM clients WHERE id = ANY($1) AND (COALESCE(telephone, '') <> '' OR COALESCE(telephone_mobile, '') <> '')`, [clientsDemandes])).rows.map(r => r.id)
+    ? (await db.query(`SELECT id FROM clients WHERE id = ANY($1) AND (COALESCE(telephone, '') ~ '[0-9]' OR COALESCE(telephone_mobile, '') ~ '[0-9]')`, [clientsDemandes])).rows.map(r => r.id)
     : []);
   const prospectsValides = prospectsDemandes.filter(d => prospectsOk.has(d));
   const clientsValides = clientsDemandes.filter(d => clientsOk.has(d));

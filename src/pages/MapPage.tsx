@@ -5,8 +5,9 @@ import TuilesCarte from '../components/TuilesCarte';
 import L from 'leaflet';
 import {
   Filter, MapPin, Phone, Mail, ExternalLink, Calendar, CalendarPlus,
-  ChevronLeft, ChevronRight, Users, Check, Building2, Layers, Pencil, Star, CheckSquare,
+  ChevronLeft, ChevronRight, Users, Check, Building2, Layers, Pencil, Star, CheckSquare, PhoneOff,
 } from 'lucide-react';
+import { aUnNumero } from '../../shared/normalisation';
 import DessinZones from '../components/DessinZones';
 import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { prospectsAAppelerDansLaZone } from '../utils/zones';
@@ -82,6 +83,8 @@ export default function MapPage() {
   const [selectedRegions, setSelectedRegions] = usePersistedState<string[]>('map_regions', []);
   const [selectedPostalCodes, setSelectedPostalCodes] = usePersistedState<string[]>('map_postal_codes', []);
   const [selectedDepartments, setSelectedDepartments] = usePersistedState<string[]>('map_departments', []);
+  // « Sans numéro » : les fiches à compléter avant de pouvoir les appeler.
+  const [sansNumero, setSansNumero] = usePersistedState<boolean>('map_sans_numero', false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showRdvPanel, setShowRdvPanel] = useState(false);
@@ -233,6 +236,7 @@ export default function MapPage() {
         return rdvProspectIds.has(p.id);
       }
       if (mapFilterCommercial && p.commercial_id !== mapFilterCommercial) return false;
+      if (sansNumero && aUnNumero(p.telephone)) return false;
       if (selectedZones.length > 0 && !selectedZones.includes(p.zone_id || '__hors__')) return false;
       if (selectedTypes.length > 0 && !selectedTypes.includes(p.type_etablissement)) return false;
       if (selectedStages.length > 0 && !selectedStages.includes(p.etape_pipeline)) return false;
@@ -256,7 +260,7 @@ export default function MapPage() {
       }
       return true;
     });
-  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, selectedZones, searchTerm, showRdvPanel, rdvProspectIds, mapFilterCommercial]);
+  }, [state.prospects, selectedTypes, selectedStages, selectedTags, selectedSecteurs, selectedPostalCodes, selectedDepartments, selectedRegions, selectedZones, searchTerm, showRdvPanel, rdvProspectIds, mapFilterCommercial, sansNumero]);
 
   // Filtered clients for map
   const filteredClients = useMemo(() => {
@@ -359,7 +363,7 @@ export default function MapPage() {
     startSession(ids);
   };
 
-  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length + selectedZones.length;
+  const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length + selectedZones.length + (sansNumero ? 1 : 0);
   const toggleZone = (id: string) => setSelectedZones(prev => prev.includes(id) ? prev.filter(z => z !== id) : [...prev, id]);
   const prospectsHorsZone = useMemo(() => state.prospects.filter(p => p.latitude && p.longitude && !p.zone_id).length, [state.prospects]);
 
@@ -774,6 +778,20 @@ export default function MapPage() {
               </div>
             </div>
 
+            {/* À compléter */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">À compléter</p>
+              <button
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors inline-flex items-center gap-1 ${
+                  sansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => setSansNumero(!sansNumero)}
+                title="Les prospects sans numéro de téléphone"
+              >
+                <PhoneOff className="w-3 h-3" /> Sans numéro
+              </button>
+            </div>
+
             {/* Tag filters */}
             <div>
               <p className="text-xs font-medium text-gray-500 mb-1.5">Tags</p>
@@ -799,7 +817,7 @@ export default function MapPage() {
               {activeFilterCount > 0 && (
                 <button
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedDepartments([]); setSelectedRegions([]); setSelectedZones([]); }}
+                  onClick={() => { setSelectedTypes([]); setSelectedStages([]); setSelectedTags([]); setSelectedSecteurs([]); setSelectedPostalCodes([]); setSelectedDepartments([]); setSelectedRegions([]); setSelectedZones([]); setSansNumero(false); }}
                 >
                   Réinitialiser les filtres
                 </button>
@@ -814,6 +832,7 @@ export default function MapPage() {
                   postalCodes: selectedPostalCodes,
                   departments: selectedDepartments,
                   regions: selectedRegions,
+                  sansNumero,
                 })}
                 applyFilters={(f) => {
                   setSelectedTypes((f.types as EstablishmentType[]) || []);
@@ -823,6 +842,7 @@ export default function MapPage() {
                   setSelectedPostalCodes((f.postalCodes as string[]) || []);
                   setSelectedDepartments((f.departments as string[]) || []);
                   setSelectedRegions((f.regions as string[]) || []);
+                  setSansNumero(!!f.sansNumero);
                 }}
               />
             </div>
