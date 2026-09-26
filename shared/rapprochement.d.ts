@@ -6,3 +6,4 @@ export function comparerFiches(a: object, b: object): Rapprochement | null;
 export function preuvesDeLien(a: object, b: object): Preuve[];
 export function verdictDeLien(preuves: Preuve[]): 'ok' | 'a_verifier' | 'suspect';
 export function candidatsDoublons<T extends object>(saisie: { nom?: string; nom_etablissement?: string; telephone?: string; email?: string }, liste: T[]): T[];
+export function pairesProbables(listeA: object[], listeB?: object[] | null, options?: { memeCommune?: boolean; motMax?: number; seuilPartage?: number }): Array<{ a: number; b: number; score: number; motif: string }>;

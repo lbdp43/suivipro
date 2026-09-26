@@ -113,7 +113,7 @@ export default function Layout() {
   // Groupes du menu, dans l'ordre du rôle (le sien d'abord). Tout le monde voit tout :
   // un commercial peut aller dans la prospection et inversement, seul l'ordre change.
   const role = state.currentUser?.role;
-  const groupes = groupesDuMenu(role);
+  const groupes = groupesDuMenu(role, faitDeLaProspection(state.currentUser));
   const aQualifier = state.signalements.filter(s => s.statut === 'a_qualifier').length;
   const ouverts = openSections ?? groupesOuvertsParDefaut(role, faitDeLaProspection(state.currentUser));
   const toggleSection = (id: string) => {

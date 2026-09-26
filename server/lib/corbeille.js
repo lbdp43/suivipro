@@ -79,13 +79,16 @@ function resumeDe(dependances) {
  * Tout se fait dans une seule transaction : soit la fiche est rangée puis retirée, soit
  * rien ne bouge — jamais une suppression sans sa copie.
  */
-export async function archiver(type, entiteId, utilisateurId) {
+export async function archiver(type, entiteId, utilisateurId, { connexion = null, trace = true } = {}) {
   const table = TABLE[type];
   if (!table) throw new Error(`type inconnu : ${type}`);
 
-  const cx = await db.connect();
+  // Avec `connexion`, on travaille dans la transaction de l'appelant (une fusion range la
+  // fiche absorbée dans le même geste que le reste) : il l'ouvre, la valide ou l'annule.
+  const cx = connexion || await db.connect();
+  const aMoi = !connexion;
   try {
-    await cx.query('BEGIN');
+    if (aMoi) await cx.query('BEGIN');
 
     const fiche = await cx.query(`SELECT * FROM ${table} WHERE id = $1`, [entiteId]);
     if (fiche.rows.length === 0) throw new Introuvable(`${type} ${entiteId} introuvable`);
@@ -163,13 +166,15 @@ export async function archiver(type, entiteId, utilisateurId) {
     } else {
       await cx.query(`DELETE FROM ${table} WHERE id = $1`, [entiteId]);
     }
-    await cx.query('COMMIT');
+    if (aMoi) await cx.query('COMMIT');
 
     // Une fiche rangée à la corbeille laisse une trace d'identité : si le même
     // établissement revient un jour dans la boîte de prospection, on saura le dire au lieu
     // de laisser recréer ce qu'on venait d'écarter. Un membre n'en laisse pas : ce n'est
     // pas un établissement.
-    if (type !== 'membre') {
+    // Sauf pour une fusion (`trace: false`) : l'établissement n'est pas écarté, il vit
+    // sous l'autre fiche — le dire « écarté » tromperait le prochain contrôle.
+    if (type !== 'membre' && trace) {
       await noter({
         origine: type,
         origineId: entiteId,
@@ -189,10 +194,10 @@ export async function archiver(type, entiteId, utilisateurId) {
     );
     return { id: insere.rows[0].id, nom: nomDe(type, ligne) };
   } catch (err) {
-    try { await cx.query('ROLLBACK'); } catch { /* la transaction est déjà perdue */ }
+    if (aMoi) { try { await cx.query('ROLLBACK'); } catch { /* la transaction est déjà perdue */ } }
     throw err;
   } finally {
-    cx.release();
+    if (aMoi) cx.release();
   }
 }
 
@@ -221,10 +226,13 @@ async function reinserer(cx, table, ligne) {
  * Une fiche déjà restaurée, ou dont l'identifiant a été repris entre-temps, ne l'est pas
  * une deuxième fois : ON CONFLICT DO NOTHING protège les données en place.
  */
-export async function restaurer(ligneId, utilisateurId) {
-  const cx = await db.connect();
+export async function restaurer(ligneId, utilisateurId, { connexion = null } = {}) {
+  // Même règle qu'archiver : avec `connexion`, la transaction est celle de l'appelant
+  // (annuler une fusion remet la fiche ET rend ce qui lui avait été pris, d'un bloc).
+  const cx = connexion || await db.connect();
+  const aMoi = !connexion;
   try {
-    await cx.query('BEGIN');
+    if (aMoi) await cx.query('BEGIN');
 
     const res = await cx.query('SELECT * FROM corbeille WHERE id = $1 FOR UPDATE', [ligneId]);
     if (res.rows.length === 0) throw new Introuvable('ligne de corbeille introuvable');
@@ -271,7 +279,7 @@ export async function restaurer(ligneId, utilisateurId) {
 
     await cx.query('UPDATE corbeille SET restaure_par = $1, restaure_le = NOW() WHERE id = $2',
       [utilisateurId, ligneId]);
-    await cx.query('COMMIT');
+    if (aMoi) await cx.query('COMMIT');
 
     // La fiche est de retour : l'avertissement qui la disait écartée n'a plus lieu d'être.
     await oublier(entree.type, entree.entite_id);
@@ -284,9 +292,9 @@ export async function restaurer(ligneId, utilisateurId) {
     );
     return { nom: entree.nom, type: entree.type, entite_id: entree.entite_id };
   } catch (err) {
-    try { await cx.query('ROLLBACK'); } catch { /* la transaction est déjà perdue */ }
+    if (aMoi) { try { await cx.query('ROLLBACK'); } catch { /* la transaction est déjà perdue */ } }
     throw err;
   } finally {
-    cx.release();
+    if (aMoi) cx.release();
   }
 }

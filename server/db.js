@@ -1060,6 +1060,31 @@ async function initDatabase(attempt = 1) {
         PRIMARY KEY (doc_id, user_id, version)
       )`);
     } catch (err) { console.log('documents a signer migration:', err.message); }
+    // « Qualité des fiches » : le journal de chaque geste (avec de quoi le défaire) et les
+    // paires qu'on a déclarées « pas des doublons », pour qu'elles ne reviennent pas.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS qualite_journal (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES commerciaux(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        prospect_id TEXT NOT NULL DEFAULT '',
+        nom TEXT NOT NULL DEFAULT '',
+        ville TEXT NOT NULL DEFAULT '',
+        details TEXT NOT NULL DEFAULT '',
+        annulation TEXT NOT NULL DEFAULT '',
+        annule_le TIMESTAMPTZ,
+        annule_par TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_qualite_journal_date ON qualite_journal(created_at)');
+      await client.query(`CREATE TABLE IF NOT EXISTS qualite_pas_doublons (
+        a TEXT NOT NULL,
+        b TEXT NOT NULL,
+        par TEXT NOT NULL DEFAULT '',
+        le TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (a, b)
+      )`);
+    } catch (err) { console.log('qualite migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.

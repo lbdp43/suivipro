@@ -23,6 +23,7 @@ import signalements from './routes/signalements.js';
 import mcpJetons from './routes/mcpJetons.js';
 import corbeille from './routes/corbeille.js';
 import masse from './routes/masse.js';
+import qualite from './routes/qualite.js';
 
 const router = Router();
 router.use(auth);
@@ -43,6 +44,7 @@ router.use(annuaire);
 router.use(sirene);
 router.use(crons);
 router.use(signalements);
+router.use(qualite);
 router.use(mcpJetons);
 router.use(corbeille);
 router.use(masse);
