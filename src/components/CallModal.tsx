@@ -5,7 +5,7 @@ import { useApp } from '../store/AppContext';
 import { faitDeLaProspection } from '../utils/roles';
 import RappelContactRdv, { rdvSansContact } from './RappelContactRdv';
 import { useToast } from './Toast';
-import { Appointment, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, ISSUE_APPEL_CLIENT_LABELS } from '../types';
+import { Appointment, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, formatDate } from '../utils/helpers';
 import { ouvrirDansGoogleAgenda } from '../utils/agenda';
@@ -14,6 +14,7 @@ import FicheClient from './FicheClient';
 import { telephoneDuClient } from '../utils/sessionAppel';
 import ChampsRdv, { type ValeurRdv } from './ChampsRdv';
 import { apiPost, apiPut } from '../api/client';
+import { noterInteraction } from '../utils/interactions';
 import { etapeApresAppel } from '../../shared/tunnel';
 import { SelectRaisonPerte } from './RaisonPerte';
 
@@ -327,7 +328,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setShowNewTag(false);
   };
 
-  /** Appel d'un client : une interaction « APPEL » (sans toucher au calendrier des visites), les tâches cochées faites, une tâche créée au besoin. */
+  /** Appel d'un client : il compte comme une visite (sauf sans réponse), les tâches cochées sont faites, une tâche créée au besoin — en un seul envoi. */
   const saveCallClient = async () => {
     const client = state.clients.find(c => c.id === clientId);
     if (!client || saving) return;
@@ -338,22 +339,13 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
     setSaveErrors([]);
     setSaving(true);
     try {
-      const now = new Date().toISOString();
-      const interaction = { id: generateId('int'), client_id: client.id, commercial_id: state.currentUser?.id || '', type: 'APPEL' as const, date: now, comment: `${ISSUE_APPEL_CLIENT_LABELS[issueClient as IssueAppelClient]} · ${callNotes.trim()}`, date_creation: now };
-      await apiPost('/interactions', { ...interaction, sans_visite: true });
-      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
-      for (const id of tachesCochees) {
-        const t = state.tasksClient.find(x => x.id === id);
-        if (!t) continue;
-        const faite = { ...t, statut: 'TERMINEE' as const, completed_at: now };
-        await apiPut(`/tasks-client/${id}`, faite);
-        dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload: faite });
-      }
-      if (nouvelleTache && nouvelleTache.titre.trim()) {
-        const tache = { id: generateId('task'), titre: nouvelleTache.titre.trim(), description: '', statut: 'A_FAIRE' as const, priorite: 'MOYENNE' as const, date_echeance: nouvelleTache.date || null, commercial_id: state.currentUser?.id || null, client_id: client.id, date_creation: now, completed_at: null };
-        await apiPost('/tasks-client', tache);
-        dispatchLocal({ type: 'ADD_TASK_CLIENT', payload: tache });
-      }
+      // Un appel compte comme une visite, sauf s'il est resté sans réponse (shared/visites.js).
+      // Tâches terminées et tâche de suivi partent avec lui : tout passe, ou rien.
+      await noterInteraction({
+        id: generateId('int'), client_id: client.id, type: 'APPEL', issue: issueClient as IssueAppelClient, comment: callNotes.trim(),
+        taches_faites: [...tachesCochees],
+        nouvelle_tache: nouvelleTache && nouvelleTache.titre.trim() ? { titre: nouvelleTache.titre.trim(), date: nouvelleTache.date || null } : null,
+      }, dispatchLocal);
       toast.success(tachesCochees.size ? `Appel enregistré · ${tachesCochees.size} tâche(s) faite(s)` : 'Appel enregistré');
       setCallActive(false);
       setCallTimer(0);
@@ -605,7 +597,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         </button>
                       ))}
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1.5 italic">Enregistré comme un appel dans l'historique du client, sans toucher au calendrier des visites.</p>
+                    <p className="text-[10px] text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>

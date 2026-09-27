@@ -102,7 +102,7 @@ export default function OngletAccesClaude() {
         <p className="text-xs text-gray-500 mt-1">
           Un accès permet de poser des questions à SuiviPro depuis Claude.
           Chaque personne a le sien : il porte son rôle, et ne montre que ce qu'elle voit déjà à l'écran.
-          Claude peut aussi <strong>écrire les comptes rendus de rendez-vous</strong>, terminer les actions et les tâches, et déposer dans la boîte de prospection —
+          Claude peut aussi <strong>écrire les comptes rendus de rendez-vous</strong>, noter une visite ou un appel chez un client, terminer les actions et les tâches, et déposer dans la boîte de prospection —
           avec les mêmes règles que l'écran, et toujours en deux temps : il montre ce qu'il va faire, et n'enregistre qu'après votre accord.
           Chaque écriture est journalisée « via Claude ». Rien ne peut être supprimé par ce chemin.
         </p>

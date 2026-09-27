@@ -20,6 +20,7 @@ import { apiPost, apiPut } from '../api/client';
 import { rdvSansCompteRendu } from '../../shared/regles';
 import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
 import { NomFiche } from '../components/FicheProspectModal';
+import { noterInteraction } from '../utils/interactions';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -401,8 +402,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         id: generateId(), client_id: visitModalClient.id, commercial_id: userId!,
         type: visitModalType, date: now, comment: visitModalComment.trim(), date_creation: now,
       };
-      await apiPost('/interactions', interaction);
-      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+      await noterInteraction(interaction, dispatchLocal);
 
       // Save client notes if changed
       const full = getClient(visitModalClient.id);
@@ -436,8 +436,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         date: new Date(visitRdvDate[rdvModalClient.id]).toISOString(),
         comment: rdvModalComment.trim(), date_creation: now,
       };
-      await apiPost('/interactions', interaction);
-      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+      await noterInteraction(interaction, dispatchLocal);
 
       // Create appointment
       const rdvId = generateId();

@@ -1085,6 +1085,21 @@ async function initDatabase(attempt = 1) {
         PRIMARY KEY (a, b)
       )`);
     } catch (err) { console.log('qualite migration:', err.message); }
+    // Une visite ou un appel abouti fait avancer le calendrier des visites ; un rendez-vous
+    // planifié ou un appel resté sans réponse, non. On le garde sur la ligne, pour que la
+    // suppression d'une interaction retrouve la vraie dernière visite. Les lignes d'avant sont
+    // reconnues à leur commentaire (préfixes posés par l'appli) ; les « visites planifiées »
+    // encore à venir redeviennent ce qu'elles sont, des rendez-vous planifiés.
+    try {
+      const avant = await client.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'interactions' AND column_name = 'compte_visite'");
+      await client.query('ALTER TABLE interactions ADD COLUMN IF NOT EXISTS compte_visite BOOLEAN NOT NULL DEFAULT true');
+      if (avant.rows.length === 0) {
+        await client.query(`UPDATE interactions SET compte_visite = false
+          WHERE type = 'RDV_PLANIFIE' OR comment LIKE 'Pas de réponse · %' OR comment LIKE 'N''a pas répondu.%'`);
+        await client.query(`UPDATE interactions SET type = 'RDV_PLANIFIE', compte_visite = false
+          WHERE type = 'VISITE' AND comment LIKE 'Visite planifiée (%' AND left(date, 10) > to_char(now() AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD')`);
+      }
+    } catch (err) { console.log('interactions compte_visite migration:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.

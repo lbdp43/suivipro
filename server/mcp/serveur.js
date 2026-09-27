@@ -3,7 +3,7 @@
 // Le périmètre de chaque personne est appliqué dans les requêtes, avant l'envoi — pas à
 // l'affichage, comme le font les écrans. Les outils d'écriture sont de deux sortes : le
 // dépôt dans la boîte de prospection, où un humain qualifie ; et le suivi des rendez-vous
-// (compte rendu, actions du tunnel, tâches client), qui applique les mêmes règles que
+// (compte rendu, actions du tunnel, tâches client, visites et appels), qui applique les mêmes règles que
 // l'écran et ne s'exécute qu'en deux temps — un aperçu, puis la confirmation.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import outilsContexte from './outils/contexte.js';
@@ -12,18 +12,20 @@ import outilsProspects from './outils/prospects.js';
 import outilsAgenda from './outils/agenda.js';
 import outilsBoite from './outils/boite.js';
 import outilsSuivi from './outils/suivi.js';
+import outilsVisites from './outils/visites.js';
 import { HorsPerimetre } from './perimetre.js';
 import { DepotRefuse } from '../lib/boiteProspection.js';
 import { CompteRenduRefuse, CompteRenduInterdit } from '../lib/compteRendu.js';
+import { InteractionRefusee, InteractionInterdite } from '../lib/visitesClient.js';
 import { journaliserAppel, journaliserRefus, verifierSeuils } from './journal.js';
 import { reponse } from './format.js';
 import { LIBELLES_ROLE } from '../../shared/libelles.js';
 
-export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsBoite, ...outilsSuivi];
+export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsBoite, ...outilsSuivi, ...outilsVisites];
 
 /** Les outils que ce rôle a le droit d'appeler (matrice du cahier des charges). */
 const INTERDITS = {
-  prospection: ['chercher_client', 'fiche_client', 'clients_en_retard'],
+  prospection: ['chercher_client', 'fiche_client', 'clients_en_retard', 'visites_et_appels', 'noter_visite_ou_appel'],
 };
 
 export function outilsDuRole(role) {
@@ -34,7 +36,7 @@ export function outilsDuRole(role) {
 function messageDErreur(err) {
   // Un refus (hors périmètre, dépôt incomplet) est une réponse, pas une panne : on le rend
   // tel quel, sans encombrer les journaux d'une pile d'appels.
-  if (err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduRefuse) return err.message;
+  if (err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduRefuse || err instanceof InteractionRefusee) return err.message;
   console.error('[MCP] Outil en échec :', err.stack || err.message);
   return `La demande n'a pas abouti : ${String(err.message || err).slice(0, 200)}`;
 }
@@ -49,8 +51,8 @@ export function construireServeur(utilisateur) {
     {
       instructions: [
         `Vous parlez à SuiviPro, le logiciel commercial de La Brasserie des Plantes, pour le compte de ${utilisateur.prenom} ${utilisateur.nom} (${LIBELLES_ROLE[utilisateur.role] || utilisateur.role}).`,
-        'Quelques gestes modifient quelque chose. « deposer_dans_la_boite » range un établissement dans la boîte de prospection, à qualifier par l\'équipe. « ecrire_compte_rendu », « terminer_action » et « terminer_tache » font le suivi des rendez-vous avec les règles de l\'écran : étape du tunnel, relance ou tâche de suivi, nouveau rendez-vous si c\'est décalé.',
-        'Ces trois outils de suivi travaillent en deux temps : un premier appel sans « confirmer » montre ce qui va être fait, sans rien écrire ; montrez-le à la personne, et n\'appelez avec « confirmer: true » qu\'après son accord explicite. N\'inventez jamais un résultat, une date de relance ni une raison de perte : demandez-les. Le sujet « comptes_rendus » de « contexte » donne les règles.',
+        'Quelques gestes modifient quelque chose. « deposer_dans_la_boite » range un établissement dans la boîte de prospection, à qualifier par l\'équipe. « ecrire_compte_rendu », « terminer_action » et « terminer_tache » font le suivi des rendez-vous avec les règles de l\'écran : étape du tunnel, relance ou tâche de suivi, nouveau rendez-vous si c\'est décalé. « noter_visite_ou_appel » note une visite ou un appel chez un client : un appel compte comme une visite, sauf sans réponse.',
+        'Ces outils de suivi travaillent en deux temps : un premier appel sans « confirmer » montre ce qui va être fait, sans rien écrire ; montrez-le à la personne, et n\'appelez avec « confirmer: true » qu\'après son accord explicite. N\'inventez jamais un résultat, une date de relance ni une raison de perte : demandez-les. Les sujets « comptes_rendus » et « visites » de « contexte » donnent les règles.',
         'Tout le reste est en lecture seule : aucun prospect, client ou réglage ne peut être créé ni supprimé. « proposer_mail » prépare un texte et n\'envoie rien.',
         'Appelez « contexte » avant d\'interpréter des états, des étapes ou des couleurs : les règles de la maison y sont écrites.',
         'Les réponses citent les établissements par leur nom et leur ville. Les listes indiquent toujours le total réel, même tronquées.',
@@ -82,8 +84,8 @@ export function construireServeur(utilisateur) {
         } catch (err) {
           // Une saisie incomplète (compte rendu sans notes, relance sans date) n'est pas une
           // tentative hors périmètre : elle est journalisée à part et ne compte pas dans les seuils.
-          const refuse = err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduInterdit;
-          const saisie = !refuse && err instanceof CompteRenduRefuse;
+          const refuse = err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduInterdit || err instanceof InteractionInterdite;
+          const saisie = !refuse && (err instanceof CompteRenduRefuse || err instanceof InteractionRefusee);
           await journaliserAppel({ utilisateur, outil: outil.nom, filtres: args, resultats: 0, ms: Date.now() - debut, mention: saisie ? 'saisie' : refuse ? 'refus' : 'erreur' });
           if (refuse) { await journaliserRefus(utilisateur, outil.nom, err.message); verifierSeuils(utilisateur); }
           return { ...reponse(messageDErreur(err)), isError: true };

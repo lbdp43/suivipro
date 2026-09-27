@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState, useMemo, useRef } from 'react';
-import { dateLocale } from '../../shared/regles';
 import {
   AppState, Prospect, Call, Appointment, Reminder, Commercial, Tag, EmailTemplate, SessionAppel,
   PipelineStage, PipelineColumn, PIPELINE_LABELS, PIPELINE_COLORS, Document, DocumentSignature, DocumentOuverture,
@@ -47,7 +46,7 @@ export function appliquerPerimetre(state: AppState, perimetre: Perimetre): AppSt
 // Actions
 // ============================================
 
-type Action =
+export type Action =
   | { type: 'SET_STATE'; payload: AppState }
   | { type: 'SET_SESSION_APPEL'; payload: SessionAppel }
   | { type: 'RETIRER_SESSION_APPEL'; payload: { commercial_id: string; jour: string } }
@@ -240,25 +239,10 @@ function reducer(state: AppState, action: Action): AppState {
     case 'IMPORT_CLIENTS':
       return { ...state, clients: [...state.clients, ...action.payload] };
     // Interactions
-    case 'ADD_INTERACTION': {
-      const newInteractions = [action.payload, ...state.interactions];
-      // Also update the client's last_visit and next_visit
-      const updatedClients = state.clients.map(c => {
-        if (c.id === action.payload.client_id) {
-          const visitDate = action.payload.date.split('T')[0];
-          const freq = c.custom_recurrence || null;
-          let nextVisit: string | null = null;
-          if (c.statut === 'ACTIF' && freq) {
-            const d = new Date(visitDate);
-            d.setDate(d.getDate() + freq);
-            nextVisit = dateLocale(d);
-          }
-          return { ...c, last_visit: visitDate, next_visit: nextVisit, date_modification: new Date().toISOString() };
-        }
-        return c;
-      });
-      return { ...state, interactions: newInteractions, clients: updatedClients };
-    }
+    // Le calendrier du client (dernière et prochaine visite) vient du serveur, qui applique la
+    // règle (shared/visites.js) : noterInteraction envoie ensuite UPDATE_CLIENT.
+    case 'ADD_INTERACTION':
+      return { ...state, interactions: [action.payload, ...state.interactions] };
     case 'DELETE_INTERACTION':
       return { ...state, interactions: state.interactions.filter(i => i.id !== action.payload) };
     // Tasks Client

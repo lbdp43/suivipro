@@ -19,6 +19,7 @@ import CompteRenduModal from '../components/CompteRenduModal';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
 import { NomFiche } from '../components/FicheProspectModal';
+import { noterInteraction } from '../utils/interactions';
 
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
@@ -191,17 +192,17 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
           id: generateId('int'),
           client_id: entry.client.id,
           commercial_id: userId,
-          type: 'VISITE',
+          // Une visite à venir est un rendez-vous planifié : elle ne compte qu'une fois faite.
+          type: 'RDV_PLANIFIE',
           date: `${entry.date}T${entry.startTime}:00`,
           comment: `Visite planifiée (${entry.startTime} - ${entry.endTime})`,
           date_creation: now,
         };
-        await apiPost('/interactions', interaction);
-        dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+        await noterInteraction(interaction, dispatchLocal);
       }
 
       downloadICSClientBatch(entries, `visites-${entries[0].date}.ics`);
-      toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} enregistrée${entries.length > 1 ? 's' : ''} et exportée${entries.length > 1 ? 's' : ''}`);
+      toast.success(`${entries.length} visite${entries.length > 1 ? 's' : ''} planifiée${entries.length > 1 ? 's' : ''} et exportée${entries.length > 1 ? 's' : ''}`);
       setShowConfirmExport(false);
       setShowSchedulingModal(false);
       setSelectedClients(new Set());
@@ -287,8 +288,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
             comment: massNote.trim() || 'Visite enregistrée',
             date_creation: now,
           };
-          await apiPost('/interactions', interaction);
-          dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+          await noterInteraction(interaction, dispatchLocal);
         }
         toast.success(`Visite enregistrée pour ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
       } else if (massAction === 'commercial') {

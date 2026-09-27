@@ -26,6 +26,7 @@ import EmailTemplateModal from '../components/EmailTemplateModal';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { decrocheDuClient } from '../utils/commandes';
 import { useLancerSession } from '../hooks/useSessionAppel';
+import { noterInteraction } from '../utils/interactions';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -326,8 +327,7 @@ export default function ClientsPage() {
           date_creation: now,
         };
         try {
-          await apiPost('/interactions', interaction);
-          dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+          await noterInteraction(interaction, dispatchLocal);
           count++;
         } catch {
           errors++;
@@ -708,8 +708,7 @@ export default function ClientsPage() {
       date_creation: now,
     };
     try {
-      await apiPost('/interactions', interaction);
-      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+      await noterInteraction(interaction, dispatchLocal);
     } catch {
       toast.error('Erreur lors de l\'enregistrement');
       return;
