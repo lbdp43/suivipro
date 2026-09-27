@@ -10,7 +10,8 @@ import { dateLocale } from '../../../shared/regles.js';
 import { normaliserPourComparaison } from '../../../shared/normalisation.js';
 import { LIBELLES_INTERACTION } from '../../../shared/libelles.js';
 import { ISSUES_APPEL_CLIENT } from '../../../shared/visites.js';
-import { planInteraction, enregistrerInteraction, decrireInteraction, InteractionRefusee } from '../../lib/visitesClient.js';
+import { planInteraction, enregistrerInteraction, decrireInteraction, InteractionRefusee, InteractionInterdite } from '../../lib/visitesClient.js';
+import { journaliserRefus } from '../journal.js';
 import { perimetre, clause, HorsPerimetre, estAdmin, trouverCommercial } from '../perimetre.js';
 import { clauseTexte, sansAccentsSql } from '../sql.js';
 import { LIMITE_DEFAUT, LIMITE_MAX, borner, dateFr, ligne, bloc, entete, extrait, nommer } from '../format.js';
@@ -189,4 +190,88 @@ const noter = {
   },
 };
 
-export default [lire, noter];
+// ---------------------------------------------------------------------------------------
+const MAX_SERIE = 30;
+
+const serie = {
+  nom: 'noter_visites_en_serie',
+  titre: 'Noter plusieurs visites ou appels d\'un coup',
+  ecrit: true,
+  description: `Note en une fois les visites ou appels de plusieurs clients — une tournée, une matinée d'appels — chacun avec son commentaire. Les clients se choisissent dans une liste (« chercher_client » par tournée, état ou ville ; « mes_actions » pour la prospection), par leur référence ou leur nom. Mêmes règles que « noter_visite_ou_appel ». En deux temps : sans « confirmer », l'aperçu montre chaque ligne et ce qui bloque ; avec « confirmer: true », rien n'est écrit tant qu'une seule ligne bloque. ${MAX_SERIE} clients au plus.`,
+  schema: {
+    visites: z.array(z.object({
+      client: z.string().describe('La référence (réf.) ou le nom du client.'),
+      commentaire: z.string().optional().describe('Ce qui s\'est dit ou passé chez ce client ; sinon le commentaire commun.'),
+      type: z.enum(['visite', 'appel']).optional().describe('Sinon le type commun.'),
+      issue: z.enum(ISSUES_APPEL_CLIENT.map(i => i.value)).optional().describe('Pour un appel : son issue.'),
+    })).min(1).describe('Une ligne par client choisi.'),
+    type_commun: z.enum(['visite', 'appel']).optional().describe('« visite » par défaut.'),
+    commentaire_commun: z.string().optional().describe('Pour les clients sans commentaire propre. Ne l\'inventez pas : demandez-le.'),
+    date: z.string().optional().describe('AAAA-MM-JJ pour toute la série, aujourd\'hui par défaut. Jamais dans le futur.'),
+    pour: z.string().optional().describe('Administrateur seulement : le prénom du collègue qui a fait la tournée.'),
+    confirmer: CONFIRMER,
+  },
+  executer: async (a, { utilisateur }) => {
+    if (a.visites.length > MAX_SERIE) throw new InteractionRefusee(`${MAX_SERIE} clients au plus par série : coupez-la en deux.`);
+    let pourQui = null;
+    if (a.pour) {
+      if (!estAdmin(utilisateur)) throw new HorsPerimetre('Vous notez vos propres visites et appels ; seul un administrateur note pour un collègue.');
+      pourQui = await trouverCommercial(a.pour);
+    }
+    if (a.date && !dateValide(a.date)) throw new InteractionRefusee('Date au format AAAA-MM-JJ.');
+    const date = a.date && a.date !== dateLocale() ? `${a.date}T12:00:00` : undefined;
+    const auteur = { id: utilisateur.id, role: utilisateur.role, prenom: utilisateur.prenom };
+    const options = { commentaireObligatoire: true, perimetre: 'siens' };
+
+    // Chaque ligne est vérifiée d'abord : un client introuvable, hors périmètre, en double ou
+    // sans commentaire est signalé à sa place, et bloque l'écriture de toute la série.
+    const lignes = [];
+    const vus = new Set();
+    for (const [n, v] of a.visites.entries()) {
+      const rang = `${n + 1}.`;
+      try {
+        const candidats = await trouverLeClient(utilisateur, v.client);
+        if (candidats.length > 1) throw new InteractionRefusee(`plusieurs clients correspondent à « ${v.client} » : ${candidats.slice(0, 5).map(c => `réf. ${c.id} ${nommer(c.nom, c.ville)}`).join(', ')}`);
+        const client = candidats[0];
+        if (vus.has(client.id)) throw new InteractionRefusee(`${client.nom} figure deux fois dans la série`);
+        vus.add(client.id);
+        const saisie = {
+          client_id: client.id, type: (v.type || a.type_commun || 'visite') === 'appel' ? 'APPEL' : 'VISITE',
+          comment: v.commentaire || a.commentaire_commun || '', issue: v.issue, date, commercial_id: pourQui?.id,
+        };
+        const plan = await planInteraction(saisie, auteur, options);
+        lignes.push({ rang, saisie, plan });
+      } catch (err) {
+        if (!(err instanceof InteractionRefusee || err instanceof HorsPerimetre)) throw err;
+        // Un client hors périmètre reste une tentative à tracer, même au milieu d'une série.
+        if (err instanceof HorsPerimetre || err instanceof InteractionInterdite) await journaliserRefus(utilisateur, 'noter_visites_en_serie', err.message);
+        lignes.push({ rang, erreur: `${v.client} — ${err.message}` });
+      }
+    }
+    const bloquees = lignes.filter(l => l.erreur);
+    const decrire = (l) => l.erreur ? `${l.rang} BLOQUÉ : ${l.erreur}` : `${l.rang} ${decrireInteraction(l.plan).join(' — ')}`;
+
+    if (!a.confirmer || bloquees.length) {
+      const tete = bloquees.length
+        ? `${bloquees.length} ligne(s) sur ${lignes.length} bloquent : rien n'est enregistré. Corrigez-les (ou retirez-les) puis rappelez l'outil.`
+        : `${lignes.length} client(s) — voici ce qui sera noté :`;
+      if (bloquees.length) return { resultats: 0, texte: bloc(tete, ...lignes.map(decrire)) };
+      return { resultats: 0, texte: deuxTemps([tete, ...lignes.map(decrire)]) };
+    }
+
+    const faits = [];
+    for (const l of lignes) {
+      try {
+        const r = await enregistrerInteraction(l.saisie, auteur, { ...options, via: 'claude' });
+        faits.push(`${l.rang} ${r.resume.join(' — ')}`);
+      } catch (err) {
+        // Entre l'aperçu et l'écriture, quelque chose a pu changer (tâche close, client réassigné).
+        faits.push(`${l.rang} NON ENREGISTRÉ : ${err.message}`);
+      }
+    }
+    const ok = faits.filter(f => !f.includes('NON ENREGISTRÉ')).length;
+    return { resultats: ok, texte: bloc(`${ok} sur ${lignes.length} enregistré(s) dans SuiviPro :`, ...faits) };
+  },
+};
+
+export default [lire, noter, serie];

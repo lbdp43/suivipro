@@ -72,7 +72,7 @@ export async function chargerClients(utilisateur, demandeCommercial, outil, f = 
 const chercherClient = {
   nom: 'chercher_client',
   titre: 'Chercher un client',
-  description: 'Retrouver des clients par nom, ville, type, tournée ou état de visite. Renvoie pour chacun son état (en retard, à visiter aujourd\'hui, à venir…), sa dernière visite et sa fréquence.',
+  description: 'Retrouver des clients par nom, ville, type, tournée ou état de visite. Renvoie pour chacun sa référence (réf.), son état (en retard, à visiter aujourd\'hui, à venir…), sa dernière visite et sa fréquence. Les références servent à « noter_visites_en_serie » pour noter plusieurs clients d\'un coup.',
   schema: {
     nom: z.string().optional().describe('Recherche partielle sur le nom ou la ville, sans tenir compte des accents.'),
     ville: z.string().optional().describe('Ville ou code postal.'),
@@ -93,7 +93,7 @@ const chercherClient = {
     const titre = ligne('Clients', a.nom, a.ville, a.tournee, a.etat && lib(LIBELLES_STATUT_VISITE, ETATS[a.etat]), a.commercial);
     return {
       resultats: lignes.length,
-      texte: bloc(entete(titre, Math.min(limite, lignes.length), lignes.length), '', lignes.slice(0, limite).map(c => resumeClient(c, prenoms)).join('\n')),
+      texte: bloc(entete(titre, Math.min(limite, lignes.length), lignes.length), '', lignes.slice(0, limite).map(c => `réf. ${c.id} · ${resumeClient(c, prenoms)}`).join('\n')),
     };
   },
 };
