@@ -3,11 +3,10 @@ import { dateLocale } from '../../shared/regles';
 import { ClipboardCheck, X, Bell, UserCheck, Mail, ShoppingCart, RefreshCw, Ban, CalendarClock, Check } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
-import { apiPost, apiPut, apiPatch } from '../api/client';
-import { Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, PipelineStage, Prospect } from '../types';
-import { generateId, formatDate } from '../utils/helpers';
+import { apiPost } from '../api/client';
+import { Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, Reminder, TaskClient } from '../types';
+import { formatDate } from '../utils/helpers';
 import EmailTemplateModal from './EmailTemplateModal';
-import { etapeApresCompteRendu, typeActionApresCompteRendu } from '../../shared/tunnel';
 import { SelectRaisonPerte } from './RaisonPerte';
 
 // LA fenêtre de compte rendu d'un rendez-vous, la même partout (Rendez-vous, Semaine à
@@ -26,6 +25,16 @@ const OPTIONS: { value: AppointmentResult; icon: typeof Check; couleur: string; 
   { value: 'pas_interesse', icon: Ban, couleur: 'border-red-500 bg-red-50 text-red-700', effet: 'Le prospect passe en « Perdu ».' },
   { value: 'decale', icon: CalendarClock, couleur: 'border-violet-500 bg-violet-50 text-violet-700', effet: 'Le rendez-vous est marqué décalé, puis vous choisissez la nouvelle date.' },
 ];
+
+// Chez un client, pas de tunnel : le compte rendu se garde, et la suite devient une tâche.
+const EFFET_CLIENT: Record<Exclude<AppointmentResult, ''>, string> = {
+  client: 'Compte rendu enregistré sur la fiche client.',
+  mail_envoye: 'Tâche de suivi créée à la date choisie.',
+  commande_plus_tard: 'Tâche de suivi créée à la date choisie.',
+  a_relancer: 'Tâche de suivi créée à la date choisie.',
+  pas_interesse: 'Compte rendu enregistré sur la fiche client.',
+  decale: 'Le rendez-vous est marqué décalé, puis vous choisissez la nouvelle date.',
+};
 
 function dansSeptJours() { const d = new Date(); d.setDate(d.getDate() + 7); return dateLocale(d); }
 
@@ -68,82 +77,60 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
     if (RAPPEL_OBLIGATOIRE.includes(nouveau)) setRappel(true);
   };
 
+  // Tout part au serveur d'un seul envoi (lib/compteRendu.js) : le rendez-vous, l'étape du
+  // prospect, la suite (rappel pour un prospect, tâche pour un client), le nouveau
+  // rendez-vous si c'est décalé. Soit tout passe, soit rien — la même règle que Claude.
+  type Retour = { rdv: Appointment; prospect: Prospect | null; rappel: Reminder | null; tache: TaskClient | null; nouveau_rdv: Appointment | null };
+  const appliquerRetour = (r: Retour) => {
+    dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: { ...rdv, ...r.rdv } });
+    if (r.prospect) dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
+    if (r.rappel) dispatchLocal({ type: 'ADD_REMINDER', payload: r.rappel });
+    if (r.tache) dispatchLocal({ type: 'ADD_TASK_CLIENT', payload: r.tache });
+    if (r.nouveau_rdv) dispatchLocal({ type: 'ADD_APPOINTMENT', payload: { ...r.nouveau_rdv, event_type: 'rdv' } as Appointment });
+  };
+
   const enregistrer = async () => {
     if (!valide || enregistrement) return;
+    // Décalé : on demande d'abord la nouvelle date, puis on enregistre le tout ensemble.
+    if (resultat === 'decale') {
+      setDecalage({ date: dansSeptJours(), debut: rdv.heure_debut || '09:00', fin: rdv.heure_fin || '10:00', notes: '' });
+      return;
+    }
     setEnregistrement(true);
     try {
-      const misAJour = { ...rdv, statut: 'termine' as const, compte_rendu: resultat, notes_compte_rendu: notes };
-      await apiPut(`/appointments/${rdv.id}`, misAJour);
-      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: misAJour });
-
-      if (prospect) {
-        const etape = etapeApresCompteRendu(resultat, prospect.etape_pipeline) as PipelineStage | null;
-        if (etape) {
-          try {
-            const r = await apiPatch(`/prospects/${prospect.id}/stage`, { etape_pipeline: etape, raison_perte: etape === 'perdu' ? raisonPerte : '' }) as { date_etape?: string; raison_perte?: string };
-            dispatchLocal({ type: 'UPDATE_PROSPECT', payload: { ...prospect, etape_pipeline: etape, date_etape: r.date_etape || new Date().toISOString(), raison_perte: r.raison_perte || '', date_modification: new Date().toISOString() } });
-          } catch (err) {
-            toast.error(`Déplacement du prospect impossible : ${err instanceof Error ? err.message : 'erreur'}`);
-          }
-        }
-      }
-
-      if (rappel && rappelDate) {
-        const rappelPayload = {
-          id: generateId('rem'),
-          prospect_id: rdv.prospect_id,
-          commercial_id: rdv.commercial_id,
-          date: rappelDate,
-          heure: '09:00',
-          message: rappelMessage.trim() || `Relance suite RDV ${nom} - ${APPOINTMENT_RESULT_LABELS[resultat] || 'RDV terminé'}`,
-          statut: 'actif' as const,
-          type: typeActionApresCompteRendu(resultat),
-        };
-        try {
-          await apiPost('/reminders', rappelPayload);
-          dispatchLocal({ type: 'ADD_REMINDER', payload: rappelPayload });
-        } catch (err) {
-          toast.error(`Rappel non créé : ${err instanceof Error ? err.message : 'erreur'}`);
-        }
-      }
-
-      toast.success('Compte rendu enregistré');
-      if (resultat === 'mail_envoye' && prospect) { setEmailProspect(prospect); return; }
-      if (resultat === 'decale') { setDecalage({ date: dansSeptJours(), debut: rdv.heure_debut || '09:00', fin: rdv.heure_fin || '10:00', notes: '' }); return; }
+      const r = await apiPost(`/appointments/${rdv.id}/compte-rendu`, {
+        resultat,
+        notes,
+        suite: rappel && rappelDate ? { date: rappelDate, message: rappelMessage.trim() } : undefined,
+        raison_perte: raisonPerte,
+      }) as Retour;
+      appliquerRetour(r);
+      toast.success(r.tache ? 'Compte rendu enregistré, tâche client créée' : 'Compte rendu enregistré');
+      if (resultat === 'mail_envoye' && (r.prospect || prospect)) { setEmailProspect((r.prospect || prospect)!); return; }
       onClose();
     } catch (err) {
-      toast.error(`Erreur compte rendu : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+      toast.error(`Compte rendu non enregistré : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     } finally {
       setEnregistrement(false);
     }
   };
 
   const confirmerDecalage = async () => {
-    if (!decalage?.date) return;
+    if (!decalage?.date || enregistrement) return;
+    setEnregistrement(true);
     try {
-      const ancien = { ...rdv, statut: 'termine' as const, compte_rendu: 'decale' as AppointmentResult, notes_compte_rendu: (notes || '') + (decalage.notes ? `\nDécalé : ${decalage.notes}` : '') };
-      await apiPut(`/appointments/${rdv.id}`, ancien);
-      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: ancien });
-      const nouveau: Appointment = {
-        id: generateId('apt'),
-        prospect_id: rdv.prospect_id,
-        client_id: rdv.client_id,
-        commercial_id: rdv.commercial_id,
-        prospecteur_id: rdv.prospecteur_id,
-        date: decalage.date,
-        heure_debut: decalage.debut,
-        heure_fin: decalage.fin,
-        lieu: rdv.lieu,
-        notes: decalage.notes || rdv.notes,
-        statut: 'planifie',
-        event_type: 'rdv',
-      };
-      await apiPost('/appointments', nouveau);
-      dispatchLocal({ type: 'ADD_APPOINTMENT', payload: nouveau });
+      const r = await apiPost(`/appointments/${rdv.id}/compte-rendu`, {
+        resultat: 'decale',
+        notes,
+        nouveau_rdv: { date: decalage.date, heure_debut: decalage.debut, heure_fin: decalage.fin, notes: decalage.notes },
+      }) as Retour;
+      appliquerRetour(r);
       toast.success(`Nouveau rendez-vous le ${formatDate(decalage.date)}`);
       onClose();
     } catch (err) {
       toast.error(`Erreur : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+    } finally {
+      setEnregistrement(false);
     }
   };
 
@@ -217,7 +204,7 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
                 </button>
               ))}
             </div>
-            {resultat && <p className="text-[11px] text-gray-500 mt-1.5 italic">{OPTIONS.find(o => o.value === resultat)?.effet}</p>}
+            {resultat && <p className="text-[11px] text-gray-500 mt-1.5 italic">{client ? EFFET_CLIENT[resultat as Exclude<AppointmentResult, ''>] : OPTIONS.find(o => o.value === resultat)?.effet}</p>}
             {resultat === 'pas_interesse' && prospect && <SelectRaisonPerte value={raisonPerte} onChange={setRaisonPerte} />}
           </div>
 
@@ -238,16 +225,16 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
               onClick={() => setRappel(true)}
             >
-              <Bell className="w-4 h-4" /> Programmer un rappel
+              <Bell className="w-4 h-4" /> {client ? 'Programmer une tâche de suivi' : 'Programmer un rappel'}
             </button>
           ) : (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-amber-700 flex items-center gap-1"><Bell className="w-3 h-3" /> Rappel de relance {rappelObligatoire && <span className="text-red-500">*</span>}</label>
+                <label className="text-xs font-medium text-amber-700 flex items-center gap-1"><Bell className="w-3 h-3" /> {client ? 'Tâche de suivi (client)' : 'Rappel de relance'} {rappelObligatoire && <span className="text-red-500">*</span>}</label>
                 {!rappelObligatoire && <button className="text-gray-400 hover:text-gray-600" onClick={() => setRappel(false)}><X className="w-4 h-4" /></button>}
               </div>
               <div>
-                <label className="block text-[10px] text-amber-600 mb-0.5">Date du rappel {rappelObligatoire && <span className="text-red-500">*</span>}</label>
+                <label className="block text-[10px] text-amber-600 mb-0.5">{client ? 'Échéance' : 'Date du rappel'} {rappelObligatoire && <span className="text-red-500">*</span>}</label>
                 <input type="date" className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${rappelObligatoire && !rappelDate ? 'border-red-300' : 'border-amber-200'}`} value={rappelDate} onChange={e => setRappelDate(e.target.value)} />
               </div>
               <div>

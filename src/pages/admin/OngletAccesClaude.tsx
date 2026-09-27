@@ -100,9 +100,11 @@ export default function OngletAccesClaude() {
           <Bot className="w-4 h-4 text-brewery-600" /> Accès Claude
         </h2>
         <p className="text-xs text-gray-500 mt-1">
-          Un accès permet de poser des questions à SuiviPro depuis Claude — <strong>en lecture seule</strong>.
+          Un accès permet de poser des questions à SuiviPro depuis Claude.
           Chaque personne a le sien : il porte son rôle, et ne montre que ce qu'elle voit déjà à l'écran.
-          Rien ne peut être créé, modifié ni supprimé par ce chemin.
+          Claude peut aussi <strong>écrire les comptes rendus de rendez-vous</strong>, terminer les actions et les tâches, et déposer dans la boîte de prospection —
+          avec les mêmes règles que l'écran, et toujours en deux temps : il montre ce qu'il va faire, et n'enregistre qu'après votre accord.
+          Chaque écriture est journalisée « via Claude ». Rien ne peut être supprimé par ce chemin.
         </p>
         <div className="text-xs text-gray-500 mt-3 space-y-1">
           <p className="font-medium text-gray-700">À brancher dans Claude — Réglages → Connecteurs → connecteur personnalisé :</p>

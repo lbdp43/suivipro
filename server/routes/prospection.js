@@ -7,6 +7,8 @@ import { cloreActionsAppel } from '../lib/tunnel.js';
 import { dateLocale } from '../../shared/regles.js';
 import { validateAppointment, validateCall, validateReminder, validationError } from '../lib/validation.js';
 import { poserRendezVous, retirerRendezVous, lienGoogleAgenda } from '../lib/agendaGoogle.js';
+import { enregistrerCompteRendu, CompteRenduRefuse } from '../lib/compteRendu.js';
+import { parseProspect } from '../lib/parse.js';
 
 const router = Router();
 
@@ -101,6 +103,18 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   // ou passé à un autre commercial.
   const agenda = await poserRendezVous(req.params.id);
   res.json({ ok: true, agenda });
+}));
+
+// Le compte rendu d'un rendez-vous : tout d'un bloc (rendez-vous, étape du prospect, suite,
+// nouveau rendez-vous si décalé), par la même règle que Claude (lib/compteRendu.js).
+router.post('/appointments/:id/compte-rendu', authMiddleware, asyncHandler(async (req, res) => {
+  try {
+    const r = await enregistrerCompteRendu(req.params.id, req.body || {}, { id: req.user.id, role: req.user.role }, { via: 'app' });
+    res.json({ ok: true, ...r, prospect: r.prospect ? parseProspect(r.prospect) : null });
+  } catch (err) {
+    if (err instanceof CompteRenduRefuse) return validationError(res, [err.message]);
+    throw err;
+  }
 }));
 
 // Le lien qui ouvre Google Agenda avec l'événement rempli : le chemin le plus court,
