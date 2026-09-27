@@ -229,7 +229,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 whitespace-pre-line">
-              <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${(rem.type || 'appeler') === 'appeler' ? 'bg-green-100 text-green-700' : rem.type === 'relancer_mail' ? 'bg-blue-100 text-blue-700' : rem.type === 'attendre_reponse' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{TYPES_ACTION[rem.type || 'appeler']}</span>
+              <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-xs font-semibold ${(rem.type || 'appeler') === 'appeler' ? 'bg-green-100 text-green-700' : rem.type === 'relancer_mail' ? 'bg-blue-100 text-blue-700' : rem.type === 'attendre_reponse' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{TYPES_ACTION[rem.type || 'appeler']}</span>
               {rem.message}
             </p>
             <div className="flex items-center gap-3 mt-1.5">

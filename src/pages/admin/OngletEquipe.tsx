@@ -138,20 +138,20 @@ export default function OngletEquipe() {
                     <h4 className="font-semibold text-gray-900">{user.prenom} {user.nom}</h4>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {user.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
                           <Shield className="w-3 h-3" /> Administrateur
                         </span>
                       ) : user.role === 'prospection' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
                           <Users className="w-3 h-3" /> Prospection
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                           <User className="w-3 h-3" /> Commercial
                         </span>
                       )}
                       {user.role !== 'prospection' && user.prospection && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
                           <Users className="w-3 h-3" /> + prospection
                         </span>
                       )}

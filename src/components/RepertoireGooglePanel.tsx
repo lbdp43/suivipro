@@ -120,7 +120,7 @@ export default function RepertoireGooglePanel() {
           </div>
           <div className="text-left">
             <p className="text-sm font-medium text-gray-900">Répertoire Google</p>
-            <p className="text-[10px] text-gray-500">
+            <p className="text-xs text-gray-500">
               {!configure
                 ? 'Non configuré'
                 : nombreConnectes > 0
@@ -131,7 +131,7 @@ export default function RepertoireGooglePanel() {
         </div>
         <div className="flex items-center gap-2">
           {connecte && (
-            <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
               <CheckCircle className="w-3 h-3" /> Connecté
             </span>
           )}
@@ -146,7 +146,7 @@ export default function RepertoireGooglePanel() {
               <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs font-medium text-amber-800">Configuration requise</p>
-                <p className="text-[11px] text-amber-700 mt-0.5">
+                <p className="text-xs text-amber-700 mt-0.5">
                   Les mêmes identifiants Google que l'agenda, et une adresse de retour se
                   terminant par <code className="mx-1">/api/google-contacts/callback</code>
                   déclarée dans la console Google.
@@ -157,7 +157,7 @@ export default function RepertoireGooglePanel() {
             <>
               <div className="p-3 bg-gray-50 rounded-lg space-y-1.5">
                 <p className="text-xs font-medium text-gray-800">Ce qui va se passer</p>
-                <ul className="text-[11px] text-gray-600 space-y-1 list-disc pl-4">
+                <ul className="text-xs text-gray-600 space-y-1 list-disc pl-4">
                   <li>Les <strong>{nombreClients} clients</strong> de la brasserie — pas seulement les vôtres — sont déposés dans vos contacts Google, sous le libellé « SuiviPro ».</li>
                   <li>Leur nom s'affiche quand ils appellent, et vous pouvez les appeler depuis le téléphone.</li>
                   <li>Ce que vous corrigez là-bas — numéro, e-mail, note — revient dans la fiche.</li>
@@ -176,12 +176,12 @@ export default function RepertoireGooglePanel() {
               </button>
               {retour && (
                 <div className="p-2.5 bg-amber-50 rounded-lg">
-                  <p className="text-[11px] text-amber-800">
+                  <p className="text-xs text-amber-800">
                     Si Google répond <strong>« Accès bloqué — redirect_uri_mismatch »</strong>, c'est que
                     cette adresse n'est pas encore déclarée dans la console Google
                     (Identifiants → votre ID client OAuth → URI de redirection autorisés) :
                   </p>
-                  <code className="block mt-1 text-[10px] text-amber-900 bg-amber-100 rounded px-2 py-1 break-all">
+                  <code className="block mt-1 text-xs text-amber-900 bg-amber-100 rounded px-2 py-1 break-all">
                     {retour}
                   </code>
                 </div>
@@ -194,7 +194,7 @@ export default function RepertoireGooglePanel() {
                   <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-green-800 truncate">{monEtat?.contacts_email || 'Répertoire connecté'}</p>
-                    <p className="text-[10px] text-green-600">
+                    <p className="text-xs text-green-600">
                       {monEtat?.derniere_sync
                         ? `Dernière synchro : ${quand(monEtat.derniere_sync)} — ${monEtat.dernier_bilan}`
                         : 'Jamais synchronisé'}
@@ -220,7 +220,7 @@ export default function RepertoireGooglePanel() {
                   : <><RefreshCw className="w-4 h-4" /> Synchroniser maintenant</>}
               </button>
               {sync && (
-                <p className="text-[10px] text-gray-500 text-center">
+                <p className="text-xs text-gray-500 text-center">
                   La première fois, {nombreClients} contacts sont créés : comptez une bonne minute.
                 </p>
               )}
@@ -228,7 +228,7 @@ export default function RepertoireGooglePanel() {
               {bilan && !bilan.error && (
                 <div className="p-3 bg-gray-50 rounded-lg space-y-1">
                   <p className="text-xs font-medium text-gray-800">Dernière synchronisation</p>
-                  <ul className="text-[11px] text-gray-600 space-y-0.5">
+                  <ul className="text-xs text-gray-600 space-y-0.5">
                     <li>{bilan.crees} contact{bilan.crees > 1 ? 's' : ''} ajouté{bilan.crees > 1 ? 's' : ''} dans Google</li>
                     <li>{bilan.mis_a_jour} mis à jour, {bilan.retires} retiré{bilan.retires > 1 ? 's' : ''}</li>
                     {bilan.readoptes > 0 && (
@@ -244,7 +244,7 @@ export default function RepertoireGooglePanel() {
                     )}
                   </ul>
                   {bilan.notes.length > 0 && (
-                    <ul className="text-[10px] text-gray-500 space-y-0.5 pt-1 border-t border-gray-200 mt-1.5">
+                    <ul className="text-xs text-gray-500 space-y-0.5 pt-1 border-t border-gray-200 mt-1.5">
                       {bilan.notes.slice(0, 5).map((n, i) => <li key={i}>{n}</li>)}
                     </ul>
                   )}
@@ -252,7 +252,7 @@ export default function RepertoireGooglePanel() {
               )}
 
               <div>
-                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Équipe</p>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Équipe</p>
                 <div className="space-y-1.5">
                   {state.commerciaux.map(c => {
                     const e = etats[c.id];
@@ -261,11 +261,11 @@ export default function RepertoireGooglePanel() {
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${e?.connected ? 'bg-green-500' : 'bg-gray-300'}`} />
                           <span className="text-xs text-gray-700">{c.prenom} {c.nom}</span>
-                          {c.id === moiId && <span className="text-[9px] text-gray-400">(vous)</span>}
+                          {c.id === moiId && <span className="text-xs text-gray-400">(vous)</span>}
                         </div>
                         {e?.connected ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-gray-400 hidden sm:inline">{e.contacts_email}</span>
+                            <span className="text-xs text-gray-400 hidden sm:inline">{e.contacts_email}</span>
                             {(c.id === moiId || state.currentUser?.role === 'admin') && (
                               <button
                                 onClick={() => deconnecter(c.id)}
@@ -277,7 +277,7 @@ export default function RepertoireGooglePanel() {
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-gray-400">Non connecté</span>
+                          <span className="text-xs text-gray-400">Non connecté</span>
                         )}
                       </div>
                     );

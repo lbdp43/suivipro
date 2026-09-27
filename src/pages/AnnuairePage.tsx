@@ -385,31 +385,31 @@ export default function AnnuairePage() {
                   <div key={et.id} className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                       <div>
-                        <label className="text-[10px] text-purple-600">Label</label>
+                        <label className="text-xs text-purple-600">Label</label>
                         <input type="text" className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={editEntityForm.label} onChange={e => setEditEntityForm(f => ({ ...f, label: e.target.value }))} />
                       </div>
                       <div>
-                        <label className="text-[10px] text-purple-600">Icone</label>
+                        <label className="text-xs text-purple-600">Icone</label>
                         <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={editEntityForm.icon} onChange={e => setEditEntityForm(f => ({ ...f, icon: e.target.value }))}>
                           {AVAILABLE_ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] text-purple-600">Couleur</label>
+                        <label className="text-xs text-purple-600">Couleur</label>
                         <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={editEntityForm.color} onChange={e => setEditEntityForm(f => ({ ...f, color: e.target.value }))}>
                           {AVAILABLE_COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>
                       </div>
                       <div className="flex items-end gap-2">
-                        <label className="flex items-center gap-1 text-[10px] text-purple-600 cursor-pointer">
+                        <label className="flex items-center gap-1 text-xs text-purple-600 cursor-pointer">
                           <input type="checkbox" checked={editEntityForm.show_in_pipeline} onChange={e => setEditEntityForm(f => ({ ...f, show_in_pipeline: e.target.checked }))} className="rounded" />
                           Pipeline
                         </label>
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => updateEntityType(et.id)} className="px-2 py-1 bg-purple-600 text-white rounded text-[10px]">Sauver</button>
-                      <button onClick={() => setEditingEntityType(null)} className="px-2 py-1 border border-gray-200 rounded text-[10px]">Annuler</button>
+                      <button onClick={() => updateEntityType(et.id)} className="px-2 py-1 bg-purple-600 text-white rounded text-xs">Sauver</button>
+                      <button onClick={() => setEditingEntityType(null)} className="px-2 py-1 border border-gray-200 rounded text-xs">Annuler</button>
                     </div>
                   </div>
                 );
@@ -422,10 +422,10 @@ export default function AnnuairePage() {
                       <IconComp className="w-3.5 h-3.5" />
                     </span>
                     <span className="text-sm font-medium text-gray-900">{et.label}</span>
-                    <span className="text-[10px] text-gray-400">({et.id})</span>
-                    {et.show_in_pipeline && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[9px]">Pipeline</span>}
-                    {et.is_default && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[9px]">Defaut</span>}
-                    {stats[et.id] ? <span className="text-[10px] text-gray-400">{stats[et.id]} fiche{stats[et.id] > 1 ? 's' : ''}</span> : null}
+                    <span className="text-xs text-gray-400">({et.id})</span>
+                    {et.show_in_pipeline && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs">Pipeline</span>}
+                    {et.is_default && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">Defaut</span>}
+                    {stats[et.id] ? <span className="text-xs text-gray-400">{stats[et.id]} fiche{stats[et.id] > 1 ? 's' : ''}</span> : null}
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => {
@@ -446,27 +446,27 @@ export default function AnnuairePage() {
             <h3 className="text-xs font-medium text-purple-800 mb-2">Nouveau type d'entite</h3>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <div>
-                <label className="text-[10px] text-purple-600">ID (unique)</label>
+                <label className="text-xs text-purple-600">ID (unique)</label>
                 <input type="text" className="w-full px-2 py-1 border border-purple-200 rounded text-xs" placeholder="ex: grossiste" value={newEntityType.id} onChange={e => setNewEntityType(f => ({ ...f, id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') }))} />
               </div>
               <div>
-                <label className="text-[10px] text-purple-600">Label</label>
+                <label className="text-xs text-purple-600">Label</label>
                 <input type="text" className="w-full px-2 py-1 border border-purple-200 rounded text-xs" placeholder="ex: Grossiste" value={newEntityType.label} onChange={e => setNewEntityType(f => ({ ...f, label: e.target.value }))} />
               </div>
               <div>
-                <label className="text-[10px] text-purple-600">Icone</label>
+                <label className="text-xs text-purple-600">Icone</label>
                 <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={newEntityType.icon} onChange={e => setNewEntityType(f => ({ ...f, icon: e.target.value }))}>
                   {AVAILABLE_ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] text-purple-600">Couleur</label>
+                <label className="text-xs text-purple-600">Couleur</label>
                 <select className="w-full px-2 py-1 border border-purple-200 rounded text-xs" value={newEntityType.color} onChange={e => setNewEntityType(f => ({ ...f, color: e.target.value }))}>
                   {AVAILABLE_COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
               <div className="flex items-end gap-2">
-                <label className="flex items-center gap-1 text-[10px] text-purple-600 cursor-pointer">
+                <label className="flex items-center gap-1 text-xs text-purple-600 cursor-pointer">
                   <input type="checkbox" checked={newEntityType.show_in_pipeline} onChange={e => setNewEntityType(f => ({ ...f, show_in_pipeline: e.target.checked }))} className="rounded" />
                   Pipeline
                 </label>
@@ -504,7 +504,7 @@ export default function AnnuairePage() {
             <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
                 <div>
-                  <label className="block text-[10px] text-indigo-600 mb-0.5">Code NAF</label>
+                  <label className="block text-xs text-indigo-600 mb-0.5">Code NAF</label>
                   <input
                     type="text"
                     className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs"
@@ -514,7 +514,7 @@ export default function AnnuairePage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-indigo-600 mb-0.5">Libelle</label>
+                  <label className="block text-xs text-indigo-600 mb-0.5">Libelle</label>
                   <input
                     type="text"
                     className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs"
@@ -524,7 +524,7 @@ export default function AnnuairePage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-indigo-600 mb-0.5">Type entité</label>
+                  <label className="block text-xs text-indigo-600 mb-0.5">Type entité</label>
                   <input
                     type="text"
                     list="entity-type-options"
@@ -540,7 +540,7 @@ export default function AnnuairePage() {
                   </datalist>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-indigo-600 mb-0.5">Assigner a (optionnel)</label>
+                  <label className="block text-xs text-indigo-600 mb-0.5">Assigner a (optionnel)</label>
                   <select
                     className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs"
                     value={editingRule.commercial_id || ''}
@@ -600,7 +600,7 @@ export default function AnnuairePage() {
                       <td className="px-2 py-2 font-mono font-medium">{rule.naf_code}</td>
                       <td className="px-2 py-2 text-gray-600">{rule.naf_label}</td>
                       <td className="px-2 py-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${config.color}`}>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${config.color}`}>
                           {config.label}
                         </span>
                       </td>
@@ -610,7 +610,7 @@ export default function AnnuairePage() {
                       <td className="px-2 py-2 flex gap-1">
                         <button
                           onClick={() => setEditingRule({ ...rule })}
-                          className="text-indigo-500 hover:text-indigo-700 text-[10px]"
+                          className="text-indigo-500 hover:text-indigo-700 text-xs"
                         >
                           Modifier
                         </button>
@@ -672,14 +672,14 @@ export default function AnnuairePage() {
                 return (
                   <tr key={`${entry.source}-${entry.id}`} className="border-b border-gray-50 hover:bg-indigo-50 cursor-pointer transition-colors" onClick={handleClick}>
                     <td className="px-2 py-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium border inline-flex items-center gap-1 ${config.color}`}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium border inline-flex items-center gap-1 ${config.color}`}>
                         <Icon className="w-3 h-3" />
                         {config.label}
                       </span>
                     </td>
                     <td className="px-2 py-2">
                       <p className="font-medium text-indigo-700 hover:text-indigo-900">{entry.nom}</p>
-                      <p className="text-[10px] text-gray-400">{entry.type_etablissement}</p>
+                      <p className="text-xs text-gray-400">{entry.type_etablissement}</p>
                     </td>
                     <td className="px-2 py-2 text-gray-600">
                       {entry.ville}
@@ -687,8 +687,8 @@ export default function AnnuairePage() {
                     </td>
                     <td className="px-2 py-2 text-gray-600">{entry.departement}</td>
                     <td className="px-2 py-2 text-gray-600">{entry.telephone}</td>
-                    <td className="px-2 py-2 text-gray-400 font-mono text-[10px]">{entry.siret}</td>
-                    <td className="px-2 py-2 text-[10px] text-gray-500">
+                    <td className="px-2 py-2 text-gray-400 font-mono text-xs">{entry.siret}</td>
+                    <td className="px-2 py-2 text-xs text-gray-500">
                       {(() => {
                         const comm = state.commerciaux.find(c => c.id === entry.commercial_id);
                         return comm ? `${comm.prenom} ${comm.nom?.charAt(0)}.` : '';
@@ -696,13 +696,13 @@ export default function AnnuairePage() {
                     </td>
                     <td className="px-2 py-2">
                       {entry.etape_pipeline && (
-                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
+                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
                           {entry.etape_pipeline}
                         </span>
                       )}
                     </td>
                     <td className="px-2 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${
                         entry.source === 'client' ? 'bg-green-100 text-green-700' : 'bg-sky-100 text-sky-700'
                       }`}>
                         {entry.source === 'client' ? 'Client' : 'Prospect'}

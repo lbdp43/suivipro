@@ -46,7 +46,7 @@ export default function CarteFiche({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Où c'est</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Où c'est</p>
         <div className="flex items-center gap-2">
         {appelerAutour && localise && (
           <BoutonAppelerAutour points={[{ lat: Number(latitude), lon: Number(longitude) }]} compact />
@@ -56,7 +56,7 @@ export default function CarteFiche({
             href={lienMaps}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5"
+            className="text-xs text-blue-600 hover:underline flex items-center gap-0.5"
           >
             Itinéraire <ExternalLink className="w-3 h-3" />
           </a>
@@ -70,7 +70,7 @@ export default function CarteFiche({
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center">
           <MapPin className="w-4 h-4 text-gray-300 mx-auto mb-1" />
           <p className="text-xs text-gray-500">Pas encore situé sur la carte</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">
+          <p className="text-xs text-gray-400 mt-0.5">
             {adresse ? 'L’adresse n’a pas pu être localisée.' : 'Renseignez une adresse pour la voir ici.'}
           </p>
         </div>
@@ -100,7 +100,7 @@ export default function CarteFiche({
                 : <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />}
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-gray-900 truncate">{v.nom}</p>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-xs text-gray-500">
                   {v.genre === 'rdv'
                     ? <>RDV {formatDate(v.date || '')}{v.heure ? ` à ${v.heure}` : ''}{v.qui ? ` · ${v.qui}` : ''}</>
                     : <>Visite en retard{v.jours ? ` de ${v.jours} j` : ''}</>}
@@ -110,7 +110,7 @@ export default function CarteFiche({
             </div>
           ))}
           {voisins.length > montres.length && (
-            <p className="text-[11px] text-gray-400 px-2.5 py-1.5">
+            <p className="text-xs text-gray-400 px-2.5 py-1.5">
               +{voisins.length - montres.length} autre{voisins.length - montres.length > 1 ? 's' : ''} dans le secteur
             </p>
           )}

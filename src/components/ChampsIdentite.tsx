@@ -76,7 +76,7 @@ export default function ChampsIdentite({ valeurs, onChange, compact = false }: P
             onChange={e => majSiret(e.target.value)}
             placeholder="Établissement"
           />
-          {alerteSiret && <p className="text-[11px] text-amber-600 mt-0.5">{alerteSiret}</p>}
+          {alerteSiret && <p className="text-xs text-amber-600 mt-0.5">{alerteSiret}</p>}
         </div>
         <div>
           <label className={LABEL}>SIREN <span className="font-normal text-gray-400">9 chiffres</span></label>
@@ -87,7 +87,7 @@ export default function ChampsIdentite({ valeurs, onChange, compact = false }: P
             onChange={e => onChange({ siren: e.target.value })}
             placeholder="Entreprise"
           />
-          {alerteSiren && <p className="text-[11px] text-amber-600 mt-0.5">{alerteSiren}</p>}
+          {alerteSiren && <p className="text-xs text-amber-600 mt-0.5">{alerteSiren}</p>}
         </div>
       </div>
 

@@ -806,18 +806,18 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-emerald-200 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-emerald-100 p-1.5 rounded-lg"><Euro className="w-3.5 h-3.5 text-emerald-600" /></div>
-            <p className="text-[10px] text-gray-500">CA ce mois (HT)</p>
+            <p className="text-xs text-gray-500">CA ce mois (HT)</p>
           </div>
           <div className="flex items-baseline gap-1.5 flex-wrap">
             <p className="text-2xl font-bold text-gray-900">{caStats.caHt.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
             {caStats.evolution !== null && (
-              <span className={`text-[11px] font-semibold ${caStats.evolution >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <span className={`text-xs font-semibold ${caStats.evolution >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {caStats.evolution >= 0 ? '+' : ''}{caStats.evolution}%
               </span>
             )}
           </div>
-          <p className="text-[10px] text-gray-400">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
-          <p className="text-[10px] text-gray-400">
+          <p className="text-xs text-gray-400">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
+          <p className="text-xs text-gray-400">
             Mois prec. {caStats.caHtPrecedent.toFixed(0)} EUR HT
             {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulée(s) exclue(s)`}
           </p>
@@ -825,42 +825,42 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-indigo-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-indigo-100 p-1.5 rounded-lg"><Building2 className="w-3.5 h-3.5 text-indigo-600" /></div>
-            <p className="text-[10px] text-gray-500">Prospects actifs</p>
+            <p className="text-xs text-gray-500">Prospects actifs</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.activeProspects}</p>
-          <p className="text-[10px] text-gray-400">{stats.totalProspects} total</p>
+          <p className="text-xs text-gray-400">{stats.totalProspects} total</p>
         </div>
         <div className="bg-white rounded-xl border border-green-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-green-100 p-1.5 rounded-lg"><Phone className="w-3.5 h-3.5 text-green-600" /></div>
-            <p className="text-[10px] text-gray-500">Appels</p>
+            <p className="text-xs text-gray-500">Appels</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.callsToday}</p>
-          <p className="text-[10px] text-gray-400">{stats.callsWeek} sem. / {stats.callsMonth} mois</p>
+          <p className="text-xs text-gray-400">{stats.callsWeek} sem. / {stats.callsMonth} mois</p>
         </div>
         <div className="bg-white rounded-xl border border-blue-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-blue-100 p-1.5 rounded-lg"><Calendar className="w-3.5 h-3.5 text-blue-600" /></div>
-            <p className="text-[10px] text-gray-500">RDV pris ce mois</p>
+            <p className="text-xs text-gray-500">RDV pris ce mois</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.rdvPrisMois}</p>
-          <p className="text-[10px] text-gray-400">{stats.rdvPrisSemaine} cette semaine · {stats.rdvWeek} a tenir</p>
+          <p className="text-xs text-gray-400">{stats.rdvPrisSemaine} cette semaine · {stats.rdvWeek} a tenir</p>
         </div>
         <div className="bg-white rounded-xl border border-amber-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-amber-100 p-1.5 rounded-lg"><Clock className="w-3.5 h-3.5 text-amber-600" /></div>
-            <p className="text-[10px] text-gray-500">Taux réponse</p>
+            <p className="text-xs text-gray-500">Taux réponse</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.responseRate}%</p>
-          <p className="text-[10px] text-gray-400">Duree moy. {formatDuration(stats.avgDuration)}</p>
+          <p className="text-xs text-gray-400">Duree moy. {formatDuration(stats.avgDuration)}</p>
         </div>
         <div className="bg-white rounded-xl border border-teal-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-teal-100 p-1.5 rounded-lg"><ShoppingCart className="w-3.5 h-3.5 text-teal-600" /></div>
-            <p className="text-[10px] text-gray-500">Panier moyen</p>
+            <p className="text-xs text-gray-500">Panier moyen</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{caStats.panierMoyen.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
-          <p className="text-[10px] text-gray-400">HT, sur {caStats.nbCommandes} commande(s) du mois</p>
+          <p className="text-xs text-gray-400">HT, sur {caStats.nbCommandes} commande(s) du mois</p>
         </div>
       </div>
 
@@ -889,23 +889,23 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className={`rounded-lg p-3 text-center ${visitHealth.lateCount > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
             <p className={`text-2xl font-bold ${visitHealth.lateCount > 0 ? 'text-red-700' : 'text-green-700'}`}>{visitHealth.lateCount}</p>
-            <p className={`text-[10px] mt-0.5 ${visitHealth.lateCount > 0 ? 'text-red-600' : 'text-green-600'}`}>En retard</p>
+            <p className={`text-xs mt-0.5 ${visitHealth.lateCount > 0 ? 'text-red-600' : 'text-green-600'}`}>En retard</p>
           </div>
           <div className="bg-orange-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-orange-700">{visitHealth.todayCount}</p>
-            <p className="text-[10px] text-orange-600 mt-0.5">Aujourd'hui</p>
+            <p className="text-xs text-orange-600 mt-0.5">Aujourd'hui</p>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-blue-700">{visitHealth.weekCount}</p>
-            <p className="text-[10px] text-blue-600 mt-0.5">Cette semaine</p>
+            <p className="text-xs text-blue-600 mt-0.5">Cette semaine</p>
           </div>
           <div className={`rounded-lg p-3 text-center ${visitHealth.coverageRate >= 80 ? 'bg-green-50' : visitHealth.coverageRate >= 50 ? 'bg-amber-50' : 'bg-red-50'}`}>
             <p className={`text-2xl font-bold ${visitHealth.coverageRate >= 80 ? 'text-green-700' : visitHealth.coverageRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>{visitHealth.coverageRate}%</p>
-            <p className="text-[10px] text-gray-600 mt-0.5">Couverture</p>
+            <p className="text-xs text-gray-600 mt-0.5">Couverture</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-gray-700">{visitHealth.avgDelay > 0 ? `${visitHealth.avgDelay}j` : '0j'}</p>
-            <p className="text-[10px] text-gray-600 mt-0.5">Retard moyen</p>
+            <p className="text-xs text-gray-600 mt-0.5">Retard moyen</p>
           </div>
         </div>
       </div>
@@ -955,7 +955,7 @@ export default function DashboardPage() {
                   <p className="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">{prod.nom}</p>
                   <div className="text-right">
                     <p className="text-sm font-bold text-teal-700">{prod.quantite}</p>
-                    <p className="text-[10px] text-gray-500">{prod.ca.toFixed(0)} EUR</p>
+                    <p className="text-xs text-gray-500">{prod.ca.toFixed(0)} EUR</p>
                   </div>
                 </div>
               ))}
@@ -991,18 +991,18 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-green-50 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-green-700">{funnelData.convertedThisMonth}</p>
-              <p className="text-[10px] text-green-600 mt-0.5">Convertis ce mois</p>
+              <p className="text-xs text-green-600 mt-0.5">Convertis ce mois</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-gray-700">{funnelData.convertedLastMonth}</p>
-              <p className="text-[10px] text-gray-600 mt-0.5">Convertis mois prec.</p>
+              <p className="text-xs text-gray-600 mt-0.5">Convertis mois prec.</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
               <p className="text-sm font-semibold text-amber-800">{funnelData.stagnantCount} prospects stagnants</p>
-              <p className="text-[10px] text-amber-600">Sans activite depuis plus de 14 jours sur {funnelData.totalActive} actifs</p>
+              <p className="text-xs text-amber-600">Sans activite depuis plus de 14 jours sur {funnelData.totalActive} actifs</p>
             </div>
           </div>
         </div>
@@ -1043,7 +1043,7 @@ export default function DashboardPage() {
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'}`}>{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{item.client.nom}</p>
-                    <p className="text-[10px] text-gray-500">{item.client.ville} - {item.orderCount} commandes</p>
+                    <p className="text-xs text-gray-500">{item.client.ville} - {item.orderCount} commandes</p>
                   </div>
                   <p className="text-sm font-bold text-emerald-700">{item.totalCA.toFixed(0)} EUR</p>
                 </div>
@@ -1090,7 +1090,7 @@ export default function DashboardPage() {
                 <div key={cmd.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900">#{cmd.numero || '—'} - {cmd.clientName}</p>
-                    <p className="text-[10px] text-gray-500">{cmd.date_commande ? formatDate(cmd.date_commande) : '—'}</p>
+                    <p className="text-xs text-gray-500">{cmd.date_commande ? formatDate(cmd.date_commande) : '—'}</p>
                   </div>
                   <p className="text-sm font-bold text-emerald-700 ml-3">{(cmd.montant_ttc || 0).toFixed(0)} EUR</p>
                 </div>
@@ -1113,7 +1113,7 @@ export default function DashboardPage() {
                 <div key={item.client.id} className="flex items-center justify-between p-2 bg-orange-50 rounded-lg">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900 truncate">{item.client.nom}</p>
-                    <p className="text-[10px] text-gray-500">{item.client.ville} - Derniere cmd: {item.lastOrderDate ? formatDate(item.lastOrderDate) : '—'}</p>
+                    <p className="text-xs text-gray-500">{item.client.ville} - Derniere cmd: {item.lastOrderDate ? formatDate(item.lastOrderDate) : '—'}</p>
                   </div>
                   <p className="text-xs text-orange-600 font-medium ml-2">{item.totalCA.toFixed(0)} EUR total</p>
                 </div>
@@ -1190,7 +1190,7 @@ export default function DashboardPage() {
                 <div key={s.stage} className="text-center p-3 rounded-lg bg-gray-50">
                   <div className="pipeline-dot mx-auto mb-2" style={{ backgroundColor: s.color }} />
                   <p className="text-2xl font-bold text-gray-900">{s.count}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">{s.label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
                 </div>
               ))}
             </div>
@@ -1220,7 +1220,7 @@ export default function DashboardPage() {
                 <button onClick={() => setCrFilterResult('')}
                   className={`rounded-lg p-2 text-center transition-all cursor-pointer ${crFilterResult === '' ? 'bg-indigo-50 text-indigo-700 ring-2 ring-indigo-400' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
                   <p className="text-lg font-bold">{compteRenduStats.total}</p>
-                  <p className="text-[9px] leading-tight">Tous</p>
+                  <p className="text-xs leading-tight">Tous</p>
                 </button>
                 {Object.entries(APPOINTMENT_RESULT_LABELS).map(([key, label]) => {
                   const count = compteRenduStats.byResult[key] || 0;
@@ -1231,7 +1231,7 @@ export default function DashboardPage() {
                     <button key={key} onClick={() => setCrFilterResult(isActive ? '' : key)}
                       className={`${colorMap[key] || 'bg-gray-50 text-gray-700'} rounded-lg p-2 text-center transition-all cursor-pointer hover:opacity-80 ${isActive ? `ring-2 ${ringMap[key] || 'ring-gray-400'}` : ''}`}>
                       <p className="text-lg font-bold">{count}</p>
-                      <p className="text-[9px] leading-tight">{label}</p>
+                      <p className="text-xs leading-tight">{label}</p>
                     </button>
                   );
                 })}
@@ -1250,11 +1250,11 @@ export default function DashboardPage() {
                           <Link to={`/prospects?id=${cr.prospect_id}`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline truncate" onClick={e => e.stopPropagation()}>
                             {cr.prospectName}
                           </Link>
-                          {cr.contactName && <span className="text-[10px] text-gray-500">({cr.contactName})</span>}
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>{APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}</span>
+                          {cr.contactName && <span className="text-xs text-gray-500">({cr.contactName})</span>}
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>{APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}</span>
                         </div>
-                        <p className="text-[10px] text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
-                        {cr.notes_compte_rendu && <p className="text-[10px] text-gray-400 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
+                        <p className="text-xs text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
+                        {cr.notes_compte_rendu && <p className="text-xs text-gray-400 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
                       </div>
                     </div>
                   );
@@ -1288,21 +1288,21 @@ export default function DashboardPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-sm text-gray-900">{ua.user.prenom} {ua.user.nom}</p>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{ROLE_LABELS[ua.user.role] || ua.user.role}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{ROLE_LABELS[ua.user.role] || ua.user.role}</span>
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <span className="text-[10px] text-green-600 flex items-center gap-0.5"><Phone className="w-3 h-3" /> {ua.periodCalls} appels</span>
+                          <span className="text-xs text-green-600 flex items-center gap-0.5"><Phone className="w-3 h-3" /> {ua.periodCalls} appels</span>
                           {isProspection ? (
-                            <span className="text-[10px] text-purple-600 flex items-center gap-0.5"><UserCheck className="w-3 h-3" /> {ua.periodProspectsCreated} prospects</span>
+                            <span className="text-xs text-purple-600 flex items-center gap-0.5"><UserCheck className="w-3 h-3" /> {ua.periodProspectsCreated} prospects</span>
                           ) : (
                             <>
-                              <span className="text-[10px] text-blue-600 flex items-center gap-0.5"><Calendar className="w-3 h-3" /> {ua.periodRdv} RDV</span>
-                              <span className="text-[10px] text-indigo-600 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {ua.periodVisites} visites</span>
+                              <span className="text-xs text-blue-600 flex items-center gap-0.5"><Calendar className="w-3 h-3" /> {ua.periodRdv} RDV</span>
+                              <span className="text-xs text-indigo-600 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {ua.periodVisites} visites</span>
                             </>
                           )}
-                          {isAdmin && ua.periodCA > 0 && <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><Euro className="w-3 h-3" /> {ua.periodCA.toFixed(0)} EUR</span>}
+                          {isAdmin && ua.periodCA > 0 && <span className="text-xs text-emerald-600 flex items-center gap-0.5"><Euro className="w-3 h-3" /> {ua.periodCA.toFixed(0)} EUR</span>}
                           {isAdmin && (ua.clientsOnTime + ua.clientsLate) > 0 && (
-                            <span className={`text-[10px] flex items-center gap-0.5 ${ua.clientsLate > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            <span className={`text-xs flex items-center gap-0.5 ${ua.clientsLate > 0 ? 'text-red-600' : 'text-green-600'}`}>
                               <UserCheck className="w-3 h-3" /> {ua.clientsOnTime}/{ua.clientsOnTime + ua.clientsLate} visites OK
                             </span>
                           )}
@@ -1310,7 +1310,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-lg font-bold text-gray-900">{ua.score}</p>
-                        <p className="text-[10px] text-gray-400">score</p>
+                        <p className="text-xs text-gray-400">score</p>
                       </div>
                     </div>
                   </div>
@@ -1373,7 +1373,7 @@ export default function DashboardPage() {
                       if (prev === undefined) return null;
                       const diff = current - prev;
                       if (diff === 0) return null;
-                      return <span className={`text-[9px] ml-0.5 ${diff > 0 ? 'text-green-500' : 'text-red-500'}`}>{diff > 0 ? '+' : ''}{diff}</span>;
+                      return <span className={`text-xs ml-0.5 ${diff > 0 ? 'text-green-500' : 'text-red-500'}`}>{diff > 0 ? '+' : ''}{diff}</span>;
                     };
                     return (
                       <tr key={ua.user.id} className="border-b border-gray-100 last:border-0">
@@ -1382,7 +1382,7 @@ export default function DashboardPage() {
                             <div className="w-8 h-8 rounded-full bg-brewery-100 flex items-center justify-center text-xs font-bold text-brewery-700">{ua.user.prenom[0]}{ua.user.nom[0]}</div>
                             <div>
                               <p className="font-medium text-gray-900 text-sm">{ua.user.prenom} {ua.user.nom}</p>
-                              <p className="text-[10px] text-gray-500">{ROLE_LABELS[ua.user.role] || ua.user.role}</p>
+                              <p className="text-xs text-gray-500">{ROLE_LABELS[ua.user.role] || ua.user.role}</p>
                             </div>
                           </div>
                         </td>
@@ -1400,7 +1400,7 @@ export default function DashboardPage() {
                         <td className="text-center py-3 px-2 font-semibold text-blue-600">{ua.periodRdv}{diffBadge(ua.periodRdv, cmp?.periodRdv)}</td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodRdvTaken > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{ua.periodRdvTaken}</span></td>
                         <td className="text-center py-3 px-2">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.responseRate >= 60 ? 'bg-green-100 text-green-700' : ua.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.responseRate}%{diffBadge(ua.responseRate, cmp?.responseRate)}</span>
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${ua.responseRate >= 60 ? 'bg-green-100 text-green-700' : ua.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.responseRate}%{diffBadge(ua.responseRate, cmp?.responseRate)}</span>
                         </td>
                         <td className="text-center py-3 px-2 text-gray-600 text-xs">{formatDuration(ua.avgDuration)}</td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.periodVisites > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>{ua.periodVisites}</span></td>
@@ -1410,11 +1410,11 @@ export default function DashboardPage() {
                         {isAdmin && (
                         <td className="text-center py-3 px-2">
                           {ua.coverageRate >= 0 ? (
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${ua.coverageRate >= 80 ? 'bg-green-100 text-green-700' : ua.coverageRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.coverageRate}%</span>
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${ua.coverageRate >= 80 ? 'bg-green-100 text-green-700' : ua.coverageRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{ua.coverageRate}%</span>
                           ) : <span className="text-gray-400">—</span>}
                         </td>
                         )}
-                        <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-[10px] text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
+                        <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-xs text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.wonProspects > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.wonProspects}{diffBadge(ua.wonProspects, cmp?.wonProspects)}</span></td>
                       </tr>
                     );
@@ -1446,23 +1446,23 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
               <div className="bg-green-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-green-700">{monthlyHistory.totalCalls}</p>
-                <p className="text-[10px] text-green-600 mt-0.5">Appels total</p>
+                <p className="text-xs text-green-600 mt-0.5">Appels total</p>
               </div>
               <div className="bg-amber-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-amber-700">{monthlyHistory.totalProspects}</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">Prospects créés</p>
+                <p className="text-xs text-amber-600 mt-0.5">Prospects créés</p>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-blue-700">{monthlyHistory.totalRdv}</p>
-                <p className="text-[10px] text-blue-600 mt-0.5">RDV total</p>
+                <p className="text-xs text-blue-600 mt-0.5">RDV total</p>
               </div>
               <div className="bg-purple-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-purple-700">{monthlyHistory.answered}</p>
-                <p className="text-[10px] text-purple-600 mt-0.5">Repondus</p>
+                <p className="text-xs text-purple-600 mt-0.5">Repondus</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-gray-700">{monthlyHistory.responseRate}%</p>
-                <p className="text-[10px] text-gray-600 mt-0.5">Taux réponse</p>
+                <p className="text-xs text-gray-600 mt-0.5">Taux réponse</p>
               </div>
             </div>
 
@@ -1493,7 +1493,7 @@ export default function DashboardPage() {
                       <td className="text-center py-2 px-2 font-semibold">{week.calls}</td>
                       <td className="text-center py-2 px-2 text-green-600 font-semibold">{week.answered}</td>
                       <td className="text-center py-2 px-2">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${week.responseRate >= 60 ? 'bg-green-100 text-green-700' : week.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{week.responseRate}%</span>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${week.responseRate >= 60 ? 'bg-green-100 text-green-700' : week.responseRate >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{week.responseRate}%</span>
                       </td>
                       <td className="text-center py-2 px-2 text-amber-600 font-semibold">{week.prospects}</td>
                       <td className="text-center py-2 px-2 text-blue-600 font-semibold">{week.rdv}</td>

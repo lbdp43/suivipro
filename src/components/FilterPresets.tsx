@@ -64,7 +64,7 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
       {/* Load preset button */}
       <div className="relative">
         <button
-          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
             showList ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
           }`}
           onClick={() => { setShowList(!showList); setShowSave(false); }}
@@ -72,7 +72,7 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
           <FolderOpen className="w-3 h-3" />
           Presets
           {presets.length > 0 && (
-            <span className={`text-[9px] rounded-full w-4 h-4 flex items-center justify-center ${
+            <span className={`text-xs rounded-full w-4 h-4 flex items-center justify-center ${
               showList ? 'bg-white/20' : 'bg-indigo-200'
             }`}>{presets.length}</span>
           )}
@@ -81,7 +81,7 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
         {showList && (
           <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] max-h-64 overflow-y-auto">
             {presets.length === 0 ? (
-              <p className="p-3 text-[11px] text-gray-400 text-center">Aucun preset enregistré</p>
+              <p className="p-3 text-xs text-gray-400 text-center">Aucun preset enregistré</p>
             ) : (
               presets.map(preset => (
                 <div key={preset.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 group">
@@ -111,7 +111,7 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
           <input
             type="text"
             placeholder="Nom du preset..."
-            className="px-2 py-1 border border-gray-200 rounded-lg text-[11px] w-32"
+            className="px-2 py-1 border border-gray-200 rounded-lg text-xs w-32"
             value={presetName}
             onChange={e => setPresetName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
@@ -133,7 +133,7 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
         </div>
       ) : (
         <button
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
           onClick={() => { setShowSave(true); setShowList(false); }}
         >
           <Save className="w-3 h-3" />

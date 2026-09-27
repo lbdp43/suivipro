@@ -553,7 +553,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   {fiche ? 'Prochain appel' : callActive ? 'Appel en cours' : 'Enregistrer l\'appel'}
                   {session && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Session {session.index + 1} / {session.ids.length}</span>}
                 </h3>
-                <p className="text-sm text-gray-500 mt-0.5">{clientAppele.nom} <span className="text-[10px] text-emerald-600 font-medium">Client</span></p>
+                <p className="text-sm text-gray-500 mt-0.5">{clientAppele.nom} <span className="text-xs text-emerald-600 font-medium">Client</span></p>
               </div>
               <div className="flex items-center gap-1">
                 {session && (
@@ -589,7 +589,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   {callTimer > 0 && <div className="text-center text-sm text-gray-500">Durée de l'appel : <span className="font-mono font-bold text-gray-900">{formatDurationTimer(callTimer)}</span></div>}
                   <div className={saveErrors.includes('issue') ? 'p-2 border border-red-300 rounded-lg bg-red-50/30' : ''}>
                     <label className="block text-xs font-medium text-gray-600 mb-2">Comment ça s'est passé ? <span className="text-red-500">*</span></label>
-                    {saveErrors.includes('issue') && <p className="text-[10px] text-red-500 mb-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Dites comment s'est passé l'appel</p>}
+                    {saveErrors.includes('issue') && <p className="text-xs text-red-500 mb-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Dites comment s'est passé l'appel</p>}
                     <div className="grid grid-cols-2 gap-2">
                       {ISSUES_APPEL_CLIENT.map(i => (
                         <button key={i.value} className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${issueClient === i.value ? (i.value === 'probleme' ? 'border-red-500 bg-red-50 text-red-700' : i.value === 'commande' ? 'border-green-500 bg-green-50 text-green-700' : 'border-brewery-500 bg-brewery-50 text-brewery-700') : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`} onClick={() => choisirIssueClient(i.value)}>
@@ -597,12 +597,12 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         </button>
                       ))}
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse.</p>
+                    <p className="text-xs text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>
                     <textarea className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-brewery-500 ${saveErrors.includes('notes') ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-200'}`} placeholder="Qu'est-ce qui s'est passé pendant l'appel ?" value={callNotes} onChange={e => { setCallNotes(e.target.value); setSaveErrors([]); }} />
-                    {saveErrors.includes('notes') && <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Les notes sont obligatoires</p>}
+                    {saveErrors.includes('notes') && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Les notes sont obligatoires</p>}
                   </div>
                   {tachesDuClient.length > 0 && (
                     <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-1.5">
@@ -611,7 +611,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         <label key={t.id} className="flex items-center gap-2 text-xs text-gray-800">
                           <input type="checkbox" checked={tachesCochees.has(t.id)} onChange={e => setTachesCochees(prev => { const n = new Set(prev); if (e.target.checked) n.add(t.id); else n.delete(t.id); return n; })} />
                           <span className="flex-1 truncate">{t.titre}</span>
-                          {t.date_echeance && <span className="text-[10px] text-gray-500">{formatDate(t.date_echeance)}</span>}
+                          {t.date_echeance && <span className="text-xs text-gray-500">{formatDate(t.date_echeance)}</span>}
                         </label>
                       ))}
                     </div>
@@ -735,7 +735,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       </label>
                       <div className="grid grid-cols-1 gap-2">
                         <div>
-                          <label className="block text-[10px] text-orange-600 mb-0.5">Nom / Prenom du contact</label>
+                          <label className="block text-xs text-orange-600 mb-0.5">Nom / Prenom du contact</label>
                           <input
                             type="text"
                             className={`w-full px-3 py-1.5 border rounded-lg text-sm bg-white ${
@@ -747,7 +747,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-orange-600 mb-0.5 flex items-center gap-1">
+                          <label className="block text-xs text-orange-600 mb-0.5 flex items-center gap-1">
                             <Mail className="w-3 h-3" /> Adresse e-mail
                           </label>
                           <input
@@ -817,12 +817,12 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     </div>
                     {negativeOutcome === 'pas_interesse' && (
                       <>
-                        <p className="text-[10px] text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
+                        <p className="text-xs text-red-500 mt-1 italic">Le prospect sera déplacé dans "Perdu"</p>
                         <SelectRaisonPerte value={raisonPerte} onChange={setRaisonPerte} />
                       </>
                     )}
                     {negativeOutcome === 'ne_pas_contacter' && (
-                      <p className="text-[10px] text-red-600 mt-1 italic">Le prospect sera déplacé dans "Ne pas contacter"</p>
+                      <p className="text-xs text-red-600 mt-1 italic">Le prospect sera déplacé dans "Ne pas contacter"</p>
                     )}
                   </div>
 
@@ -832,7 +832,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       <Tag className="w-3 h-3" /> Tags du prospect <span className="text-red-500">*</span>
                     </label>
                     {saveErrors.includes('tags') && (
-                      <p className="text-[10px] text-red-500 mb-1.5 flex items-center gap-1">
+                      <p className="text-xs text-red-500 mb-1.5 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" /> Au moins un tag est obligatoire
                       </p>
                     )}
@@ -845,7 +845,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           return (
                             <span
                               key={tag.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-white shadow-sm"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-white shadow-sm"
                               style={{ backgroundColor: tag.couleur }}
                             >
                               {tag.nom}
@@ -866,7 +866,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       {availableTags.map(tag => (
                         <button
                           key={tag.id}
-                          className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center gap-1"
                           onClick={() => toggleTag(tag.id)}
                         >
                           <Plus className="w-3 h-3" /> {tag.nom}
@@ -874,7 +874,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       ))}
                       {!showNewTag ? (
                         <button
-                          className="px-2.5 py-1 rounded-full text-[11px] font-medium border border-dashed border-gray-300 text-gray-400 hover:border-brewery-400 hover:text-brewery-600 flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:border-brewery-400 hover:text-brewery-600 flex items-center gap-1"
                           onClick={() => setShowNewTag(true)}
                         >
                           <Plus className="w-3 h-3" /> Nouveau
@@ -883,7 +883,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         <div className="flex items-center gap-1">
                           <input
                             type="text"
-                            className="px-2 py-0.5 border border-gray-300 rounded-full text-[11px] w-24 focus:ring-1 focus:ring-brewery-500"
+                            className="px-2 py-0.5 border border-gray-300 rounded-full text-xs w-24 focus:ring-1 focus:ring-brewery-500"
                             placeholder="Nom du tag..."
                             value={newTagName}
                             onChange={e => setNewTagName(e.target.value)}
@@ -919,7 +919,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       onChange={e => { setCallNotes(e.target.value); setSaveErrors([]); }}
                     />
                     {saveErrors.includes('notes') && (
-                      <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" /> Les notes sont obligatoires
                       </p>
                     )}
@@ -945,7 +945,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       </div>
                       {/* Prospecteur (celui qui prend le RDV) */}
                       <div className="bg-white/60 rounded-lg px-2 py-1.5">
-                        <p className="text-[10px] text-blue-500 mb-0.5">Pris par (prospecteur)</p>
+                        <p className="text-xs text-blue-500 mb-0.5">Pris par (prospecteur)</p>
                         <p className="text-xs font-medium text-blue-800">
                           {state.currentUser?.prenom} {state.currentUser?.nom}
                         </p>
@@ -955,7 +955,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         valeur={{ commercial_id: rdvCommercialId, date: rdvDate, heure_debut: rdvHeureDebut, heure_fin: rdvHeureFin, lieu: rdvLieu, notes: rdvNotes }}
                         onChange={patchRdv}
                       />
-                      <p className="text-[10px] text-blue-500 italic">
+                      <p className="text-xs text-blue-500 italic">
                         Le prospect sera automatiquement déplacé dans "RDV / Gagne"
                       </p>
                     </div>
@@ -989,7 +989,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                       />
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="block text-[10px] text-amber-600 mb-0.5">Date</label>
+                          <label className="block text-xs text-amber-600 mb-0.5">Date</label>
                           <input
                             type="date"
                             className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
@@ -998,7 +998,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                           />
                         </div>
                         <div className="w-24">
-                          <label className="block text-[10px] text-amber-600 mb-0.5">Heure</label>
+                          <label className="block text-xs text-amber-600 mb-0.5">Heure</label>
                           <input
                             type="time"
                             className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white"
@@ -1082,7 +1082,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                   {/* Agenda du jour pour ce commercial */}
                   {dayRdvs.length > 1 && (
                     <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase mb-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
                         Agenda de {rdvCommercial?.prenom} le {formatDate(createdRdv?.date || '')}
                       </p>
                       <div className="space-y-1">
@@ -1096,7 +1096,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                             >
                               <span className="font-mono w-20 flex-shrink-0">{rdv.heure_debut}-{rdv.heure_fin}</span>
                               <span className="truncate">{p?.nom_etablissement || 'RDV'}</span>
-                              {isCurrent && <span className="text-[9px] text-green-600 ml-auto">Nouveau</span>}
+                              {isCurrent && <span className="text-xs text-green-600 ml-auto">Nouveau</span>}
                             </div>
                           );
                         })}

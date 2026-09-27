@@ -197,7 +197,7 @@ export default function Layout() {
             </div>
             <div>
               <h1 className="font-bold text-gray-900 text-sm leading-tight">SuiviPro</h1>
-              <p className="text-[10px] text-gray-500 leading-tight">Brasserie des Plantes</p>
+              <p className="text-xs text-gray-500 leading-tight">Brasserie des Plantes</p>
             </div>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default function Layout() {
             <Bell className="w-5 h-5 flex-shrink-0" />
             <span>Rappels et tâches</span>
             {urgentReminders > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                 {urgentReminders}
               </span>
             )}
@@ -258,7 +258,7 @@ export default function Layout() {
               <div key={groupe.id} className="pt-2">
                 <button
                   onClick={() => toggleSection(groupe.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide rounded-lg transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide rounded-lg transition-colors ${
                     estMonGroupe ? 'text-brewery-700 hover:bg-brewery-50' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
                   }`}
                   aria-expanded={isOpen}
@@ -284,7 +284,7 @@ export default function Layout() {
                         <entree.icon className="w-5 h-5 flex-shrink-0" />
                         <span className="flex-1">{entree.label}</span>
                         {entree.to === '/boite' && aQualifier > 0 && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brewery-600 text-white tabular-nums">{aQualifier}</span>
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-brewery-600 text-white tabular-nums">{aQualifier}</span>
                         )}
                       </NavLink>
                     ))}
@@ -305,7 +305,7 @@ export default function Layout() {
           >
             <Clock className="w-4 h-4 flex-shrink-0" />
             <span>Suivi Horaires</span>
-            <span className="ml-auto text-[10px] text-purple-400">Ouvrir</span>
+            <span className="ml-auto text-xs text-purple-400">Ouvrir</span>
           </a>
           <a
             href="https://labrasseriedesplantes.fr/wp-content/utile/guidecommerciale.html"
@@ -315,7 +315,7 @@ export default function Layout() {
           >
             <BookOpen className="w-4 h-4 flex-shrink-0" />
             <span>Guide Commercial</span>
-            <span className="ml-auto text-[10px] text-emerald-400">Ouvrir</span>
+            <span className="ml-auto text-xs text-emerald-400">Ouvrir</span>
           </a>
           <a
             href="https://scan-docu-production.up.railway.app/"
@@ -325,7 +325,7 @@ export default function Layout() {
           >
             <ScanLine className="w-4 h-4 flex-shrink-0" />
             <span>Scan Docu</span>
-            <span className="ml-auto text-[10px] text-orange-400">Ouvrir</span>
+            <span className="ml-auto text-xs text-orange-400">Ouvrir</span>
           </a>
         </div>
 
@@ -351,7 +351,7 @@ export default function Layout() {
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {state.currentUser?.prenom} {state.currentUser?.nom}
                 </p>
-                <p className="text-[10px] text-gray-500">
+                <p className="text-xs text-gray-500">
                   {libelleRole(state.currentUser)}
                 </p>
               </div>
@@ -423,7 +423,7 @@ export default function Layout() {
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
@@ -465,7 +465,7 @@ export default function Layout() {
                             {n.message && (
                               <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
                             )}
-                            <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+                            <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
                           </div>
                           {!n.read && (
                             <div className="w-2 h-2 bg-brewery-500 rounded-full mt-1.5 flex-shrink-0" />

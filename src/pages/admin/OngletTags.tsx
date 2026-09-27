@@ -131,7 +131,7 @@ export default function OngletTags() {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Points pour le score</label>
                     <input type="number" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={tagForm.points} onChange={e => setTagForm(prev => ({ ...prev, points: parseInt(e.target.value) || 0 }))} />
-                    <p className="text-[11px] text-gray-400 mt-1">Score d'un prospect = 50 + les points de ses tags (positifs ou négatifs), borné de 0 à 100. Un prospect sans tag vaut 50. Tant qu'aucun tag n'a de points, le score reste saisi à la main.</p>
+                    <p className="text-xs text-gray-400 mt-1">Score d'un prospect = 50 + les points de ses tags (positifs ou négatifs), borné de 0 à 100. Un prospect sans tag vaut 50. Tant qu'aucun tag n'a de points, le score reste saisi à la main.</p>
                   </div>
                   <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <span className="badge text-white text-xs" style={{ backgroundColor: tagForm.couleur }}>

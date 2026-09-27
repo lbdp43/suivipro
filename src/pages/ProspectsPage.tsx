@@ -12,7 +12,7 @@ import { useApp } from '../store/AppContext';
 import ChampsIdentite from '../components/ChampsIdentite';
 import { useCallModal } from '../components/CallModal';
 import { PhotosPartagees } from '../components/PhotosSignalement';
-import { ListChecks, ExternalLink } from 'lucide-react';
+import { ListChecks, ExternalLink, Filter } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import EmailTemplateModal from '../components/EmailTemplateModal';
 import CompteRenduModal from '../components/CompteRenduModal';
@@ -39,6 +39,9 @@ import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { estEnZonePrioritaire } from '../utils/zones';
 import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
+import Bouton from '../components/ui/Bouton';
+import { useEcranEtroit } from '../utils/useEcranEtroit';
 import { toast as annonce } from 'sonner';
 
 export default function ProspectsPage() {
@@ -344,6 +347,8 @@ export default function ProspectsPage() {
   const allPostalCodes = useMemo(() => [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort(), [state.prospects]);
   // La saisie reste fluide : le filtrage des milliers de fiches suit un temps après la frappe.
   const rechercheDifferee = useDeferredValue(searchTerm);
+  const etroit = useEcranEtroit();
+  const [filtresOuverts, setFiltresOuverts] = useState(false);
 
   const secteurCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -649,6 +654,15 @@ export default function ProspectsPage() {
                 onChange={e => setSearchTerm(e.target.value)}
               />
             </div>
+            {etroit && (
+              <button
+                className={`relative p-2 rounded-lg transition-colors ${hasActiveFilters ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                onClick={() => setFiltresOuverts(true)}
+                aria-label={hasActiveFilters ? 'Filtres (actifs)' : 'Filtres'}
+              >
+                <Filter className="w-5 h-5" />
+              </button>
+            )}
             <button
               className={`p-2 rounded-lg transition-colors ${
                 selectionMode
@@ -667,9 +681,13 @@ export default function ProspectsPage() {
               <Plus className="w-5 h-5" />
             </button>
           </div>
-          {/* Multi-select dropdown filters */}
-          <div className="flex gap-2 flex-wrap">
-            <MultiSelectDropdown
+          {/* Filtres : sur ordinateur, en ligne ; sur téléphone, dans un tiroir — trois rangées de
+              filtres passaient avant le premier résultat. */}
+          {etroit ? (
+            <Fenetre ouvert={filtresOuverts} onFermer={() => setFiltresOuverts(false)} titre="Filtres" sousTitre={`${filteredProspects.length} prospect(s)`}
+              pied={<><Bouton variante="discret" onClick={clearAllFilters} disabled={!hasActiveFilters}>Tout effacer</Bouton><Bouton variante="principal" onClick={() => setFiltresOuverts(false)}>Voir les {filteredProspects.length} prospect(s)</Bouton></>}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <MultiSelectDropdown enLigne={etroit}
               label="Type"
               options={(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({
                 value: t, label: ESTABLISHMENT_LABELS[t],
@@ -678,7 +696,7 @@ export default function ProspectsPage() {
               onToggle={v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes)}
               color="brewery"
             />
-            <MultiSelectDropdown
+            <MultiSelectDropdown enLigne={etroit}
               label="Étape"
               options={state.pipelineColumns.map(col => ({
                 value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id],
@@ -688,7 +706,7 @@ export default function ProspectsPage() {
               color="blue"
             />
             {allSecteurs.length > 0 && (
-              <MultiSelectDropdown
+              <MultiSelectDropdown enLigne={etroit}
                 label="Secteur"
                 options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
                 selected={filterSecteurs}
@@ -697,7 +715,7 @@ export default function ProspectsPage() {
               />
             )}
             {state.commercialZones.length > 0 && (
-              <MultiSelectDropdown
+              <MultiSelectDropdown enLigne={etroit}
                 label="Zone"
                 options={optionsZones}
                 selected={filterZones}
@@ -706,7 +724,7 @@ export default function ProspectsPage() {
               />
             )}
             {allDepartments.length > 0 && (
-              <MultiSelectDropdown
+              <MultiSelectDropdown enLigne={etroit}
                 label="Dept (CP)"
                 options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
                 selected={filterDepartments}
@@ -715,7 +733,7 @@ export default function ProspectsPage() {
               />
             )}
             {allPostalCodes.length > 0 && (
-              <MultiSelectDropdown
+              <MultiSelectDropdown enLigne={etroit}
                 label="Code postal"
                 options={allPostalCodes.map(c => ({ value: c, label: c }))}
                 selected={filterPostalCodes}
@@ -724,7 +742,7 @@ export default function ProspectsPage() {
               />
             )}
             <select
-              className="px-2 py-1.5 text-[10px] font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
+              className="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
               value={filterCommercial}
               onChange={e => setFilterCommercial(e.target.value)}
             >
@@ -734,7 +752,7 @@ export default function ProspectsPage() {
               ))}
             </select>
             <button
-              className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+              className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
                 filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
               onClick={() => setFilterAvecRdv(!filterAvecRdv)}
@@ -743,7 +761,7 @@ export default function ProspectsPage() {
               <Calendar className="w-3 h-3" /> Avec RDV
             </button>
             <button
-              className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+              className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
                 filterSansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
               onClick={() => setFilterSansNumero(!filterSansNumero)}
@@ -753,7 +771,7 @@ export default function ProspectsPage() {
             </button>
             {hasActiveFilters && (
               <button
-                className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+                className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
                 onClick={clearAllFilters}
               >
                 <X className="w-3 h-3" /> Effacer filtres
@@ -780,35 +798,150 @@ export default function ProspectsPage() {
             />
           </div>
 
+            </Fenetre>
+          ) : (
+          <div className="flex gap-2 flex-wrap">
+            <MultiSelectDropdown enLigne={etroit}
+              label="Type"
+              options={(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({
+                value: t, label: ESTABLISHMENT_LABELS[t],
+              }))}
+              selected={filterTypes}
+              onToggle={v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes)}
+              color="brewery"
+            />
+            <MultiSelectDropdown enLigne={etroit}
+              label="Étape"
+              options={state.pipelineColumns.map(col => ({
+                value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id],
+              }))}
+              selected={filterStages}
+              onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
+              color="blue"
+            />
+            {allSecteurs.length > 0 && (
+              <MultiSelectDropdown enLigne={etroit}
+                label="Secteur"
+                options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
+                selected={filterSecteurs}
+                onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+                color="amber"
+              />
+            )}
+            {state.commercialZones.length > 0 && (
+              <MultiSelectDropdown enLigne={etroit}
+                label="Zone"
+                options={optionsZones}
+                selected={filterZones}
+                onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
+                color="amber"
+              />
+            )}
+            {allDepartments.length > 0 && (
+              <MultiSelectDropdown enLigne={etroit}
+                label="Dept (CP)"
+                options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
+                selected={filterDepartments}
+                onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
+                color="brewery"
+              />
+            )}
+            {allPostalCodes.length > 0 && (
+              <MultiSelectDropdown enLigne={etroit}
+                label="Code postal"
+                options={allPostalCodes.map(c => ({ value: c, label: c }))}
+                selected={filterPostalCodes}
+                onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
+                color="brewery"
+              />
+            )}
+            <select
+              className="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
+              value={filterCommercial}
+              onChange={e => setFilterCommercial(e.target.value)}
+            >
+              <option value="">Tous les commerciaux</option>
+              {state.commerciaux.map(c => (
+                <option key={c.id} value={c.id}>{c.nom}</option>
+              ))}
+            </select>
+            <button
+              className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
+                filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => setFilterAvecRdv(!filterAvecRdv)}
+              title="Filtrer les prospects ayant au moins un RDV"
+            >
+              <Calendar className="w-3 h-3" /> Avec RDV
+            </button>
+            <button
+              className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
+                filterSansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              onClick={() => setFilterSansNumero(!filterSansNumero)}
+              title="Les prospects sans numéro de téléphone, à compléter"
+            >
+              <PhoneOff className="w-3 h-3" /> Sans numéro
+            </button>
+            {hasActiveFilters && (
+              <button
+                className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+                onClick={clearAllFilters}
+              >
+                <X className="w-3 h-3" /> Effacer filtres
+              </button>
+            )}
+            <FilterPresets
+              page="prospects"
+              getCurrentFilters={() => ({
+                types: [...filterTypes],
+                stages: [...filterStages],
+                secteurs: [...filterSecteurs],
+                postalCodes: [...filterPostalCodes],
+                departments: [...filterDepartments],
+                sansNumero: filterSansNumero,
+              })}
+              applyFilters={(f) => {
+                setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
+                setFilterStages(new Set((f.stages as PipelineStage[]) || []));
+                setFilterSecteurs(new Set((f.secteurs as string[]) || []));
+                setFilterPostalCodes(new Set((f.postalCodes as string[]) || []));
+                setFilterDepartments(new Set((f.departments as string[]) || []));
+                setFilterSansNumero(!!f.sansNumero);
+              }}
+            />
+          </div>
+
+          )}
           {/* Active filter chips */}
           {hasActiveFilters && (
             <div className="flex gap-1 flex-wrap">
               {[...filterTypes].map(t => (
-                <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-brewery-100 text-brewery-700">
+                <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-brewery-100 text-brewery-700">
                   {ESTABLISHMENT_LABELS[t]}
                   <button className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterStages].map(s => (
-                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] || '#6b7280' }}>
+                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] || '#6b7280' }}>
                   {state.pipelineColumns.find(c => c.id === s)?.label || PIPELINE_LABELS[s] || s}
                   <button className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterSecteurs].map(s => (
-                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
                   {s}
                   <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterDepartments].map(d => (
-                <span key={d} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                <span key={d} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
                   Dept. {d}
                   <button className="hover:text-indigo-900" onClick={() => toggleFilter(filterDepartments, d, setFilterDepartments)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterPostalCodes].map(c => (
-                <span key={c} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-teal-100 text-teal-700">
+                <span key={c} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
                   {c}
                   <button className="hover:text-teal-900" onClick={() => toggleFilter(filterPostalCodes, c, setFilterPostalCodes)}><X className="w-2.5 h-2.5" /></button>
                 </span>
@@ -817,9 +950,9 @@ export default function ProspectsPage() {
           )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-gray-400">{filteredProspects.length} prospect(s)</p>
+              <p className="text-xs text-gray-400">{filteredProspects.length} prospect(s)</p>
               <select
-                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
+                className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
                 value={pageSize}
                 onChange={e => setPageSize(Number(e.target.value))}
               >
@@ -835,7 +968,7 @@ export default function ProspectsPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <button
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
                   sortDate !== 'none' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
                 onClick={() => {
@@ -848,7 +981,7 @@ export default function ProspectsPage() {
                 Date {sortDate === 'recent' ? '↓' : sortDate === 'ancien' ? '↑' : ''}
               </button>
               <button
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
                   sortScore !== 'none' ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
                 onClick={() => {
@@ -868,18 +1001,18 @@ export default function ProspectsPage() {
         {selectionMode && (
           <div className="px-4 py-2 bg-brewery-50 border-b border-brewery-200 flex items-center gap-2">
             <button
-              className="text-[10px] font-medium text-brewery-700 hover:text-brewery-900 underline"
+              className="text-xs font-medium text-brewery-700 hover:text-brewery-900 underline"
               onClick={selectedIds.size === filteredProspects.length ? deselectAll : selectAll}
             >
               {selectedIds.size === filteredProspects.length ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
-            <span className="text-[10px] text-brewery-600 ml-auto">
+            <span className="text-xs text-brewery-600 ml-auto">
               {selectedIds.size} selectionne(s)
             </span>
             {selectedIds.size > 0 && (
               <>
                 <button
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-600 text-white text-[10px] font-semibold hover:bg-purple-700 disabled:opacity-50"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50"
                   onClick={() => ajouterALaSessionDuJour(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
                   disabled={sessionEnCours}
                   title="Garder ces prospects comme ma session d'appel d'aujourd'hui (à reprendre depuis l'accueil)"
@@ -887,7 +1020,7 @@ export default function ProspectsPage() {
                   <ListChecks className="w-3 h-3" /> Ajouter à ma session du jour{maSession.session ? ` (+${selectedIds.size})` : ` (${selectedIds.size})`}
                 </button>
                 <button
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-[10px] font-semibold hover:bg-brewery-700"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700"
                   onClick={() => startSession(filteredProspects.filter(p => selectedIds.has(p.id)).map(p => p.id))}
                   title="Appeler les prospects sélectionnés l'un après l'autre, tout de suite"
                 >
@@ -927,30 +1060,30 @@ export default function ProspectsPage() {
                 )}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-sm text-gray-900 truncate">{p.nom_etablissement}</h3>
-                  <p className="text-[10px] text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
-                  <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
+                  <p className="text-xs text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
+                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
                     <MapPin className="w-3 h-3" /> {p.ville || p.adresse}{p.secteur ? ` - ${p.secteur}` : ''}
                   </div>
                   {p.notes && (
-                    <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 italic">{p.notes}</p>
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2 italic">{p.notes}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
-                      className="text-[9px] text-white px-1.5 py-0.5 rounded-full font-medium"
+                      className="text-xs text-white px-1.5 py-0.5 rounded-full font-medium"
                       style={{ backgroundColor: getStageInfo(p.etape_pipeline).color }}
                     >
                       {getStageInfo(p.etape_pipeline).label}
                     </span>
-                    <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
                       {p.score}pts
                     </span>
                     {estEnZonePrioritaire(state, p) && (
-                      <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium" title="Dans une zone prioritaire pour la prospection">★ Zone prioritaire</span>
+                      <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium" title="Dans une zone prioritaire pour la prospection">★ Zone prioritaire</span>
                     )}
                     {p.tags.slice(0, 2).map(tagId => {
                       const tag = state.tags.find(t => t.id === tagId);
                       return tag ? (
-                        <span key={tagId} className="text-[9px] text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: tag.couleur }}>
+                        <span key={tagId} className="text-xs text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: tag.couleur }}>
                           {tag.nom}
                         </span>
                       ) : null;
@@ -1024,17 +1157,17 @@ export default function ProspectsPage() {
         {totalPages > 1 && (
           <div className="px-4 py-2 border-t border-gray-200 bg-white flex items-center justify-between">
             <button
-              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setCurrentPage(p => p - 1)}
               disabled={currentPage === 0}
             >
               <ChevronLeft className="w-3.5 h-3.5" /> Prec.
             </button>
-            <p className="text-[10px] text-gray-500">
+            <p className="text-xs text-gray-500">
               {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, filteredProspects.length)} sur {filteredProspects.length}
             </p>
             <button
-              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
               onClick={() => setCurrentPage(p => p + 1)}
               disabled={currentPage >= totalPages - 1}
             >
@@ -1049,25 +1182,25 @@ export default function ProspectsPage() {
             {showBulkAction === 'none' && (
               <div className="flex flex-wrap gap-1.5">
                 <button
-                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
+                  className="flex-1 px-3 py-2 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
                   onClick={() => setShowBulkAction('etape')}
                 >
                   Changer étape
                 </button>
                 <button
-                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+                  className="flex-1 px-3 py-2 text-xs font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
                   onClick={() => setShowBulkAction('secteur')}
                 >
                   Changer secteur
                 </button>
                 <button
-                  className="flex-1 px-3 py-2 text-[11px] font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+                  className="flex-1 px-3 py-2 text-xs font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
                   onClick={() => setShowBulkAction('tags')}
                 >
                   Gérer tags
                 </button>
                 <button
-                  className="px-3 py-2 text-[11px] font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                  className="px-3 py-2 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
                   onClick={bulkDelete}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1079,7 +1212,7 @@ export default function ProspectsPage() {
             {showBulkAction === 'etape' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-medium text-gray-700">Changer etape ({selectedIds.size} prospects)</p>
+                  <p className="text-xs font-medium text-gray-700">Changer etape ({selectedIds.size} prospects)</p>
                   <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
                     <X className="w-4 h-4" />
                   </button>
@@ -1088,7 +1221,7 @@ export default function ProspectsPage() {
                   {state.pipelineColumns.map(col => (
                     <button
                       key={col.id}
-                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white transition-opacity hover:opacity-80"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-80"
                       style={{ backgroundColor: col.color }}
                       onClick={() => bulkChangeStage(col.id)}
                     >
@@ -1103,7 +1236,7 @@ export default function ProspectsPage() {
             {showBulkAction === 'secteur' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-medium text-gray-700">Changer secteur ({selectedIds.size} prospects)</p>
+                  <p className="text-xs font-medium text-gray-700">Changer secteur ({selectedIds.size} prospects)</p>
                   <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
                     <X className="w-4 h-4" />
                   </button>
@@ -1138,7 +1271,7 @@ export default function ProspectsPage() {
             {showBulkAction === 'tags' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-medium text-gray-700">Gerer tags ({selectedIds.size} prospects)</p>
+                  <p className="text-xs font-medium text-gray-700">Gerer tags ({selectedIds.size} prospects)</p>
                   <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
                     <X className="w-4 h-4" />
                   </button>
@@ -1156,7 +1289,7 @@ export default function ProspectsPage() {
                     return (
                       <button
                         key={tag.id}
-                        className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium transition-colors border-2 ${
+                        className={`px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors border-2 ${
                           allHave
                             ? 'text-white border-transparent'
                             : someHave
@@ -1173,7 +1306,7 @@ export default function ProspectsPage() {
                   })}
                 </div>
                 <button
-                  className="w-full px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  className="w-full px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
                   onClick={() => setShowBulkAction('none')}
                 >
                   Terminé
@@ -1227,7 +1360,7 @@ export default function ProspectsPage() {
                     </button>
                   )}
                   {alreadyConvertedIds.has(selectedProspect.id) && (
-                    <span className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-medium flex items-center gap-1">
+                    <span className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium flex items-center gap-1">
                       <Building2 className="w-3.5 h-3.5" /> Client
                     </span>
                   )}
@@ -1317,7 +1450,7 @@ export default function ProspectsPage() {
                 </div>
               )}
 
-              <div className="mt-3 text-[10px] text-gray-400">
+              <div className="mt-3 text-xs text-gray-400">
                 Cree le {formatDate(selectedProspect.date_creation)} - Modifie {formatTimeAgo(selectedProspect.date_modification)}
               </div>
             </div>
@@ -1490,10 +1623,10 @@ export default function ProspectsPage() {
             <div className="p-4 space-y-3">
               <div className="bg-gray-50 rounded-lg p-2">
                 <p className="text-xs font-medium text-gray-700">{reminderProspect.nom_etablissement}</p>
-                <p className="text-[10px] text-gray-500">{reminderProspect.nom_contact}</p>
+                <p className="text-xs text-gray-500">{reminderProspect.nom_contact}</p>
               </div>
               <div>
-                <label className="block text-[10px] font-medium text-gray-600 mb-1">Message du rappel *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Message du rappel *</label>
                 <input
                   type="text"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
@@ -1505,7 +1638,7 @@ export default function ProspectsPage() {
               </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="block text-[10px] font-medium text-gray-600 mb-1">Date</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
                   <input
                     type="date"
                     className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
@@ -1514,7 +1647,7 @@ export default function ProspectsPage() {
                   />
                 </div>
                 <div className="w-24">
-                  <label className="block text-[10px] font-medium text-gray-600 mb-1">Heure</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Heure</label>
                   <input
                     type="time"
                     className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
@@ -1534,7 +1667,7 @@ export default function ProspectsPage() {
                 ].map(shortcut => (
                   <button
                     key={shortcut.days}
-                    className="px-2 py-1 rounded text-[10px] bg-gray-100 text-gray-600 hover:bg-orange-100 hover:text-orange-700 transition-colors"
+                    className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 hover:bg-orange-100 hover:text-orange-700 transition-colors"
                     onClick={() => {
                       const d = new Date();
                       d.setDate(d.getDate() + shortcut.days);
@@ -1679,11 +1812,11 @@ export default function ProspectsPage() {
                           <span className="font-medium">{dup.nom_etablissement}</span>
                           {dup.telephone && <span className="text-gray-500 ml-2">{dup.telephone}</span>}
                           {dup.ville && <span className="text-gray-400 ml-1">({dup.ville})</span>}
-                          <span className="ml-1.5 text-[10px] text-amber-600 font-medium">Prospect</span>
+                          <span className="ml-1.5 text-xs text-amber-600 font-medium">Prospect</span>
                         </div>
                         <button
                           type="button"
-                          className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
+                          className="text-xs text-brewery-600 hover:text-brewery-800 font-medium whitespace-nowrap ml-2"
                           onClick={() => { setShowForm(false); setSearchParams({ id: dup.id }); }}
                         >
                           Voir →
@@ -1696,12 +1829,12 @@ export default function ProspectsPage() {
                           <span className="font-medium">{c.nom}</span>
                           {c.telephone && <span className="text-gray-500 ml-2">{c.telephone}</span>}
                           {c.ville && <span className="text-gray-400 ml-1">({c.ville})</span>}
-                          <span className="ml-1.5 text-[10px] text-orange-600 font-medium">Client existant</span>
+                          <span className="ml-1.5 text-xs text-orange-600 font-medium">Client existant</span>
                         </div>
                       </div>
                     ))}
                     {(liveDuplicates.length + liveClientDuplicates.length) > 5 && (
-                      <p className="text-[10px] text-amber-600">+ {liveDuplicates.length + liveClientDuplicates.length - 5} autre(s)...</p>
+                      <p className="text-xs text-amber-600">+ {liveDuplicates.length + liveClientDuplicates.length - 5} autre(s)...</p>
                     )}
                   </div>
                   <button
@@ -1786,7 +1919,7 @@ export default function ProspectsPage() {
                   <label className="block text-xs font-medium text-gray-600">Tags</label>
                   <button
                     type="button"
-                    className="text-[10px] text-brewery-600 hover:text-brewery-800 font-medium flex items-center gap-0.5"
+                    className="text-xs text-brewery-600 hover:text-brewery-800 font-medium flex items-center gap-0.5"
                     onClick={() => { setShowTagManager(!showTagManager); setEditingTag(null); setNewTagName(''); }}
                   >
                     <Settings className="w-3 h-3" /> Gérer les tags
@@ -1799,7 +1932,7 @@ export default function ProspectsPage() {
                     <button
                       key={tag.id}
                       type="button"
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                         (formData.tags || []).includes(tag.id) ? 'text-white' : 'bg-gray-100 text-gray-600'
                       }`}
                       style={(formData.tags || []).includes(tag.id) ? { backgroundColor: tag.couleur } : {}}
@@ -1815,14 +1948,14 @@ export default function ProspectsPage() {
                     </button>
                   ))}
                   {state.tags.length === 0 && (
-                    <p className="text-[10px] text-gray-400">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
+                    <p className="text-xs text-gray-400">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
                   )}
                 </div>
 
                 {/* Tag manager panel */}
                 {showTagManager && (
                   <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
-                    <p className="text-[11px] font-semibold text-gray-700">{editingTag ? 'Modifier le tag' : 'Créer un nouveau tag'}</p>
+                    <p className="text-xs font-semibold text-gray-700">{editingTag ? 'Modifier le tag' : 'Créer un nouveau tag'}</p>
 
                     {/* New/Edit tag form */}
                     <div className="flex items-center gap-2">
@@ -1855,7 +1988,7 @@ export default function ProspectsPage() {
 
                     {/* Color picker */}
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-gray-500">Couleur:</span>
+                      <span className="text-xs text-gray-500">Couleur:</span>
                       {TAG_COLORS.map(color => (
                         <button
                           key={color}
@@ -1872,7 +2005,7 @@ export default function ProspectsPage() {
                     {/* Existing tags list with edit/delete */}
                     {state.tags.length > 0 && (
                       <div>
-                        <p className="text-[10px] text-gray-500 mb-1.5">Tags existants :</p>
+                        <p className="text-xs text-gray-500 mb-1.5">Tags existants :</p>
                         <div className="space-y-1 max-h-32 overflow-y-auto">
                           {state.tags.map(tag => (
                             <div key={tag.id} className="flex items-center justify-between py-1 px-2 rounded bg-white">

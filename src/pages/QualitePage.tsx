@@ -416,7 +416,7 @@ function OngletDejaClients({ donnees, recharger }: { donnees: { total: number; c
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <CarteFiche f={p.prospect} />
             <div className="rounded-lg border border-green-200 bg-green-50/50 p-3 text-sm space-y-1 min-w-0">
-              <p className="text-[11px] font-semibold text-green-800 uppercase tracking-wide">Client</p>
+              <p className="text-xs font-semibold text-green-800 uppercase tracking-wide">Client</p>
               <p className="font-semibold text-gray-900 break-words">{p.client.nom}</p>
               <p className="text-xs text-gray-500">{[p.client.ville, p.client.statut, p.client.commercial].filter(Boolean).join(' · ')}</p>
               {p.client.telephone && <p className="text-xs text-gray-700 flex items-center gap-1"><Phone className="w-3 h-3" /> {p.client.telephone}</p>}
@@ -460,7 +460,7 @@ function LiensVerif({ nom, ville }: { nom: string; ville: string }) {
 function FormulaireFiche({ p, saisie, setSaisie }: { p: Prospect; saisie: Saisie; setSaisie: (s: Saisie) => void }) {
   const champ = (k: keyof Saisie, label: string, props: Partial<React.InputHTMLAttributes<HTMLInputElement>> = {}) => (
     <label className="block">
-      <span className="block text-[11px] font-medium text-gray-500 mb-0.5">{label}</span>
+      <span className="block text-xs font-medium text-gray-500 mb-0.5">{label}</span>
       <input
         className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
         value={saisie[k]}
@@ -473,7 +473,7 @@ function FormulaireFiche({ p, saisie, setSaisie }: { p: Prospect; saisie: Saisie
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
       {nomProvisoire(p.nom_etablissement) && champ('nom_etablissement', 'Vrai nom de l\'établissement', { placeholder: 'À trouver sur Google Maps ou le lien partagé' })}
       <label className="block">
-        <span className="block text-[11px] font-medium text-gray-500 mb-0.5">Type</span>
+        <span className="block text-xs font-medium text-gray-500 mb-0.5">Type</span>
         <select className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white" value={saisie.type_etablissement} onChange={e => setSaisie({ ...saisie, type_etablissement: e.target.value })}>
           {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => <option key={t} value={t}>{ESTABLISHMENT_LABELS[t]}</option>)}
         </select>
@@ -508,7 +508,7 @@ function Manques({ p }: { p: Prospect }) {
   return (
     <div className="flex flex-wrap gap-1">
       {m.map(x => (
-        <span key={x} className={`text-[11px] px-1.5 py-0.5 rounded-full ${bloquants.includes(x) ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+        <span key={x} className={`text-xs px-1.5 py-0.5 rounded-full ${bloquants.includes(x) ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
           sans {LIBELLES_MANQUE[x]}
         </span>
       ))}
@@ -707,7 +707,7 @@ function TriEnListe({ liste }: { liste: Prospect[] }) {
             <div className="flex-1 min-w-0 space-y-1">
               <p className="font-medium text-gray-900 truncate">{p.nom_etablissement}</p>
               <p className="text-xs text-gray-500 truncate">{[p.ville, p.telephone, p.date_creation && `partagée le ${new Date(p.date_creation).toLocaleDateString('fr-FR')}`].filter(Boolean).join(' · ')}</p>
-              {estQualifiable(p) ? <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">complète</span> : <Manques p={p} />}
+              {estQualifiable(p) ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">complète</span> : <Manques p={p} />}
             </div>
           </label>
         ))}
@@ -784,7 +784,7 @@ function TriUneAUne({ liste, apresFusion }: { liste: Prospect[]; apresFusion: ()
         <LiensVerif nom={saisie.nom_etablissement || (nomProvisoire(p.nom_etablissement) ? '' : p.nom_etablissement)} ville={saisie.ville} />
         <FormulaireFiche p={p} saisie={saisie} setSaisie={setSaisie} />
         <label className="block">
-          <span className="block text-[11px] font-medium text-gray-500 mb-0.5">Note (ce que vous avez vérifié, et où)</span>
+          <span className="block text-xs font-medium text-gray-500 mb-0.5">Note (ce que vous avez vérifié, et où)</span>
           <input className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Ex. : tél. vérifié sur Google Maps" value={note} onChange={e => setNote(e.target.value)} />
         </label>
 

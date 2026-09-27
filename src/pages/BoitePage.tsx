@@ -260,10 +260,10 @@ export default function BoitePage() {
                   )}
                   <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`text-[11px] px-1.5 py-0.5 rounded-full border ${COULEUR_SOURCE[s.source]}`}>{LIBELLES_SOURCE[s.source]}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full border ${COULEUR_SOURCE[s.source]}`}>{LIBELLES_SOURCE[s.source]}</span>
                     <h2 className="font-semibold text-gray-900 truncate">{titreDuSignalement(s)}</h2>
                     {fiche.compte && fiche.compte !== titreDuSignalement(s) && <span className="text-xs text-gray-500">{fiche.compte}</span>}
-                    {groupe.length > 1 && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-brewery-50 text-brewery-700 border border-brewery-200">{groupe.length} partages</span>}
+                    {groupe.length > 1 && <span className="text-xs px-1.5 py-0.5 rounded-full bg-brewery-50 text-brewery-700 border border-brewery-200">{groupe.length} partages</span>}
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
                     Partagé par <span className="font-medium text-gray-700">{nomDe(s.partage_par)}</span> {hier(s.created_at)} · pour <span className="font-medium text-gray-700">{s.commercial_id ? nomDe(s.commercial_id) : 'la prospection'}</span>
@@ -364,7 +364,7 @@ export default function BoitePage() {
                     {doublons.map(d => (
                       <li key={`${d.genre}-${d.id}`} className="flex items-center gap-2">
                         <Link to={d.genre === 'client' ? `/clients?id=${d.id}` : `/prospects?id=${d.id}`} className="text-brewery-700 hover:underline">{d.nom}{d.ville ? ` · ${d.ville}` : ''}</Link>
-                        <span className="text-[11px] bg-amber-100 px-1.5 py-0.5 rounded-full">{d.genre === 'client' ? 'client' : `prospect · ${state.pipelineColumns.find(c => c.id === d.etape)?.label || d.etape}`}</span>
+                        <span className="text-xs bg-amber-100 px-1.5 py-0.5 rounded-full">{d.genre === 'client' ? 'client' : `prospect · ${state.pipelineColumns.find(c => c.id === d.etape)?.label || d.etape}`}</span>
                       </li>
                     ))}
                   </ul>
@@ -571,7 +571,7 @@ function RattachementModal({ groupe, onClose }: { groupe: Signalement[]; onClose
     <button type="button" disabled={!!enCours} onClick={() => rattacher(f)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 text-left text-sm disabled:opacity-50">
       <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
       <span className="flex-1 min-w-0 truncate text-gray-800">{f.nom}{f.ville ? <span className="text-gray-500"> · {f.ville}</span> : null}</span>
-      <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${f.genre === 'client' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{f.genre === 'client' ? 'client' : 'prospect'}</span>
+      <span className={`text-xs px-1.5 py-0.5 rounded-full ${f.genre === 'client' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{f.genre === 'client' ? 'client' : 'prospect'}</span>
       {enCours === f.id && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
     </button>
   );

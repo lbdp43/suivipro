@@ -145,7 +145,7 @@ export default function OngletAccesClaude() {
             <Plus className="w-4 h-4" /> Créer
           </button>
         </div>
-        <p className="text-[11px] text-gray-400 mt-2">Valable un an. Une personne peut avoir plusieurs accès : créez le nouveau, puis révoquez l'ancien.</p>
+        <p className="text-xs text-gray-400 mt-2">Valable un an. Une personne peut avoir plusieurs accès : créez le nouveau, puis révoquez l'ancien.</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -161,10 +161,10 @@ export default function OngletAccesClaude() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {j.prenom} {j.nom_commercial}
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{j.role}</span>
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{j.role}</span>
                     <span className="ml-2 text-xs font-mono text-gray-400">…{j.indice}</span>
                   </p>
-                  <p className="text-[11px] text-gray-500 flex flex-wrap items-center gap-x-3">
+                  <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-3">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> dernière utilisation : {dateEtHeure(j.derniere_utilisation)}</span>
                     <span>{j.appels} requête(s)</span>
                     <span className={restants <= 30 ? 'text-amber-600 font-medium' : ''}>expire le {dateCourte(j.expire_le)}{restants <= 30 ? ` — dans ${restants} j` : ''}</span>

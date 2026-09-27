@@ -355,19 +355,19 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
           <p className="text-2xl font-bold text-indigo-600">{stats.total}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">En cours / À faire</p>
+          <p className="text-xs text-gray-500 mt-0.5">En cours / À faire</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
           <p className="text-2xl font-bold text-brewery-600">{stats.myPending}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">Mes tâches</p>
+          <p className="text-xs text-gray-500 mt-0.5">Mes tâches</p>
         </div>
         <div className={`rounded-xl border p-3 text-center ${stats.overdue > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
           <p className={`text-2xl font-bold ${stats.overdue > 0 ? 'text-red-600' : 'text-gray-400'}`}>{stats.overdue}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">En retard</p>
+          <p className="text-xs text-gray-500 mt-0.5">En retard</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
           <p className="text-2xl font-bold text-green-600">{stats.completedThisMonth}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">Terminées ce mois</p>
+          <p className="text-xs text-gray-500 mt-0.5">Terminées ce mois</p>
         </div>
       </div>
 
@@ -744,7 +744,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                       {task.titre}
                     </h4>
                     {overdue && (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">
+                      <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">
                         <AlertTriangle className="w-3 h-3" /> En retard
                       </span>
                     )}
@@ -752,39 +752,39 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
 
                   {/* Meta badges */}
                   <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                    <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${prioriteCfg.bg} ${prioriteCfg.color}`}>
+                    <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium ${prioriteCfg.bg} ${prioriteCfg.color}`}>
                       <Flag className="w-2.5 h-2.5" /> {prioriteCfg.label}
                     </span>
-                    <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statutCfg.bg} ${statutCfg.color}`}>
+                    <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium ${statutCfg.bg} ${statutCfg.color}`}>
                       {statutCfg.label}
                     </span>
                     {task.categorie && task.categorie !== 'general' && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded-full font-medium">
+                      <span className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded-full font-medium">
                         {CATEGORIES[task.categorie] || task.categorie}
                       </span>
                     )}
                     {task.commercial_prenom && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium">
+                      <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium">
                         <User className="w-2.5 h-2.5" /> {task.commercial_prenom}
                       </span>
                     )}
                     {task.client_nom && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-full font-medium">
+                      <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-full font-medium">
                         <Building2 className="w-2.5 h-2.5" /> {task.client_nom}
                       </span>
                     )}
                     {task.client_id && getClientTournee(task.client_id) && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded-full font-medium">
+                      <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded-full font-medium">
                         <MapPin className="w-2.5 h-2.5" /> {getClientTournee(task.client_id)}
                       </span>
                     )}
                     {task.client_id && getClientOwnerName(task.client_id) && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded-full font-medium">
+                      <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded-full font-medium">
                         <UserCircle className="w-2.5 h-2.5" /> Client de {getClientOwnerName(task.client_id)}
                       </span>
                     )}
                     {task.date_echeance && (
-                      <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium ${
                         overdue ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
                       }`}>
                         <Calendar className="w-2.5 h-2.5" /> {formatDate(task.date_echeance)}

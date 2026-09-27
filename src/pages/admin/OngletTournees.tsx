@@ -38,7 +38,7 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-1">
           {selected.map(z => (
-            <span key={z} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-medium">
+            <span key={z} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
               {z}
               <button type="button" onClick={() => onRemove(z)} className="hover:text-indigo-900"><X className="w-2.5 h-2.5" /></button>
             </span>
@@ -368,7 +368,7 @@ export default function OngletTournees() {
                 {(['prospects', 'clients'] as const).map(k => { const c = etatGeo[k]; return (
                   <div key={k} className="rounded-lg border border-gray-100 p-3">
                     <p className="text-xs font-semibold text-gray-700 capitalize mb-1">{k} · {c.total}</p>
-                    <p className={`text-sm ${c.sans_coordonnees ? 'text-amber-700' : 'text-green-700'}`}>{c.sans_coordonnees} sans coordonnées{c.sans_adresse ? <span className="text-[11px] text-gray-400"> (dont {c.sans_adresse} sans adresse)</span> : null}</p>
+                    <p className={`text-sm ${c.sans_coordonnees ? 'text-amber-700' : 'text-green-700'}`}>{c.sans_coordonnees} sans coordonnées{c.sans_adresse ? <span className="text-xs text-gray-400"> (dont {c.sans_adresse} sans adresse)</span> : null}</p>
                     <p className={`text-sm ${c.hors_zone ? 'text-amber-700' : 'text-gray-500'}`}>{c.hors_zone} hors zone</p>
                   </div>); })}
                 <div className="rounded-lg border border-gray-100 p-3">
@@ -416,7 +416,7 @@ export default function OngletTournees() {
                 <input list="secteurs-cibles" value={fusionCible} onChange={e => setFusionCible(e.target.value)} placeholder="Nom du secteur cible…" className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white min-w-[200px]" />
                 <datalist id="secteurs-cibles">{secteursAnalyse.secteurs.map(s => <option key={s.cle} value={s.nom} />)}</datalist>
                 <button onClick={fusionnerSecteurs} disabled={secteursCoches.size === 0 || !fusionCible.trim()} className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50">Fusionner</button>
-                <span className="text-[11px] text-gray-400">La cible peut être un secteur existant ou un nouveau nom.</span>
+                <span className="text-xs text-gray-400">La cible peut être un secteur existant ou un nouveau nom.</span>
               </div>
             )}
             {secteursAnalyse && (
@@ -435,7 +435,7 @@ export default function OngletTournees() {
                         {secteursAnalyse.secteurs.map(s => (
                           <tr key={s.cle} className={`border-b border-gray-50 last:border-0 ${s.vide ? 'bg-amber-50/50' : ''}`}>
                             <td className="py-2 pr-2"><input type="checkbox" checked={secteursCoches.has(s.cle)} onChange={e => setSecteursCoches(prev => { const n = new Set(prev); if (e.target.checked) n.add(s.cle); else n.delete(s.cle); return n; })} title={s.vide ? 'Cocher pour supprimer ou fusionner' : 'Cocher pour fusionner'} /></td>
-                            <td className="py-2 pr-2 font-semibold text-gray-800">{s.nom}{s.vide && <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">vide</span>}</td>
+                            <td className="py-2 pr-2 font-semibold text-gray-800">{s.nom}{s.vide && <span className="ml-2 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">vide</span>}</td>
                             <td className={`py-2 px-2 text-center tabular-nums ${s.clients ? 'text-gray-800' : 'text-gray-400'}`}>{s.clients}</td>
                             <td className={`py-2 px-2 text-center tabular-nums ${s.prospects ? 'text-gray-800' : 'text-gray-400'}`}>{s.prospects}</td>
                             <td className={`py-2 px-2 text-center tabular-nums ${s.meme_ville ? 'text-gray-800' : 'text-gray-400'}`} title="Fiches dont la ville porte ce nom : par prudence, le secteur n'est pas considéré vide">{s.meme_ville}</td>
@@ -513,7 +513,7 @@ export default function OngletTournees() {
                           onChange={e => setFrequencyEditValues(prev => ({ ...prev, [type]: e.target.value }))}
                           placeholder="-"
                         />
-                        <span className="text-[10px] text-gray-400">jours</span>
+                        <span className="text-xs text-gray-400">jours</span>
                       </div>
                     ))}
                   </div>
@@ -534,7 +534,7 @@ export default function OngletTournees() {
                           <span className="text-gray-600 truncate">{CLIENT_TYPE_LABELS[type]}</span>
                           <span className={`font-medium ${isCustom ? 'text-brewery-600' : val == null ? 'text-gray-400' : 'text-gray-700'}`}>
                             {val != null ? `${val}j` : '-'}
-                            {isCustom && <span className="text-[10px] ml-0.5">*</span>}
+                            {isCustom && <span className="text-xs ml-0.5">*</span>}
                           </span>
                         </div>
                       );
@@ -564,9 +564,9 @@ export default function OngletTournees() {
                     </div>
                     <div className="min-w-0">
                       <h4 className="font-medium text-gray-900 text-sm">{commercial.prenom} {commercial.nom}</h4>
-                      <p className="text-[10px] text-gray-500 truncate">{commercial.email}</p>
+                      <p className="text-xs text-gray-500 truncate">{commercial.email}</p>
                       {config && (
-                        <p className="text-[10px] text-gray-400">{WEEK_PATTERN_LABELS[config.week_pattern || 'every']}</p>
+                        <p className="text-xs text-gray-400">{WEEK_PATTERN_LABELS[config.week_pattern || 'every']}</p>
                       )}
                     </div>
                   </div>
@@ -618,10 +618,10 @@ export default function OngletTournees() {
 
                     {allZones.length > 0 && (
                       <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
-                        <p className="text-[10px] font-medium text-blue-700 mb-1.5">Zones existantes :</p>
+                        <p className="text-xs font-medium text-blue-700 mb-1.5">Zones existantes :</p>
                         <div className="flex flex-wrap gap-1">
                           {allZones.map(zone => (
-                            <span key={zone} className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full border border-blue-200 font-medium">{zone}</span>
+                            <span key={zone} className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full border border-blue-200 font-medium">{zone}</span>
                           ))}
                         </div>
                       </div>
@@ -692,7 +692,7 @@ export default function OngletTournees() {
                             const zones = config?.config[day] || [];
                             return (
                               <div key={day} className={`p-2 rounded-lg text-center ${zones.length > 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
-                                <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
+                                <p className="text-xs font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
                                 {zones.length > 0 ? (
                                   <div className="space-y-0.5">
                                     {zones.map((z, i) => (

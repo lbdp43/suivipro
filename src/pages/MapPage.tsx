@@ -413,7 +413,7 @@ export default function MapPage() {
             <Filter className="w-4 h-4" />
             <span className="hidden sm:inline">Filtres</span>
             {activeFilterCount > 0 && (
-              <span className="bg-white text-brewery-600 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="bg-white text-brewery-600 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                 {activeFilterCount}
               </span>
             )}
@@ -438,7 +438,7 @@ export default function MapPage() {
             <Building2 className="w-4 h-4" />
             <span className="hidden sm:inline">Clients</span>
             {showClients && filteredClients.length > 0 && (
-              <span className="text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center bg-white/20">
+              <span className="text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center bg-white/20">
                 {filteredClients.length}
               </span>
             )}
@@ -486,7 +486,7 @@ export default function MapPage() {
             <Calendar className="w-4 h-4" />
             RDV
             {totalUpcomingRdv > 0 && (
-              <span className={`text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+              <span className={`text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
                 showRdvPanel ? 'bg-white/20' : 'bg-blue-600 text-white'
               }`}>
                 {totalUpcomingRdv}
@@ -494,7 +494,7 @@ export default function MapPage() {
             )}
           </button>
           <select
-            className="text-[10px] border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white flex-shrink-0"
+            className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white flex-shrink-0"
             value={maxMarkers}
             onChange={e => setMaxMarkers(Number(e.target.value))}
           >
@@ -527,7 +527,7 @@ export default function MapPage() {
                   <span className="text-emerald-600 font-medium">
                     + {filteredClients.length} client{filteredClients.length > 1 ? 's' : ''}
                     {clientsWithoutGPS > 0 && (
-                      <span className="text-amber-500 text-[10px] ml-1" title={`${clientsWithoutGPS} client(s) sans coordonnées GPS`}>
+                      <span className="text-amber-500 text-xs ml-1" title={`${clientsWithoutGPS} client(s) sans coordonnées GPS`}>
                         ({clientsWithoutGPS} sans GPS)
                       </span>
                     )}
@@ -560,11 +560,11 @@ export default function MapPage() {
 
         {/* Filtre par commercial sur la carte */}
         <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:flex-wrap sm:pb-0">
-          <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1 flex-shrink-0">
+          <span className="text-xs font-medium text-gray-500 flex items-center gap-1 flex-shrink-0">
             <Users className="w-3 h-3" /> Commercial :
           </span>
           <button
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex-shrink-0 ${!mapFilterCommercial ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${!mapFilterCommercial ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             onClick={() => setMapFilterCommercial('')}
           >
             Tous
@@ -576,17 +576,17 @@ export default function MapPage() {
             return (
               <button
                 key={c.id}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
                   isActive ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
                 onClick={() => setMapFilterCommercial(isActive ? '' : c.id)}
               >
                 {c.prenom}
-                <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${isActive ? 'bg-white/20' : 'bg-gray-200'}`}>
+                <span className={`text-xs rounded-full px-1.5 py-0.5 ${isActive ? 'bg-white/20' : 'bg-gray-200'}`}>
                   {prospectCount}P
                 </span>
                 {showClients && clientCount > 0 && (
-                  <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${isActive ? 'bg-emerald-400/30' : 'bg-emerald-100 text-emerald-700'}`}>
+                  <span className={`text-xs rounded-full px-1.5 py-0.5 ${isActive ? 'bg-emerald-400/30' : 'bg-emerald-100 text-emerald-700'}`}>
                     {clientCount}C
                   </span>
                 )}
@@ -597,9 +597,9 @@ export default function MapPage() {
 
         {/* Legende couleurs pipeline - cachee sur mobile */}
         <div className="hidden sm:flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] text-gray-400">Legende :</span>
+          <span className="text-xs text-gray-400">Legende :</span>
           {state.pipelineColumns.map(col => (
-            <span key={col.id} className="flex items-center gap-1 text-[10px] text-gray-500">
+            <span key={col.id} className="flex items-center gap-1 text-xs text-gray-500">
               <span
                 className="w-3 h-3 rounded-full inline-block border border-white shadow-sm"
                 style={{ backgroundColor: col.color }}
@@ -608,7 +608,7 @@ export default function MapPage() {
             </span>
           ))}
           {showClients && (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium ml-2">
+            <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium ml-2">
               <span className="w-3 h-3 rounded-full inline-block border border-white shadow-sm bg-emerald-500" />
               Clients
             </span>
@@ -659,7 +659,7 @@ export default function MapPage() {
                       >
                         {z.prioritaire && <Star className="w-3 h-3 fill-current" />}
                         {z.nom || 'Zone'}
-                        <span className={`text-[10px] rounded-full px-1.5 ${selectedZones.includes(z.id) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'}`}>{n}</span>
+                        <span className={`text-xs rounded-full px-1.5 ${selectedZones.includes(z.id) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'}`}>{n}</span>
                       </button>
                     );
                   })}
@@ -671,7 +671,7 @@ export default function MapPage() {
                     title="Fiches géolocalisées qui ne tombent dans aucune zone dessinée"
                   >
                     Hors zone
-                    <span className={`text-[10px] rounded-full px-1.5 ${selectedZones.includes('__hors__') ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>{prospectsHorsZone}</span>
+                    <span className={`text-xs rounded-full px-1.5 ${selectedZones.includes('__hors__') ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>{prospectsHorsZone}</span>
                   </button>
                 </div>
               </div>
@@ -693,7 +693,7 @@ export default function MapPage() {
                       onClick={() => toggleSecteur(t.nom)}
                     >
                       {t.nom}
-                      <span className={`text-[10px] rounded-full px-1.5 ${
+                      <span className={`text-xs rounded-full px-1.5 ${
                         selectedSecteurs.includes(t.nom) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'
                       }`}>{t.count}</span>
                     </button>
@@ -718,7 +718,7 @@ export default function MapPage() {
                       onClick={() => toggleDepartment(d.code)}
                     >
                       {d.code}
-                      <span className={`text-[10px] rounded-full px-1.5 ${
+                      <span className={`text-xs rounded-full px-1.5 ${
                         selectedDepartments.includes(d.code) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'
                       }`}>{d.count}</span>
                     </button>
@@ -876,7 +876,7 @@ export default function MapPage() {
                 <p className="text-xs font-semibold text-gray-900">{weekRange.label}</p>
                 {rdvWeekOffset !== 0 && (
                   <button
-                    className="text-[9px] text-brewery-600 hover:underline"
+                    className="text-xs text-brewery-600 hover:underline"
                     onClick={() => setRdvWeekOffset(0)}
                   >
                     Revenir a cette semaine
@@ -893,11 +893,11 @@ export default function MapPage() {
 
             {/* Filtre par commercial */}
             <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:flex-wrap sm:pb-0 mb-3">
-              <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1 flex-shrink-0">
+              <span className="text-xs font-medium text-gray-500 flex items-center gap-1 flex-shrink-0">
                 <Users className="w-3 h-3" /> Commercial :
               </span>
               <button
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex-shrink-0 ${!rdvFilterCommercial ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${!rdvFilterCommercial ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 onClick={() => setRdvFilterCommercial('')}
               >
                 Tous
@@ -907,13 +907,13 @@ export default function MapPage() {
                 return (
                   <button
                     key={c.id}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
                       rdvFilterCommercial === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                     onClick={() => setRdvFilterCommercial(rdvFilterCommercial === c.id ? '' : c.id)}
                   >
                     {c.prenom}
-                    <span className={`text-[9px] rounded-full w-4 h-4 flex items-center justify-center ${
+                    <span className={`text-xs rounded-full w-4 h-4 flex items-center justify-center ${
                       rdvFilterCommercial === c.id ? 'bg-white/20' : 'bg-gray-200'
                     }`}>
                       {count}
@@ -938,12 +938,12 @@ export default function MapPage() {
                   return (
                     <div key={dateStr}>
                       <div className={`flex items-center gap-2 mb-1 ${isToday ? 'text-brewery-700' : 'text-gray-500'}`}>
-                        <span className={`text-[10px] font-bold uppercase ${isToday ? 'bg-brewery-100 text-brewery-700 px-1.5 py-0.5 rounded' : ''}`}>
+                        <span className={`text-xs font-bold uppercase ${isToday ? 'bg-brewery-100 text-brewery-700 px-1.5 py-0.5 rounded' : ''}`}>
                           {dayName} {d.getDate()}/{d.getMonth() + 1}
                           {isToday && ' - AUJOURD\'HUI'}
                         </span>
                         <div className="flex-1 h-px bg-gray-200" />
-                        <span className="text-[10px] text-gray-400">{rdvs.length} RDV</span>
+                        <span className="text-xs text-gray-400">{rdvs.length} RDV</span>
                       </div>
                       <div className="space-y-1.5">
                         {rdvs.map(rdv => {
@@ -954,10 +954,10 @@ export default function MapPage() {
                               <div className="flex items-start sm:items-center gap-2 sm:gap-3">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                                    <span className="text-[10px] sm:text-[11px] font-mono text-gray-500 flex-shrink-0">
+                                    <span className="text-xs sm:text-xs font-mono text-gray-500 flex-shrink-0">
                                       {rdv.heure_debut}-{rdv.heure_fin}
                                     </span>
-                                    <span className="text-[11px] sm:text-xs font-semibold text-gray-900 truncate">
+                                    <span className="text-xs sm:text-xs font-semibold text-gray-900 truncate">
                                       {prospect?.nom_etablissement || 'Inconnu'}
                                     </span>
                                     <span className={`badge text-[8px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
@@ -965,11 +965,11 @@ export default function MapPage() {
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 sm:gap-3 mt-0.5">
-                                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                    <span className="text-xs text-gray-400 flex items-center gap-0.5">
                                       <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
                                     </span>
                                     {rdv.lieu && (
-                                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
+                                      <span className="text-xs text-gray-400 flex items-center gap-0.5 truncate">
                                         <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
                                       </span>
                                     )}
@@ -1069,9 +1069,9 @@ export default function MapPage() {
                           {zone.prioritaire && <Star className="w-3.5 h-3.5 text-red-600 fill-current" />}
                           {zone.nom || 'Zone'}
                         </p>
-                        <p className="text-[11px] text-gray-500">{commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'} · {state.prospects.filter(p => p.zone_id === zone.id).length} prospect(s)</p>
+                        <p className="text-xs text-gray-500">{commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'} · {state.prospects.filter(p => p.zone_id === zone.id).length} prospect(s)</p>
                       </div>
-                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-[11px] text-gray-400 hover:text-brewery-600" title="Renommer">Renommer</button>}
+                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-xs text-gray-400 hover:text-brewery-600" title="Renommer">Renommer</button>}
                     </div>
                     {zone.prioritaire && zone.consigne && !modifiable && (
                       <p className="text-xs text-red-800 bg-red-50 border border-red-100 rounded p-1.5">{zone.consigne}</p>
@@ -1104,7 +1104,7 @@ export default function MapPage() {
                     >
                       <Phone className="w-3.5 h-3.5" /> Session d'appel pour cette zone ({aAppeler})
                     </button>
-                    {activeFilterCount > 0 && <p className="text-[10px] text-gray-400 text-center">Selon les filtres actifs de la carte</p>}
+                    {activeFilterCount > 0 && <p className="text-xs text-gray-400 text-center">Selon les filtres actifs de la carte</p>}
                   </div>
                 </Popup>
               </Polygon>
@@ -1136,7 +1136,7 @@ export default function MapPage() {
                     )}
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <span
-                        className="badge text-white text-[10px]"
+                        className="badge text-white text-xs"
                         style={{ backgroundColor: getStageInfo(prospect.etape_pipeline).color }}
                       >
                         {getStageInfo(prospect.etape_pipeline).label}
@@ -1144,7 +1144,7 @@ export default function MapPage() {
                       {prospect.tags.map(tagId => {
                         const tag = state.tags.find(t => t.id === tagId);
                         return tag ? (
-                          <span key={tagId} className="badge text-white text-[10px]" style={{ backgroundColor: tag.couleur }}>
+                          <span key={tagId} className="badge text-white text-xs" style={{ backgroundColor: tag.couleur }}>
                             {tag.nom}
                           </span>
                         ) : null;
@@ -1159,7 +1159,7 @@ export default function MapPage() {
                           {prospectRdvs.map(rdv => {
                             const com = state.commerciaux.find(c => c.id === rdv.commercial_id);
                             return (
-                              <div key={rdv.id} className="text-[10px] text-blue-700 flex items-center gap-1">
+                              <div key={rdv.id} className="text-xs text-blue-700 flex items-center gap-1">
                                 <Calendar className="w-3 h-3 flex-shrink-0" />
                                 <span className="font-medium">{formatDate(rdv.date)} {rdv.heure_debut}-{rdv.heure_fin}</span>
                                 <span className="text-blue-500">({com?.prenom})</span>
@@ -1174,7 +1174,7 @@ export default function MapPage() {
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prospect.adresse} ${prospect.code_postal} ${prospect.ville}`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded text-[10px] font-medium hover:bg-indigo-600"
+                        className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded text-xs font-medium hover:bg-indigo-600"
                         onClick={e => e.stopPropagation()}
                       >
                         <MapPin className="w-3 h-3" /> Maps
@@ -1182,21 +1182,21 @@ export default function MapPage() {
                       {prospect.telephone && (
                         <button
                           onClick={() => startCall(prospect.id)}
-                          className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] font-medium hover:bg-green-600"
+                          className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white rounded text-xs font-medium hover:bg-green-600"
                         >
                           <Phone className="w-3 h-3" /> Appeler
                         </button>
                       )}
                       <Link
                         to={`/prospects?id=${prospect.id}`}
-                        className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white rounded text-[10px] font-medium hover:bg-blue-600"
+                        className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600"
                       >
                         <ExternalLink className="w-3 h-3" /> Voir
                       </Link>
                       {/* Toute la poignee de prospects du secteur, d'un coup. */}
                       <BoutonAppelerAutour
                         points={[{ lat: prospect.latitude, lon: prospect.longitude }]}
-                        className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-[10px] font-medium hover:bg-purple-700"
+                        className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700"
                       />
                     </div>
                   </div>
@@ -1239,20 +1239,20 @@ export default function MapPage() {
                       href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${client.adresse} ${client.code_postal} ${client.ville}`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded text-[10px] font-medium hover:bg-indigo-600"
+                      className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded text-xs font-medium hover:bg-indigo-600"
                     >
                       <MapPin className="w-3 h-3" /> Maps
                     </a>
                     <Link
                       to="/clients"
-                      className="flex items-center gap-1 px-2 py-1 bg-emerald-500 text-white rounded text-[10px] font-medium hover:bg-emerald-600"
+                      className="flex items-center gap-1 px-2 py-1 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600"
                     >
                       <ExternalLink className="w-3 h-3" /> Voir
                     </Link>
                     {/* Un client a visiter, c'est aussi un secteur a prospecter. */}
                     <BoutonAppelerAutour
                       points={[{ lat: client.latitude, lon: client.longitude }]}
-                      className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-[10px] font-medium hover:bg-purple-700"
+                      className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700"
                     />
                   </div>
                 </div>

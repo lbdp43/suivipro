@@ -468,21 +468,21 @@ export default function SirenePage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-sky-600">{stats.total}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Etablissements en base</p>
+            <p className="text-xs text-gray-500 mt-0.5">Etablissements en base</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-amber-600">{stats.not_imported}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">A importer</p>
+            <p className="text-xs text-gray-500 mt-0.5">A importer</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-green-600">{stats.imported}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Déjà importés</p>
+            <p className="text-xs text-gray-500 mt-0.5">Déjà importés</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-gray-600">
               {stats.last_sync ? (stats.last_sync.status === 'success' ? 'OK' : stats.last_sync.status === 'running' ? '...' : 'Err') : 'N/A'}
             </p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Dernière sync</p>
+            <p className="text-xs text-gray-500 mt-0.5">Dernière sync</p>
           </div>
         </div>
       )}
@@ -494,7 +494,7 @@ export default function SirenePage() {
             <Globe className="w-4 h-4 text-indigo-500" />
             Configurations de sync automatique
             {zoneConfigs.filter(c => c.cron_enabled).length > 0 && (
-              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">
+              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
                 {zoneConfigs.filter(c => c.cron_enabled).length} CRON actif{zoneConfigs.filter(c => c.cron_enabled).length > 1 ? 's' : ''}
               </span>
             )}
@@ -534,11 +534,11 @@ export default function SirenePage() {
                 <div key={config.id} className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[10px] text-indigo-600 mb-0.5">Nom</label>
+                      <label className="block text-xs text-indigo-600 mb-0.5">Nom</label>
                       <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.name} onChange={e => setZoneForm(f => ({ ...f, name: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
+                      <label className="block text-xs text-indigo-600 mb-0.5">Type d'entite</label>
                       <div className="flex gap-1">
                         <select className="flex-1 px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
                           {entityTypes.length > 0 ? entityTypes.map(et => (
@@ -560,15 +560,15 @@ export default function SirenePage() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
+                      <label className="block text-xs text-indigo-600 mb-0.5">Departements</label>
                       <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.departements} onChange={e => setZoneForm(f => ({ ...f, departements: e.target.value }))} />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <div className="flex items-center justify-between mb-0.5">
-                        <label className="text-[10px] text-indigo-600">Codes NAF ({zoneForm.naf_codes ? zoneForm.naf_codes.split(',').filter(Boolean).length : 0}/{nafCodes.length})</label>
-                        <button type="button" className="text-[9px] text-indigo-500 hover:text-indigo-700" onClick={() => {
+                        <label className="text-xs text-indigo-600">Codes NAF ({zoneForm.naf_codes ? zoneForm.naf_codes.split(',').filter(Boolean).length : 0}/{nafCodes.length})</label>
+                        <button type="button" className="text-xs text-indigo-500 hover:text-indigo-700" onClick={() => {
                           const allCodes = nafCodes.map(n => n.code);
                           const currentCodes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
                           setZoneForm(f => ({ ...f, naf_codes: currentCodes.length === allCodes.length ? '' : allCodes.join(',') }));
@@ -585,7 +585,7 @@ export default function SirenePage() {
                                 const next = isChecked ? codes.filter(c => c !== naf.code) : [...codes, naf.code];
                                 setZoneForm(f => ({ ...f, naf_codes: next.join(',') }));
                               }} />
-                              <span className="text-[10px] text-gray-700">{naf.code} - {naf.label}</span>
+                              <span className="text-xs text-gray-700">{naf.code} - {naf.label}</span>
                             </label>
                           );
                         })}
@@ -596,7 +596,7 @@ export default function SirenePage() {
                         return customCodes.length > 0 ? (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {customCodes.map(code => (
-                              <span key={code} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-medium">
+                              <span key={code} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">
                                 {code}
                                 <button type="button" className="hover:text-red-600" onClick={() => {
                                   const codes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(c => c && c !== code);
@@ -607,7 +607,7 @@ export default function SirenePage() {
                           </div>
                         ) : null;
                       })()}
-                      <input type="text" className="w-full mt-1 px-2 py-1 border border-indigo-200 rounded text-[10px] text-gray-600" placeholder="+ codes NAF perso (ex: 55.10Z, 93.29Z)" onBlur={e => {
+                      <input type="text" className="w-full mt-1 px-2 py-1 border border-indigo-200 rounded text-xs text-gray-600" placeholder="+ codes NAF perso (ex: 55.10Z, 93.29Z)" onBlur={e => {
                         const custom = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
                         if (custom.length > 0) {
                           const existing = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
@@ -618,15 +618,15 @@ export default function SirenePage() {
                       }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-indigo-600 mb-0.5">Clé API INSEE</label>
+                      <label className="block text-xs text-indigo-600 mb-0.5">Clé API INSEE</label>
                       <input type="password" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder={zoneForm.insee_api_key === '***configured***' ? 'Déjà configurée' : 'X-INSEE-Api-Key...'} value={zoneForm.insee_api_key === '***configured***' ? '' : zoneForm.insee_api_key} onChange={e => setZoneForm(f => ({ ...f, insee_api_key: e.target.value || (config.insee_api_key ? '***configured***' : '') }))} />
                     </div>
                   </div>
                   <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-1">
-                      <label className="text-[10px] text-indigo-600">Lookback:</label>
+                      <label className="text-xs text-indigo-600">Lookback:</label>
                       <input type="number" className="w-14 px-1 py-1 border border-indigo-200 rounded text-xs" value={zoneForm.lookback_days} onChange={e => setZoneForm(f => ({ ...f, lookback_days: parseInt(e.target.value) || 7 }))} min={1} max={90} />
-                      <span className="text-[10px] text-indigo-400">jours</span>
+                      <span className="text-xs text-indigo-400">jours</span>
                     </div>
                     <label className="flex items-center gap-1 cursor-pointer text-xs text-indigo-700">
                       <input type="checkbox" checked={zoneForm.auto_import} onChange={e => setZoneForm(f => ({ ...f, auto_import: e.target.checked }))} className="rounded border-indigo-300" />
@@ -652,21 +652,21 @@ export default function SirenePage() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium text-sm text-gray-900">{config.name}</h3>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${entityColor}`}>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium border ${entityColor}`}>
                       {config.entity_type}
                     </span>
                     {config.cron_enabled && (
-                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-medium">CRON</span>
+                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">CRON</span>
                     )}
                     {config.auto_import && (
-                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-medium">Auto-import</span>
+                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">Auto-import</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => launchZoneSync(config.id)}
                       disabled={zoneSyncing || syncing}
-                      className="px-2 py-1 bg-indigo-600 text-white rounded text-[10px] hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                      className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
                     >
                       {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                       Sync
@@ -683,7 +683,7 @@ export default function SirenePage() {
                           cron_enabled: config.cron_enabled, insee_api_key: config.insee_api_key || '',
                         });
                       }}
-                      className="px-2 py-1 border border-gray-200 rounded text-[10px] hover:bg-gray-50"
+                      className="px-2 py-1 border border-gray-200 rounded text-xs hover:bg-gray-50"
                     >
                       <Settings className="w-3 h-3" />
                     </button>
@@ -694,12 +694,12 @@ export default function SirenePage() {
                 </div>
                 <div className="flex flex-wrap gap-1 mb-1">
                   {config.departements.split(',').map(d => d.trim()).filter(Boolean).map(dept => (
-                    <span key={dept} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px]">
+                    <span key={dept} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">
                       {dept} {DEPT_LABELS[dept] ? `- ${DEPT_LABELS[dept]}` : ''}
                     </span>
                   ))}
                 </div>
-                <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                <div className="flex items-center gap-3 text-xs text-gray-500">
                   <span>Lookback: {config.lookback_days}j</span>
                   {config.naf_codes && <span>NAF: {config.naf_codes.split(',').length} codes</span>}
                   <span>INSEE: {config.insee_api_key ? 'OK' : 'Non config.'}</span>
@@ -715,11 +715,11 @@ export default function SirenePage() {
             <h3 className="font-medium text-sm text-indigo-800">Nouvelle configuration</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[10px] text-indigo-600 mb-0.5">Nom</label>
+                <label className="block text-xs text-indigo-600 mb-0.5">Nom</label>
                 <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="Ex: Concurrents brasseries" value={zoneForm.name} onChange={e => setZoneForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-[10px] text-indigo-600 mb-0.5">Type d'entite</label>
+                <label className="block text-xs text-indigo-600 mb-0.5">Type d'entite</label>
                 <div className="flex gap-1">
                   <select className="flex-1 px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.entity_type} onChange={e => setZoneForm(f => ({ ...f, entity_type: e.target.value }))}>
                     {entityTypes.length > 0 ? entityTypes.map(et => (
@@ -741,15 +741,15 @@ export default function SirenePage() {
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] text-indigo-600 mb-0.5">Departements</label>
+                <label className="block text-xs text-indigo-600 mb-0.5">Departements</label>
                 <input type="text" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" value={zoneForm.departements} onChange={e => setZoneForm(f => ({ ...f, departements: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <div className="flex items-center justify-between mb-0.5">
-                  <label className="text-[10px] text-indigo-600">Codes NAF ({zoneForm.naf_codes ? zoneForm.naf_codes.split(',').filter(Boolean).length : 0}/{nafCodes.length})</label>
-                  <button type="button" className="text-[9px] text-indigo-500 hover:text-indigo-700" onClick={() => {
+                  <label className="text-xs text-indigo-600">Codes NAF ({zoneForm.naf_codes ? zoneForm.naf_codes.split(',').filter(Boolean).length : 0}/{nafCodes.length})</label>
+                  <button type="button" className="text-xs text-indigo-500 hover:text-indigo-700" onClick={() => {
                     const allCodes = nafCodes.map(n => n.code);
                     const currentCodes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(Boolean);
                     setZoneForm(f => ({ ...f, naf_codes: currentCodes.length === allCodes.length ? '' : allCodes.join(',') }));
@@ -766,22 +766,22 @@ export default function SirenePage() {
                           const next = isChecked ? codes.filter(c => c !== naf.code) : [...codes, naf.code];
                           setZoneForm(f => ({ ...f, naf_codes: next.join(',') }));
                         }} />
-                        <span className="text-[10px] text-gray-700">{naf.code} - {naf.label}</span>
+                        <span className="text-xs text-gray-700">{naf.code} - {naf.label}</span>
                       </label>
                     );
                   })}
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] text-indigo-600 mb-0.5">Clé API INSEE</label>
+                <label className="block text-xs text-indigo-600 mb-0.5">Clé API INSEE</label>
                 <input type="password" className="w-full px-2 py-1.5 border border-indigo-200 rounded text-xs" placeholder="X-INSEE-Api-Key-Integration" value={zoneForm.insee_api_key} onChange={e => setZoneForm(f => ({ ...f, insee_api_key: e.target.value }))} />
               </div>
             </div>
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-1">
-                <label className="text-[10px] text-indigo-600">Lookback:</label>
+                <label className="text-xs text-indigo-600">Lookback:</label>
                 <input type="number" className="w-14 px-1 py-1 border border-indigo-200 rounded text-xs" value={zoneForm.lookback_days} onChange={e => setZoneForm(f => ({ ...f, lookback_days: parseInt(e.target.value) || 7 }))} min={1} max={90} />
-                <span className="text-[10px] text-indigo-400">jours</span>
+                <span className="text-xs text-indigo-400">jours</span>
               </div>
               <label className="flex items-center gap-1 cursor-pointer text-xs text-indigo-700">
                 <input type="checkbox" checked={zoneForm.auto_import} onChange={e => setZoneForm(f => ({ ...f, auto_import: e.target.checked }))} className="rounded border-indigo-300" />
@@ -818,17 +818,17 @@ export default function SirenePage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[9px] font-medium uppercase">{dup.match_type}</span>
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium uppercase">{dup.match_type}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div>
-                        <p className="text-[10px] text-gray-400 mb-0.5">Nouveau (SIRENE)</p>
+                        <p className="text-xs text-gray-400 mb-0.5">Nouveau (SIRENE)</p>
                         <p className="font-medium text-gray-900">{dup.sirene_nom}</p>
                         <p className="text-gray-500">{dup.sirene_ville} - SIRET: {dup.sirene_siret}</p>
-                        <p className="text-gray-400 text-[10px]">NAF: {dup.sirene_naf}</p>
+                        <p className="text-gray-400 text-xs">NAF: {dup.sirene_naf}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-gray-400 mb-0.5">Existant (prospect)</p>
+                        <p className="text-xs text-gray-400 mb-0.5">Existant (prospect)</p>
                         <p className="font-medium text-gray-900">{dup.existing_nom}</p>
                         <p className="text-gray-500">{dup.existing_ville}{dup.existing_siret ? ` - SIRET: ${dup.existing_siret}` : ''}</p>
                       </div>
@@ -838,7 +838,7 @@ export default function SirenePage() {
                     <button
                       onClick={() => resolveDuplicate(dup.id, 'merge')}
                       disabled={resolvingDupId === dup.id}
-                      className="px-2 py-1 bg-green-600 text-white rounded text-[10px] hover:bg-green-700 disabled:opacity-50"
+                      className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50"
                       title="Fusionner: enrichir le prospect existant"
                     >
                       Fusionner
@@ -846,7 +846,7 @@ export default function SirenePage() {
                     <button
                       onClick={() => resolveDuplicate(dup.id, 'import')}
                       disabled={resolvingDupId === dup.id}
-                      className="px-2 py-1 bg-blue-600 text-white rounded text-[10px] hover:bg-blue-700 disabled:opacity-50"
+                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
                       title="Importer comme nouvelle fiche"
                     >
                       Créer
@@ -854,7 +854,7 @@ export default function SirenePage() {
                     <button
                       onClick={() => resolveDuplicate(dup.id, 'skip')}
                       disabled={resolvingDupId === dup.id}
-                      className="px-2 py-1 border border-gray-200 rounded text-[10px] hover:bg-gray-50 disabled:opacity-50 text-gray-500"
+                      className="px-2 py-1 border border-gray-200 rounded text-xs hover:bg-gray-50 disabled:opacity-50 text-gray-500"
                       title="Ignorer ce doublon"
                     >
                       Ignorer
@@ -908,7 +908,7 @@ export default function SirenePage() {
                 ))}
               </div>
               <div className="mt-2">
-                <label className="block text-[10px] text-gray-500 mb-0.5">Codes NAF supplementaires (separes par virgule)</label>
+                <label className="block text-xs text-gray-500 mb-0.5">Codes NAF supplementaires (separes par virgule)</label>
                 <input
                   type="text"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs"
@@ -916,7 +916,7 @@ export default function SirenePage() {
                   value={customNafInput}
                   onChange={e => setCustomNafInput(e.target.value)}
                 />
-                <p className="text-[10px] text-gray-400 mt-0.5">Ajoutez des codes NAF hors liste (hotellerie, loisirs, epiceries, etc.)</p>
+                <p className="text-xs text-gray-400 mt-0.5">Ajoutez des codes NAF hors liste (hotellerie, loisirs, epiceries, etc.)</p>
               </div>
             </div>
 
@@ -977,17 +977,17 @@ export default function SirenePage() {
             <h4 className="text-xs font-semibold text-green-800">Recherche par proximité geographique</h4>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-[10px] text-green-700 mb-0.5">Latitude</label>
+                <label className="block text-xs text-green-700 mb-0.5">Latitude</label>
                 <input type="text" className="w-full px-2 py-1.5 border border-green-200 rounded-lg text-xs"
                   placeholder="45.0428" value={geoLat} onChange={e => setGeoLat(e.target.value)} />
               </div>
               <div>
-                <label className="block text-[10px] text-green-700 mb-0.5">Longitude</label>
+                <label className="block text-xs text-green-700 mb-0.5">Longitude</label>
                 <input type="text" className="w-full px-2 py-1.5 border border-green-200 rounded-lg text-xs"
                   placeholder="3.8847" value={geoLng} onChange={e => setGeoLng(e.target.value)} />
               </div>
               <div>
-                <label className="block text-[10px] text-green-700 mb-0.5">Rayon (km)</label>
+                <label className="block text-xs text-green-700 mb-0.5">Rayon (km)</label>
                 <input type="number" className="w-full px-2 py-1.5 border border-green-200 rounded-lg text-xs"
                   value={geoRadius} onChange={e => setGeoRadius(parseInt(e.target.value) || 10)} min={1} max={100} />
               </div>
@@ -1054,7 +1054,7 @@ export default function SirenePage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-4">
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5">Departement</label>
+            <label className="block text-xs text-gray-500 mb-0.5">Departement</label>
             <input
               type="text"
               className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs w-20"
@@ -1064,7 +1064,7 @@ export default function SirenePage() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5">Code NAF</label>
+            <label className="block text-xs text-gray-500 mb-0.5">Code NAF</label>
             <input
               type="text"
               list="naf-codes-list"
@@ -1081,7 +1081,7 @@ export default function SirenePage() {
             </datalist>
           </div>
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5">Statut</label>
+            <label className="block text-xs text-gray-500 mb-0.5">Statut</label>
             <select
               className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
               value={filterImported}
@@ -1093,7 +1093,7 @@ export default function SirenePage() {
             </select>
           </div>
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5">Assigner a (optionnel)</label>
+            <label className="block text-xs text-gray-500 mb-0.5">Assigner a (optionnel)</label>
             <select
               className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
               value={importCommercialId}
@@ -1188,26 +1188,26 @@ export default function SirenePage() {
                   <td className="px-2 py-2">
                     <p className="font-medium text-gray-800">{etab.enseigne || etab.nom}</p>
                     {etab.enseigne && etab.nom !== etab.enseigne && (
-                      <p className="text-[10px] text-gray-400">{etab.nom}</p>
+                      <p className="text-xs text-gray-400">{etab.nom}</p>
                     )}
                   </td>
                   <td className="px-2 py-2 text-gray-500 font-mono">{etab.siret}</td>
                   <td className="px-2 py-2">
-                    <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded text-[10px]">
+                    <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded text-xs">
                       {etab.code_naf}
                     </span>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{etab.libelle_naf}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{etab.libelle_naf}</p>
                   </td>
                   <td className="px-2 py-2 text-gray-600">{etab.commune}</td>
                   <td className="px-2 py-2 text-gray-600">{etab.departement}</td>
                   <td className="px-2 py-2 text-gray-500">{etab.date_creation_etab}</td>
                   <td className="px-2 py-2">
                     {etab.imported_as_prospect ? (
-                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
                         Importé
                       </span>
                     ) : (
-                      <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">
+                      <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">
                         A importer
                       </span>
                     )}
@@ -1235,7 +1235,7 @@ export default function SirenePage() {
               }`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       log.status === 'success' ? 'bg-green-100 text-green-700' :
                       log.status === 'error' ? 'bg-red-100 text-red-700' :
                       'bg-amber-100 text-amber-700'
@@ -1247,8 +1247,8 @@ export default function SirenePage() {
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 flex items-center gap-2">
-                    {log.source === 'insee' && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px]">INSEE</span>}
-                    {log.is_cron && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px]">CRON</span>}
+                    {log.source === 'insee' && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">INSEE</span>}
+                    {log.is_cron && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">CRON</span>}
                     {log.records_fetched} recup, {log.records_inserted} nouveaux, {log.records_updated} maj
                     {(log.records_auto_imported || 0) > 0 && (
                       <span className="text-green-600 font-medium">, {log.records_auto_imported} auto-importes</span>
@@ -1259,7 +1259,7 @@ export default function SirenePage() {
                   <p className="text-xs text-red-600 mt-1">{log.error_message}</p>
                 )}
                 {log.naf_codes && (
-                  <p className="text-[10px] text-gray-400 mt-1">NAF: {log.naf_codes} | Depts: {log.departements}</p>
+                  <p className="text-xs text-gray-400 mt-1">NAF: {log.naf_codes} | Depts: {log.departements}</p>
                 )}
               </div>
             ))}
