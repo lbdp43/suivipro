@@ -3,13 +3,14 @@ import { dateLocale } from '../../shared/regles';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Map, 
-  Bell, Menu, Beer, LogOut, Shield, User, Clock, BookOpen, ScanLine,
+  Bell, Menu, Beer, LogOut, Shield, User, Clock, BookOpen, ScanLine, Search,
   CheckCheck, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { apiPut } from '../api/client';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
+import RechercheGlobale from './RechercheGlobale';
 import { nouvelleVersionDisponible, rechargerUneFois } from '../utils/version';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
 import { Link } from 'react-router-dom';
@@ -70,6 +71,7 @@ const NOTIF_ICONS: Record<string, string> = {
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const horsLigne = useHorsLigne();
+  const [rechercheOuverte, setRechercheOuverte] = useState(false);
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -402,6 +404,16 @@ export default function Layout() {
                 <span className="hidden sm:inline">Toute l'équipe</span>
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setRechercheOuverte(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"
+              aria-label="Rechercher un client, un prospect ou une page"
+              title="Rechercher (Ctrl+K)"
+            >
+              <Search className="w-4 h-4" />
+              <span className="hidden lg:inline">Rechercher</span>
+            </button>
             <Link
               to="/carte"
               className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-brewery-50 hover:text-brewery-700 transition-colors"
@@ -502,6 +514,7 @@ export default function Layout() {
           </BlocErreur>
         </main>
       </div>
+      <RechercheGlobale ouvert={rechercheOuverte} onChanger={setRechercheOuverte} />
 
     </div>
   );
