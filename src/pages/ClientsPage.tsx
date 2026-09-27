@@ -8,7 +8,7 @@ import {
   Edit2, Trash2, Save, Filter, User,
   Calendar, CheckCircle2, AlertTriangle, Navigation,
   Download, ListTodo, CheckSquare, Square, XCircle,
-  Users, CalendarPlus, StickyNote, CalendarDays, Link2, RefreshCw,
+  Users, CalendarPlus, StickyNote, CalendarDays, Link2, RefreshCw, Building2,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import ChampsIdentite from '../components/ChampsIdentite';
@@ -29,6 +29,9 @@ import { useLancerSession } from '../hooks/useSessionAppel';
 import { noterInteraction } from '../utils/interactions';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
+import LigneGlissante, { AstuceGlissement } from '../components/ui/LigneGlissante';
+import EtatVide from '../components/ui/EtatVide';
+import Bouton from '../components/ui/Bouton';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -96,6 +99,11 @@ export default function ClientsPage() {
   const [filterNoTournee, setFilterNoTournee] = usePersistedState('clients_no_tournee', false);
   const [filterNoType, setFilterNoType] = usePersistedState('clients_no_type', false);
   const [filterNoCommercial, setFilterNoCommercial] = usePersistedState('clients_no_commercial', false);
+  const filtresEnCours = !!searchTerm || filterTypesArr.length > 0 || !!filterStatus || filterVisit !== 'all' || filterCommercialsArr.length > 0 || filterTourneesArr.length > 0 || filterNoTournee || filterNoType || filterNoCommercial;
+  const effacerFiltres = () => {
+    setSearchTerm(''); setFilterTypesArr([]); setFilterStatus(''); setFilterVisit('all'); setFilterCommercialsArr([]);
+    setFilterTourneesArr([]); setFilterNoTournee(false); setFilterNoType(false); setFilterNoCommercial(false);
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -1430,13 +1438,18 @@ export default function ClientsPage() {
         {(
         <div ref={listRef} className="flex-1 overflow-y-auto">
           {paginated.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
-              <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p className="font-medium">Aucun client trouve</p>
-              <p className="text-xs mt-1">Modifiez vos filtres ou ajoutez un nouveau client</p>
-            </div>
+            filtresEnCours ? (
+              <EtatVide icone={Search} titre="Aucun client ne correspond" texte={searchTerm ? `Rien pour « ${searchTerm} » avec ces filtres.` : 'Aucun client avec ces filtres.'}>
+                <Bouton variante="principal" onClick={effacerFiltres}>Effacer la recherche et les filtres</Bouton>
+              </EtatVide>
+            ) : (
+              <EtatVide icone={Building2} titre="Aucun client pour l'instant" texte="Ajoutez un client, ou convertissez un prospect gagné depuis sa fiche.">
+                <Bouton variante="principal" icone={<Plus className="h-4 w-4" />} onClick={openNewForm}>Nouveau client</Bouton>
+              </EtatVide>
+            )
           ) : (
             <div className="divide-y divide-gray-100">
+              <AstuceGlissement cle="clients">Astuce : glissez un client vers la droite pour l'appeler ou noter une visite, vers la gauche pour une tâche, un RDV ou l'itinéraire.</AstuceGlissement>
               {paginated.map(client => {
                 const personalInfo = getPersonalVisitInfo(client);
                 const visitStatus = getVisitStatusFromDate(personalInfo.nextVisit, client.statut);
@@ -1445,9 +1458,25 @@ export default function ClientsPage() {
                 const isSelected = selectedId === client.id;
                 const decroche = client.statut === 'ACTIF' ? decrocheDuClient(getCommandesForClient(client.id)) : null;
 
+                const tel = client.telephone_mobile || client.telephone;
+                const itineraire = (client.latitude && client.longitude)
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`
+                  : client.adresse ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([client.adresse, client.ville].filter(Boolean).join(' '))}` : '';
                 return (
-                  <div
+                  <LigneGlissante
                     key={client.id}
+                    desactive={selectionMode}
+                    gauche={[
+                      ...(tel ? [{ libelle: 'Appeler', icone: Phone, couleur: 'vert' as const, href: `tel:${tel}` }] : []),
+                      { libelle: 'Visite', icone: CheckCircle2, couleur: 'bleu' as const, onChoisir: () => { setInteractionClient(client); setInteractionType('VISITE'); } },
+                    ]}
+                    droite={[
+                      { libelle: 'Tâche', icone: ListTodo, couleur: 'ambre' as const, onChoisir: () => { setTaskClientId(client.id); setTaskTitle(''); setTaskDate(''); setShowTaskForm(true); } },
+                      { libelle: 'RDV', icone: Calendar, couleur: 'violet' as const, onChoisir: () => { setInteractionClient(client); setInteractionType('RDV_PLANIFIE'); } },
+                      ...(itineraire ? [{ libelle: 'Itinéraire', icone: Navigation, couleur: 'gris' as const, href: itineraire }] : []),
+                    ]}
+                  >
+                  <div
                     onClick={selectionMode ? (e) => toggleSelection(client.id, e) : () => setSearchParams({ id: client.id })}
                     className={`px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${
                       isSelected && !selectionMode ? 'bg-brewery-50 border-l-3 border-brewery-600' : ''
@@ -1628,6 +1657,7 @@ export default function ClientsPage() {
                       ) : null}
                     </div>
                   </div>
+                  </LigneGlissante>
                 );
               })}
             </div>
