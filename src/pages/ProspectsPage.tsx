@@ -42,6 +42,7 @@ import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
 import LigneGlissante, { AstuceGlissement } from '../components/ui/LigneGlissante';
 import Bouton from '../components/ui/Bouton';
+import EtatVide from '../components/ui/EtatVide';
 import { useEcranEtroit } from '../utils/useEcranEtroit';
 import { toast as annonce } from 'sonner';
 
@@ -428,6 +429,7 @@ export default function ProspectsPage() {
     setFilterSansNumero(false);
     setFilterCommercial('');
   };
+  const effacerFiltres = () => { setSearchTerm(''); clearAllFilters(); };
 
   // Build set of prospect IDs linked to the selected commercial via calls/appointments
   const prospectIdsForCommercial = useMemo(() => {
@@ -1166,6 +1168,17 @@ export default function ProspectsPage() {
             </div>
             </LigneGlissante>
           ))}
+          {filteredProspects.length === 0 && (
+            searchTerm || hasActiveFilters ? (
+              <EtatVide icone={Search} titre="Aucun prospect ne correspond" texte={searchTerm ? `Rien pour « ${searchTerm} » avec ces filtres.` : 'Aucun prospect avec ces filtres.'}>
+                <Bouton variante="principal" onClick={effacerFiltres}>Effacer la recherche et les filtres</Bouton>
+              </EtatVide>
+            ) : (
+              <EtatVide icone={Building2} titre="Aucun prospect pour l'instant" texte="Ajoutez un établissement à démarcher pour commencer la prospection.">
+                <Bouton variante="principal" icone={<Plus className="h-4 w-4" />} onClick={openNewForm}>Nouveau prospect</Bouton>
+              </EtatVide>
+            )
+          )}
         </div>
 
         {/* Pagination */}

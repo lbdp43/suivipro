@@ -23,6 +23,7 @@ import { useCallModal } from '../components/CallModal';
 import { faitDeLaProspection, estCommercial, libelleRole } from '../utils/roles';
 import { aSigne, doitSigner } from '../../shared/documents';
 import { confirmer } from '../components/ui/Confirmation';
+import EtatVide from '../components/ui/EtatVide';
 
 // ============================================================================
 // Accueil « Ma journée » : une porte d'entrée par rôle. Pas d'itinéraire, pas de graphiques :
@@ -48,8 +49,8 @@ function Bonjour({ personne, sousTitre }: { personne: Commercial; sousTitre: str
   );
 }
 
-function Carte({ titre, icone: Icone, lien, compte, enfants, vide, teinte = 'gray' }: {
-  titre: string; icone: typeof Calendar; lien?: string; compte?: number; enfants: React.ReactNode; vide?: string; teinte?: 'gray' | 'red' | 'amber' | 'brewery';
+function Carte({ titre, icone: Icone, lien, compte, enfants, vide, videTexte, teinte = 'gray' }: {
+  titre: string; icone: typeof Calendar; lien?: string; compte?: number; enfants: React.ReactNode; vide?: string; videTexte?: string; teinte?: 'gray' | 'red' | 'amber' | 'brewery';
 }) {
   const bord = { gray: 'border-gray-200', red: 'border-red-200', amber: 'border-amber-200', brewery: 'border-brewery-200' }[teinte];
   const txt = { gray: 'text-gray-500', red: 'text-red-600', amber: 'text-amber-600', brewery: 'text-brewery-600' }[teinte];
@@ -62,7 +63,7 @@ function Carte({ titre, icone: Icone, lien, compte, enfants, vide, teinte = 'gra
         </h3>
         {lien && <Link to={lien} className="text-xs text-brewery-600 hover:underline flex items-center gap-0.5">Voir <ChevronRight className="w-3 h-3" /></Link>}
       </div>
-      {compte === 0 && vide ? <p className="text-xs text-gray-400 italic">{vide}</p> : enfants}
+      {compte === 0 && vide ? <EtatVide ligne icone={Icone} titre={vide} texte={videTexte} /> : enfants}
     </div>
   );
 }
@@ -633,12 +634,12 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
 
       <div id="rdv-du-jour" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-4">
         <BlocErreur titre="Rendez-vous du jour">
-          <Carte titre="Rendez-vous aujourd'hui" icone={Calendar} lien="/rdv" compte={rdvDuJour.length} vide="Aucun rendez-vous aujourd'hui." teinte="brewery"
+          <Carte titre="Rendez-vous aujourd'hui" icone={Calendar} lien="/rdv" compte={rdvDuJour.length} vide="Aucun rendez-vous aujourd'hui" teinte="brewery"
             enfants={<div>{rdvDuJour.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} cible={cibleDuRdv(r, getProspect, getClient)} surCompteRendu={() => setCompteRenduRdv(r)} />)}</div>} />
         </BlocErreur>
         <BlocErreur titre="Tournée du jour">
           <Carte titre={tournee.zones.length ? `Tournée du jour · ${tournee.zones.join(', ')}` : 'Clients à visiter aujourd\'hui'} icone={MapPin} lien="/semaine" compte={tournee.clients.length}
-            vide={tournee.zones.length ? 'Aucun client actif dans ce secteur.' : 'Pas de secteur prévu aujourd\'hui, et aucune visite due.'} teinte="brewery"
+            vide={tournee.zones.length ? 'Aucun client actif dans ce secteur' : 'Pas de visite aujourd\'hui'} videTexte={tournee.zones.length ? undefined : 'Aucun secteur prévu et aucune visite due.'} teinte="brewery"
             enfants={<div className="space-y-1 max-h-72 overflow-y-auto">
               {tournee.notes && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded p-1.5 mb-1">{tournee.notes}</p>}
               {tournee.clients.map(c => (
@@ -855,7 +856,7 @@ function BoiteDeProspection({ moi }: { moi: Commercial }) {
   const attente = useMemo(() => aQualifier(state).filter(s => concerne(s, moi, faitDeLaProspection(moi))), [state, moi]);
   const nomDe = (id: string) => { const c = getCommercial(id); return c ? c.prenom : id; };
   return (
-    <Carte titre="Boîte de prospection" icone={Inbox} lien="/boite" compte={attente.length} vide="Rien à qualifier." teinte={attente.length ? 'brewery' : 'gray'}
+    <Carte titre="Boîte de prospection" icone={Inbox} lien="/boite" compte={attente.length} vide="Rien à qualifier" teinte={attente.length ? 'brewery' : 'gray'}
       enfants={<div className="space-y-0.5 max-h-64 overflow-y-auto">
         {attente.slice(0, 8).map(s => (
           <Link key={s.id} to="/boite" className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 rounded">
@@ -995,7 +996,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BlocErreur titre="Boîte de prospection"><BoiteDeProspection moi={moi} /></BlocErreur>
         <BlocErreur titre="Rappels">
-          <Carte titre="À rappeler aujourd'hui" icone={Bell} lien="/rappels" compte={rappels.length} vide="Aucun rappel en attente." teinte={rappels.length ? 'amber' : 'gray'}
+          <Carte titre="À rappeler aujourd'hui" icone={Bell} lien="/rappels" compte={rappels.length} vide="Aucun rappel en attente" teinte={rappels.length ? 'amber' : 'gray'}
             enfants={<div className="space-y-0.5 max-h-80 overflow-y-auto">
               {rappels.map(r => { const p = getProspect(r.prospect_id); const enRetard = r.date < today; return (
                 <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
@@ -1009,7 +1010,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
             </div>} />
         </BlocErreur>
         <BlocErreur titre="À appeler ensuite">
-          <Carte titre="À appeler ensuite" icone={Phone} lien="/prospects" compte={aAppeler.length} vide="Rien dans la file : ajoutez des prospects « à contacter »."
+          <Carte titre="À appeler ensuite" icone={Phone} lien="/prospects" compte={aAppeler.length} vide="Rien dans la file" videTexte="Ajoutez des prospects « à contacter »."
             enfants={<div className="space-y-0.5 max-h-80 overflow-y-auto">
               <button onClick={() => startSession(aAppeler.map(p => p.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700">
                 <Phone className="w-3.5 h-3.5" /> Lancer la session d'appels ({aAppeler.length})
@@ -1040,7 +1041,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
           </div>
         </BlocErreur>
         <BlocErreur titre="RDV pris aujourd'hui">
-          <Carte titre="RDV pris aujourd'hui, par commercial" icone={Calendar} lien="/rdv" compte={rdvPrisDuJour.length} vide="Aucun rendez-vous pris aujourd'hui pour l'instant." teinte="brewery"
+          <Carte titre="RDV pris aujourd'hui, par commercial" icone={Calendar} lien="/rdv" compte={rdvPrisDuJour.length} vide="Aucun rendez-vous pris aujourd'hui pour l'instant" teinte="brewery"
             enfants={<div className="space-y-2">
               {parCommercial.map(([cid, liste]) => { const c = getCommercial(cid); return (
                 <div key={cid}>
@@ -1305,7 +1306,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
 
       <BlocErreur titre="Rendez-vous du jour (équipe)">
         <Carte titre="Rendez-vous de l'équipe aujourd'hui" icone={Calendar} lien="/rdv"
-          compte={state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === today).length} vide="Aucun rendez-vous aujourd'hui."
+          compte={state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === today).length} vide="Aucun rendez-vous aujourd'hui"
           enfants={<div>
             {state.appointments.filter(a => !rdvAnnule(a) && jourDe(a.date) === today).sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || '')).map(r => {
               const c = state.commerciaux.find(x => x.id === r.commercial_id);
