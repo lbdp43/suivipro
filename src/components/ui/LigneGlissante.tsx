@@ -1,11 +1,11 @@
 // Une ligne de liste qu'on fait glisser au doigt pour agir sans ouvrir la fiche.
 //
-// Sur téléphone seulement. Vers la droite : les gestes de terrain (appeler, noter une
-// visite) ; vers la gauche : le reste (tâche, rendez-vous, note). Un petit glissement
-// découvre les boutons, qu'on touche ensuite ; un grand glissement fait tout de suite la
-// première action du côté tiré (le téléphone vibre au passage du seuil). Rien d'autre ne
-// change : la ligne s'ouvre toujours d'un appui, défile toujours de haut en bas, et ses
-// boutons habituels restent là — le glissement est un raccourci, pas un passage obligé.
+// Sur téléphone seulement. Vers la droite : trois boutons, les gestes de terrain (appeler,
+// noter une visite, une tâche) ; vers la gauche : le reste. Un glissement découvre les
+// boutons, qui restent ouverts ; on touche ensuite celui qu'on veut. Aucune action ne part
+// toute seule. Rien d'autre ne change : la ligne s'ouvre toujours d'un appui, défile
+// toujours de haut en bas, et ses boutons habituels restent là — le glissement est un
+// raccourci, pas un passage obligé.
 //
 // Inspiré du « Swipe Row » de molecule-lab-rushil (21st.dev), écrit sans bibliothèque de
 // gestes : le défilement vertical reste celui du navigateur (touch-action: pan-y).
@@ -33,14 +33,14 @@ const COULEURS: Record<ActionGlissee['couleur'], string> = {
 
 const LARGEUR_ACTION = 76;   // px par bouton découvert
 const DECISION = 8;          // px avant de savoir si le geste est horizontal ou vertical
-const SEUIL_DIRECT = 0.55;   // part de la largeur au-delà de laquelle la première action part seule
+const OUVERTURE = 36;        // px de glissement qui suffisent pour ouvrir les boutons
 
 // Une seule ligne ouverte à la fois dans toute l'appli.
 const fermeurs = new Set<() => void>();
 const fermerLesAutres = (sauf: () => void) => fermeurs.forEach(f => { if (f !== sauf) f(); });
 
 export default function LigneGlissante({ gauche = [], droite = [], desactive, children }: {
-  /** Découvertes en tirant vers la droite (à gauche de la ligne). La première est l'action directe. */
+  /** Découvertes en tirant vers la droite (à gauche de la ligne). */
   gauche?: ActionGlissee[];
   /** Découvertes en tirant vers la gauche (à droite de la ligne). */
   droite?: ActionGlissee[];
@@ -52,7 +52,7 @@ export default function LigneGlissante({ gauche = [], droite = [], desactive, ch
   const [decalage, setDecalage] = useState(0);
   const [enGeste, setEnGeste] = useState(false);
   const ligne = useRef<HTMLDivElement>(null);
-  const geste = useRef<{ x: number; y: number; depart: number; sens: 'h' | 'v' | null; seuil: boolean } | null>(null);
+  const geste = useRef<{ x: number; y: number; depart: number; sens: 'h' | 'v' | null } | null>(null);
   const aGlisse = useRef(false);
 
   const fermer = useRef(() => setDecalage(0)).current;
@@ -73,7 +73,7 @@ export default function LigneGlissante({ gauche = [], droite = [], desactive, ch
 
   const debut = (e: React.TouchEvent) => {
     const t = e.touches[0];
-    geste.current = { x: t.clientX, y: t.clientY, depart: decalage, sens: null, seuil: false };
+    geste.current = { x: t.clientX, y: t.clientY, depart: decalage, sens: null };
     aGlisse.current = false;
   };
 
@@ -91,14 +91,11 @@ export default function LigneGlissante({ gauche = [], droite = [], desactive, ch
     if (g.sens !== 'h') return;
     aGlisse.current = true;
     let x = g.depart + dx;
-    // Pas de côté sans action ; au-delà des boutons, la ligne résiste.
+    // Pas de côté sans action ; au-delà des boutons, la ligne résiste (freinée de moitié).
     if (x > 0 && !gauche.length) x = 0;
     if (x < 0 && !droite.length) x = 0;
-    const largeur = ligne.current?.offsetWidth || 360;
-    const max = largeur * 0.8;
-    if (Math.abs(x) > max) x = Math.sign(x) * max;
-    const franchi = Math.abs(x) > largeur * SEUIL_DIRECT;
-    if (franchi !== g.seuil) { g.seuil = franchi; if (franchi) navigator.vibrate?.(10); }
+    if (x > ouvertureG) x = ouvertureG + (x - ouvertureG) / 2;
+    if (x < -ouvertureD) x = -ouvertureD + (x + ouvertureD) / 2;
     setDecalage(x);
   };
 
@@ -107,10 +104,11 @@ export default function LigneGlissante({ gauche = [], droite = [], desactive, ch
     geste.current = null;
     setEnGeste(false);
     if (!g || g.sens !== 'h') return;
+    // On ouvre dès un petit glissement dans un sens ; un glissement de retour referme.
     const x = decalage;
-    if (g.seuil) { lancer(x > 0 ? gauche[0] : droite[0]); return; }
-    if (x > ouvertureG / 2) setDecalage(ouvertureG);
-    else if (x < -ouvertureD / 2) setDecalage(-ouvertureD);
+    const vers = x - g.depart;
+    if (x > 0 && (g.depart > 0 ? vers > -OUVERTURE : x > OUVERTURE)) setDecalage(ouvertureG);
+    else if (x < 0 && (g.depart < 0 ? vers < OUVERTURE : x < -OUVERTURE)) setDecalage(-ouvertureD);
     else setDecalage(0);
   };
 
@@ -125,20 +123,13 @@ export default function LigneGlissante({ gauche = [], droite = [], desactive, ch
     }
   };
 
-  const largeur = ligne.current?.offsetWidth || 360;
-  const plein = Math.abs(decalage) > largeur * SEUIL_DIRECT;
   const cote = decalage > 0 ? gauche : droite;
 
   return (
     <div ref={ligne} className="relative overflow-hidden">
       {decalage !== 0 && (
         <div className={`absolute inset-y-0 flex ${decalage > 0 ? 'left-0 flex-row' : 'right-0 flex-row-reverse'}`} style={{ width: Math.abs(decalage) }}>
-          {plein ? (
-            // Au-delà du seuil, la première action prend toute la place : c'est elle qui part.
-            <div className={`flex flex-1 items-center ${decalage > 0 ? 'justify-start pl-5' : 'justify-end pr-5'} text-white ${COULEURS[cote[0].couleur]}`}>
-              <ContenuAction a={cote[0]} />
-            </div>
-          ) : cote.map(a => (
+          {cote.map(a => (
             <button
               key={a.libelle}
               type="button"

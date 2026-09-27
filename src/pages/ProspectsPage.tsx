@@ -1052,7 +1052,7 @@ export default function ProspectsPage() {
 
         {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {paginatedProspects.length > 0 && <AstuceGlissement cle="prospects">Astuce : glissez un prospect vers la droite pour l'appeler ou programmer un rappel, vers la gauche pour une note ou l'itinéraire.</AstuceGlissement>}
+          {paginatedProspects.length > 0 && <AstuceGlissement cle="prospects">Astuce : glissez un prospect vers la droite pour l'appeler, programmer un rappel ou prendre une note ; vers la gauche pour l'itinéraire.</AstuceGlissement>}
           {paginatedProspects.map(p => (
             <LigneGlissante
               key={p.id}
@@ -1060,9 +1060,9 @@ export default function ProspectsPage() {
               gauche={[
                 ...(p.telephone ? [{ libelle: 'Appeler', icone: Phone, couleur: 'vert' as const, onChoisir: () => startCall(p.id) }] : []),
                 { libelle: 'Rappel', icone: Bell, couleur: 'ambre' as const, onChoisir: () => ouvrirRappel(p) },
+                { libelle: 'Note', icone: MessageSquare, couleur: 'jaune' as const, onChoisir: () => openQuickNote(p) },
               ]}
               droite={[
-                { libelle: 'Note', icone: MessageSquare, couleur: 'jaune' as const, onChoisir: () => openQuickNote(p) },
                 ...(p.latitude && p.longitude ? [{ libelle: 'Itinéraire', icone: Navigation, couleur: 'gris' as const, href: `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}` }] : []),
               ]}
             >
