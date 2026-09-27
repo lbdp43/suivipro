@@ -7,6 +7,7 @@ import { downloadDocument } from '../api/client';
 import { generateId } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { etapeApresMail } from '../../shared/tunnel';
+import Fenetre from './ui/Fenetre';
 
 interface ProspectProps {
   prospect: Prospect;
@@ -166,8 +167,7 @@ export default function EmailTemplateModal(props: Props) {
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut auPremierPlan onFermer={onClose} titre="Envoyer un e-mail" largeur="normale">
         <div className="p-5 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-gray-900 flex items-center gap-2">
             <Mail className="w-5 h-5 text-purple-600" /> Envoyer un e-mail
@@ -355,7 +355,6 @@ export default function EmailTemplateModal(props: Props) {
             )}
           </button>
         </div>
-      </div>
-    </div>
+    </Fenetre>
   );
 }
