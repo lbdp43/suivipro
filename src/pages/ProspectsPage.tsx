@@ -1486,8 +1486,7 @@ export default function ProspectsPage() {
 
       {/* Convert to client modal */}
       {convertProspect && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setConvertProspect(null)} titre="Convertir en client" largeur="etroite">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
                 <Building2 className="w-4 h-4 text-emerald-600" /> Convertir en client
@@ -1599,8 +1598,7 @@ export default function ProspectsPage() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Email template modal */}
@@ -1610,8 +1608,7 @@ export default function ProspectsPage() {
 
       {/* Quick reminder modal */}
       {reminderProspect && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setReminderProspect(null)} titre="Mémo / Rappel" largeur="etroite">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
                 <Bell className="w-4 h-4 text-orange-500" /> Memo / Rappel
@@ -1708,14 +1705,12 @@ export default function ProspectsPage() {
                 <Bell className="w-3.5 h-3.5" /> Créer le rappel
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Quick notes modal */}
       {quickNoteId && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setQuickNoteId(null)} titre="Notes rapides" largeur="etroite">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-amber-500" />
@@ -1745,14 +1740,12 @@ export default function ProspectsPage() {
                 <Save className="w-4 h-4" /> Enregistrer
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Prospect form modal */}
       {showForm && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowForm(false)} titre={editingProspect ? 'Modifier le prospect' : 'Nouveau prospect'} largeur="normale">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editingProspect ? 'Modifier le prospect' : 'Nouveau prospect'}</h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
@@ -2069,8 +2062,7 @@ export default function ProspectsPage() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {crRdv && <CompteRenduModal rdv={crRdv} onClose={() => setCrRdv(null)} />}

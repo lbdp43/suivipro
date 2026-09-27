@@ -13,6 +13,7 @@ import { apiPut, apiDelete } from '../api/client';
 import { Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES } from '../types';
 import { formatDuration, formatTimeAgo, getCallsThisWeek, getCallsToday, getResponseRate } from '../utils/helpers';
 import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 export default function CallsPage() {
   const { state, dispatchLocal } = useApp();
@@ -286,8 +287,7 @@ export default function CallsPage() {
 
       {/* Edit call modal */}
       {editingCall && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setEditingCall(null)} titre="Modifier l'appel" largeur="etroite">
             <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-sm sm:text-base">Modifier l'appel</h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setEditingCall(null)}>
@@ -346,8 +346,7 @@ export default function CallsPage() {
                 <Save className="w-4 h-4" /> Enregistrer
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );
