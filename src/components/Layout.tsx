@@ -14,6 +14,18 @@ import { nouvelleVersionDisponible, rechargerUneFois } from '../utils/version';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
 import { Link } from 'react-router-dom';
 
+/** Le téléphone a-t-il perdu le réseau ? (événements online / offline du navigateur) */
+function useHorsLigne() {
+  const [hors, setHors] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+  useEffect(() => {
+    const maj = () => setHors(navigator.onLine === false);
+    window.addEventListener('online', maj);
+    window.addEventListener('offline', maj);
+    return () => { window.removeEventListener('online', maj); window.removeEventListener('offline', maj); };
+  }, []);
+  return hors;
+}
+
 
 interface Notification {
   id: string;
@@ -57,6 +69,7 @@ const NOTIF_ICONS: Record<string, string> = {
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const horsLigne = useHorsLigne();
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -161,7 +174,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-x-hidden">
+    <div className="flex hauteur-ecran bg-gray-50 overflow-x-hidden pl-safe pr-safe">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -172,7 +185,7 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`sidebar ${sidebarOpen ? 'open' : ''} w-64 bg-white border-r border-gray-200 flex flex-col h-full md:relative md:transform-none`}
+        className={`sidebar ${sidebarOpen ? 'open' : ''} w-64 bg-white border-r border-gray-200 flex flex-col h-full md:relative md:transform-none pt-safe pb-safe`}
         role="navigation"
         aria-label="Menu principal"
       >
@@ -357,7 +370,8 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 flex-shrink-0 min-w-0">
+        <header className="bg-white border-b border-gray-200 flex-shrink-0 min-w-0 pt-safe">
+          <div className="h-14 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 min-w-0">
           <button
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-100"
             onClick={() => setSidebarOpen(true)}
@@ -472,10 +486,16 @@ export default function Layout() {
             </div>
             <Link to="/profil" className="font-medium hover:text-brewery-600 transition-colors truncate max-w-[5.5rem] sm:max-w-none" title="Mon profil">{state.currentUser?.prenom}</Link>
           </div>
+          </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        {horsLigne && (
+          <div className="bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2" role="status">
+            Hors connexion : vous voyez les dernières données reçues. Ce que vous modifiez maintenant ne sera pas enregistré.
+          </div>
+        )}
+        <main className="flex-1 overflow-auto fin-de-page">
           {/* Une page qui casse sur une donnée inattendue n'emporte ni le menu ni l'en-tête. */}
           <BlocErreur key={location.pathname} titre="cette page">
             <Outlet />

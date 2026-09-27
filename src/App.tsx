@@ -62,7 +62,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brewery-50 via-white to-green-50 flex items-center justify-center">
+      <div className="min-hauteur-ecran bg-gradient-to-br from-brewery-50 via-white to-green-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 bg-brewery-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <Beer className="w-9 h-9 text-white" />
