@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import { dateLocale } from '../../shared/regles';
 import { candidatsDoublons } from '../../shared/rapprochement';
 import { useSearchParams } from 'react-router-dom';
@@ -338,8 +338,10 @@ export default function ProspectsPage() {
   };
 
   // Get unique sectors, postal codes, and departments for filters
-  const allSecteurs = [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort();
-  const allPostalCodes = [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort();
+  const allSecteurs = useMemo(() => [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort(), [state.prospects]);
+  const allPostalCodes = useMemo(() => [...new Set(state.prospects.map(p => p.code_postal).filter(Boolean))].sort(), [state.prospects]);
+  // La saisie reste fluide : le filtrage des milliers de fiches suit un temps après la frappe.
+  const rechercheDifferee = useDeferredValue(searchTerm);
 
   const secteurCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -439,8 +441,8 @@ export default function ProspectsPage() {
       if (filterSansNumero && aUnNumero(p.telephone)) return false;
       if (filterZones.size > 0 && !filterZones.has(p.zone_id || ((p.latitude && p.longitude) ? '__hors__' : '__nonplace__'))) return false;
       if (prospectIdsForCommercial && !prospectIdsForCommercial.has(p.id)) return false;
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
+      if (rechercheDifferee) {
+        const term = rechercheDifferee.toLowerCase();
         return (
           p.nom_etablissement.toLowerCase().includes(term) ||
           p.nom_contact.toLowerCase().includes(term) ||
@@ -453,10 +455,15 @@ export default function ProspectsPage() {
     });
     if (sortScore === 'desc') return list.sort((a, b) => b.score - a.score);
     if (sortScore === 'asc') return list.sort((a, b) => a.score - b.score);
-    if (sortDate === 'recent') return list.sort((a, b) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
-    if (sortDate === 'ancien') return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
-    return list.sort((a, b) => new Date(b.date_modification).getTime() - new Date(a.date_modification).getTime());
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, searchTerm, sortScore, sortDate, pipelineEntityTypes]);
+    // Chaque date est lue une fois, pas à chaque comparaison du tri.
+    const parDate = (champ: 'date_creation' | 'date_modification', sens: 1 | -1) => list
+      .map(p => [Date.parse(p[champ]) || 0, p] as const)
+      .sort((a, b) => sens * (a[0] - b[0]))
+      .map(([, p]) => p);
+    if (sortDate === 'recent') return parDate('date_creation', -1);
+    if (sortDate === 'ancien') return parDate('date_creation', 1);
+    return parDate('date_modification', -1);
+  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, rechercheDifferee, sortScore, sortDate, pipelineEntityTypes]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {

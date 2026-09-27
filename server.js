@@ -12,6 +12,7 @@ import { dbReady } from './server/db.js';
 import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux, runClientSync } from './server/routes.js';
 import { rattacherTout } from './server/lib/zones.js';
 import { reparerDernieresVisitesFutures } from './server/lib/visitesClient.js';
+import { invaliderApresEcriture } from './server/lib/etatCache.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 import googleContactsRoutes from './server/google-contacts.js';
 import mcpRoutes from './server/mcp/index.js';
@@ -27,8 +28,9 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Le MCP (accès Claude) avant tout le reste : ce n'est pas un navigateur de l'application,
-// il lui faut sa propre origine autorisée et son propre quota. Lecture seule.
-app.use('/mcp', mcpRoutes);
+// il lui faut sa propre origine autorisée et son propre quota. Ses écritures (comptes
+// rendus, visites…) rendent périmé l'état commun, comme celles de l'appli.
+app.use('/mcp', invaliderApresEcriture, mcpRoutes);
 
 // Un client MCP qui n'a pas trouvé de service de connexion va sonder ces adresses. Sans
 // réponse nette, il reçoit la page de l'application (200, du HTML), en conclut qu'un OAuth
@@ -129,6 +131,8 @@ app.use(express.json({ limit: '10mb' }));
 // de nom à chaque déploiement).
 const VERSION_APPLI = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_VERSION || String(Date.now());
 app.use('/api', (_req, res, next) => { res.setHeader('X-Version', VERSION_APPLI); next(); });
+// Toute écriture réussie (API ou Claude) rend périmé l'état commun gardé en mémoire.
+app.use('/api', invaliderApresEcriture);
 
 // API routes
 app.use('/api', apiRoutes);

@@ -5,6 +5,7 @@
 const API_BASE = '/api';
 
 import { noterVersion } from '../utils/version';
+import { oublierEtat } from '../utils/cacheEtat';
 
 let authToken: string | null = localStorage.getItem('suivipro_token');
 
@@ -15,12 +16,28 @@ export function setApiErrorHandler(handler: (msg: string) => void) {
   onApiError = handler;
 }
 
+// Une écriture a échoué : l'écran avait déjà affiché le changement (mise à jour optimiste).
+// On oublie l'empreinte et on redemande l'état au serveur, qui remet l'écran d'aplomb. Sans
+// ça, le serveur n'ayant rien changé répondait « 304 », et le faux changement restait affiché.
+let onEchecEcriture: (() => void) | null = null;
+
+export function setEchecEcritureHandler(handler: (() => void) | null) {
+  onEchecEcriture = handler;
+}
+
+function ecritureEchouee(message: string) {
+  empreinteEtat = null;
+  if (onApiError) onApiError(message);
+  if (onEchecEcriture) onEchecEcriture();
+}
+
 export function setToken(token: string | null) {
   authToken = token;
   if (token) {
     localStorage.setItem('suivipro_token', token);
   } else {
     localStorage.removeItem('suivipro_token');
+    oublierEtat();
   }
 }
 
@@ -101,6 +118,16 @@ export async function getMe() {
 // n'a changé, et l'écran garde ce qu'il a. `forcer` ignore l'empreinte (connexion, reprise).
 let empreinteEtat: string | null = null;
 
+/** L'empreinte de l'état affiché (gardée avec lui sur le téléphone). */
+export function empreinteEtatActuelle(): string | null {
+  return empreinteEtat;
+}
+
+/** Au démarrage depuis l'état gardé : le serveur dira « 304 » s'il n'a pas changé. */
+export function definirEmpreinteEtat(e: string | null) {
+  empreinteEtat = e;
+}
+
 export async function loadFullState(forcer = false): Promise<any | null> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
@@ -162,7 +189,7 @@ function post(path: string, body: unknown) {
   return withRetry(() => request(path, { method: 'POST', body: JSON.stringify(body) }))
     .catch(err => {
       console.error('API POST error:', err);
-      if (onApiError) onApiError(`Erreur de sauvegarde: ${err.message}`);
+      ecritureEchouee(`Erreur de sauvegarde: ${err.message}`);
     });
 }
 
@@ -170,7 +197,7 @@ function put(path: string, body: unknown) {
   return withRetry(() => request(path, { method: 'PUT', body: JSON.stringify(body) }))
     .catch(err => {
       console.error('API PUT error:', err);
-      if (onApiError) onApiError(`Erreur de mise à jour: ${err.message}`);
+      ecritureEchouee(`Erreur de mise à jour: ${err.message}`);
     });
 }
 
@@ -178,7 +205,7 @@ function patch(path: string, body: unknown) {
   return withRetry(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }))
     .catch(err => {
       console.error('API PATCH error:', err);
-      if (onApiError) onApiError(`Erreur de mise à jour: ${err.message}`);
+      ecritureEchouee(`Erreur de mise à jour: ${err.message}`);
     });
 }
 
@@ -186,7 +213,7 @@ function del(path: string) {
   return withRetry(() => request(path, { method: 'DELETE' }))
     .catch(err => {
       console.error('API DELETE error:', err);
-      if (onApiError) onApiError(`Erreur de suppression: ${err.message}`);
+      ecritureEchouee(`Erreur de suppression: ${err.message}`);
     });
 }
 
