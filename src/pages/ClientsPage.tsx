@@ -1449,7 +1449,7 @@ export default function ClientsPage() {
             )
           ) : (
             <div className="divide-y divide-gray-100">
-              <AstuceGlissement cle="clients">Astuce : glissez un client vers la droite pour l'appeler ou noter une visite, vers la gauche pour une tâche, un RDV ou l'itinéraire.</AstuceGlissement>
+              <AstuceGlissement cle="clients">Astuce : glissez un client vers la droite pour l'appeler, noter une visite ou créer une tâche ; vers la gauche pour un RDV ou l'itinéraire.</AstuceGlissement>
               {paginated.map(client => {
                 const personalInfo = getPersonalVisitInfo(client);
                 const visitStatus = getVisitStatusFromDate(personalInfo.nextVisit, client.statut);
@@ -1469,9 +1469,9 @@ export default function ClientsPage() {
                     gauche={[
                       ...(tel ? [{ libelle: 'Appeler', icone: Phone, couleur: 'vert' as const, href: `tel:${tel}` }] : []),
                       { libelle: 'Visite', icone: CheckCircle2, couleur: 'bleu' as const, onChoisir: () => { setInteractionClient(client); setInteractionType('VISITE'); } },
+                      { libelle: 'Tâche', icone: ListTodo, couleur: 'ambre' as const, onChoisir: () => { setTaskClientId(client.id); setTaskTitle(''); setTaskDate(''); setShowTaskForm(true); } },
                     ]}
                     droite={[
-                      { libelle: 'Tâche', icone: ListTodo, couleur: 'ambre' as const, onChoisir: () => { setTaskClientId(client.id); setTaskTitle(''); setTaskDate(''); setShowTaskForm(true); } },
                       { libelle: 'RDV', icone: Calendar, couleur: 'violet' as const, onChoisir: () => { setInteractionClient(client); setInteractionType('RDV_PLANIFIE'); } },
                       ...(itineraire ? [{ libelle: 'Itinéraire', icone: Navigation, couleur: 'gris' as const, href: itineraire }] : []),
                     ]}
