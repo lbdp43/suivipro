@@ -40,7 +40,9 @@ import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { estEnZonePrioritaire } from '../utils/zones';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
+import LigneGlissante, { AstuceGlissement } from '../components/ui/LigneGlissante';
 import Bouton from '../components/ui/Bouton';
+import EtatVide from '../components/ui/EtatVide';
 import { useEcranEtroit } from '../utils/useEcranEtroit';
 import { toast as annonce } from 'sonner';
 
@@ -320,10 +322,19 @@ export default function ProspectsPage() {
     exitSelectionMode();
   };
 
-  const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openQuickNote = (prospect: Prospect, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setQuickNoteId(prospect.id);
     setQuickNoteText(prospect.notes);
+  };
+  // Mémo / rappel : dans trois jours à 9 h par défaut.
+  const ouvrirRappel = (prospect: Prospect) => {
+    const in3days = new Date();
+    in3days.setDate(in3days.getDate() + 3);
+    setReminderDate(dateLocale(in3days));
+    setReminderHeure('09:00');
+    setReminderMessage('');
+    setReminderProspect(prospect);
   };
 
   const saveQuickNote = async () => {
@@ -418,6 +429,7 @@ export default function ProspectsPage() {
     setFilterSansNumero(false);
     setFilterCommercial('');
   };
+  const effacerFiltres = () => { setSearchTerm(''); clearAllFilters(); };
 
   // Build set of prospect IDs linked to the selected commercial via calls/appointments
   const prospectIdsForCommercial = useMemo(() => {
@@ -1040,9 +1052,21 @@ export default function ProspectsPage() {
 
         {/* List */}
         <div className="flex-1 overflow-y-auto">
+          {paginatedProspects.length > 0 && <AstuceGlissement cle="prospects">Astuce : glissez un prospect vers la droite pour l'appeler ou programmer un rappel, vers la gauche pour une note ou l'itinéraire.</AstuceGlissement>}
           {paginatedProspects.map(p => (
-            <div
+            <LigneGlissante
               key={p.id}
+              desactive={selectionMode}
+              gauche={[
+                ...(p.telephone ? [{ libelle: 'Appeler', icone: Phone, couleur: 'vert' as const, onChoisir: () => startCall(p.id) }] : []),
+                { libelle: 'Rappel', icone: Bell, couleur: 'ambre' as const, onChoisir: () => ouvrirRappel(p) },
+              ]}
+              droite={[
+                { libelle: 'Note', icone: MessageSquare, couleur: 'jaune' as const, onChoisir: () => openQuickNote(p) },
+                ...(p.latitude && p.longitude ? [{ libelle: 'Itinéraire', icone: Navigation, couleur: 'gris' as const, href: `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}` }] : []),
+              ]}
+            >
+            <div
               className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
                 selectedId === p.id && !selectionMode ? 'bg-brewery-50 border-l-4 border-l-brewery-500' : ''
               } ${selectionMode && selectedIds.has(p.id) ? 'bg-brewery-50' : ''}`}
@@ -1134,15 +1158,7 @@ export default function ProspectsPage() {
                   </button>
                   <button
                     className="px-3 py-1.5 sm:p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
-                    onClick={e => {
-                      e.stopPropagation();
-                      const in3days = new Date();
-                      in3days.setDate(in3days.getDate() + 3);
-                      setReminderDate(dateLocale(in3days));
-                      setReminderHeure('09:00');
-                      setReminderMessage('');
-                      setReminderProspect(p);
-                    }}
+                    onClick={e => { e.stopPropagation(); ouvrirRappel(p); }}
                     title="Memo / Rappel"
                   >
                     <Bell className="w-3.5 h-3.5" />
@@ -1150,7 +1166,19 @@ export default function ProspectsPage() {
                 </div>
               </div>
             </div>
+            </LigneGlissante>
           ))}
+          {filteredProspects.length === 0 && (
+            searchTerm || hasActiveFilters ? (
+              <EtatVide icone={Search} titre="Aucun prospect ne correspond" texte={searchTerm ? `Rien pour « ${searchTerm} » avec ces filtres.` : 'Aucun prospect avec ces filtres.'}>
+                <Bouton variante="principal" onClick={effacerFiltres}>Effacer la recherche et les filtres</Bouton>
+              </EtatVide>
+            ) : (
+              <EtatVide icone={Building2} titre="Aucun prospect pour l'instant" texte="Ajoutez un établissement à démarcher pour commencer la prospection.">
+                <Bouton variante="principal" icone={<Plus className="h-4 w-4" />} onClick={openNewForm}>Nouveau prospect</Bouton>
+              </EtatVide>
+            )
+          )}
         </div>
 
         {/* Pagination */}

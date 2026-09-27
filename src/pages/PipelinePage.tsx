@@ -1,5 +1,5 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Filter, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock, PhoneOff } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Filter, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock, PhoneOff, Search, Users } from 'lucide-react';
 import { aUnNumero } from '../../shared/normalisation';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
@@ -20,6 +20,7 @@ import { confirmer } from '../components/ui/Confirmation';
 import { useEcranEtroit } from '../utils/useEcranEtroit';
 import Fenetre from '../components/ui/Fenetre';
 import Bouton from '../components/ui/Bouton';
+import EtatVide from '../components/ui/EtatVide';
 
 export default function PipelinePage() {
   const { state, dispatch, dispatchLocal } = useApp();
@@ -931,9 +932,8 @@ export default function PipelinePage() {
                   </button>
                 )}
                 {(prospectsByStage[col.id] || []).length === 0 && (
-                  <div className="text-center py-8 text-xs text-gray-400">
-                    Aucun prospect
-                  </div>
+                  <EtatVide compact icone={hasActiveFilters ? Search : Users} titre="Aucun prospect"
+                    texte={hasActiveFilters ? 'Aucun prospect à cette étape avec ces filtres.' : 'Glissez une carte ici pour la passer à cette étape.'} />
                 )}
               </div>
             </div>

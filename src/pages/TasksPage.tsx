@@ -17,6 +17,8 @@ import { telephoneDuClient } from '../utils/sessionAppel';
 import { noterInteraction } from '../utils/interactions';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
+import EtatVide from '../components/ui/EtatVide';
+import Bouton from '../components/ui/Bouton';
 
 interface Task {
   id: string;
@@ -92,6 +94,8 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   const [filterStatut, setFilterStatut] = usePersistedState<string>('tasks_filterStatut', 'all');
   const [filterAssignee, setFilterAssignee] = usePersistedState<string>('tasks_filterAssignee', 'all');
   const [filterPriorite, setFilterPriorite] = usePersistedState<string>('tasks_filterPriorite', 'all');
+  const filtresEnCours = !!search || filterStatut !== 'all' || filterAssignee !== 'all' || filterPriorite !== 'all';
+  const effacerFiltres = () => { setSearch(''); setFilterStatut('all'); setFilterAssignee('all'); setFilterPriorite('all'); };
   const [showCompleted, setShowCompleted] = usePersistedState('tasks_showCompleted', false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
@@ -694,13 +698,16 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
       {/* Task list */}
       <div className="space-y-2">
         {filtered.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-            <ListTodo className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">
-              {search || filterStatut !== 'all' || filterAssignee !== 'all'
-                ? 'Aucune tâche ne correspond aux filtres'
-                : 'Aucune tâche en cours'}
-            </p>
+          <div className="bg-white rounded-xl border border-gray-200">
+            {filtresEnCours ? (
+              <EtatVide icone={Search} titre="Aucune tâche ne correspond" texte={search ? `Rien pour « ${search} » avec ces filtres.` : 'Aucune tâche avec ces filtres.'}>
+                <Bouton variante="principal" onClick={effacerFiltres}>Effacer la recherche et les filtres</Bouton>
+              </EtatVide>
+            ) : (
+              <EtatVide icone={ListTodo} titre="Aucune tâche en cours" texte="Créez une tâche pour suivre ce qu'il reste à faire pour un client.">
+                <Bouton variante="principal" icone={<Plus className="h-4 w-4" />} onClick={openNewTask}>Nouvelle tâche</Bouton>
+              </EtatVide>
+            )}
           </div>
         )}
 
