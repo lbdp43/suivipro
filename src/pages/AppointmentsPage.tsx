@@ -4,7 +4,7 @@ import { etapeApresRdvCree } from '../../shared/tunnel';
 import {
   Calendar, Plus, X, Save, MapPin, Clock, CalendarPlus, Trash2, Edit2, Navigation, Phone,
    Users, ChevronLeft, ChevronRight, List, LayoutGrid, Download, CalendarDays,
-  ClipboardCheck, RefreshCw,
+  ClipboardCheck, RefreshCw, Search,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -23,6 +23,8 @@ import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
+import EtatVide from '../components/ui/EtatVide';
+import Bouton from '../components/ui/Bouton';
 
 export default function AppointmentsPage() {
   const { state, dispatchLocal, getProspect } = useApp();
@@ -35,6 +37,8 @@ export default function AppointmentsPage() {
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('rdv_commercial', '');
   const [filterProspecteur, setFilterProspecteur] = usePersistedState<string>('rdv_prospecteur', '');
   const [filterCompteRendu, setFilterCompteRendu] = usePersistedState<string>('rdv_compte_rendu', '');
+  const filtresEnCours = !!filterStatus || !!filterCommercial || !!filterProspecteur || !!filterCompteRendu;
+  const effacerFiltres = () => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); setFilterCompteRendu(''); };
   const [viewMode, setViewMode] = usePersistedState<'list' | 'agenda' | 'planning'>('rdv_view', 'planning');
   const [weekOffset, setWeekOffset] = useState(0);
   // Les tournées des commerciaux pour la semaine affichée : secteurs, RDV à prendre, pris.
@@ -1078,10 +1082,15 @@ export default function AppointmentsPage() {
           )}
 
           {appointments.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-              <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun rendez-vous</p>
-            </div>
+            filtresEnCours ? (
+              <EtatVide icone={Search} titre="Aucun rendez-vous ne correspond" texte="Aucun rendez-vous avec ces filtres.">
+                <Bouton variante="principal" onClick={effacerFiltres}>Effacer les filtres</Bouton>
+              </EtatVide>
+            ) : (
+              <EtatVide icone={Calendar} titre="Aucun rendez-vous pour l'instant" texte="Planifiez un rendez-vous avec un prospect pour le retrouver ici.">
+                <Bouton variante="principal" icone={<Plus className="h-4 w-4" />} onClick={openNewForm}>Nouveau rendez-vous</Bouton>
+              </EtatVide>
+            )
           )}
         </>
       )}

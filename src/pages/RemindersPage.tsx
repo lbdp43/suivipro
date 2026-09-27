@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   Bell, Plus, X, Save, Clock, Calendar, Check, RotateCcw, Trash2, Edit2,
-  AlertCircle, BellRing, CalendarClock, MessageSquare, User,
+  AlertCircle, BellRing, CalendarClock, MessageSquare, User, Search,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -17,6 +17,8 @@ import { useLancerSession } from '../hooks/useSessionAppel';
 import { PhoneCall } from 'lucide-react';
 import { generateId, formatDate, isToday } from '../utils/helpers';
 import Fenetre from '../components/ui/Fenetre';
+import EtatVide from '../components/ui/EtatVide';
+import Bouton from '../components/ui/Bouton';
 
 // embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
 // idsVisibles : auteurs à afficher (null = tout le monde).
@@ -33,6 +35,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
 
   // Filtre par auteur (persiste dans localStorage)
   const [filterCommercial, setFilterCommercial] = usePersistedState<string>('reminders_filterCommercial', '');
+  const effacerFiltres = () => setFilterCommercial('');
 
   // Modale reporter
   const [snoozeTarget, setSnoozeTarget] = useState<Reminder | null>(null);
@@ -407,10 +410,15 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
       )}
 
       {reminders.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Aucun rappel programme</p>
-        </div>
+        filterCommercial ? (
+          <EtatVide icone={Search} titre="Aucun rappel ne correspond" texte="Aucun rappel pour ce commercial.">
+            <Bouton variante="principal" onClick={effacerFiltres}>Effacer le filtre</Bouton>
+          </EtatVide>
+        ) : (
+          <EtatVide icone={Bell} titre="Aucun rappel programmé" texte="Programmez un rappel pour ne pas oublier de rappeler un prospect.">
+            <Bouton variante="principal" icone={<Plus className="h-4 w-4" />} onClick={() => setShowForm(true)}>Nouveau rappel</Bouton>
+          </EtatVide>
+        )
       )}
 
       {/* Modale Reporter */}
