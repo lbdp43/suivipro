@@ -36,23 +36,10 @@
 /* À l'impression, toujours clair. */
 @media print { :root { color-scheme: light; } }
 
-/* Mode sombre : il suit le réglage du téléphone ou de l'ordinateur (tailwind.config.js fait
-   basculer les couleurs des classes ; ici, les couleurs de rôle). */
-@media screen and (prefers-color-scheme: dark) {
-  :root {
-    --c-fond: 15 18 22;
-    --c-surface: 23 26 33;
-    --c-surface-2: 31 35 43;
-    --c-encre: 241 243 245;
-    --c-encre-douce: 180 186 197;
-    --c-trait: 44 49 58;
-    --c-primaire-doux: 23 45 33;
-    --c-danger-doux: 51 26 30;
-  }
-  /* La carte garde ses fonds clairs (tuiles, bulles) : on les assombrit juste assez. */
-  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgb(var(--c-surface)); color: rgb(var(--c-encre)); }
-  .leaflet-tile-pane { filter: brightness(0.8) contrast(1.1); }
-}
+/* Les valeurs sombres de ces couleurs sont dans tailwind.config.js, avec celles des classes. */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgb(var(--c-surface)); color: rgb(var(--c-encre)); }
+/* La carte garde ses tuiles claires : en sombre, on les assombrit juste assez. */
+.leaflet-tile-pane { filter: var(--filtre-carte, none); }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
