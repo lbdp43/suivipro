@@ -21,6 +21,7 @@ import { rdvSansCompteRendu } from '../../shared/regles';
 import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
 import { NomFiche } from '../components/FicheProspectModal';
 import { noterInteraction } from '../utils/interactions';
+import Fenetre from '../components/ui/Fenetre';
 
 const DAY_LABELS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const DAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -1074,8 +1075,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
 
       {/* Marquer visite/Appel modal */}
       {visitModalClient && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setVisitModalClient(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setVisitModalClient(null)} titre={visitModalType === 'VISITE' ? 'Marquer une visite' : 'Marquer un appel'} largeur="etroite">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div>
                 <h3 className="text-base font-bold text-gray-800">
@@ -1149,14 +1149,12 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 <CheckCircle2 className="w-4 h-4" /> {saving === visitModalClient.id ? 'Enregistrement...' : 'Confirmer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Planifier RDV modal */}
       {rdvModalClient && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setRdvModalClient(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setRdvModalClient(null)} titre="Planifier un RDV" largeur="etroite">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div>
                 <h3 className="text-base font-bold text-gray-800">Planifier un RDV</h3>
@@ -1292,14 +1290,12 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 <CheckCircle2 className="w-4 h-4" /> {saving === rdvModalClient.id ? 'Enregistrement...' : 'Confirmer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Quick note modal */}
       {noteClientId && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setNoteClientId(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setNoteClientId(null)} titre="Note" largeur="etroite">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                 <StickyNote className="w-4 h-4 text-yellow-500" />
@@ -1327,8 +1323,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 <Save className="w-3.5 h-3.5" /> {noteSaving ? 'Enregistrement...' : 'Enregistrer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );

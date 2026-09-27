@@ -22,6 +22,7 @@ import RepertoireGooglePanel from '../components/RepertoireGooglePanel';
 import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 export default function AppointmentsPage() {
   const { state, dispatchLocal, getProspect } = useApp();
@@ -1087,8 +1088,7 @@ export default function AppointmentsPage() {
 
       {/* Export modal */}
       {showExportModal && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowExportModal(false)} titre="Export Google Agenda" largeur="etroite">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <CalendarPlus className="w-5 h-5 text-blue-600" /> Export Google Agenda
@@ -1184,14 +1184,12 @@ export default function AppointmentsPage() {
                 <Download className="w-4 h-4" /> Exporter ({exportPreview.length})
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Form modal */}
       {showForm && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowForm(false)} titre={editing ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous'} largeur="etroite">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editing ? 'Modifier' : 'Nouveau'} {formData.event_type === 'rdv' ? 'RDV' : 'Événement'}</h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
@@ -1430,16 +1428,14 @@ export default function AppointmentsPage() {
                 <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Créer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
 
       {/* Edit prospect inline modal */}
       {editProspectData && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setEditProspectData(null)} titre="Modifier le prospect" largeur="etroite">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-indigo-600" /> Modifier le prospect
@@ -1556,8 +1552,7 @@ export default function AppointmentsPage() {
                 <Save className="w-4 h-4" /> Enregistrer
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );

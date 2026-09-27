@@ -9,6 +9,7 @@ import { EmailTemplate } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 export default function EmailsPage() {
   const { state, dispatchLocal } = useApp();
@@ -239,8 +240,7 @@ export default function EmailsPage() {
 
       {/* Edit/Create modal */}
       {showForm && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowForm(false)} titre={editing ? 'Modifier le template' : 'Nouveau template'} largeur="large">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editing ? 'Modifier le template' : 'Nouveau template'}</h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
@@ -273,14 +273,12 @@ export default function EmailsPage() {
                 <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Créer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Preview modal */}
       {showPreview && selectedTemplate && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowPreview(false)} titre="Prévisualisation" largeur="large">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Previsualisation</h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowPreview(false)}>
@@ -310,8 +308,7 @@ export default function EmailsPage() {
                 <Send className="w-4 h-4" /> Envoyer par email
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );

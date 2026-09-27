@@ -552,8 +552,7 @@ export default function DocumentsPage() {
 
       {/* Upload Modal */}
       {showUpload && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={reinitialiserEnvoi} titre="Ajouter un document" largeur="normale">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Upload className="w-5 h-5 text-brewery-600" /> Ajouter un document
@@ -708,8 +707,7 @@ export default function DocumentsPage() {
                 <Upload className="w-4 h-4" /> {uploading ? 'Envoi...' : 'Envoyer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );

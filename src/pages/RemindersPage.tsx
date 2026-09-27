@@ -16,6 +16,7 @@ import QueSestIlPasse from '../components/QueSestIlPasse';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import { PhoneCall } from 'lucide-react';
 import { generateId, formatDate, isToday } from '../utils/helpers';
+import Fenetre from '../components/ui/Fenetre';
 
 // embarque : rendu dans « Rappels et tâches », qui porte le titre et la vue d'équipe.
 // idsVisibles : auteurs à afficher (null = tout le monde).
@@ -414,8 +415,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
 
       {/* Modale Reporter */}
       {snoozeTarget && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setSnoozeTarget(null)} titre="Reporter le rappel" largeur="etroite">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <CalendarClock className="w-5 h-5 text-blue-600" /> Reporter le rappel
@@ -498,14 +498,12 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                 <CalendarClock className="w-4 h-4" /> Reporter au {snoozeDate ? formatDate(snoozeDate) : '...'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Modale Modifier */}
       {editTarget && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setEditTarget(null)} titre="Modifier le rappel" largeur="etroite">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-gray-600" /> Modifier le rappel
@@ -559,16 +557,14 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                 <Save className="w-4 h-4" /> Enregistrer
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {aTerminer && (() => { const p = getProspect(aTerminer.prospect_id); return p ? <QueSestIlPasse prospect={p} rappel={aTerminer} onClose={() => setATerminer(null)} /> : null; })()}
 
       {/* Form modal */}
       {showForm && (
-        <div className="modal-backdrop">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowForm(false)} titre="Programmer un rappel" largeur="etroite">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Programmer un rappel</h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
@@ -624,8 +620,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                 <Save className="w-4 h-4" /> Programmer
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );

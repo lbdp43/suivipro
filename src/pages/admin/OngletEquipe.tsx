@@ -8,6 +8,7 @@ import { generateId } from '../../utils/helpers';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
 import { confirmer } from '../../components/ui/Confirmation';
+import Fenetre from '../../components/ui/Fenetre';
 
 export default function OngletEquipe() {
   const { state, dispatchLocal } = useApp();
@@ -181,8 +182,7 @@ export default function OngletEquipe() {
 
           {/* User form modal */}
           {showUserForm && (
-            <div className="modal-backdrop">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <Fenetre ouvert brut onFermer={() => setShowUserForm(false)} titre={editingUser ? 'Modifier le membre' : 'Nouveau membre'} largeur="etroite">
                 <div className="p-5 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">
                     {editingUser ? `Modifier ${editingUser.prenom}` : 'Nouveau membre'}
@@ -314,8 +314,7 @@ export default function OngletEquipe() {
                     <Save className="w-4 h-4" /> {editingUser ? 'Modifier' : 'Créer'}
                   </button>
                 </div>
-              </div>
-            </div>
+            </Fenetre>
           )}
         </div>
     </>

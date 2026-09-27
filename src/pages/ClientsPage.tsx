@@ -2140,8 +2140,7 @@ export default function ClientsPage() {
 
       {/* Quick note modal */}
       {noteClientId && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setNoteClientId(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setNoteClientId(null)} titre="Note" largeur="etroite">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                 <StickyNote className="w-4 h-4 text-yellow-500" />
@@ -2169,8 +2168,7 @@ export default function ClientsPage() {
                 <Save className="w-3.5 h-3.5" /> {noteSaving ? 'Enregistrement...' : 'Enregistrer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
 

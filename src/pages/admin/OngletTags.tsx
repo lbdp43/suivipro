@@ -7,6 +7,7 @@ import { generateId } from '../../utils/helpers';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
 import { confirmer } from '../../components/ui/Confirmation';
+import Fenetre from '../../components/ui/Fenetre';
 
 export default function OngletTags() {
   const { state, dispatchLocal } = useApp();
@@ -103,8 +104,7 @@ export default function OngletTags() {
           </div>
 
           {showTagForm && (
-            <div className="modal-backdrop">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <Fenetre ouvert brut onFermer={() => setShowTagForm(false)} titre={editingTag ? 'Modifier le tag' : 'Nouveau tag'} largeur="etroite">
                 <div className="p-5 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">{editingTag ? 'Modifier le tag' : 'Nouveau tag'}</h3>
                   <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowTagForm(false)}>
@@ -146,8 +146,7 @@ export default function OngletTags() {
                     <Save className="w-4 h-4" /> {editingTag ? 'Modifier' : 'Créer'}
                   </button>
                 </div>
-              </div>
-            </div>
+            </Fenetre>
           )}
         </div>
     </>

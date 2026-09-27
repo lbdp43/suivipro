@@ -1,7 +1,9 @@
 import couleurs from 'tailwindcss/colors';
 import plugin from 'tailwindcss/plugin';
 
-// Mode sombre automatique : il suit le réglage du téléphone ou de l'ordinateur.
+// Mode sombre : il suit le réglage du téléphone ou de l'ordinateur, sauf si la personne a
+// choisi « Clair » ou « Sombre » dans son profil (attribut data-theme sur <html>, posé par
+// src/utils/theme.ts et, dès le chargement, par index.html).
 //
 // Plutôt que d'ajouter une variante « dark: » à des milliers de classes, les couleurs
 // elles-mêmes passent par des variables CSS qui changent de valeur en mode sombre :
@@ -61,6 +63,19 @@ function variables() {
       }
     }
   }
+  // Les couleurs de rôle (src/index.css) et la carte, en sombre.
+  Object.assign(sombre, {
+    '--c-fond': '15 18 22',
+    '--c-surface': '23 26 33',
+    '--c-surface-2': '31 35 43',
+    '--c-encre': '241 243 245',
+    '--c-encre-douce': '180 186 197',
+    '--c-trait': '44 49 58',
+    '--c-primaire-doux': '23 45 33',
+    '--c-danger-doux': '51 26 30',
+    '--filtre-carte': 'brightness(0.8) contrast(1.1)',
+    'color-scheme': 'dark',
+  });
   return { clair, sombre };
 }
 
@@ -104,7 +119,11 @@ export default {
       const { clair, sombre } = variables();
       addBase({
         ':root': clair,
-        '@media screen and (prefers-color-scheme: dark)': { ':root': sombre },
+        // Automatique : le réglage de l'appareil, sauf « Clair » choisi dans le profil.
+        '@media screen and (prefers-color-scheme: dark)': { ':root:not([data-theme="clair"])': sombre },
+        // « Sombre » choisi dans le profil. (À l'impression, toujours clair.)
+        '@media screen': { ':root[data-theme="sombre"]': sombre },
+        ':root[data-theme="clair"]': { 'color-scheme': 'light' },
       });
     }),
   ],

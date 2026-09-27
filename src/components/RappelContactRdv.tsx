@@ -7,6 +7,7 @@
 import { AlertTriangle, X } from 'lucide-react';
 import { Appointment, Client, Prospect } from '../types';
 import { dateLocale, jourDe, rdvAnnule } from '../../shared/regles';
+import Fenetre from './ui/Fenetre';
 
 /** Au-delà, le rendez-vous est passé depuis trop longtemps pour qu'on y revienne. */
 const FENETRE_JOURS = 7;
@@ -59,8 +60,7 @@ export default function RappelContactRdv({
   onFermer: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onFermer}>
-      <div className="bg-white w-full sm:max-w-md rounded-t-xl sm:rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut auPremierPlan onFermer={onFermer} titre="Le nom du contact, avant tout" largeur="etroite">
         <div className="flex items-start gap-3 p-4 border-b border-amber-200 bg-amber-50 rounded-t-xl">
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
@@ -98,7 +98,6 @@ export default function RappelContactRdv({
             J'ai compris, j'appelle
           </button>
         </div>
-      </div>
-    </div>
+    </Fenetre>
   );
 }

@@ -8,6 +8,7 @@ import FriseProspect from './FriseProspect';
 import CompteRenduModal from './CompteRenduModal';
 import ClientDetailModal from './ClientDetailModal';
 import { useCallModal } from './CallModal';
+import Fenetre from './ui/Fenetre';
 
 // La fiche d'un prospect en fenêtre, sans quitter la page : qui c'est, et tout ce qui s'est
 // passé avec lui (appels, mails envoyés, rendez-vous, actions, changements d'étape).
@@ -20,8 +21,8 @@ export default function FicheProspectModal({ prospectId, onClose }: { prospectId
   if (!prospect) return null;
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
-        <div className="bg-white w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl shadow-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <Fenetre ouvert brut onFermer={onClose} titre="Fiche et historique" largeur="large">
+        <div className="flex max-h-[85dvh] flex-col">
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200">
             <h3 className="font-bold text-gray-900 flex items-center gap-2 min-w-0"><History className="w-4 h-4 text-brewery-600 flex-shrink-0" /> <span className="truncate">Fiche et historique</span></h3>
             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -41,7 +42,7 @@ export default function FicheProspectModal({ prospectId, onClose }: { prospectId
             <FriseProspect prospect={prospect} onCompteRendu={rdv => setCrRdv(rdv)} />
           </div>
         </div>
-      </div>
+      </Fenetre>
       {crRdv && <div className="relative z-[70]"><CompteRenduModal rdv={crRdv} onClose={() => setCrRdv(null)} /></div>}
     </>
   );

@@ -959,8 +959,7 @@ export default function PipelinePage() {
 
       {/* Quick notes modal */}
       {quickNoteId && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setQuickNoteId(null)} titre="Notes rapides" largeur="etroite">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-amber-500" />
@@ -990,8 +989,7 @@ export default function PipelinePage() {
                 <Save className="w-4 h-4" /> Enregistrer
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );

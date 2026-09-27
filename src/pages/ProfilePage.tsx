@@ -1,12 +1,20 @@
 import { useState } from 'react';
-import { User, Shield, Phone, Mail, Key, Eye, EyeOff, Save, Check, ArrowLeft } from 'lucide-react';
+import { User, Shield, Phone, Mail, Key, Eye, EyeOff, Save, Check, ArrowLeft, Sun, Moon, SunMoon } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { apiPut } from '../api/client';
 import { Link } from 'react-router-dom';
+import { useTheme, type Theme } from '../utils/theme';
+
+const THEMES: { valeur: Theme; libelle: string; detail: string; Icone: typeof Sun }[] = [
+  { valeur: 'auto', libelle: 'Automatique', detail: 'Comme le téléphone ou l\'ordinateur', Icone: SunMoon },
+  { valeur: 'clair', libelle: 'Clair', detail: 'Toujours clair', Icone: Sun },
+  { valeur: 'sombre', libelle: 'Sombre', detail: 'Toujours sombre', Icone: Moon },
+];
 
 export default function ProfilePage() {
   const { state, dispatch } = useApp();
   const user = state.currentUser;
+  const [theme, choisirTheme] = useTheme();
 
   const [prenom, setPrenom] = useState(user?.prenom || '');
   const [nom, setNom] = useState(user?.nom || '');
@@ -238,6 +246,34 @@ export default function ProfilePage() {
               {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Apparence : appliquée tout de suite, gardée sur cet appareil. */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-6 mt-4">
+        <h3 id="titre-apparence" className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-2">
+          <SunMoon className="w-4 h-4 text-gray-500" />
+          Apparence
+        </h3>
+        <p className="text-xs text-gray-500 mb-4">Le choix vaut pour cet appareil.</p>
+        <div role="radiogroup" aria-labelledby="titre-apparence" className="grid grid-cols-3 gap-2">
+          {THEMES.map(({ valeur, libelle, detail, Icone }) => {
+            const actif = theme === valeur;
+            return (
+              <button
+                key={valeur}
+                type="button"
+                role="radio"
+                aria-checked={actif}
+                onClick={() => choisirTheme(valeur)}
+                className={`flex min-h-[4.5rem] flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 text-center transition-colors ${actif ? 'border-brewery-500 bg-brewery-50 text-brewery-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+              >
+                <Icone className="w-5 h-5" />
+                <span className="text-sm font-medium">{libelle}</span>
+                <span className="hidden text-xs text-gray-500 sm:block">{detail}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
