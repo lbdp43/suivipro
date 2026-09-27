@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Trash2, Undo2, Search, Building2, Users, UserRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { apiGet, apiPost } from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { confirmer } from '../../components/ui/Confirmation';
 
 interface Entree {
   id: number;
@@ -85,7 +86,7 @@ export default function OngletCorbeille() {
     const message = e.type === 'membre'
       ? `Remettre « ${e.nom} » dans l'équipe ? Son lien Google Agenda et son accès Claude ne sont pas rendus : à redonner si besoin.`
       : `Remettre « ${e.nom} » en place, avec tout ce qui a été rangé avec ?`;
-    if (!window.confirm(message)) return;
+    if (!await confirmer(message)) return;
     setEnCours(e.id);
     try {
       await apiPost(`/corbeille/${e.id}/restaurer`, {});

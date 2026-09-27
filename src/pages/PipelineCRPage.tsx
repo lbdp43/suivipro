@@ -19,6 +19,8 @@ import { NomFiche } from '../components/FicheProspectModal';
 import { fr } from 'date-fns/locale';
 import { generateId } from '../utils/helpers';
 import { apiPost, apiPut } from '../api/client';
+import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 // ============================================
 // CR Column definition
@@ -161,10 +163,10 @@ export default function PipelineCRPage() {
     toast.success('Étape modifiée');
   };
 
-  const deleteColumn = (col: CRColumnDef) => {
+  const deleteColumn = async (col: CRColumnDef) => {
     if (col.builtin) { toast.warning('Impossible de supprimer une étape par defaut'); return; }
     if (columns.length <= 1) { toast.warning('Impossible de supprimer la dernière étape'); return; }
-    if (confirm(`Supprimer l'etape "${col.label}" ? Les RDV seront déplacés vers "RDV en attente".`)) {
+    if (await confirmer(`Supprimer l'etape "${col.label}" ? Les RDV seront déplacés vers "RDV en attente".`)) {
       setColumns(prev => prev.filter(c => c.id !== col.id));
       // Move any appointments from deleted column back to en_attente
       state.appointments.forEach(async (a) => {
@@ -840,8 +842,7 @@ export default function PipelineCRPage() {
 
       {/* Detail modal */}
       {detailApt && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setDetailApt(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setDetailApt(null)} titre="Détails du RDV" largeur="normale">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-brewery-500" />
@@ -934,14 +935,12 @@ export default function PipelineCRPage() {
                 Fermer
               </button>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* Reschedule modal */}
       {rescheduleApt && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setRescheduleApt(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setRescheduleApt(null)} titre="Décaler le RDV" largeur="etroite">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <CalendarClock className="w-5 h-5 text-purple-500" />
@@ -1023,8 +1022,7 @@ export default function PipelineCRPage() {
                 <CalendarClock className="w-4 h-4" /> Confirmer le report
               </button>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
     </div>
   );

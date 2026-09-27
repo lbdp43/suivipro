@@ -11,8 +11,8 @@ import 'leaflet/dist/leaflet.css';
 import './index.css';
 
 // Application installable (écran d'accueil du téléphone) : c'est ce qui fait apparaître
-// SuiviPro dans le menu « Partager » de Google Maps et WhatsApp. Le service worker ne
-// garde rien en cache : il laisse tout passer au réseau.
+// SuiviPro dans le menu « Partager » de Google Maps et WhatsApp. Le service worker garde
+// la page et ses fichiers pour que l'appli s'ouvre sans réseau (public/sw.js).
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* navigateur sans service worker */ }); });
 }

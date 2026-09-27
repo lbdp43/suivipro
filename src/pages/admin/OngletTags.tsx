@@ -6,6 +6,7 @@ import {  Tag as TagType } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
+import { confirmer } from '../../components/ui/Confirmation';
 
 export default function OngletTags() {
   const { state, dispatchLocal } = useApp();
@@ -49,7 +50,7 @@ export default function OngletTags() {
   };
 
   const deleteTag = async (id: string) => {
-    if (confirm('Supprimer ce tag ?')) {
+    if (await confirmer('Supprimer ce tag ?')) {
       try {
         await apiDelete(`/tags/${id}`);
         dispatchLocal({ type: 'DELETE_TAG', payload: id });

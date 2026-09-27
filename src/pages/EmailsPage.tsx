@@ -8,6 +8,7 @@ import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import { EmailTemplate } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
+import { confirmer } from '../components/ui/Confirmation';
 
 export default function EmailsPage() {
   const { state, dispatchLocal } = useApp();
@@ -52,7 +53,7 @@ export default function EmailsPage() {
   };
 
   const deleteTemplate = async (id: string) => {
-    if (confirm('Supprimer ce template ?')) {
+    if (await confirmer('Supprimer ce template ?')) {
       try {
         await apiDelete(`/email-templates/${id}`);
         dispatchLocal({ type: 'DELETE_EMAIL_TEMPLATE', payload: id });

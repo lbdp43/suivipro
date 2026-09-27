@@ -8,6 +8,8 @@ import { Appointment, AppointmentResult, APPOINTMENT_RESULT_LABELS, Prospect, Re
 import { formatDate } from '../utils/helpers';
 import EmailTemplateModal from './EmailTemplateModal';
 import { SelectRaisonPerte } from './RaisonPerte';
+import Fenetre from './ui/Fenetre';
+import Bouton from './ui/Bouton';
 
 // LA fenêtre de compte rendu d'un rendez-vous, la même partout (Rendez-vous, Semaine à
 // préparer, Bilan, fiche Prospect). Elle enregistre le résultat et les notes, déplace le
@@ -138,124 +140,120 @@ export default function CompteRenduModal({ rdv, onClose }: { rdv: Appointment | 
 
   if (decalage) {
     return (
-      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="font-bold text-gray-900 flex items-center gap-2"><CalendarClock className="w-5 h-5 text-violet-500" /> Décaler le rendez-vous</h3>
-            <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+      <Fenetre
+        ouvert
+        onFermer={onClose}
+        titre="Décaler le rendez-vous"
+        icone={<CalendarClock className="w-5 h-5" />}
+        pied={(
+          <>
+            <Bouton variante="secondaire" onClick={onClose}>Plus tard</Bouton>
+            <Bouton variante="principal" icone={<CalendarClock className="w-4 h-4" />} onClick={confirmerDecalage} disabled={!decalage.date}>Confirmer le report</Bouton>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="bg-surface-2 rounded-lg p-3">
+            <p className="text-xs text-encre-douce">Rendez-vous actuel</p>
+            <p className="font-semibold text-sm text-encre">{nom}</p>
+            <p className="text-xs text-encre-douce mt-1">{formatDate(rdv.date)}{rdv.heure_debut && ` · ${rdv.heure_debut}`}</p>
           </div>
-          <div className="p-4 space-y-4">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-xs text-gray-500">Rendez-vous actuel</p>
-              <p className="font-semibold text-sm text-gray-900">{nom}</p>
-              <p className="text-xs text-gray-500 mt-1">{formatDate(rdv.date)}{rdv.heure_debut && ` · ${rdv.heure_debut}`}</p>
+          <div>
+            <label className="block text-sm font-medium text-encre mb-1">Nouvelle date *</label>
+            <input type="date" className="w-full border border-trait rounded-lg px-3 py-2 text-sm" value={decalage.date} onChange={e => setDecalage({ ...decalage, date: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-encre mb-1">Heure de début</label>
+              <input type="time" className="w-full border border-trait rounded-lg px-3 py-2 text-sm" value={decalage.debut} onChange={e => setDecalage({ ...decalage, debut: e.target.value })} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nouvelle date *</label>
-              <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={decalage.date} onChange={e => setDecalage({ ...decalage, date: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Heure de début</label>
-                <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={decalage.debut} onChange={e => setDecalage({ ...decalage, debut: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Heure de fin</label>
-                <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={decalage.fin} onChange={e => setDecalage({ ...decalage, fin: e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Raison</label>
-              <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Pourquoi ce report ?" value={decalage.notes} onChange={e => setDecalage({ ...decalage, notes: e.target.value })} />
+              <label className="block text-sm font-medium text-encre mb-1">Heure de fin</label>
+              <input type="time" className="w-full border border-trait rounded-lg px-3 py-2 text-sm" value={decalage.fin} onChange={e => setDecalage({ ...decalage, fin: e.target.value })} />
             </div>
           </div>
-          <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
-            <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={onClose}>Plus tard</button>
-            <button className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50" onClick={confirmerDecalage} disabled={!decalage.date}>
-              <CalendarClock className="w-4 h-4" /> Confirmer le report
-            </button>
+          <div>
+            <label className="block text-sm font-medium text-encre mb-1">Raison</label>
+            <textarea className="w-full border border-trait rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Pourquoi ce report ?" value={decalage.notes} onChange={e => setDecalage({ ...decalage, notes: e.target.value })} />
           </div>
         </div>
-      </div>
+      </Fenetre>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="p-5 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-gray-900 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-indigo-600" /> Compte rendu du rendez-vous</h3>
-            <p className="text-sm text-gray-500 mt-0.5">{nom} · {formatDate(rdv.date)}</p>
-          </div>
-          <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Résultat du rendez-vous</label>
-            <div className="grid grid-cols-2 gap-2">
-              {OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${resultat === opt.value ? opt.couleur : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                  onClick={() => choisir(opt.value)}
-                >
-                  <opt.icon className="w-4 h-4" /> {APPOINTMENT_RESULT_LABELS[opt.value]}
-                </button>
-              ))}
-            </div>
-            {resultat && <p className="text-[11px] text-gray-500 mt-1.5 italic">{client ? EFFET_CLIENT[resultat as Exclude<AppointmentResult, ''>] : OPTIONS.find(o => o.value === resultat)?.effet}</p>}
-            {resultat === 'pas_interesse' && prospect && <SelectRaisonPerte value={raisonPerte} onChange={setRaisonPerte} />}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Notes du compte rendu <span className="text-red-500">*</span></label>
-            <textarea
-              className={`w-full px-3 py-2 border rounded-lg text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 ${notes.trim() === '' ? 'border-red-300 bg-red-50/30' : 'border-gray-200'}`}
-              placeholder="Comment s'est passé le rendez-vous ? (obligatoire)"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              autoFocus
-            />
-            {notes.trim() === '' && <p className="text-[10px] text-red-500 mt-0.5">Les notes sont obligatoires pour valider le compte rendu.</p>}
-          </div>
-
-          {!rappel && !rappelObligatoire ? (
-            <button
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-amber-300 text-amber-500 hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 text-sm font-medium transition-colors"
-              onClick={() => setRappel(true)}
-            >
-              <Bell className="w-4 h-4" /> {client ? 'Programmer une tâche de suivi' : 'Programmer un rappel'}
-            </button>
-          ) : (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-amber-700 flex items-center gap-1"><Bell className="w-3 h-3" /> {client ? 'Tâche de suivi (client)' : 'Rappel de relance'} {rappelObligatoire && <span className="text-red-500">*</span>}</label>
-                {!rappelObligatoire && <button className="text-gray-400 hover:text-gray-600" onClick={() => setRappel(false)}><X className="w-4 h-4" /></button>}
-              </div>
-              <div>
-                <label className="block text-[10px] text-amber-600 mb-0.5">{client ? 'Échéance' : 'Date du rappel'} {rappelObligatoire && <span className="text-red-500">*</span>}</label>
-                <input type="date" className={`w-full px-2 py-1.5 border rounded-lg text-xs bg-white ${rappelObligatoire && !rappelDate ? 'border-red-300' : 'border-amber-200'}`} value={rappelDate} onChange={e => setRappelDate(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-[10px] text-amber-600 mb-0.5">Message (facultatif)</label>
-                <input type="text" className="w-full px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white" placeholder="Ex : relancer pour le devis…" value={rappelMessage} onChange={e => setRappelMessage(e.target.value)} />
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
-          <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={onClose}>Annuler</button>
-          <button
-            className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={enregistrer}
-            disabled={!valide || enregistrement}
-          >
-            <ClipboardCheck className="w-4 h-4" />
+    <Fenetre
+      ouvert
+      onFermer={onClose}
+      titre="Compte rendu du rendez-vous"
+      sousTitre={`${nom} · ${formatDate(rdv.date)}`}
+      icone={<ClipboardCheck className="w-5 h-5" />}
+      pied={(
+        <>
+          <Bouton variante="secondaire" onClick={onClose}>Annuler</Bouton>
+          <Bouton variante="principal" icone={<ClipboardCheck className="w-4 h-4" />} onClick={enregistrer} disabled={!valide} occupe={enregistrement}>
             {enregistrement ? 'Enregistrement…' : resultat === 'mail_envoye' ? 'Valider et envoyer un mail' : resultat === 'decale' ? 'Valider et replanifier' : 'Valider le compte rendu'}
-          </button>
+          </Bouton>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="block text-sm font-medium text-encre mb-2">Résultat du rendez-vous</p>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Résultat du rendez-vous">
+            {OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                role="radio"
+                aria-checked={resultat === opt.value}
+                className={`flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-colors text-left ${resultat === opt.value ? opt.couleur : 'border-trait text-encre-douce hover:bg-surface-2'}`}
+                onClick={() => choisir(opt.value)}
+              >
+                <opt.icon className="w-4 h-4 flex-shrink-0" /> {APPOINTMENT_RESULT_LABELS[opt.value]}
+              </button>
+            ))}
+          </div>
+          {resultat && <p className="text-xs text-encre-douce mt-2">{client ? EFFET_CLIENT[resultat as Exclude<AppointmentResult, ''>] : OPTIONS.find(o => o.value === resultat)?.effet}</p>}
+          {resultat === 'pas_interesse' && prospect && <SelectRaisonPerte value={raisonPerte} onChange={setRaisonPerte} />}
         </div>
+
+        <div>
+          <label htmlFor="notes-cr" className="block text-sm font-medium text-encre mb-1">Notes du compte rendu <span className="text-danger">*</span></label>
+          <textarea
+            id="notes-cr"
+            className={`w-full px-3 py-2 border rounded-lg text-sm h-24 resize-none focus:ring-2 focus:ring-primaire ${notes.trim() === '' ? 'border-red-300' : 'border-trait'}`}
+            placeholder="Comment s'est passé le rendez-vous ?"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
+          {notes.trim() === '' && <p className="text-xs text-danger mt-1">Les notes sont obligatoires pour valider le compte rendu.</p>}
+        </div>
+
+        {!rappel && !rappelObligatoire ? (
+          <button
+            className="w-full flex min-h-11 items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 border-dashed border-amber-300 text-amber-700 hover:border-amber-500 hover:bg-amber-50 text-sm font-medium transition-colors"
+            onClick={() => setRappel(true)}
+          >
+            <Bell className="w-4 h-4" /> {client ? 'Programmer une tâche de suivi' : 'Programmer un rappel'}
+          </button>
+        ) : (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5"><Bell className="w-4 h-4" /> {client ? 'Tâche de suivi (client)' : 'Rappel de relance'} {rappelObligatoire && <span className="text-danger">*</span>}</p>
+              {!rappelObligatoire && <button className="p-2 -m-2 text-encre-douce hover:text-encre" onClick={() => setRappel(false)} aria-label="Retirer le rappel"><X className="w-4 h-4" /></button>}
+            </div>
+            <div>
+              <label htmlFor="date-rappel-cr" className="block text-xs font-medium text-amber-800 mb-1">{client ? 'Échéance' : 'Date du rappel'} {rappelObligatoire && <span className="text-danger">*</span>}</label>
+              <input id="date-rappel-cr" type="date" className={`w-full px-3 py-2 border rounded-lg text-sm bg-white ${rappelObligatoire && !rappelDate ? 'border-red-300' : 'border-amber-200'}`} value={rappelDate} onChange={e => setRappelDate(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="message-rappel-cr" className="block text-xs font-medium text-amber-800 mb-1">Message (facultatif)</label>
+              <input id="message-rappel-cr" type="text" className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Ex : relancer pour le devis…" value={rappelMessage} onChange={e => setRappelMessage(e.target.value)} />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </Fenetre>
   );
 }
+

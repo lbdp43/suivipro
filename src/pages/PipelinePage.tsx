@@ -16,6 +16,7 @@ import { formatDate } from '../utils/helpers';
 import RaisonPerteModal, { libelleRaisonPerte } from '../components/RaisonPerte';
 import { estEnZonePrioritaire } from '../utils/zones';
 import { Link } from 'react-router-dom';
+import { confirmer } from '../components/ui/Confirmation';
 
 export default function PipelinePage() {
   const { state, dispatch, dispatchLocal } = useApp();
@@ -270,7 +271,7 @@ export default function PipelinePage() {
     const msg = count > 0
       ? `Supprimer l'etape "${col.label}" ?\n\n${count} prospect(s) seront déplacés vers "${firstOther?.label}".`
       : `Supprimer l'etape "${col.label}" ?`;
-    if (confirm(msg)) {
+    if (await confirmer(msg)) {
       try {
         await apiDelete(`/pipeline-columns/${col.id}`);
         dispatchLocal({ type: 'DELETE_PIPELINE_COLUMN', payload: col.id });

@@ -27,6 +27,8 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { decrocheDuClient } from '../utils/commandes';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import { noterInteraction } from '../utils/interactions';
+import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 type VisitFilter = 'all' | 'late' | 'today' | 'upcoming' | 'no_recurrence';
 
@@ -417,7 +419,7 @@ export default function ClientsPage() {
         (clientsAvecRecurrence.length > 0 ? `- ${clientsAvecRecurrence.length} client(s) : récurrence retirée + visite supprimée\n` : '') +
         (clientsSansRecurrence.length > 0 ? `- ${clientsSansRecurrence.length} client(s) sans récurrence : visite supprimée` : '');
 
-      if (!confirm(msg)) return;
+      if (!await confirmer(msg)) return;
 
       const allClientsToUpdate = [...clientsAvecRecurrence, ...clientsSansRecurrence];
       for (const client of allClientsToUpdate) {
@@ -485,7 +487,7 @@ export default function ClientsPage() {
     const message = `Fusionner ${autres.length > 1 ? `ces ${autres.length} fiches` : `« ${autres[0].nom} »`} dans « ${garder.nom} » ?\n\n`
       + autres.map(c => `• ${c.nom}`).join('\n')
       + `\n\n${nbCommandes} commande(s) et ${nbInteractions} visite(s)/appel(s) seront transférés sur « ${garder.nom} », puis les fiches en double seront supprimées.\n\nCette action est définitive.`;
-    if (!confirm(message)) return;
+    if (!await confirmer(message)) return;
     setFusionEnCours(true);
     let ok = 0, echecs = 0;
     for (const c of autres) {
@@ -501,7 +503,7 @@ export default function ClientsPage() {
   };
 
   const bulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} client(s) ? Cette action est irreversible.`)) return;
+    if (!await confirmer(`Supprimer ${selectedIds.size} client(s) ? Cette action est irreversible.`)) return;
     let errors = 0;
     for (const id of selectedIds) {
       try {
@@ -573,7 +575,7 @@ export default function ClientsPage() {
   };
 
   const deleteTournee = async (name: string) => {
-    if (!confirm(`Retirer la tournée "${name}" de tous les clients ?`)) return;
+    if (!await confirmer(`Retirer la tournée "${name}" de tous les clients ?`)) return;
     try {
       const clientsToUpdate = state.clients.filter(c => c.tournee === name);
       for (const client of clientsToUpdate) {
@@ -1667,8 +1669,7 @@ export default function ClientsPage() {
 
       {/* New/Edit Client Modal */}
       {showForm && (
-        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowForm(false)} titre="Fiche client" largeur="normale">
             <div className="p-5 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
               <h2 className="text-lg font-bold text-gray-900">
                 {editingClient ? 'Modifier le client' : 'Nouveau client'}
@@ -1911,14 +1912,12 @@ export default function ClientsPage() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* Interaction Modal */}
       {interactionClient && (
-        <div className="modal-backdrop" onClick={() => resetInteractionModal()}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => resetInteractionModal()} titre="Visite, appel ou rendez-vous" largeur="etroite">
             {/* RDV Confirmation Screen */}
             {showRdvConfirmation ? (() => {
               const createdRdv = state.appointments.find(a => a.id === createdRdvId);
@@ -2088,14 +2087,12 @@ export default function ClientsPage() {
                 </div>
               </>
             )}
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* New Task Modal */}
       {showTaskForm && (
-        <div className="modal-backdrop" onClick={() => setShowTaskForm(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowTaskForm(false)} titre="Nouvelle tâche" largeur="etroite">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
                 <ListTodo className="w-4 h-4 text-brewery-600" /> Nouvelle tâche
@@ -2138,8 +2135,7 @@ export default function ClientsPage() {
                 <Plus className="w-3.5 h-3.5" /> Créer
               </button>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* Quick note modal */}

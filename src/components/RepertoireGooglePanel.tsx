@@ -16,6 +16,7 @@ import {
   type EtatRepertoire, type BilanSync,
 } from '../api/client';
 import { useToast } from './Toast';
+import { confirmer } from './ui/Confirmation';
 
 function quand(iso: string): string {
   if (!iso) return '';
@@ -72,7 +73,7 @@ export default function RepertoireGooglePanel() {
   };
 
   const deconnecter = async (id: string) => {
-    if (!confirm('Déconnecter le répertoire Google ? Les contacts déjà déposés restent dans Google ; vous pouvez les retirer d’un geste depuis le libellé « SuiviPro ».')) return;
+    if (!await confirmer('Déconnecter le répertoire Google ? Les contacts déjà déposés restent dans Google ; vous pouvez les retirer d’un geste depuis le libellé « SuiviPro ».')) return;
     try {
       await disconnectRepertoire(id);
       setBilan(null);

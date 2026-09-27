@@ -15,6 +15,8 @@ import { apiPost, apiPut, apiDelete } from '../api/client';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import { telephoneDuClient } from '../utils/sessionAppel';
 import { noterInteraction } from '../utils/interactions';
+import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 interface Task {
   id: string;
@@ -172,7 +174,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   };
 
   const deleteTask = async (taskId: string) => {
-    if (!confirm('Supprimer cette tâche ?')) return;
+    if (!await confirmer('Supprimer cette tâche ?')) return;
     try {
       await apiDelete(`/tasks-client/${taskId}`);
       dispatchLocal({ type: 'DELETE_TASK_CLIENT', payload: taskId });
@@ -440,8 +442,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
 
       {/* Task form modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowForm(false)} titre="Tâche" largeur="normale">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="font-semibold text-gray-900 text-lg">
                 {editingTask ? 'Modifier la tâche' : 'Nouvelle tâche'}
@@ -590,14 +591,12 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                 {editingTask ? 'Modifier' : 'Créer'}
               </button>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* Compte-rendu (appel/visite) modal */}
       {crTask && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setCrTask(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setCrTask(null)} titre="Compte-rendu" largeur="etroite">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
                 <h3 className="font-semibold text-gray-900 text-lg flex items-center gap-2">
@@ -689,8 +688,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                 Enregistrer
               </button>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* Task list */}

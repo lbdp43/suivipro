@@ -38,6 +38,8 @@ import { aUnNumero } from '../../shared/normalisation';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { estEnZonePrioritaire } from '../utils/zones';
+import { confirmer } from '../components/ui/Confirmation';
+import { toast as annonce } from 'sonner';
 
 export default function ProspectsPage() {
   const { state, dispatchLocal } = useApp();
@@ -193,7 +195,7 @@ export default function ProspectsPage() {
   };
 
   const deleteTag = async (tagId: string) => {
-    if (!confirm('Supprimer ce tag ? Il sera retire de tous les prospects.')) return;
+    if (!await confirmer('Supprimer ce tag ? Il sera retire de tous les prospects.')) return;
     try {
       await apiDelete(`/tags/${tagId}`);
       dispatchLocal({ type: 'DELETE_TAG', payload: tagId });
@@ -303,7 +305,7 @@ export default function ProspectsPage() {
   };
 
   const bulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} prospect(s) ?`)) return;
+    if (!await confirmer(`Supprimer ${selectedIds.size} prospect(s) ?`)) return;
     let errors = 0;
     for (const id of selectedIds) {
       try {
@@ -619,7 +621,7 @@ export default function ProspectsPage() {
   };
 
   const deleteProspect = async (id: string) => {
-    if (confirm('Supprimer ce prospect ?')) {
+    if (await confirmer('Supprimer ce prospect ?')) {
       try {
         await apiDelete(`/prospects/${id}`);
         dispatchLocal({ type: 'DELETE_PROSPECT', payload: id });
@@ -1450,7 +1452,7 @@ export default function ProspectsPage() {
                     }
                   } catch (err) {
                     console.error('Conversion error:', err);
-                    alert(`Erreur lors de la conversion: ${(err as Error).message}`);
+                    annonce(`Erreur lors de la conversion: ${(err as Error).message}`);
                   } finally {
                     setConverting(false);
                     setConvertProspect(null);

@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { apiFetch } from '../api/client';
+import { confirmer } from '../components/ui/Confirmation';
+import { toast as annonce } from 'sonner';
+import Fenetre from '../components/ui/Fenetre';
 
 interface NafCode {
   code: string;
@@ -161,7 +164,7 @@ export default function SirenePage() {
       const res = await apiFetch('/entity-types', { method: 'POST', body: JSON.stringify({ id: newEntityId, label: newEntityLabel, icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false }),
       });
       const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      if (data.error) { annonce(data.error); return; }
       await loadEntityTypes();
       setZoneForm(f => ({ ...f, entity_type: newEntityId }));
       setNewEntityId('');
@@ -250,7 +253,7 @@ export default function SirenePage() {
   };
 
   const deleteZoneConfig = async (id: number) => {
-    if (!confirm('Supprimer cette configuration de sync ?')) return;
+    if (!await confirmer('Supprimer cette configuration de sync ?')) return;
     try {
       await apiFetch(`/sirene/zone-configs/${id}`, { method: 'DELETE' });
       setZoneConfigs(prev => prev.filter(c => c.id !== id));
@@ -267,7 +270,7 @@ export default function SirenePage() {
       });
       const data = await res.json();
       if (data.error) {
-        alert(data.error);
+        annonce(data.error);
         setZoneSyncing(false);
         setSyncingConfigId(null);
         return;
@@ -381,7 +384,7 @@ export default function SirenePage() {
 
   const deleteSelected = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Supprimer ${selectedIds.size} etablissement(s) selectionne(s) ?`)) return;
+    if (!await confirmer(`Supprimer ${selectedIds.size} etablissement(s) selectionne(s) ?`)) return;
     try {
       await apiFetch('/sirene/delete-etablissements', { method: 'POST', body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
@@ -417,7 +420,7 @@ export default function SirenePage() {
   };
 
   const importAll = async () => {
-    if (!confirm('Importer TOUS les etablissements non importés ?')) return;
+    if (!await confirmer('Importer TOUS les etablissements non importés ?')) return;
     setImporting(true);
     setImportResult(null);
     try {
@@ -1303,8 +1306,7 @@ export default function SirenePage() {
 
       {/* Modal creation rapide d'un type d'entite */}
       {showNewEntityForm && (
-        <div className="modal-backdrop" onClick={() => setShowNewEntityForm(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowNewEntityForm(false)} titre="Nouveau type d'entite" largeur="etroite">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Plus className="w-4 h-4 text-indigo-500" />
@@ -1349,8 +1351,7 @@ export default function SirenePage() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
     </div>
   );

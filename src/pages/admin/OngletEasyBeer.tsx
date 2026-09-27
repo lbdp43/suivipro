@@ -6,6 +6,8 @@ import {  CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../../typ
 import { PIPELINE_LABELS, PipelineStage } from '../../types';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
+import { confirmer } from '../../components/ui/Confirmation';
+import { toast as annonce } from 'sonner';
 
 export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | 'synchronisation' | 'controle' }) {
   const { state, dispatchLocal } = useApp();
@@ -65,7 +67,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
     const choisis = doublonsPC.paires.filter((p: any) => pcCoches.has(p.prospect.id));
     if (choisis.length === 0) return;
     const verbe = action === 'gagne' ? 'passé(s) en « Gagné »' : 'supprimé(s)';
-    if (!confirm(`${action === 'gagne' ? 'Passer en « Gagné »' : 'Supprimer'} ${choisis.length} prospect(s) ?\n\n${choisis.slice(0, 15).map((p: any) => `• ${p.prospect.nom} (client : ${p.client.nom})`).join('\n')}${choisis.length > 15 ? `\n… et ${choisis.length - 15} autre(s)` : ''}\n\n${action === 'gagne' ? 'Ils sortent de la prospection ; les clients restent les fiches de référence.' : 'Leurs appels et rendez-vous seront supprimés avec eux.'}`)) return;
+    if (!await confirmer(`${action === 'gagne' ? 'Passer en « Gagné »' : 'Supprimer'} ${choisis.length} prospect(s) ?\n\n${choisis.slice(0, 15).map((p: any) => `• ${p.prospect.nom} (client : ${p.client.nom})`).join('\n')}${choisis.length > 15 ? `\n… et ${choisis.length - 15} autre(s)` : ''}\n\n${action === 'gagne' ? 'Ils sortent de la prospection ; les clients restent les fiches de référence.' : 'Leurs appels et rendez-vous seront supprimés avec eux.'}`)) return;
     setPcLotEnCours(true);
     let ok = 0, echecs = 0;
     const faits = new Set<string>();
@@ -90,7 +92,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
   const retirerPaireDoublonPC = (prospectId: string) => setDoublonsPC(prev => prev ? { ...prev, paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId), total_paires: prev.paires.filter((x: any) => x.prospect.id !== prospectId).length } : prev);
 
   const prospectGagne = async (paire: any) => {
-    if (!confirm(`Passer le prospect « ${paire.prospect.nom} » en « Gagné » ? Il sort de la prospection ; le client « ${paire.client.nom} » reste la fiche de référence.`)) return;
+    if (!await confirmer(`Passer le prospect « ${paire.prospect.nom} » en « Gagné » ? Il sort de la prospection ; le client « ${paire.client.nom} » reste la fiche de référence.`)) return;
     try {
       await apiPatch(`/prospects/${paire.prospect.id}/stage`, { etape_pipeline: 'client_gagne', date_modification: new Date().toISOString() });
       dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: paire.prospect.id, stage: 'client_gagne' } });
@@ -100,7 +102,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
   };
 
   const prospectSupprime = async (paire: any) => {
-    if (!confirm(`Supprimer le prospect « ${paire.prospect.nom} » (${paire.prospect.nb_appels} appel(s), ${paire.prospect.nb_rdv} RDV) ? Ses appels et rendez-vous seront supprimés avec lui.`)) return;
+    if (!await confirmer(`Supprimer le prospect « ${paire.prospect.nom} » (${paire.prospect.nb_appels} appel(s), ${paire.prospect.nb_rdv} RDV) ? Ses appels et rendez-vous seront supprimés avec lui.`)) return;
     try {
       await apiDelete(`/prospects/${paire.prospect.id}`);
       dispatchLocal({ type: 'DELETE_PROSPECT', payload: paire.prospect.id });
@@ -259,7 +261,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       + choisies.slice(0, 15).map((p: any) => { const g = p.clients.find((c: any) => c.id === p.suggestion_garder); const s = p.clients.find((c: any) => c.id !== p.suggestion_garder); return `• « ${s?.nom} » → « ${g?.nom} »`; }).join('\n')
       + (choisies.length > 15 ? `\n… et ${choisies.length - 15} autre(s)` : '')
       + '\n\nCette action est définitive.';
-    if (!confirm(message)) return;
+    if (!await confirmer(message)) return;
     setFusionLotEnCours(true);
     const supprimees = new Set<string>();
     let ok = 0, echecs = 0, ignorees = 0;
@@ -288,7 +290,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
     const message = `Fusionner « ${supprimer.nom} » dans « ${garder.nom} » ?\n\n`
       + `${supprimer.nb_commandes} commande(s), ${supprimer.nb_interactions} interaction(s) et l'historique de « ${supprimer.nom} » `
       + `seront transferes sur « ${garder.nom} », puis la fiche en double sera supprimée.\n\nCette action est definitive.`;
-    if (!confirm(message)) return;
+    if (!await confirmer(message)) return;
     setFusionEnCours(`${garder.id}|${supprimer.id}`);
     try {
       const res = await apiFetch('/clients/fusionner', { method: 'POST', body: JSON.stringify({ garder_id: garder.id, supprimer_id: supprimer.id }),
@@ -311,7 +313,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
   };
 
   const delierLienEasybeer = async (easybeerId: string, nom: string) => {
-    if (!confirm(`Délier « ${nom} » ? Ses futures commandes partiront en orphelines jusqu'à re-liaison.`)) return;
+    if (!await confirmer(`Délier « ${nom} » ? Ses futures commandes partiront en orphelines jusqu'à re-liaison.`)) return;
     const res = await apiFetch(`/easybeer/liens/${easybeerId}/delier`, { method: 'POST' });
     if (res.ok) { toast.success('Lien supprimé'); chargerAuditLiens(); }
     else toast.error('Échec de la suppression du lien');
@@ -1405,7 +1407,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                 </button>
                 <button
                   className={`px-3 py-2 text-xs font-medium text-white rounded-lg ${syncingAllCommandes ? 'bg-orange-300 cursor-wait' : 'bg-orange-500 hover:bg-orange-600'}`}
-                  onClick={() => { if (confirm('Supprimer et re-importer toutes les commandes EasyBeer ?')) syncAllCommandes(true); }}
+                  onClick={async () => { if (await confirmer('Supprimer et re-importer toutes les commandes EasyBeer ?')) syncAllCommandes(true); }}
                   disabled={syncingAllCommandes}
                 >
                   Re-sync total
@@ -1763,11 +1765,11 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         method: 'POST',
                         body: JSON.stringify({ type: 'commande' })
                       });
-                      if (!resp.ok) { alert(`Erreur serveur ${resp.status}: ${resp.statusText}`); return; }
+                      if (!resp.ok) { annonce(`Erreur serveur ${resp.status}: ${resp.statusText}`); return; }
                       const result = await resp.json();
-                      alert(result.ok ? result.message : `Erreur: ${result.message || 'inconnue'}`);
+                      annonce(result.ok ? result.message : `Erreur: ${result.message || 'inconnue'}`);
                       setTimeout(() => loadEasyBeerData(), 6000);
-                    } catch (err: unknown) { alert('Erreur réseau: ' + (err instanceof Error ? err.message : String(err))); }
+                    } catch (err: unknown) { annonce('Erreur réseau: ' + (err instanceof Error ? err.message : String(err))); }
                   }}
                 >
                   Test Commande
@@ -1780,11 +1782,11 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         method: 'POST',
                         body: JSON.stringify({ type: 'client' })
                       });
-                      if (!resp.ok) { alert(`Erreur serveur ${resp.status}: ${resp.statusText}`); return; }
+                      if (!resp.ok) { annonce(`Erreur serveur ${resp.status}: ${resp.statusText}`); return; }
                       const result = await resp.json();
-                      alert(result.ok ? result.message : `Erreur: ${result.message || 'inconnue'}`);
+                      annonce(result.ok ? result.message : `Erreur: ${result.message || 'inconnue'}`);
                       setTimeout(() => loadEasyBeerData(), 6000);
-                    } catch (err: unknown) { alert('Erreur réseau: ' + (err instanceof Error ? err.message : String(err))); }
+                    } catch (err: unknown) { annonce('Erreur réseau: ' + (err instanceof Error ? err.message : String(err))); }
                   }}
                 >
                   Test Client
