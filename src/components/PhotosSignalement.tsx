@@ -4,6 +4,7 @@ import { Camera, X } from 'lucide-react';
 import { apiFetch } from '../api/client';
 import { useApp } from '../store/AppContext';
 import { Signalement } from '../types';
+import { useEchap } from '../utils/useEchap';
 
 // Une photo de signalement se lit avec le jeton (l'adresse n'est pas publique) : on la
 // charge une fois et on l'affiche depuis la mémoire. Un appui l'ouvre en grand.
@@ -41,6 +42,7 @@ export function PhotoSignalement({ signalementId, photoId, taille = 'petite', on
 /** Les photos d'un ou plusieurs signalements, en vignettes, avec l'ouverture en grand. */
 export function GaleriePhotos({ signalements, taille = 'petite' }: { signalements: Signalement[]; taille?: 'petite' | 'grande' }) {
   const [ouverte, setOuverte] = useState('');
+  useEchap(!!ouverte, () => setOuverte(''));
   const photos = signalements.flatMap(s => (s.photos || []).map(p => ({ signalementId: s.id, photoId: p.id })));
   if (photos.length === 0) return null;
   return (
@@ -49,7 +51,7 @@ export function GaleriePhotos({ signalements, taille = 'petite' }: { signalement
         {photos.map(p => <PhotoSignalement key={p.photoId} signalementId={p.signalementId} photoId={p.photoId} taille={taille} onOuvrir={setOuverte} />)}
       </div>
       {ouverte && (
-        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4" onClick={() => setOuverte('')}>
+        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4" onClick={() => setOuverte('')} role="dialog" aria-modal="true" aria-label="Photo en grand">
           <button type="button" className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={() => setOuverte('')} aria-label="Fermer"><X className="w-5 h-5" /></button>
           <img src={ouverte} alt="Photo partagée" className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
         </div>

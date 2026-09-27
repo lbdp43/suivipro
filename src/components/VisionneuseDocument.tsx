@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Loader2, FileSignature, Eye } from 'lucide-react';
 import { Document } from '../types';
 import { apercuDuDocument } from '../api/client';
+import { useEchap } from '../utils/useEchap';
 
 /**
  * La visionneuse de SuiviPro : un document affiché dans l'application, sans bouton
@@ -53,9 +54,10 @@ export default function VisionneuseDocument({ doc, onClose, onOuvert, signature 
   }, [doc.id, doc.version]);
 
   const bloquer = (e: React.SyntheticEvent) => e.preventDefault();
+  useEchap(true, onClose);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-gray-900 flex flex-col" onContextMenu={bloquer}>
+    <div className="fixed inset-0 z-[60] bg-gray-900 flex flex-col" onContextMenu={bloquer} role="dialog" aria-modal="true" aria-label={doc.nom}>
       <div className="flex items-center gap-3 px-4 py-3 text-white border-b border-white/10" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <Eye className="w-5 h-5 text-white/70 flex-shrink-0" />
         <div className="flex-1 min-w-0">

@@ -50,7 +50,7 @@ export default function ZoneDrawModal({ commercialId, commercialName, color, ini
   }, [geolocalises, state.commerciaux, commercialId, state.currentUser?.id]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4" role="dialog" aria-modal="true" aria-label={`Zone de ${commercialName}`}>
       <div className="bg-white rounded-xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <div>
