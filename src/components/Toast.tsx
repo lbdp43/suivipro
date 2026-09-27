@@ -62,12 +62,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ toast }}>
       {children}
       {/* Toast container */}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+      {/* Sous l'encoche de l'iPhone, et lu par les lecteurs d'écran. */}
+      <div className="fixed right-4 left-4 sm:left-auto z-[9999] flex flex-col items-end gap-2 pointer-events-none" style={{ top: 'max(1rem, env(safe-area-inset-top))' }} role="status" aria-live="polite">
         {toasts.map(t => (
           <div
             key={t.id}
             className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg ${bgColors[t.type]} animate-[slideIn_0.3s_ease]`}
-            style={{ minWidth: 280, maxWidth: 420 }}
+            style={{ maxWidth: 420 }}
           >
             {icons[t.type]}
             <span className="text-sm text-gray-800 flex-1">{t.message}</span>
