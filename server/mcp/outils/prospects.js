@@ -25,7 +25,7 @@ async function prenomsEquipe() {
 }
 
 /** Les étapes réelles : celles du tunnel plus celles que l'administration a ajoutées. */
-async function libellesEtapes() {
+export async function libellesEtapes() {
   const table = { ...LIBELLES_ETAPE };
   try {
     const r = await db.query('SELECT id, label FROM pipeline_columns');
@@ -63,7 +63,7 @@ async function chargerProspects(utilisateur, demandeCommercial, outil, f = {}) {
 }
 
 /** « négociation », « Negociation », « negociation » : les codes d'étape qui répondent. */
-function codesDEtape(recherche, etapes) {
+export function codesDEtape(recherche, etapes) {
   const q = normaliserPourComparaison(recherche);
   const codes = Object.keys(etapes).filter(c => normaliserPourComparaison(c) === q || normaliserPourComparaison(etapes[c]).includes(q));
   return codes.length ? codes : [recherche];
