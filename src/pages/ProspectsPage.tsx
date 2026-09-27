@@ -674,7 +674,7 @@ export default function ProspectsPage() {
             >
               <CheckSquare className="w-5 h-5" />
             </button>
-            <button
+            <button aria-label="Nouveau prospect"
               className="bg-brewery-600 text-white p-2 rounded-lg hover:bg-brewery-700"
               onClick={openNewForm}
             >
@@ -919,31 +919,31 @@ export default function ProspectsPage() {
               {[...filterTypes].map(t => (
                 <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-brewery-100 text-brewery-700">
                   {ESTABLISHMENT_LABELS[t]}
-                  <button className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
+                  <button aria-label={`Retirer le filtre ${ESTABLISHMENT_LABELS[t]}`} className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterStages].map(s => (
                 <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] || '#6b7280' }}>
                   {state.pipelineColumns.find(c => c.id === s)?.label || PIPELINE_LABELS[s] || s}
-                  <button className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
+                  <button aria-label="Retirer le filtre d'étape" className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterSecteurs].map(s => (
                 <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
                   {s}
-                  <button className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
+                  <button aria-label={`Retirer le filtre ${s}`} className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterDepartments].map(d => (
                 <span key={d} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
                   Dept. {d}
-                  <button className="hover:text-indigo-900" onClick={() => toggleFilter(filterDepartments, d, setFilterDepartments)}><X className="w-2.5 h-2.5" /></button>
+                  <button aria-label={`Retirer le filtre département ${d}`} className="hover:text-indigo-900" onClick={() => toggleFilter(filterDepartments, d, setFilterDepartments)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
               {[...filterPostalCodes].map(c => (
                 <span key={c} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
                   {c}
-                  <button className="hover:text-teal-900" onClick={() => toggleFilter(filterPostalCodes, c, setFilterPostalCodes)}><X className="w-2.5 h-2.5" /></button>
+                  <button aria-label={`Retirer le filtre ${c}`} className="hover:text-teal-900" onClick={() => toggleFilter(filterPostalCodes, c, setFilterPostalCodes)}><X className="w-2.5 h-2.5" /></button>
                 </span>
               ))}
             </div>
@@ -1199,7 +1199,7 @@ export default function ProspectsPage() {
                 >
                   Gérer tags
                 </button>
-                <button
+                <button aria-label="Supprimer les prospects sélectionnés"
                   className="px-3 py-2 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
                   onClick={bulkDelete}
                 >
@@ -1213,7 +1213,7 @@ export default function ProspectsPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-gray-700">Changer etape ({selectedIds.size} prospects)</p>
-                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                  <button aria-label="Fermer" className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1237,7 +1237,7 @@ export default function ProspectsPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-gray-700">Changer secteur ({selectedIds.size} prospects)</p>
-                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                  <button aria-label="Fermer" className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1272,7 +1272,7 @@ export default function ProspectsPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-gray-700">Gerer tags ({selectedIds.size} prospects)</p>
-                  <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
+                  <button aria-label="Fermer" className="text-gray-400 hover:text-gray-600" onClick={() => setShowBulkAction('none')}>
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1364,10 +1364,10 @@ export default function ProspectsPage() {
                       <Building2 className="w-3.5 h-3.5" /> Client
                     </span>
                   )}
-                  <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => openEditForm(selectedProspect)}>
+                  <button aria-label={`Modifier ${selectedProspect.nom_etablissement}`} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200" onClick={() => openEditForm(selectedProspect)}>
                     <Edit2 className="w-4 h-4 text-gray-600" />
                   </button>
-                  <button className="p-2 rounded-lg bg-red-50 hover:bg-red-100" onClick={() => deleteProspect(selectedProspect.id)}>
+                  <button aria-label={`Supprimer ${selectedProspect.nom_etablissement}`} className="p-2 rounded-lg bg-red-50 hover:bg-red-100" onClick={() => deleteProspect(selectedProspect.id)}>
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </button>
                 </div>
@@ -1492,7 +1492,7 @@ export default function ProspectsPage() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
                 <Building2 className="w-4 h-4 text-emerald-600" /> Convertir en client
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setConvertProspect(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setConvertProspect(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -1616,7 +1616,7 @@ export default function ProspectsPage() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
                 <Bell className="w-4 h-4 text-orange-500" /> Memo / Rappel
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setReminderProspect(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setReminderProspect(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -1721,7 +1721,7 @@ export default function ProspectsPage() {
                 <MessageSquare className="w-4 h-4 text-amber-500" />
                 Notes rapides - {state.prospects.find(p => p.id === quickNoteId)?.nom_etablissement}
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -1755,7 +1755,7 @@ export default function ProspectsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editingProspect ? 'Modifier le prospect' : 'Nouveau prospect'}</h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>

@@ -371,7 +371,7 @@ export default function AnnuairePage() {
               <Tag className="w-4 h-4 text-purple-500" />
               Gestion des types d'entite
             </h2>
-            <button onClick={() => setShowEntityTypes(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+            <button aria-label="Fermer" onClick={() => setShowEntityTypes(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
           </div>
 
           {/* Existing types */}
@@ -614,7 +614,7 @@ export default function AnnuairePage() {
                         >
                           Modifier
                         </button>
-                        <button
+                        <button aria-label={`Supprimer la règle ${rule.naf_code}`} title="Supprimer"
                           onClick={() => deleteRule(rule.id)}
                           className="text-red-400 hover:text-red-600"
                         >

@@ -243,7 +243,7 @@ export default function EmailsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editing ? 'Modifier le template' : 'Nouveau template'}</h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -283,7 +283,7 @@ export default function EmailsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Previsualisation</h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowPreview(false)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowPreview(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>

@@ -42,7 +42,7 @@ export default function RaisonPerteModal({ nom, onConfirm, onClose }: { nom: str
     <Fenetre ouvert brut onFermer={onClose} titre="Prospect perdu" largeur="etroite">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-gray-900 flex items-center gap-2"><Ban className="w-5 h-5 text-red-500" /> Prospect perdu</h3>
-          <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
         </div>
         <div className="p-4">
           <p className="text-sm text-gray-700"><span className="font-semibold">{nom}</span> passe en « Perdu ».</p>

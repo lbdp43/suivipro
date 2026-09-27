@@ -452,7 +452,7 @@ export default function AppointmentsPage() {
           )}
         </div>
         <div className="flex items-center gap-2 mt-3">
-          <button
+          <button aria-label="Modifier le rendez-vous"
             className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
             onClick={() => openEditForm(rdv)}
           >
@@ -477,7 +477,7 @@ export default function AppointmentsPage() {
           )}
           {/* Quelqu'un monte la-bas : c'est le moment d'appeler le secteur. */}
           <BoutonAppelerAutour points={pointDuRdv(rdv)} />
-          <button
+          <button aria-label="Supprimer le rendez-vous"
             className="p-1.5 rounded bg-red-50 hover:bg-red-100 text-red-500"
             onClick={() => deleteAppointment(rdv.id)}
           >
@@ -721,7 +721,7 @@ export default function AppointmentsPage() {
           <div className="space-y-3">
             {/* Week navigation */}
             <div className="flex items-center justify-between">
-              <button
+              <button aria-label="Semaine précédente"
                 className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
                 onClick={() => setWeekOffset(w => w - 1)}
               >
@@ -738,7 +738,7 @@ export default function AppointmentsPage() {
                   </button>
                 )}
               </div>
-              <button
+              <button aria-label="Semaine suivante"
                 className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
                 onClick={() => setWeekOffset(w => w + 1)}
               >
@@ -996,7 +996,7 @@ export default function AppointmentsPage() {
         <div className="space-y-3">
           {/* Week navigation */}
           <div className="flex items-center justify-between">
-            <button
+            <button aria-label="Semaine précédente"
               className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
               onClick={() => setWeekOffset(w => w - 1)}
             >
@@ -1013,7 +1013,7 @@ export default function AppointmentsPage() {
                 </button>
               )}
             </div>
-            <button
+            <button aria-label="Semaine suivante"
               className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
               onClick={() => setWeekOffset(w => w + 1)}
             >
@@ -1093,7 +1093,7 @@ export default function AppointmentsPage() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <CalendarPlus className="w-5 h-5 text-blue-600" /> Export Google Agenda
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowExportModal(false)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowExportModal(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -1194,7 +1194,7 @@ export default function AppointmentsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">{editing ? 'Modifier' : 'Nouveau'} {formData.event_type === 'rdv' ? 'RDV' : 'Événement'}</h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -1444,7 +1444,7 @@ export default function AppointmentsPage() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-indigo-600" /> Modifier le prospect
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setEditProspectData(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setEditProspectData(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>

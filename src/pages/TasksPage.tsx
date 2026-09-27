@@ -447,7 +447,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
               <h3 className="font-semibold text-gray-900 text-lg">
                 {editingTask ? 'Modifier la tâche' : 'Nouvelle tâche'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <button aria-label="Fermer" onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-gray-100">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
@@ -605,7 +605,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                 </h3>
                 <p className="text-sm text-gray-500 mt-0.5">{getClientById(crTask.client_id)?.nom || crTask.client_nom}</p>
               </div>
-              <button onClick={() => setCrTask(null)} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <button aria-label="Fermer" onClick={() => setCrTask(null)} className="p-1.5 rounded-lg hover:bg-gray-100">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
@@ -814,7 +814,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                 </div>
 
                 {/* Expand arrow */}
-                <button onClick={() => toggleExpand(task.id)} className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0">
+                <button aria-label={isExpanded ? 'Replier' : 'Déplier'} onClick={() => toggleExpand(task.id)} className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0">
                   {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
               </div>

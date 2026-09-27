@@ -598,7 +598,7 @@ export default function SirenePage() {
                             {customCodes.map(code => (
                               <span key={code} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">
                                 {code}
-                                <button type="button" className="hover:text-red-600" onClick={() => {
+                                <button aria-label={`Retirer le code ${code}`} type="button" className="hover:text-red-600" onClick={() => {
                                   const codes = zoneForm.naf_codes.split(',').map(s => s.trim()).filter(c => c && c !== code);
                                   setZoneForm(f => ({ ...f, naf_codes: codes.join(',') }));
                                 }}><X className="w-2.5 h-2.5" /></button>
@@ -671,7 +671,7 @@ export default function SirenePage() {
                       {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                       Sync
                     </button>
-                    <button
+                    <button aria-label={`Paramétrer ${config.name}`} title="Paramétrer"
                       onClick={() => {
                         setEditingConfigId(config.id);
                         setShowNewConfigForm(false);
@@ -687,7 +687,7 @@ export default function SirenePage() {
                     >
                       <Settings className="w-3 h-3" />
                     </button>
-                    <button onClick={() => deleteZoneConfig(config.id)} className="px-2 py-1 text-red-400 hover:text-red-600">
+                    <button aria-label={`Supprimer ${config.name}`} title="Supprimer" onClick={() => deleteZoneConfig(config.id)} className="px-2 py-1 text-red-400 hover:text-red-600">
                       <X className="w-3 h-3" />
                     </button>
                   </div>
@@ -1036,7 +1036,7 @@ export default function SirenePage() {
               {importResult.skipped > 0 && `, ${importResult.skipped} ignore${importResult.skipped > 1 ? 's' : ''}`}
             </span>
           </div>
-          <button onClick={() => setImportResult(null)} className="text-green-400 hover:text-green-600">
+          <button aria-label="Fermer" onClick={() => setImportResult(null)} className="text-green-400 hover:text-green-600">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1312,7 +1312,7 @@ export default function SirenePage() {
                 <Plus className="w-4 h-4 text-indigo-500" />
                 Nouveau type d'entite
               </h3>
-              <button onClick={() => setShowNewEntityForm(false)} className="p-1 rounded hover:bg-gray-100">
+              <button aria-label="Fermer" onClick={() => setShowNewEntityForm(false)} className="p-1 rounded hover:bg-gray-100">
                 <X className="w-4 h-4 text-gray-400" />
               </button>
             </div>

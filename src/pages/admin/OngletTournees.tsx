@@ -40,7 +40,7 @@ function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
           {selected.map(z => (
             <span key={z} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
               {z}
-              <button type="button" onClick={() => onRemove(z)} className="hover:text-indigo-900"><X className="w-2.5 h-2.5" /></button>
+              <button aria-label={`Retirer ${z}`} type="button" onClick={() => onRemove(z)} className="hover:text-indigo-900"><X className="w-2.5 h-2.5" /></button>
             </span>
           ))}
         </div>

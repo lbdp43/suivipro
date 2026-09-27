@@ -1084,7 +1084,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                       <span className="text-gray-600 flex-1">{rule.email}</span>
                       <span className="text-gray-400">→</span>
                       <span className="font-medium text-gray-900">{com ? `${com.prenom} ${com.nom}` : rule.commercial_id}</span>
-                      <button className="p-1 rounded hover:bg-red-50" onClick={() => deleteAssignmentRule(rule.id)}>
+                      <button aria-label={`Supprimer la règle pour ${rule.email}`} title="Supprimer" className="p-1 rounded hover:bg-red-50" onClick={() => deleteAssignmentRule(rule.id)}>
                         <Trash2 className="w-3.5 h-3.5 text-red-500" />
                       </button>
                     </div>
@@ -1117,7 +1117,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                   ))}
                 </select>
               </div>
-              <button
+              <button aria-label="Ajouter la règle" title="Ajouter"
                 className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50"
                 onClick={addAssignmentRule}
                 disabled={!newRuleEmail || !newRuleCommercial}
@@ -1149,7 +1149,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                     </span>
                     <span className="text-gray-400">→</span>
                     <span className="text-gray-600 font-mono text-xs">{m.easybeer_id}</span>
-                    <button className="p-1 rounded hover:bg-red-50" onClick={() => deleteEbMapping(m.suivipro_commercial_id)}>
+                    <button aria-label={`Supprimer la correspondance de ${m.prenom} ${m.nom}`} title="Supprimer" className="p-1 rounded hover:bg-red-50" onClick={() => deleteEbMapping(m.suivipro_commercial_id)}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" />
                     </button>
                   </div>
@@ -1191,7 +1191,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                   placeholder="ex: Louis Pacalon"
                 />
               </div>
-              <button
+              <button aria-label="Ajouter la correspondance" title="Ajouter"
                 className="px-3 py-2 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 text-sm disabled:opacity-50"
                 onClick={addEbMapping}
                 disabled={!newMappingCommercial || !newMappingEasybeerId.trim()}

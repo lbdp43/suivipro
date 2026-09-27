@@ -869,6 +869,7 @@ export default function MapPage() {
               <button
                 className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
                 onClick={() => setRdvWeekOffset(w => w - 1)}
+                aria-label="Semaine précédente"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -886,6 +887,7 @@ export default function MapPage() {
               <button
                 className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600"
                 onClick={() => setRdvWeekOffset(w => w + 1)}
+                aria-label="Semaine suivante"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -1117,6 +1119,7 @@ export default function MapPage() {
                 key={prospect.id}
                 position={[prospect.latitude, prospect.longitude]}
                 icon={createMarkerIcon(markerColor, selProspects.has(prospect.id))}
+                title={`Prospect : ${prospect.nom_etablissement}${prospect.ville ? `, ${prospect.ville}` : ''}`}
                 eventHandlers={modeSelection ? { click: () => basculerProspect(prospect.id) } : undefined}
               >
                 {!modeSelection && <Popup>
@@ -1210,6 +1213,7 @@ export default function MapPage() {
               key={`cli-${client.id}`}
               position={[Number(client.latitude), Number(client.longitude)]}
               icon={createMarkerIcon('#10b981', selClients.has(client.id))}
+              title={`Client : ${client.nom}${client.ville ? `, ${client.ville}` : ''}`}
               eventHandlers={modeSelection ? { click: () => basculerClient(client.id) } : undefined}
             >
               {!modeSelection && <Popup>

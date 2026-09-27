@@ -424,7 +424,7 @@ export default function PipelinePage() {
             ))}
           </select>
           {hasActiveFilters && (
-            <button
+            <button aria-label="Effacer les filtres"
               className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
               onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
             >
@@ -503,7 +503,7 @@ export default function PipelinePage() {
             ))}
           </select>
           {hasActiveFilters && (
-            <button
+            <button aria-label="Effacer les filtres"
               className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
               onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
             >
@@ -583,7 +583,7 @@ export default function PipelinePage() {
                 <button className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium" onClick={addColumn}>
                   <Save className="w-3 h-3" />
                 </button>
-                <button className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
+                <button aria-label="Annuler" className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -640,7 +640,7 @@ export default function PipelinePage() {
                         <button className="p-1 text-green-600 hover:text-green-700" onClick={saveEditColumn}>
                           <Save className="w-4 h-4" />
                         </button>
-                        <button className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}>
+                        <button aria-label="Annuler" className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}>
                           <X className="w-4 h-4" />
                         </button>
                       </>
@@ -648,7 +648,7 @@ export default function PipelinePage() {
                       <>
                         <span className="flex-1 text-sm font-medium text-gray-900">{col.label}</span>
                         <span className="text-xs text-gray-400">{count} prospect{count > 1 ? 's' : ''}</span>
-                        <button className="p-1 text-gray-400 hover:text-blue-600" onClick={() => startEditColumn(col)}>
+                        <button aria-label={`Modifier la colonne ${col.label}`} className="p-1 text-gray-400 hover:text-blue-600" onClick={() => startEditColumn(col)}>
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
@@ -885,7 +885,7 @@ export default function PipelinePage() {
                           >
                             <MessageSquare className="w-3 h-3" />
                           </button>
-                          <Link
+                          <Link aria-label={`Voir la fiche de ${prospect.nom_etablissement}`}
                             to={`/prospects?id=${prospect.id}`}
                             className="p-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
                             onClick={e => e.stopPropagation()}
@@ -966,7 +966,7 @@ export default function PipelinePage() {
                 <MessageSquare className="w-4 h-4 text-amber-500" />
                 Notes - {state.prospects.find(p => p.id === quickNoteId)?.nom_etablissement}
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setQuickNoteId(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>

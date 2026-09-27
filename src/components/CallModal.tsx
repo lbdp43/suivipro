@@ -624,7 +624,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-medium text-amber-700 flex items-center gap-1"><ListTodo className="w-3 h-3" /> Nouvelle tâche</label>
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setNouvelleTache(null)}><X className="w-4 h-4" /></button>
+                        <button aria-label="Annuler la tâche" className="text-gray-400 hover:text-gray-600" onClick={() => setNouvelleTache(null)}><X className="w-4 h-4" /></button>
                       </div>
                       <input type="text" className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Ex : rappeler pour la commande de Noël" value={nouvelleTache.titre} onChange={e => setNouvelleTache({ ...nouvelleTache, titre: e.target.value })} autoFocus />
                       <input type="date" className="px-2 py-1.5 border border-amber-200 rounded-lg text-xs bg-white" value={nouvelleTache.date} onChange={e => setNouvelleTache({ ...nouvelleTache, date: e.target.value })} />
@@ -890,13 +890,13 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                             onKeyDown={e => { if (e.key === 'Enter') createAndAddTag(); if (e.key === 'Escape') setShowNewTag(false); }}
                             autoFocus
                           />
-                          <button
+                          <button aria-label="Créer le tag"
                             className="p-0.5 text-green-600 hover:text-green-700"
                             onClick={createAndAddTag}
                           >
                             <CheckCircle className="w-4 h-4" />
                           </button>
-                          <button
+                          <button aria-label="Annuler"
                             className="p-0.5 text-gray-400 hover:text-gray-600"
                             onClick={() => setShowNewTag(false)}
                           >
@@ -939,7 +939,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         <label className="text-xs font-medium text-blue-700 flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> Rendez-vous
                         </label>
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowRdv(false)}>
+                        <button aria-label="Annuler le rendez-vous" className="text-gray-400 hover:text-gray-600" onClick={() => setShowRdv(false)}>
                           <X className="w-4 h-4" />
                         </button>
                       </div>
@@ -975,7 +975,7 @@ export function CallModalProvider({ children }: { children: ReactNode }) {
                         <label className="text-xs font-medium text-amber-700 flex items-center gap-1">
                           <Bell className="w-3 h-3" /> Memo / Rappel
                         </label>
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowMemo(false)}>
+                        <button aria-label="Annuler le rappel" className="text-gray-400 hover:text-gray-600" onClick={() => setShowMemo(false)}>
                           <X className="w-4 h-4" />
                         </button>
                       </div>

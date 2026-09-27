@@ -62,7 +62,7 @@ export default function ZoneDrawModal({ commercialId, commercialName, color, ini
               Utilisez l'outil polygone (en haut à droite de la carte) pour dessiner, modifier ou supprimer la zone.
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+          <button aria-label="Fermer" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>

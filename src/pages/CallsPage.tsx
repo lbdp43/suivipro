@@ -241,7 +241,7 @@ export default function CallsPage() {
               {(safePage - 1) * PAGE_SIZE + 1}-{Math.min(safePage * PAGE_SIZE, filteredCalls.length)} sur {filteredCalls.length} appels
             </p>
             <div className="flex items-center gap-1">
-              <button
+              <button aria-label="Page précédente"
                 className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={safePage <= 1}
@@ -272,7 +272,7 @@ export default function CallsPage() {
                     </button>
                   )
                 )}
-              <button
+              <button aria-label="Page suivante"
                 className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={safePage >= totalPages}
@@ -290,7 +290,7 @@ export default function CallsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-sm sm:text-base">Modifier l'appel</h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setEditingCall(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setEditingCall(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>

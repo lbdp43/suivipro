@@ -88,7 +88,7 @@ function ZoneDayPicker({ label, selected, allZones, onAdd, onRemove }: {
           {selected.map(z => (
             <span key={z} className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
               {z}
-              <button
+              <button aria-label={`Retirer ${z}`}
                 type="button"
                 onClick={() => onRemove(z)}
                 className="hover:text-indigo-900 ml-0.5"
@@ -195,7 +195,7 @@ function ProspectionZonePicker({ entries, allZones, onAdd, onRemove, onSlotsChan
                 +
               </button>
               <span className="text-green-600 text-xs ml-0.5">RDV</span>
-              <button
+              <button aria-label={`Retirer ${zone}`}
                 type="button"
                 onClick={() => onRemove(zone)}
                 className="ml-1 hover:text-red-600 text-green-600"
@@ -903,7 +903,7 @@ export default function TourneesPage() {
           </h1>
         </div>
         <div className="flex gap-2">
-          <button onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+          <button aria-label="Actualiser" title="Actualiser" onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <RefreshCw className="w-4 h-4" />
           </button>
           {!editingFor && currentUserId && (

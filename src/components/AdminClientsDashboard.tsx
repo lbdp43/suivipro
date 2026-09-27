@@ -330,7 +330,7 @@ export default function AdminClientsDashboard() {
               <Clock className="w-4 h-4" />
               Activité recente
             </h3>
-            <button onClick={loadData} className="p-1 text-gray-400 hover:text-gray-600">
+            <button aria-label="Actualiser" title="Actualiser" onClick={loadData} className="p-1 text-gray-400 hover:text-gray-600">
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>

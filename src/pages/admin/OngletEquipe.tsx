@@ -168,7 +168,7 @@ export default function OngletEquipe() {
                   >
                     <Edit2 className="w-3 h-3" /> Modifier
                   </button>
-                  <button
+                  <button aria-label={`Supprimer ${user.prenom} ${user.nom}`} title="Supprimer"
                     className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
                     onClick={() => deleteUser(user)}
                   >
@@ -187,7 +187,7 @@ export default function OngletEquipe() {
                   <h3 className="font-bold text-gray-900">
                     {editingUser ? `Modifier ${editingUser.prenom}` : 'Nouveau membre'}
                   </h3>
-                  <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowUserForm(false)}>
+                  <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowUserForm(false)}>
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>
@@ -289,7 +289,7 @@ export default function OngletEquipe() {
                         value={userForm.password}
                         onChange={e => setUserForm(prev => ({ ...prev, password: e.target.value }))}
                       />
-                      <button
+                      <button aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                         type="button"
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                         onClick={() => setShowPassword(!showPassword)}
