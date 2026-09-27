@@ -558,7 +558,7 @@ export default function DocumentsPage() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Upload className="w-5 h-5 text-brewery-600" /> Ajouter un document
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={reinitialiserEnvoi}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={reinitialiserEnvoi}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -605,7 +605,7 @@ export default function DocumentsPage() {
                         <p className="text-sm font-medium text-gray-900 truncate">{uploadFile.name}</p>
                         <p className="text-xs text-gray-500">{formatFileSize(uploadFile.size)}</p>
                       </div>
-                      <button className="text-gray-400 hover:text-red-500" onClick={() => { setUploadFile(null); setUploadConsultationSeule(false); }}>
+                      <button aria-label="Retirer le fichier" className="text-gray-400 hover:text-red-500" onClick={() => { setUploadFile(null); setUploadConsultationSeule(false); }}>
                         <X className="w-4 h-4" />
                       </button>
                     </div>

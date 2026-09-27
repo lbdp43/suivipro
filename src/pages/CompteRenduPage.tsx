@@ -742,20 +742,20 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
       {/* Navigation by view mode */}
       {viewMode === 'semaine' && (
         <div className="mb-6 flex items-center gap-3">
-          <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 rounded-lg hover:bg-gray-100 border border-gray-200"><ChevronLeft className="w-4 h-4" /></button>
+          <button aria-label="Semaine précédente" onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 rounded-lg hover:bg-gray-100 border border-gray-200"><ChevronLeft className="w-4 h-4" /></button>
           <div className="flex-1 text-center">
             <p className="text-sm font-semibold text-gray-800">
               Semaine du {new Date(weekDays[0].date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au {new Date(weekDays[6].date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
             {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-xs text-brewery-600 hover:underline mt-0.5">Semaine actuelle</button>}
           </div>
-          <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 rounded-lg hover:bg-gray-100 border border-gray-200"><ChevronRight className="w-4 h-4" /></button>
+          <button aria-label="Semaine suivante" onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 rounded-lg hover:bg-gray-100 border border-gray-200"><ChevronRight className="w-4 h-4" /></button>
         </div>
       )}
 
       {viewMode === 'mois' && (
         <div className="mb-6 flex items-center gap-3">
-          <button onClick={() => {
+          <button aria-label="Mois précédent" onClick={() => {
             const [y, m] = selectedMonth.split('-').map(Number);
             const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
             setSelectedMonth(prev);
@@ -765,7 +765,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
               {MONTH_LABELS[parseInt(selectedMonth.split('-')[1]) - 1]} {selectedMonth.split('-')[0]}
             </p>
           </div>
-          <button onClick={() => {
+          <button aria-label="Mois suivant" onClick={() => {
             const [y, m] = selectedMonth.split('-').map(Number);
             const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
             setSelectedMonth(next);
@@ -1083,7 +1083,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 </h3>
                 <p className="text-sm text-gray-500 mt-0.5">{visitModalClient.nom}</p>
               </div>
-              <button onClick={() => setVisitModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+              <button aria-label="Fermer" onClick={() => setVisitModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             {/* Editable notes client */}
             <div className="mx-4 mt-4 p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
@@ -1162,7 +1162,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 <h3 className="text-base font-bold text-gray-800">Planifier un RDV</h3>
                 <p className="text-sm text-gray-500 mt-0.5">{rdvModalClient.nom}</p>
               </div>
-              <button onClick={() => setRdvModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+              <button aria-label="Fermer" onClick={() => setRdvModalClient(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-4">
               {/* Type header */}
@@ -1305,7 +1305,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 <StickyNote className="w-4 h-4 text-yellow-500" />
                 Note - {getClient(noteClientId)?.nom || ''}
               </h3>
-              <button onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+              <button aria-label="Fermer" onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4">
               <textarea

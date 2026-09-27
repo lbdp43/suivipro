@@ -244,7 +244,7 @@ function LigneRdv({ rdv, nom, cible, aQui, surCompteRendu }: {
           className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs font-medium bg-brewery-50 text-brewery-700 hover:bg-brewery-100 flex-shrink-0"
         >
           <ClipboardCheck className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">{rdv.compte_rendu ? 'Modifier' : 'Compte rendu'}</span>
+          <span className="sr-only sm:not-sr-only">{rdv.compte_rendu ? 'Modifier' : 'Compte rendu'}</span>
         </button>
       )}
       {/* Le numéro tient rarement sur la ligne : l'icône appelle, l'infobulle le donne. */}
@@ -1004,7 +1004,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                     <p className="text-sm text-gray-800 truncate">{p?.nom_etablissement || 'Prospect'}</p>
                     <p className="text-xs text-gray-400 truncate">{r.message}</p>
                   </Link>
-                  {p?.telephone && <a href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>}
+                  {p?.telephone && <a aria-label={`Appeler ${p?.nom_etablissement || 'le prospect'}`} href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>}
                 </div>); })}
             </div>} />
         </BlocErreur>
@@ -1021,7 +1021,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                     <p className="text-sm text-gray-800 truncate">{p.nom_etablissement}</p>
                     <p className="text-xs text-gray-400 truncate">{p.ville}{p.score ? ` · ${p.score} pts` : ''}</p>
                   </Link>
-                  <a href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>
+                  <a aria-label={`Appeler ${p.nom_etablissement}`} href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>
                 </div>
               ))}
             </div>} />

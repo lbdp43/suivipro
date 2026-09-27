@@ -89,10 +89,10 @@ export default function OngletTags() {
                       {(tag.points || 0) > 0 ? '+' : ''}{tag.points || 0} pts
                     </span>
                     <div className="flex gap-2">
-                      <button className="p-1.5 rounded bg-gray-100 hover:bg-gray-200" onClick={() => openEditTag(tag)}>
+                      <button aria-label={`Modifier ${tag.nom}`} title="Modifier" className="p-1.5 rounded bg-gray-100 hover:bg-gray-200" onClick={() => openEditTag(tag)}>
                         <Edit2 className="w-3.5 h-3.5 text-gray-600" />
                       </button>
-                      <button className="p-1.5 rounded bg-red-50 hover:bg-red-100" onClick={() => deleteTag(tag.id)}>
+                      <button aria-label={`Supprimer ${tag.nom}`} title="Supprimer" className="p-1.5 rounded bg-red-50 hover:bg-red-100" onClick={() => deleteTag(tag.id)}>
                         <Trash2 className="w-3.5 h-3.5 text-red-500" />
                       </button>
                     </div>
@@ -107,7 +107,7 @@ export default function OngletTags() {
               <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
                 <div className="p-5 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">{editingTag ? 'Modifier le tag' : 'Nouveau tag'}</h3>
-                  <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowTagForm(false)}>
+                  <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowTagForm(false)}>
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>

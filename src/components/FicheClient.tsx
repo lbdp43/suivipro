@@ -198,7 +198,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
       <div className="p-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           {variante === 'panneau' && onFermer && (
-            <button onClick={onFermer} className="md:hidden p-1 rounded hover:bg-gray-100"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
+            <button aria-label="Retour" onClick={onFermer} className="md:hidden p-1 rounded hover:bg-gray-100"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
           )}
           <h2 className="text-lg font-bold text-gray-900 flex-1 truncate">{client.nom}</h2>
           <div className="flex items-center gap-1 ml-2">
@@ -210,7 +210,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             </button>
             <button onClick={supprimerClient} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
             {variante === 'fenetre' && onFermer && (
-              <button onClick={onFermer} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
+              <button aria-label="Fermer" onClick={onFermer} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
             )}
           </div>
         </div>
@@ -273,7 +273,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
           <div className="p-4 border-b border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-gray-700">{INTERACTION_TYPE_LABELS[interactionEnLigne]}</h3>
-              <button onClick={() => setInteractionEnLigne(null)} className="p-1 rounded hover:bg-gray-200"><X className="w-4 h-4 text-gray-400" /></button>
+              <button aria-label="Annuler" onClick={() => setInteractionEnLigne(null)} className="p-1 rounded hover:bg-gray-200"><X className="w-4 h-4 text-gray-400" /></button>
             </div>
             {interactionEnLigne === 'RDV_PLANIFIE' && <input type="date" value={interactionDate} onChange={e => setInteractionDate(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2" />}
             <textarea value={interactionComment} onChange={e => setInteractionComment(e.target.value)} placeholder="Commentaire… (obligatoire)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none h-20 mb-2" autoFocus />
@@ -314,12 +314,12 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             <div className="space-y-1">
               {[...tasks].sort((a, b) => (a.statut === 'TERMINEE' ? 1 : 0) - (b.statut === 'TERMINEE' ? 1 : 0)).slice(0, 5).map(task => (
                 <div key={task.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-xs">
-                  <button onClick={() => basculerTache(task)} className="flex-shrink-0">
+                  <button onClick={() => basculerTache(task)} className="flex-shrink-0" aria-label={task.statut === 'TERMINEE' ? `Rouvrir la tâche ${task.titre}` : `Marquer la tâche ${task.titre} comme faite`}>
                     {task.statut === 'TERMINEE' ? <Check className="w-4 h-4 text-green-500" /> : <div className="w-4 h-4 border-2 border-gray-300 rounded" />}
                   </button>
                   <span className={`flex-1 truncate ${task.statut === 'TERMINEE' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.titre}</span>
                   {task.date_echeance && <span className={`text-xs flex-shrink-0 ${task.date_echeance < dateLocale(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>{formatDate(task.date_echeance)}</span>}
-                  <button onClick={() => supprimerTache(task.id)} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50"><X className="w-3 h-3 text-gray-400 hover:text-red-500" /></button>
+                  <button aria-label={`Supprimer la tâche ${task.titre}`} onClick={() => supprimerTache(task.id)} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50"><X className="w-3 h-3 text-gray-400 hover:text-red-500" /></button>
                 </div>
               ))}
             </div>

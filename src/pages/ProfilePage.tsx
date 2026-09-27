@@ -190,7 +190,7 @@ export default function ProfilePage() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                   />
-                  <button
+                  <button aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                     type="button"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     onClick={() => setShowPassword(!showPassword)}

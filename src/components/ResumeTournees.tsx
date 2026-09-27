@@ -46,7 +46,7 @@ export function InfoTourneeModal({ resume, semaine, onClose }: { resume: ResumeT
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">{resume.motif}{!resume.active ? ' · pas de tournée cette semaine' : ''} · {semaine}{c.telephone ? ` · ${c.telephone}` : ''}</p>
           </div>
-          <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
         </div>
         <div className="p-4 space-y-4">
           {/* Situation générale */}

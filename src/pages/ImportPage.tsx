@@ -1447,7 +1447,7 @@ export default function ImportPage() {
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 {/* Header */}
                 <div className="bg-gray-50 px-3 py-2 flex items-center gap-3 border-b border-gray-200 text-xs sm:text-xs font-medium text-gray-500">
-                  <button onClick={toggleCrossAll} className="flex-shrink-0">
+                  <button aria-label={crossSelected.size === crossMatches.length ? 'Tout désélectionner' : 'Tout sélectionner'} onClick={toggleCrossAll} className="flex-shrink-0">
                     {crossSelected.size === crossMatches.length
                       ? <CheckSquare className="w-4 h-4 text-brewery-600" />
                       : <Square className="w-4 h-4 text-gray-400" />
@@ -1962,7 +1962,7 @@ export default function ImportPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-gray-900">Résultats de l'import</h3>
-            <button className="p-1 rounded hover:bg-gray-100" onClick={() => setImportResults(null)}>
+            <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setImportResults(null)}>
               <X className="w-4 h-4 text-gray-400" />
             </button>
           </div>

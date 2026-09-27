@@ -929,7 +929,7 @@ export default function ClientsPage() {
               </button>
               <button onClick={handleExportClients} className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors" title="Exporter">
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Export</span>
+                <span className="sr-only sm:not-sr-only">Export</span>
               </button>
               {isAdmin && (
                 <button
@@ -939,12 +939,12 @@ export default function ClientsPage() {
                   title="Recalcule la prochaine visite pour les clients sans recurrence (commercial assigne, mais date jamais calculee)"
                 >
                   <RefreshCw className={`w-4 h-4 ${recalculatingRecurrence ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Récurrences</span>
+                  <span className="sr-only sm:not-sr-only">Récurrences</span>
                 </button>
               )}
               <button onClick={openNewForm} className="flex items-center gap-1.5 px-3 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 transition-colors">
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Nouveau client</span>
+                <span className="sr-only sm:not-sr-only">Nouveau client</span>
               </button>
             </div>
           </div>
@@ -961,7 +961,7 @@ export default function ClientsPage() {
                 className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+                <button aria-label="Effacer la recherche" onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2">
                   <X className="w-4 h-4 text-gray-400" />
                 </button>
               )}
@@ -971,7 +971,7 @@ export default function ClientsPage() {
               className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm ${showFilters ? 'bg-brewery-50 border-brewery-300 text-brewery-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
             >
               <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">Filtres</span>
+              <span className="sr-only sm:not-sr-only">Filtres</span>
             </button>
           </div>
 
@@ -1080,8 +1080,8 @@ export default function ClientsPage() {
                             className="text-xs border rounded px-1.5 py-0.5 w-28"
                             autoFocus
                           />
-                          <button onClick={() => renameTournee(t, editTourneeName)} className="text-green-600 hover:text-green-800"><Save className="w-3 h-3" /></button>
-                          <button onClick={() => setEditingTournee(null)} className="text-gray-400 hover:text-gray-600"><X className="w-3 h-3" /></button>
+                          <button aria-label="Enregistrer le nom de la tournée" onClick={() => renameTournee(t, editTourneeName)} className="text-green-600 hover:text-green-800"><Save className="w-3 h-3" /></button>
+                          <button aria-label="Annuler" onClick={() => setEditingTournee(null)} className="text-gray-400 hover:text-gray-600"><X className="w-3 h-3" /></button>
                         </div>
                       );
                     }
@@ -1094,8 +1094,8 @@ export default function ClientsPage() {
                           {t}
                         </button>
                         <span className="hidden group-hover:inline-flex items-center gap-0.5 ml-0.5">
-                          <button onClick={e => { e.stopPropagation(); setEditingTournee(t); setEditTourneeName(t); }} className="p-0.5 text-gray-400 hover:text-blue-600"><Edit2 className="w-3 h-3" /></button>
-                          <button onClick={e => { e.stopPropagation(); deleteTournee(t); }} className="p-0.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                          <button aria-label={`Renommer la tournée ${t}`} onClick={e => { e.stopPropagation(); setEditingTournee(t); setEditTourneeName(t); }} className="p-0.5 text-gray-400 hover:text-blue-600"><Edit2 className="w-3 h-3" /></button>
+                          <button aria-label={`Supprimer la tournée ${t}`} onClick={e => { e.stopPropagation(); deleteTournee(t); }} className="p-0.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
                         </span>
                       </div>
                     );
@@ -1174,7 +1174,7 @@ export default function ClientsPage() {
               {selectedIds.size === filtered.length ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
             <span className="text-xs text-brewery-600 ml-auto font-medium">{selectedIds.size} sélectionné(s)</span>
-            <button onClick={() => setSelectionMode(false)} className="p-1 text-gray-400 hover:text-gray-600"><XCircle className="w-4 h-4" /></button>
+            <button aria-label="Quitter la sélection" onClick={() => setSelectionMode(false)} className="p-1 text-gray-400 hover:text-gray-600"><XCircle className="w-4 h-4" /></button>
           </div>
         )}
 
@@ -1640,10 +1640,10 @@ export default function ClientsPage() {
           <div className="p-3 border-t border-gray-200 bg-white flex items-center justify-between text-xs">
             <span className="text-gray-500">Page {currentPage + 1} / {totalPages}</span>
             <div className="flex gap-1">
-              <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30">
+              <button aria-label="Page précédente" onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30">
+              <button aria-label="Page suivante" onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30">
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -1674,7 +1674,7 @@ export default function ClientsPage() {
               <h2 className="text-lg font-bold text-gray-900">
                 {editingClient ? 'Modifier le client' : 'Nouveau client'}
               </h2>
-              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <button aria-label="Fermer" onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-gray-100">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -2009,7 +2009,7 @@ export default function ClientsPage() {
                     </h2>
                     <p className="text-sm text-gray-500 mt-1">{interactionClient.nom}</p>
                   </div>
-                  <button className="p-1 rounded hover:bg-gray-100" onClick={() => resetInteractionModal()}>
+                  <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => resetInteractionModal()}>
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>
@@ -2097,7 +2097,7 @@ export default function ClientsPage() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
                 <ListTodo className="w-4 h-4 text-brewery-600" /> Nouvelle tâche
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setShowTaskForm(false)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setShowTaskForm(false)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -2147,7 +2147,7 @@ export default function ClientsPage() {
                 <StickyNote className="w-4 h-4 text-yellow-500" />
                 Note - {getClient(noteClientId)?.nom || ''}
               </h3>
-              <button onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+              <button aria-label="Fermer" onClick={() => setNoteClientId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4">
               <textarea

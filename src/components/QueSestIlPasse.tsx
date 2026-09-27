@@ -54,7 +54,7 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-brewery-600" /> Que s'est-il passé ?</h3>
             <p className="text-xs text-gray-500 mt-0.5">{prospect.nom_etablissement} · {TYPES_ACTION[type]}{rappel.message ? ` — ${rappel.message}` : ''}</p>
           </div>
-          <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
         </div>
         <div className="p-4 space-y-3">
           <div className="space-y-1.5">

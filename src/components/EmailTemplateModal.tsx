@@ -172,7 +172,7 @@ export default function EmailTemplateModal(props: Props) {
           <h3 className="font-bold text-gray-900 flex items-center gap-2">
             <Mail className="w-5 h-5 text-purple-600" /> Envoyer un e-mail
           </h3>
-          <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}>
+          <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={onClose}>
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -195,7 +195,7 @@ export default function EmailTemplateModal(props: Props) {
                   autoFocus
                   onKeyDown={e => { if (e.key === 'Enter' && emailAddress.trim()) saveEmail(); }}
                 />
-                <button
+                <button aria-label="Enregistrer l'e-mail"
                   className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
                   onClick={saveEmail}
                   disabled={!emailAddress.trim()}
@@ -287,7 +287,7 @@ export default function EmailTemplateModal(props: Props) {
                     <span key={doc.id} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
                       <FileText className="w-3 h-3" />
                       {doc.nom}
-                      <button className="hover:text-purple-900" onClick={() => toggleDoc(doc.id)}>
+                      <button aria-label={`Retirer ${doc.nom}`} className="hover:text-purple-900" onClick={() => toggleDoc(doc.id)}>
                         <X className="w-3 h-3" />
                       </button>
                     </span>

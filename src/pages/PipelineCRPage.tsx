@@ -624,10 +624,10 @@ export default function PipelineCRPage() {
                     />
                   ))}
                 </div>
-                <button className="p-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700" onClick={addColumn}>
+                <button aria-label="Ajouter la colonne" className="p-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700" onClick={addColumn}>
                   <Check className="w-4 h-4" />
                 </button>
-                <button className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
+                <button aria-label="Annuler" className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -640,10 +640,10 @@ export default function PipelineCRPage() {
                   <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50">
                     {/* Reorder */}
                     <div className="flex flex-col gap-0.5">
-                      <button className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30" disabled={index === 0} onClick={() => moveColumn(index, -1)}>
+                      <button aria-label="Monter la colonne" className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30" disabled={index === 0} onClick={() => moveColumn(index, -1)}>
                         <ChevronUp className="w-3 h-3" />
                       </button>
-                      <button className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30" disabled={index === columns.length - 1} onClick={() => moveColumn(index, 1)}>
+                      <button aria-label="Descendre la colonne" className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30" disabled={index === columns.length - 1} onClick={() => moveColumn(index, 1)}>
                         <ChevronDown className="w-3 h-3" />
                       </button>
                     </div>
@@ -670,8 +670,8 @@ export default function PipelineCRPage() {
                             />
                           ))}
                         </div>
-                        <button className="p-1 text-green-600 hover:bg-green-50 rounded" onClick={saveEditColumn}><Save className="w-3.5 h-3.5" /></button>
-                        <button className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}><X className="w-3.5 h-3.5" /></button>
+                        <button aria-label="Enregistrer la colonne" className="p-1 text-green-600 hover:bg-green-50 rounded" onClick={saveEditColumn}><Save className="w-3.5 h-3.5" /></button>
+                        <button aria-label="Annuler" className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}><X className="w-3.5 h-3.5" /></button>
                       </>
                     ) : (
                       <>
@@ -848,7 +848,7 @@ export default function PipelineCRPage() {
                 <FileText className="w-4 h-4 text-brewery-500" />
                 Détails du RDV
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDetailApt(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setDetailApt(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -946,7 +946,7 @@ export default function PipelineCRPage() {
                 <CalendarClock className="w-5 h-5 text-purple-500" />
                 Decaler le RDV
               </h3>
-              <button className="p-1 rounded hover:bg-gray-100" onClick={() => setRescheduleApt(null)}>
+              <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setRescheduleApt(null)}>
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>

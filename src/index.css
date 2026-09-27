@@ -1,4 +1,20 @@
 @tailwind base;
+
+/* Les champs sans fond choisi prennent la surface de l'appli (et pas le gris du navigateur en
+   mode sombre) ; une classe « bg-* » l'emporte toujours. */
+@layer base {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea {
+    background-color: rgb(var(--c-surface));
+    color: inherit;
+  }
+  /* Au clavier, on voit toujours où l'on est (la souris et le doigt n'affichent rien). */
+  :focus-visible { outline: 2px solid rgb(var(--c-primaire)); outline-offset: 2px; }
+}
+
+/* « Réduire les animations » du téléphone : plus de glissements ni de fondus. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 @tailwind components;
 @tailwind utilities;
 
@@ -15,13 +31,34 @@
   --c-primaire-doux: 240 253 244;
   --c-danger: 220 38 38;
   --c-danger-doux: 254 242 242;
+  color-scheme: light dark;       /* champs, listes et barres de défilement natifs suivent le thème */
+}
+/* À l'impression, toujours clair. */
+@media print { :root { color-scheme: light; } }
+
+/* Mode sombre : il suit le réglage du téléphone ou de l'ordinateur (tailwind.config.js fait
+   basculer les couleurs des classes ; ici, les couleurs de rôle). */
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    --c-fond: 15 18 22;
+    --c-surface: 23 26 33;
+    --c-surface-2: 31 35 43;
+    --c-encre: 241 243 245;
+    --c-encre-douce: 180 186 197;
+    --c-trait: 44 49 58;
+    --c-primaire-doux: 23 45 33;
+    --c-danger-doux: 51 26 30;
+  }
+  /* La carte garde ses fonds clairs (tuiles, bulles) : on les assombrit juste assez. */
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgb(var(--c-surface)); color: rgb(var(--c-encre)); }
+  .leaflet-tile-pane { filter: brightness(0.8) contrast(1.1); }
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
+::-webkit-scrollbar-track { background: rgb(var(--p-slate-100)); }
+::-webkit-scrollbar-thumb { background: rgb(var(--p-slate-400)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--p-slate-500)); }
 
 /* Leaflet fixes */
 .leaflet-container { width: 100%; height: 100%; z-index: 1; }
@@ -30,7 +67,7 @@
 .kanban-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
 .kanban-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 .kanban-card.dragging { opacity: 0.5; transform: rotate(2deg); }
-.kanban-column.drag-over { background-color: #f0fdf4; border-color: #22c55e; }
+.kanban-column.drag-over { background-color: rgb(var(--p-green-50)); border-color: #22c55e; }
 
 /* Pipeline stage indicator */
 .pipeline-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }

@@ -1433,11 +1433,11 @@ export default function DashboardPage() {
                 Historique mensuel
               </h3>
               <div className="flex items-center gap-2">
-                <button className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600" onClick={() => setMonthOffset(prev => prev - 1)}>
+                <button aria-label="Mois précédent" className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600" onClick={() => setMonthOffset(prev => prev - 1)}>
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="text-sm font-medium text-gray-700 min-w-[140px] text-center capitalize">{monthLabel}</span>
-                <button className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30" onClick={() => setMonthOffset(prev => prev + 1)} disabled={monthOffset >= 0}>
+                <button aria-label="Mois suivant" className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-30" onClick={() => setMonthOffset(prev => prev + 1)} disabled={monthOffset >= 0}>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>

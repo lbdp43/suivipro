@@ -737,7 +737,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
 
       {/* Week navigation */}
       <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-4 py-2.5">
-        <button onClick={() => setPlanningWeekOffset(o => o - 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+        <button aria-label="Semaine précédente" onClick={() => setPlanningWeekOffset(o => o - 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
           <ChevronLeft className="w-4 h-4" />
         </button>
         <div className="text-center">
@@ -750,7 +750,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
               Aujourd'hui
             </button>
           )}
-          <button onClick={() => setPlanningWeekOffset(o => o + 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+          <button aria-label="Semaine suivante" onClick={() => setPlanningWeekOffset(o => o + 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -917,7 +917,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                                   <ClipboardCheck className="w-3.5 h-3.5" /> {hasCR ? 'Modifier le CR' : 'Compte-rendu'}
                                 </button>
                                 {entityPhone && (
-                                  <a href={`tel:${entityPhone.replace(/\s/g, '')}`} onClick={e => e.stopPropagation()}
+                                  <a aria-label="Appeler" href={`tel:${entityPhone.replace(/\s/g, '')}`} onClick={e => e.stopPropagation()}
                                     className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
                                     <Phone className="w-3.5 h-3.5" />
                                   </a>
@@ -1056,7 +1056,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                   {scheduleEntries.length} client{scheduleEntries.length > 1 ? 's' : ''} - {planningData.days.find(d => d.dateStr === scheduleDate)?.label || scheduleDate}
                 </p>
               </div>
-              <button onClick={() => setShowSchedulingModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+              <button aria-label="Fermer" onClick={() => setShowSchedulingModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1287,7 +1287,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                   {massSelectedClients.size} client{massSelectedClients.size > 1 ? 's' : ''} selectionne{massSelectedClients.size > 1 ? 's' : ''}
                 </p>
               </div>
-              <button onClick={() => setShowMassActionModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+              <button aria-label="Fermer" onClick={() => setShowMassActionModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>

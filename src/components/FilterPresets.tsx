@@ -117,14 +117,14 @@ export default function FilterPresets({ page, getCurrentFilters, applyFilters }:
             onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
             autoFocus
           />
-          <button
+          <button aria-label="Enregistrer le filtre"
             className="p-1 text-green-600 hover:text-green-700 disabled:opacity-30"
             onClick={handleSave}
             disabled={!presetName.trim()}
           >
             <Check className="w-3.5 h-3.5" />
           </button>
-          <button
+          <button aria-label="Annuler"
             className="p-1 text-gray-400 hover:text-gray-600"
             onClick={() => { setShowSave(false); setPresetName(''); }}
           >
