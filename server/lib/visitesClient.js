@@ -5,7 +5,8 @@
 // prochaine visite selon sa fréquence) ; un rendez-vous planifié ou un appel sans réponse,
 // non (shared/visites.js). Une visite ne se note pas à l'avance : ce qui est à venir est un
 // rendez-vous planifié. Une date plus ancienne que la dernière visite connue ne la fait pas
-// reculer. On écrit toujours en son nom — seul un administrateur note pour un collègue.
+// reculer. On écrit toujours en son nom — seul un administrateur note pour un collègue. La
+// prospection note chez les clients qu'on lui confie par une tâche.
 import crypto from 'node:crypto';
 import db from '../db.js';
 import { calculateNextVisit } from './visites.js';
@@ -29,6 +30,14 @@ function dateFr(iso) {
   return a && m && j ? `${j}/${m}/${a}` : String(iso || '');
 }
 
+/** Une tâche ouverte sur ce client, assignée à cette personne : le client lui est confié. */
+export async function tacheConfiee(clientId, personneId, executeur = db) {
+  const r = await executeur.query(
+    "SELECT 1 FROM tasks_client WHERE client_id = $1 AND commercial_id = $2 AND statut <> 'TERMINEE' LIMIT 1", [clientId, personneId]
+  );
+  return r.rows.length > 0;
+}
+
 /** La dernière visite connue, sauf si elle est dans le futur (donnée abîmée) : on l'ignore alors. */
 function derniereVisiteFiable(client, aujourdhui) {
   const d = String(client.last_visit || '').slice(0, 10);
@@ -45,7 +54,6 @@ function derniereVisiteFiable(client, aujourdhui) {
  *                     ou 'siens' (Claude : ses propres clients, tous pour l'administrateur).
  */
 export async function planInteraction(saisie, auteur, { commentaireObligatoire = false, perimetre = 'equipe', executeur = db } = {}) {
-  if (auteur.role === 'prospection') throw new InteractionInterdite('Les clients ne font pas partie de votre périmètre.');
   const s = saisie || {};
 
   const client = (await executeur.query(
@@ -53,7 +61,13 @@ export async function planInteraction(saisie, auteur, { commentaireObligatoire =
     [s.client_id]
   )).rows[0];
   if (!client) throw new InteractionRefusee('Client introuvable.');
-  if (perimetre === 'siens' && !estAdmin(auteur) && client.commercial_id !== auteur.id) {
+  // La prospection n'a pas de clients à elle : elle appelle ceux qu'un commercial lui confie,
+  // par une tâche qui lui est assignée. Tant que la tâche est ouverte, elle y note son appel.
+  if (auteur.role === 'prospection') {
+    if (!(await tacheConfiee(client.id, auteur.id, executeur))) {
+      throw new InteractionInterdite(`${client.nom} ne vous est pas confié : la prospection note un appel chez un client quand une tâche ouverte sur ce client lui est assignée.`);
+    }
+  } else if (perimetre === 'siens' && !estAdmin(auteur) && client.commercial_id !== auteur.id) {
     throw new InteractionInterdite(`${client.nom} n'est pas l'un de vos clients : seul son commercial (ou un administrateur) y note une visite par ce chemin.`);
   }
 
@@ -109,7 +123,14 @@ export async function planInteraction(saisie, auteur, { commentaireObligatoire =
   if (s.nouvelle_tache && String(s.nouvelle_tache.titre || '').trim()) {
     const d = s.nouvelle_tache.date || null;
     if (d && !dateValide(d)) throw new InteractionRefusee('Date de la tâche invalide (AAAA-MM-JJ).');
-    nouvelleTache = { titre: String(s.nouvelle_tache.titre).trim().slice(0, 300), date: d };
+    // La suite d'un appel de la prospection revient au commercial du client : c'est lui qui
+    // livre ou rappelle, et le client n'a pas à rester confié à la prospection pour autant.
+    const pourCommercial = auteur.role === 'prospection' && client.commercial_id;
+    nouvelleTache = {
+      titre: String(s.nouvelle_tache.titre).trim().slice(0, 300), date: d,
+      commercial_id: pourCommercial ? client.commercial_id : commercialId,
+      commercial_prenom: pourCommercial ? client.commercial_prenom : '',
+    };
   }
   // L'issue propose une suite ; on la signale sans l'imposer.
   let suggestion = null;
@@ -143,7 +164,7 @@ export function decrireInteraction(plan) {
     lignes.push(interaction.type === 'RDV_PLANIFIE' ? 'Rendez-vous planifié : le calendrier des visites ne bouge pas.' : 'Appel sans réponse : ne compte pas comme visite, le calendrier ne bouge pas.');
   }
   for (const t of tachesFaites) lignes.push(`Tâche terminée : « ${t.titre} »`);
-  if (nouvelleTache) lignes.push(`Nouvelle tâche : « ${nouvelleTache.titre} »${nouvelleTache.date ? `, pour le ${dateFr(nouvelleTache.date)}` : ''}`);
+  if (nouvelleTache) lignes.push(`Nouvelle tâche : « ${nouvelleTache.titre} »${nouvelleTache.date ? `, pour le ${dateFr(nouvelleTache.date)}` : ''}${nouvelleTache.commercial_prenom ? `, assignée à ${nouvelleTache.commercial_prenom}` : ''}`);
   if (suggestion) lignes.push(`Suite conseillée (non créée) : « ${suggestion.titre} » pour le ${dateFr(suggestion.date)}`);
   return lignes;
 }
@@ -177,7 +198,7 @@ export async function enregistrerInteraction(saisie, auteur, { via = 'app', ...o
     if (plan.nouvelleTache) {
       tache = {
         id: `task-${crypto.randomUUID()}`, titre: plan.nouvelleTache.titre, description: '', statut: 'A_FAIRE', priorite: 'MOYENNE',
-        date_echeance: plan.nouvelleTache.date, commercial_id: i.commercial_id, client_id: i.client_id,
+        date_echeance: plan.nouvelleTache.date, commercial_id: plan.nouvelleTache.commercial_id, client_id: i.client_id,
         date_creation: i.date_creation, completed_at: null, categorie: 'suivi', created_by: auteur.id,
       };
       await cx.query(

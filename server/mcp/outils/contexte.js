@@ -70,7 +70,7 @@ const SUJETS = {
     '# Les rôles',
     `- ${LIBELLES_ROLE.admin} : voit toute l'équipe, clients comme prospects.`,
     `- ${LIBELLES_ROLE.commercial} : ses clients et ses prospects ; un collègue seulement s'il le nomme, et c'est journalisé.`,
-    `- ${LIBELLES_ROLE.prospection} : prospects, pipeline, boîte de prospection et rendez-vous qu'elle a pris. Pas d'accès aux clients.`,
+    `- ${LIBELLES_ROLE.prospection} : prospects, pipeline, boîte de prospection et rendez-vous qu'elle a pris. Pas d'accès aux fiches clients ; elle note l'appel chez un client qu'on lui confie par une tâche.`,
   ),
   identite: () => bloc(
     '# L\'identité légale d\'un établissement',
@@ -105,6 +105,7 @@ const SUJETS = {
     '- Une date plus ancienne que la dernière visite connue s\'ajoute à l\'historique sans faire reculer le calendrier.',
     `- Issues d'un appel : ${ISSUES_APPEL_CLIENT.map(i => `${i.value} (${i.label}${i.suite ? `, suite conseillée : « ${i.suite.titre} » à ${i.suite.jours} j` : ''})`).join(', ')}.`,
     '- « noter_visite_ou_appel » écrit sur vos propres clients (l\'administrateur, pour tous et pour un collègue), toujours en deux temps : aperçu, puis confirmation après accord. Le commentaire est obligatoire.',
+    '- La prospection n\'a pas de clients à elle : un commercial lui confie des clients à appeler en lui assignant une tâche (« Créer une tâche » en masse depuis la liste des clients). Tant que la tâche est ouverte, elle note son appel chez ce client ; son appel compte comme visite, à son nom.',
   ),
   vocabulaire: () => bloc(
     '# Vocabulaire',
