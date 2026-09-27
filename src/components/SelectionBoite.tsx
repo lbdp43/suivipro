@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { X, UserPlus, Trash2, Loader2, CheckSquare, RotateCcw } from 'lucide-react';
 import { apiPost } from '../api/client';
 import { useToast } from './Toast';
+import { confirmer } from './ui/Confirmation';
 
 interface Props {
   /** Les signalements cochés, un identifiant par ligne (les groupes sont déjà déployés). */
@@ -78,13 +79,13 @@ export default function SelectionBoite({ ids, noms, traites, admin, affiches, on
     }
   };
 
-  const supprimer = () => {
+  const supprimer = async () => {
     const liste = noms.slice(0, NOMS_AFFICHES).map(n => `• ${n}`).join('\n');
     const reste = noms.length > NOMS_AFFICHES ? `\n… et ${noms.length - NOMS_AFFICHES} autre(s)` : '';
     const message = `Supprimer ${combien} ?\n\n${liste}${reste}\n\n`
       + 'La suppression est définitive : ces signalements ne se rouvrent pas. SuiviPro garde seulement leur nom, '
       + 'pour vous prévenir si le même établissement revient un jour dans la boîte.';
-    if (window.confirm(message)) lancer('supprimer');
+    if (await confirmer(message)) lancer('supprimer');
   };
 
   return (

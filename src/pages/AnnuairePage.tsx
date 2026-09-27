@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api/client';
+import { confirmer } from '../components/ui/Confirmation';
+import { toast as annonce } from 'sonner';
 
 interface AnnuaireEntry {
   id: string;
@@ -147,7 +149,7 @@ export default function AnnuairePage() {
       await apiPost('/entity-types', newEntityType);
       setNewEntityType({ id: '', label: '', icon: 'Tag', color: 'text-gray-600 bg-gray-50 border-gray-200', show_in_pipeline: false });
       await loadEntityTypes();
-    } catch (err) { alert(err instanceof Error ? err.message : 'Erreur'); }
+    } catch (err) { annonce(err instanceof Error ? err.message : 'Erreur'); }
   };
 
   const updateEntityType = async (id: string) => {
@@ -159,11 +161,11 @@ export default function AnnuairePage() {
   };
 
   const deleteEntityType = async (id: string) => {
-    if (!confirm('Supprimer ce type d\'entite ?')) return;
+    if (!await confirmer('Supprimer ce type d\'entite ?')) return;
     try {
       await apiDelete(`/entity-types/${id}`);
       await loadEntityTypes();
-    } catch (err) { alert(err instanceof Error ? err.message : 'Erreur'); }
+    } catch (err) { annonce(err instanceof Error ? err.message : 'Erreur'); }
   };
 
   useEffect(() => {
@@ -192,7 +194,7 @@ export default function AnnuairePage() {
   };
 
   const deleteRule = async (id: number) => {
-    if (!confirm('Supprimer cette règle ?')) return;
+    if (!await confirmer('Supprimer cette règle ?')) return;
     try {
       await apiDelete(`/import-rules/${id}`);
       await loadRules();

@@ -9,6 +9,7 @@ import { X, UserCheck, Power, Trash2, Loader2, CheckSquare } from 'lucide-react'
 import { apiPost } from '../api/client';
 import { useToast } from './Toast';
 import { Commercial } from '../types';
+import { confirmer } from './ui/Confirmation';
 
 export interface Selection {
   prospects: string[];
@@ -74,7 +75,7 @@ export default function SelectionCarte({ selection, nomDe, commerciaux, admin, o
     toast.success(`${r.touches} client${r.touches > 1 ? 's' : ''} désactivé${r.touches > 1 ? 's' : ''}`);
   });
 
-  const supprimer = () => {
+  const supprimer = async () => {
     const noms = [
       ...selection.prospects.map(id => nomDe('prospect', id)),
       ...selection.clients.map(id => nomDe('client', id)),
@@ -83,7 +84,7 @@ export default function SelectionCarte({ selection, nomDe, commerciaux, admin, o
     const reste = noms.length > NOMS_AFFICHES ? `\n… et ${noms.length - NOMS_AFFICHES} autre(s)` : '';
     const message = `Mettre à la corbeille ${libelleSelection(selection)} ?\n\n${liste}${reste}\n\n`
       + 'Rien n\'est détruit : les fiches partent dans la corbeille avec leur historique, et vous pourrez les remettre en place depuis Administration → Corbeille.';
-    if (!window.confirm(message)) return;
+    if (!(await confirmer(message))) return;
     lancer('supprimer', async () => {
       const r = await apiPost('/masse/supprimer', selection) as { rangees: number };
       toast.success(`${r.rangees} fiche${r.rangees > 1 ? 's' : ''} dans la corbeille`);

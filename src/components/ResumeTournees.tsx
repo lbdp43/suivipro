@@ -4,6 +4,7 @@
 import { Info, X, Calendar, MapPin, User } from 'lucide-react';
 import { ResumeTournee, JOURS_SEMAINE, LIBELLES_JOURS } from '../utils/resumeTournees';
 import { colorForCommercial } from '../types';
+import Fenetre from './ui/Fenetre';
 
 export function PucesTourneesDuJour({ resumes, jour, onInfo, compact = false }: { resumes: ResumeTournee[]; jour: string; onInfo: (r: ResumeTournee) => void; compact?: boolean }) {
   const lignes = resumes
@@ -36,8 +37,7 @@ export function InfoTourneeModal({ resume, semaine, onClose }: { resume: ResumeT
   const c = resume.commercial;
   const restant = Math.max(0, resume.totalAPrendre - resume.totalPris);
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut onFermer={onClose} titre="Tournée du jour" largeur="large">
         <div className="p-4 border-b border-gray-200 flex items-start justify-between gap-2">
           <div>
             <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -82,7 +82,6 @@ export function InfoTourneeModal({ resume, semaine, onClose }: { resume: ResumeT
             })}
           </div>
         </div>
-      </div>
-    </div>
+      </Fenetre>
   );
 }

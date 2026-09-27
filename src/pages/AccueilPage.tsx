@@ -22,6 +22,7 @@ import CompteRenduModal from '../components/CompteRenduModal';
 import { useCallModal } from '../components/CallModal';
 import { faitDeLaProspection, estCommercial, libelleRole } from '../utils/roles';
 import { aSigne, doitSigner } from '../../shared/documents';
+import { confirmer } from '../components/ui/Confirmation';
 
 // ============================================================================
 // Accueil « Ma journée » : une porte d'entrée par rôle. Pas d'itinéraire, pas de graphiques :
@@ -708,7 +709,7 @@ function SessionClientsDuJour({ moi }: { moi: Commercial }) {
   const now = new Date();
   const maSessionClients = useMemo(() => sessionDuJour(state, moi.id, now), [state, moi.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const viderLaSessionClients = async () => {
-    if (!confirm('Vider votre session d\'appel clients du jour ?')) return;
+    if (!await confirmer('Vider votre session d\'appel clients du jour ?')) return;
     try {
       await apiPut('/sessions-appel/jour', { jour: maSessionClients.jour, client_ids: [], mode: 'remplacer' });
       dispatchLocal({ type: 'SET_SESSION_APPEL', payload: { ...(maSessionClients.session as import('../types').SessionAppel), client_ids: [] } });
@@ -755,7 +756,7 @@ function SessionProspectsDuJour({ moi }: { moi: Commercial }) {
   const now = new Date();
   const maSession = useMemo(() => sessionDuJour(state, moi.id, now), [state, moi.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const viderLaSession = async () => {
-    if (!confirm('Vider votre session d\'appel du jour ?')) return;
+    if (!await confirmer('Vider votre session d\'appel du jour ?')) return;
     try {
       await apiPut('/sessions-appel/jour', { jour: maSession.jour, prospect_ids: [], mode: 'remplacer' });
       dispatchLocal({ type: 'SET_SESSION_APPEL', payload: { ...(maSession.session as import('../types').SessionAppel), prospect_ids: [] } });

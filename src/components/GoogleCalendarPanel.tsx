@@ -7,6 +7,7 @@ import {
   getGoogleCalendarAuthUrl,
   disconnectGoogleCalendar,
 } from '../api/client';
+import { confirmer } from './ui/Confirmation';
 
 interface ConnectionStatus {
   connected: boolean;
@@ -67,7 +68,7 @@ export default function GoogleCalendarPanel() {
   };
 
   const handleDisconnect = async (commercialId: string) => {
-    if (!confirm('Déconnecter Google Agenda pour cet utilisateur ?')) return;
+    if (!await confirmer('Déconnecter Google Agenda pour cet utilisateur ?')) return;
     setLoading(true);
     try {
       await disconnectGoogleCalendar(commercialId);

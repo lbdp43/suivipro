@@ -15,6 +15,7 @@ import CarteFiche from './CarteFiche';
 import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import { noterInteraction } from '../utils/interactions';
+import { confirmer } from './ui/Confirmation';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
 // ouverte depuis Semaine : identité, contact, visites, actions rapides, notes, tâches,
@@ -182,7 +183,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
   };
 
   const supprimerClient = async () => {
-    if (!confirm('Supprimer ce client ? Cette action est irréversible.')) return;
+    if (!await confirmer('Supprimer ce client ? Cette action est irréversible.')) return;
     try {
       await apiDelete(`/clients/${client.id}`);
       dispatchLocal({ type: 'DELETE_CLIENT', payload: client.id });

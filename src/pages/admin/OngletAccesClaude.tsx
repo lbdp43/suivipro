@@ -9,6 +9,7 @@ import { apiGet, apiPost, apiDelete } from '../../api/client';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
 import { libelleRole } from '../../utils/roles';
+import { confirmer } from '../../components/ui/Confirmation';
 
 interface Jeton {
   id: string;
@@ -70,7 +71,7 @@ export default function OngletAccesClaude() {
   };
 
   const revoquer = async (j: Jeton) => {
-    if (!window.confirm(`Révoquer l'accès Claude de ${j.prenom} ? Il cessera de fonctionner immédiatement.`)) return;
+    if (!await confirmer(`Révoquer l'accès Claude de ${j.prenom} ? Il cessera de fonctionner immédiatement.`)) return;
     try {
       await apiDelete(`/mcp/jetons/${j.id}`);
       toast.success('Accès révoqué');

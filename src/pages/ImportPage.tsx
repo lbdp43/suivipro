@@ -10,6 +10,7 @@ import { useToast } from '../components/Toast';
 import { Prospect, EstablishmentType, PipelineStage, ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, ClientType } from '../types';
 import { generateId, exportProspectsCSV, geocodeBatch } from '../utils/helpers';
 import { apiPost, apiPut, apiDelete } from '../api/client';
+import { confirmer } from '../components/ui/Confirmation';
 
 export default function ImportPage() {
   const { state, dispatchLocal } = useApp();
@@ -1182,7 +1183,7 @@ export default function ImportPage() {
     const selectedIds = [...crossSelected];
     const label = action === 'delete' ? 'SUPPRIMER' : 'passer en "RDV / Gagne"';
     const count = selectedIds.length;
-    if (!confirm(`${label} ${count} prospect(s) selectionne(s) ?`)) return;
+    if (!await confirmer(`${label} ${count} prospect(s) selectionne(s) ?`)) return;
 
     for (const id of selectedIds) {
       if (action === 'delete') {

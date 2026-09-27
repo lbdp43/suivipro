@@ -21,6 +21,7 @@ import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import RepertoireGooglePanel from '../components/RepertoireGooglePanel';
 import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
+import { confirmer } from '../components/ui/Confirmation';
 
 export default function AppointmentsPage() {
   const { state, dispatchLocal, getProspect } = useApp();
@@ -274,7 +275,7 @@ export default function AppointmentsPage() {
   };
 
   const deleteAppointment = async (id: string) => {
-    if (confirm('Supprimer ce RDV ?')) {
+    if (await confirmer('Supprimer ce RDV ?')) {
       try {
         await apiDelete(`/appointments/${id}`);
         dispatchLocal({ type: 'DELETE_APPOINTMENT', payload: id });

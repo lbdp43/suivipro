@@ -16,6 +16,8 @@ import ChampsIdentite from '../components/ChampsIdentite';
 import { formaterSiren, formaterSiret, tvaIntracom } from '../../shared/siret';
 import { sansAccents } from '../../shared/normalisation';
 import { GaleriePhotos } from '../components/PhotosSignalement';
+import { confirmer } from '../components/ui/Confirmation';
+import Fenetre from '../components/ui/Fenetre';
 
 // La boîte de prospection : ce que l'équipe a partagé attend ici. Chaque signalement (ou
 // groupe de signalements sur le même établissement) se qualifie en un geste : créer le
@@ -160,7 +162,7 @@ export default function BoitePage() {
     const message = `Supprimer « ${titreDuSignalement(s)} » ?\n\n`
       + 'La suppression est définitive : ce signalement ne se rouvre pas. SuiviPro garde seulement son nom, '
       + 'pour vous prévenir si le même établissement revient un jour dans la boîte.';
-    if (!window.confirm(message)) return;
+    if (!await confirmer(message)) return;
     try {
       await apiDelete(`/signalements/${s.id}`);
       dispatchLocal({ type: 'DELETE_SIGNALEMENT', payload: s.id });
@@ -463,8 +465,7 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
 
   const champ = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm';
   return (
-    <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto p-5 space-y-4" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut onFermer={onClose} titre="Créer le prospect" largeur="normale">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2"><UserPlus className="w-4 h-4 text-brewery-600" /> Créer le prospect</h3>
         <div className="space-y-3">
           <div>
@@ -526,8 +527,7 @@ function CreationModal({ groupe, onClose }: { groupe: Signalement[]; onClose: ()
           <button type="button" onClick={onClose} className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Annuler</button>
           <button type="button" disabled={enCours} onClick={creer} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brewery-600 text-white text-sm font-semibold hover:bg-brewery-700 disabled:opacity-50">{enCours && <Loader2 className="w-4 h-4 animate-spin" />} Créer</button>
         </div>
-      </div>
-    </div>
+      </Fenetre>
   );
 }
 
@@ -577,8 +577,7 @@ function RattachementModal({ groupe, onClose }: { groupe: Signalement[]; onClose
   );
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto p-5 space-y-4" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut onFermer={onClose} titre="Rattacher à une fiche existante" largeur="normale">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Link2 className="w-4 h-4 text-brewery-600" /> Rattacher « {titreDuSignalement(s)} »</h3>
         {doublons.length > 0 && (
           <div>
@@ -597,7 +596,6 @@ function RattachementModal({ groupe, onClose }: { groupe: Signalement[]; onClose
         <div className="flex justify-end">
           <button type="button" onClick={onClose} className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Fermer</button>
         </div>
-      </div>
-    </div>
+      </Fenetre>
   );
 }

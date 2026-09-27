@@ -7,6 +7,7 @@ import { objectifsParDefaut } from '../../utils/objectifs';
 import { generateId } from '../../utils/helpers';
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
+import { confirmer } from '../../components/ui/Confirmation';
 
 export default function OngletEquipe() {
   const { state, dispatchLocal } = useApp();
@@ -94,7 +95,7 @@ export default function OngletEquipe() {
       toast.warning('Impossible de supprimer le dernier administrateur.');
       return;
     }
-    if (confirm(`Supprimer ${user.prenom} ${user.nom} ? Cette action est irreversible.`)) {
+    if (await confirmer(`Supprimer ${user.prenom} ${user.nom} ? Cette action est irreversible.`)) {
       try {
         await apiDelete(`/commerciaux/${user.id}`);
         dispatchLocal({ type: 'DELETE_COMMERCIAL', payload: user.id });

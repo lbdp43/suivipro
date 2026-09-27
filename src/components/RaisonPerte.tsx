@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Ban, X } from 'lucide-react';
 import { RAISONS_PERTE, RaisonPerte as CodeRaison } from '../../shared/tunnel';
+import Fenetre from './ui/Fenetre';
 
 export const RAISONS: { value: CodeRaison; label: string }[] = (Object.keys(RAISONS_PERTE) as CodeRaison[]).map(v => ({ value: v, label: RAISONS_PERTE[v] }));
 
@@ -38,8 +39,7 @@ export default function RaisonPerteModal({ nom, onConfirm, onClose }: { nom: str
   const [raison, setRaison] = useState('');
   const [enCours, setEnCours] = useState(false);
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut onFermer={onClose} titre="Prospect perdu" largeur="etroite">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-gray-900 flex items-center gap-2"><Ban className="w-5 h-5 text-red-500" /> Prospect perdu</h3>
           <button className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
@@ -58,7 +58,6 @@ export default function RaisonPerteModal({ nom, onConfirm, onClose }: { nom: str
             Confirmer la perte
           </button>
         </div>
-      </div>
-    </div>
+      </Fenetre>
   );
 }

@@ -8,6 +8,7 @@ import { CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES } fr
 import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
 import { apiFetch } from '../../api/client';
+import { confirmer } from '../../components/ui/Confirmation';
 
 function AdminZonePicker({ label, selected, allZones, onAdd, onRemove }: {
   label: string;
@@ -174,7 +175,7 @@ export default function OngletTournees() {
     const sources = secteursAnalyse.secteurs.filter(s => secteursCoches.has(s.cle) && s.cle !== cible.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
     if (!cible || sources.length === 0) { toast.error('Cochez au moins un secteur à fusionner et choisissez le secteur cible'); return; }
     const total = sources.reduce((n, s) => n + s.clients + s.prospects, 0);
-    if (!confirm(`Fusionner ${sources.map(s => `« ${s.nom} »`).join(', ')} dans « ${cible} » ?\n\n${total} fiche(s) (clients et prospects) changeront de secteur ; les jours de tournée et les zones dessinées seront renommés. Rien n'est supprimé.`)) return;
+    if (!await confirmer(`Fusionner ${sources.map(s => `« ${s.nom} »`).join(', ')} dans « ${cible} » ?\n\n${total} fiche(s) (clients et prospects) changeront de secteur ; les jours de tournée et les zones dessinées seront renommés. Rien n'est supprimé.`)) return;
     try {
       const res = await apiFetch('/tournees/fusionner', {
         method: 'POST',
@@ -199,7 +200,7 @@ export default function OngletTournees() {
     if (!secteursAnalyse) return;
     const choisis = secteursAnalyse.secteurs.filter(s => s.vide && secteursCoches.has(s.cle));
     if (choisis.length === 0) return;
-    if (!confirm(`Supprimer ${choisis.length} secteur(s) vide(s) ?\n\n${choisis.map(s => `• ${s.nom}`).join('\n')}\n\nIls seront retirés des tournées et les zones dessinées correspondantes effacées. Aucun client ni prospect n'est touché (il n'y en a aucun dedans, c'est revérifié au moment de supprimer).`)) return;
+    if (!await confirmer(`Supprimer ${choisis.length} secteur(s) vide(s) ?\n\n${choisis.map(s => `• ${s.nom}`).join('\n')}\n\nIls seront retirés des tournées et les zones dessinées correspondantes effacées. Aucun client ni prospect n'est touché (il n'y en a aucun dedans, c'est revérifié au moment de supprimer).`)) return;
     try {
       const res = await apiFetch('/tournees/vides/supprimer', {
         method: 'POST',

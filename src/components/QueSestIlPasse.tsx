@@ -10,6 +10,7 @@ import { Prospect, Reminder, PIPELINE_LABELS } from '../types';
 import { TYPES_ACTION, issuesPourAction, issueEstUnePerte } from '../../shared/tunnel';
 import { SelectRaisonPerte } from './RaisonPerte';
 import { formatDate } from '../utils/helpers';
+import Fenetre from './ui/Fenetre';
 
 interface Reponse { prospect: Prospect; rappel: Reminder | null; prochaine: Reminder | null; etape: string | null }
 
@@ -47,8 +48,7 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <Fenetre ouvert brut onFermer={onClose} titre="Que s'est-il passé ?" largeur="etroite">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <div>
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-brewery-600" /> Que s'est-il passé ?</h3>
@@ -80,7 +80,6 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
           <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={onClose}>Annuler</button>
           <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 disabled:opacity-50" disabled={!valide || enCours} onClick={enregistrer}>Enregistrer</button>
         </div>
-      </div>
-    </div>
+      </Fenetre>
   );
 }

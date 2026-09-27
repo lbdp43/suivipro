@@ -12,6 +12,7 @@ import { Prospect, ESTABLISHMENT_LABELS, PIPELINE_LABELS, EstablishmentType } fr
 import { aCompleter, manquesDeLaFiche, manquesBloquants, estQualifiable, ETAPES_A_TRIER, LIBELLES_MANQUE, Manque } from '../../shared/qualite';
 import { candidatsDoublons } from '../../shared/rapprochement';
 import { faitDeLaProspection } from '../utils/roles';
+import { confirmer as demanderConfirmation } from '../components/ui/Confirmation';
 
 // « Qualité des fiches » : rendre le fichier prospects fiable. Quatre files de travail —
 // doublons, prospects déjà clients, fiches à compléter, fiches partagées à trier — et le
@@ -232,7 +233,7 @@ function OngletDoublons({ donnees, recharger }: { donnees: { total: number; cert
     const garderId = choix[cle(p)] || p.suggestion_garder;
     const garder = p.fiches.find(f => f.id === garderId)!;
     const absorbe = p.fiches.find(f => f.id !== garderId)!;
-    if (!confirm(`« ${absorbe.nom} » sera fusionnée dans « ${garder.nom} ».\n\nSes appels, rendez-vous, rappels, étiquettes et notes passent sur la fiche gardée ; ses informations complètent les champs vides. La fiche « ${absorbe.nom} » part à la corbeille.`)) return;
+    if (!await demanderConfirmation(`« ${absorbe.nom} » sera fusionnée dans « ${garder.nom} ».\n\nSes appels, rendez-vous, rappels, étiquettes et notes passent sur la fiche gardée ; ses informations complètent les champs vides. La fiche « ${absorbe.nom} » part à la corbeille.`)) return;
     setEnCours(cle(p));
     try {
       await fusionnerUne(garder.id, absorbe.id);
@@ -248,7 +249,7 @@ function OngletDoublons({ donnees, recharger }: { donnees: { total: number; cert
   // dans A, « B » veut dire A. On suit donc où chaque fiche absorbée est partie.
   const fusionnerLaSelection = async () => {
     const aVerifier = cochees.filter(p => p.score < 100).length;
-    if (!confirm(`Fusionner ${cochees.length} paire(s)${aVerifier ? `, dont ${aVerifier} « à vérifier »` : ''} ?\n\nPour chacune, la fiche marquée « Garder celle-ci » est gardée ; l'autre lui donne son historique et part à la corbeille. Chaque fusion s'annule séparément depuis le Journal.`)) return;
+    if (!await demanderConfirmation(`Fusionner ${cochees.length} paire(s)${aVerifier ? `, dont ${aVerifier} « à vérifier »` : ''} ?\n\nPour chacune, la fiche marquée « Garder celle-ci » est gardée ; l'autre lui donne son historique et part à la corbeille. Chaque fusion s'annule séparément depuis le Journal.`)) return;
     const devenu = new Map<string, string>();
     const ou = (id: string) => { let x = id; while (devenu.has(x)) x = devenu.get(x)!; return x; };
     const retirees: string[] = [];
@@ -378,7 +379,7 @@ function OngletDejaClients({ donnees, recharger }: { donnees: { total: number; c
     // Un prospect coché deux fois (deux clients proches) n'est passé en Gagné qu'une fois.
     const faits = new Set<string>();
     const uniques = cochees.filter(p => (faits.has(p.prospect.id) ? false : (faits.add(p.prospect.id), true)));
-    if (!confirm(`Passer ${uniques.length} prospect(s) en Gagné et les rattacher à leur client ?`)) return;
+    if (!await demanderConfirmation(`Passer ${uniques.length} prospect(s) en Gagné et les rattacher à leur client ?`)) return;
     setAvancement({ fait: 0, sur: uniques.length });
     const r = await enSerie(uniques, confirmerUne, fait => setAvancement({ fait, sur: uniques.length }));
     setAvancement(null);
@@ -675,7 +676,7 @@ function TriEnListe({ liste }: { liste: Prospect[] }) {
 
   const trier = async (decision: 'qualifiee' | 'pas_pour_nous' | 'ferme', fiches: Prospect[], fait: string) => {
     if (fiches.length === 0) return;
-    if (!confirm(`${fait[0].toUpperCase()}${fait.slice(1)} : ${fiches.length} fiche(s) ?`)) return;
+    if (!await demanderConfirmation(`${fait[0].toUpperCase()}${fait.slice(1)} : ${fiches.length} fiche(s) ?`)) return;
     setAvancement({ fait: 0, sur: fiches.length });
     const r = await enSerie(fiches, async p => {
       const res = await apiPost(`/qualite/trier/${encodeURIComponent(p.id)}`, { decision }) as { prospect: Prospect };
@@ -758,7 +759,7 @@ function TriUneAUne({ liste, apresFusion }: { liste: Prospect[]; apresFusion: ()
   };
 
   const fusionnerDans = async (garder: Prospect) => {
-    if (!confirm(`Fusionner « ${p.nom_etablissement} » dans « ${garder.nom_etablissement} » ?\n\nLa fiche partagée part à la corbeille ; ses informations complètent l'autre.`)) return;
+    if (!await demanderConfirmation(`Fusionner « ${p.nom_etablissement} » dans « ${garder.nom_etablissement} » ?\n\nLa fiche partagée part à la corbeille ; ses informations complètent l'autre.`)) return;
     setEnCours(true);
     try {
       const r = await apiPost('/qualite/fusionner', { garder_id: garder.id, absorber_id: p.id }) as { prospect: Prospect; absorbe_id: string };
@@ -840,7 +841,7 @@ function OngletJournal() {
   useEffect(() => { charger(); }, [charger]);
 
   const annuler = async (l: LigneJournal) => {
-    if (!confirm(`Défaire : ${l.details} ?`)) return;
+    if (!await demanderConfirmation(`Défaire : ${l.details} ?`)) return;
     setEnCours(l.id);
     try {
       const r = await apiPost(`/qualite/journal/${l.id}/annuler`, {}) as { message: string; prospects: Prospect[] };

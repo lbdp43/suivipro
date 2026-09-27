@@ -6,6 +6,9 @@ import VisionneuseDocument from '../components/VisionneuseDocument';
 import { Document, DocumentCategory, DocumentSignature, DOCUMENT_CATEGORY_LABELS } from '../types';
 import { downloadDocument, apiPost, apiPut, apiDelete, liensDesDocuments } from '../api/client';
 import { aSigne, concernes, doitSigner } from '../../shared/documents';
+import { confirmer } from '../components/ui/Confirmation';
+import { toast as annonce } from 'sonner';
+import Fenetre from '../components/ui/Fenetre';
 
 const CATEGORIES: DocumentCategory[] = ['bar_restaurant', 'prix_ce', 'cave_epicerie', 'grand_public', 'autre'];
 
@@ -160,7 +163,7 @@ export default function DocumentsPage() {
   };
 
   const handleDelete = async (doc: Document) => {
-    if (confirm(`Supprimer le document "${doc.nom}" ?`)) {
+    if (await confirmer(`Supprimer le document "${doc.nom}" ?`)) {
       try {
         await apiDelete(`/documents/${doc.id}`);
         dispatchLocal({ type: 'DELETE_DOCUMENT', payload: doc.id });
@@ -492,11 +495,11 @@ export default function DocumentsPage() {
         type="file"
         className="hidden"
         accept={remplacement?.consultation_seule ? '.pdf,.png,.jpg,.jpeg,.gif,.webp' : '.pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.gif,.webp'}
-        onChange={e => {
+        onChange={async e => {
           const f = e.target.files?.[0];
           e.target.value = '';
           if (f && remplacement) {
-            const ok = !remplacement.a_signer || confirm(`Remplacer le fichier de « ${remplacement.nom} » ? Ce sera une nouvelle version : tout le monde devra la signer de nouveau.`);
+            const ok = !remplacement.a_signer || await confirmer(`Remplacer le fichier de « ${remplacement.nom} » ? Ce sera une nouvelle version : tout le monde devra la signer de nouveau.`);
             if (ok) remplacerLeFichier(remplacement, f);
           }
           setRemplacement(null);
@@ -517,8 +520,7 @@ export default function DocumentsPage() {
 
       {/* Confirmer la prise de connaissance */}
       {aConfirmer && moi && (
-        <div className="modal-backdrop" onClick={() => !signatureEnCours && setAConfirmer(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => !signatureEnCours && setAConfirmer(null)} titre="Prise de connaissance" largeur="etroite">
             <div className="p-5 border-b border-gray-200">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileSignature className="w-5 h-5 text-brewery-600" /> Prise de connaissance
@@ -545,8 +547,7 @@ export default function DocumentsPage() {
                 <FileSignature className="w-4 h-4" /> {signatureEnCours ? 'Signature…' : 'Je signe'}
               </button>
             </div>
-          </div>
-        </div>
+          </Fenetre>
       )}
 
       {/* Upload Modal */}
@@ -621,7 +622,7 @@ export default function DocumentsPage() {
                           const file = e.target.files?.[0];
                           if (file) {
                             if (file.size > TAILLE_MAX) {
-                              alert('Le fichier ne doit pas dépasser 5 Mo');
+                              annonce('Le fichier ne doit pas dépasser 5 Mo');
                               return;
                             }
                             setUploadFile(file);
