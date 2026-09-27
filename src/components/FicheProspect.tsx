@@ -46,7 +46,7 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
       <div>
         <div className="flex items-start justify-between gap-2">
           <h4 className="text-base font-bold text-gray-900 leading-tight">{prospect.nom_etablissement}</h4>
-          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full text-white flex-shrink-0" style={{ backgroundColor: couleur }}>{etape}</span>
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full text-white flex-shrink-0" style={{ backgroundColor: couleur }}>{etape}</span>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           {ESTABLISHMENT_LABELS[prospect.type_etablissement] || prospect.type_etablissement}
@@ -56,7 +56,7 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
         {prospect.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {prospect.tags.map(id => { const t = state.tags.find(x => x.id === id); return t ? (
-              <span key={id} className="text-white text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: t.couleur }}>{t.nom}</span>
+              <span key={id} className="text-white text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: t.couleur }}>{t.nom}</span>
             ) : null; })}
           </div>
         )}
@@ -81,7 +81,7 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
           <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           <span className={`flex-1 min-w-0 truncate ${adresse ? 'text-gray-800' : 'text-gray-400 italic'}`}>{adresse || 'Adresse inconnue'}</span>
           {lienMaps && (
-            <a href={lienMaps} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5 flex-shrink-0" title="Ouvrir dans Google Maps">
+            <a href={lienMaps} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-0.5 flex-shrink-0" title="Ouvrir dans Google Maps">
               Maps <ExternalLink className="w-3 h-3" />
             </a>
           )}
@@ -105,7 +105,7 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
 
       {(appels.length > 0 || rdv.length > 0 || rappels.length > 0) && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Historique</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Historique</p>
           {rappels.map(r => (
             <div key={r.id} className="flex items-start gap-2 text-xs">
               <Bell className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${r.date < aujourdhui ? 'text-red-500' : 'text-amber-500'}`} />

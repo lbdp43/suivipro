@@ -56,7 +56,7 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
             {this.details() && (
               <details className="text-left mb-4">
                 <summary className="text-xs text-gray-500 cursor-pointer">Détails techniques (a transmettre en cas de blocage)</summary>
-                <pre className="text-[10px] text-gray-500 bg-gray-50 rounded-lg p-3 mt-2 overflow-x-auto whitespace-pre-wrap break-all">{this.details()}</pre>
+                <pre className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 mt-2 overflow-x-auto whitespace-pre-wrap break-all">{this.details()}</pre>
               </details>
             )}
             <button

@@ -1100,6 +1100,11 @@ async function initDatabase(attempt = 1) {
           WHERE type = 'VISITE' AND comment LIKE 'Visite planifiée (%' AND left(date, 10) > to_char(now() AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD')`);
       }
     } catch (err) { console.log('interactions compte_visite migration:', err.message); }
+    // Le rouge dit « perdu » : la négociation, étape pleine d'espoir, passe au jaune — sauf si
+    // l'administration a déjà choisi une autre couleur.
+    try {
+      await client.query("UPDATE pipeline_columns SET color = '#eab308' WHERE id = 'negociation' AND lower(color) = '#ef4444'");
+    } catch (err) { console.log('couleur negociation:', err.message); }
     // Le secteur d'un prospect est géographique. L'import SIRENE y écrivait le libellé
     // d'activité (« Restauration traditionnelle ») : on le retire, le rattachement aux zones
     // remettra un vrai nom de secteur.
@@ -1156,7 +1161,7 @@ async function initDatabase(attempt = 1) {
         ['a_contacter', 'A contacter', '#3b82f6', 3],
         ['contacte', 'Contacte', '#8b5cf6', 4],
         ['proposition', 'Proposition', '#f97316', 5],
-        ['negociation', 'Negociation', '#ef4444', 6],
+        ['negociation', 'Negociation', '#eab308', 6],
         ['gagne', 'RDV', '#22c55e', 7],
         ['client_gagne', 'Gagne', '#16a34a', 8],
         ['perdu', 'Perdu', '#dc2626', 9],

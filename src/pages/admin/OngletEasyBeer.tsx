@@ -935,9 +935,9 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                   <div className="space-y-3 max-h-[32rem] overflow-y-auto">
                     <div className="flex items-center gap-2 flex-wrap sticky top-0 bg-white py-1">
                       <p className="text-xs text-gray-500">{visibles.length} paire(s) affichée(s) · {visibles.filter((p: any) => pairesCochees.has(clePaire(p))).length} cochée(s)</p>
-                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPairesCochees(new Set(visibles.filter((p: any) => p.score === 100).map(clePaire)))}>cocher les certaines</button>
-                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPairesCochees(new Set(visibles.map(clePaire)))}>tout cocher</button>
-                      <button className="text-[11px] text-gray-500 hover:underline" onClick={() => setPairesCochees(new Set())}>tout décocher</button>
+                      <button className="text-xs text-brewery-600 hover:underline" onClick={() => setPairesCochees(new Set(visibles.filter((p: any) => p.score === 100).map(clePaire)))}>cocher les certaines</button>
+                      <button className="text-xs text-brewery-600 hover:underline" onClick={() => setPairesCochees(new Set(visibles.map(clePaire)))}>tout cocher</button>
+                      <button className="text-xs text-gray-500 hover:underline" onClick={() => setPairesCochees(new Set())}>tout décocher</button>
                       <button
                         className="ml-auto px-3 py-1.5 text-xs font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg disabled:opacity-50"
                         disabled={fusionLotEnCours || visibles.filter((p: any) => pairesCochees.has(clePaire(p))).length === 0}
@@ -1024,9 +1024,9 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                   <div className="space-y-2 max-h-[32rem] overflow-y-auto">
                     <div className="flex items-center gap-2 flex-wrap sticky top-0 bg-white py-1">
                       <p className="text-xs text-gray-500">{pcCoches.size} coché(s)</p>
-                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPcCoches(new Set(doublonsPC.paires.filter((p: any) => p.score === 100).map((p: any) => p.prospect.id)))}>cocher les certains</button>
-                      <button className="text-[11px] text-brewery-600 hover:underline" onClick={() => setPcCoches(new Set(doublonsPC.paires.map((p: any) => p.prospect.id)))}>tout cocher</button>
-                      <button className="text-[11px] text-gray-500 hover:underline" onClick={() => setPcCoches(new Set())}>tout décocher</button>
+                      <button className="text-xs text-brewery-600 hover:underline" onClick={() => setPcCoches(new Set(doublonsPC.paires.filter((p: any) => p.score === 100).map((p: any) => p.prospect.id)))}>cocher les certains</button>
+                      <button className="text-xs text-brewery-600 hover:underline" onClick={() => setPcCoches(new Set(doublonsPC.paires.map((p: any) => p.prospect.id)))}>tout cocher</button>
+                      <button className="text-xs text-gray-500 hover:underline" onClick={() => setPcCoches(new Set())}>tout décocher</button>
                       <div className="ml-auto flex gap-2">
                         <button onClick={() => traiterPcCoches('gagne')} disabled={pcLotEnCours || pcCoches.size === 0} className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-50">Passer en « Gagné » ({pcCoches.size})</button>
                         <button onClick={() => traiterPcCoches('supprimer')} disabled={pcLotEnCours || pcCoches.size === 0} className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 disabled:opacity-50">Supprimer ({pcCoches.size})</button>
@@ -1041,13 +1041,13 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                           <div className="bg-white rounded-lg border border-gray-200 p-2.5">
-                            <p className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold mb-1">Prospect</p>
+                            <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold mb-1">Prospect</p>
                             <a href={`/prospects?id=${paire.prospect.id}`} className="font-semibold text-gray-900 hover:underline">{paire.prospect.nom}</a>
                             <p className="text-gray-500">{[paire.prospect.ville, paire.prospect.telephone, paire.prospect.email].filter(Boolean).join(' · ')}</p>
                             <p className="text-gray-400 mt-1">{PIPELINE_LABELS[paire.prospect.etape_pipeline as PipelineStage] || paire.prospect.etape_pipeline} · {paire.prospect.nb_appels} appel(s) · {paire.prospect.nb_rdv} RDV{paire.prospect.commercial ? ` · ${paire.prospect.commercial}` : ''}</p>
                           </div>
                           <div className="bg-white rounded-lg border border-gray-200 p-2.5">
-                            <p className="text-[10px] uppercase tracking-wide text-blue-700 font-semibold mb-1">Client</p>
+                            <p className="text-xs uppercase tracking-wide text-blue-700 font-semibold mb-1">Client</p>
                             <a href={`/clients?id=${paire.client.id}`} className="font-semibold text-gray-900 hover:underline">{paire.client.nom}</a>
                             <p className="text-gray-500">{[paire.client.ville, paire.client.telephone, paire.client.email].filter(Boolean).join(' · ')}</p>
                             <p className="text-gray-400 mt-1">{paire.client.statut} · {paire.client.nb_commandes} commande(s){paire.client.easybeer_id ? ' · EasyBeer' : ''}{paire.client.commercial ? ` · ${paire.client.commercial}` : ''}</p>
@@ -1279,7 +1279,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                       </p>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                         {client.type && (
-                          <p className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full font-medium">
+                          <p className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full font-medium">
                             Type: {client.type}
                           </p>
                         )}
@@ -1287,26 +1287,26 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                           const matchedRule = assignmentRules.find(r => r.email.toLowerCase() === client.commercial_email?.toLowerCase());
                           const matchedCom = matchedRule ? state.commerciaux.find(c => c.id === matchedRule.commercial_id) : null;
                           return (
-                            <p className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
+                            <p className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
                               Commercial: {matchedCom ? `${matchedCom.prenom} ${matchedCom.nom}` : client.commercial_email}
                               {matchedCom && <span className="text-green-600 ml-1">(auto)</span>}
                             </p>
                           );
                         })()}
                         {client.contact_name && (
-                          <p className="text-[10px] text-gray-400">Contact: {client.contact_name}</p>
+                          <p className="text-xs text-gray-400">Contact: {client.contact_name}</p>
                         )}
                         {client.tournee && (
-                          <p className="text-[10px] text-indigo-500">Tournée : {client.tournee}</p>
+                          <p className="text-xs text-indigo-500">Tournée : {client.tournee}</p>
                         )}
                         {client.phone_mobile && (
-                          <p className="text-[10px] text-gray-400">Mobile: {client.phone_mobile}</p>
+                          <p className="text-xs text-gray-400">Mobile: {client.phone_mobile}</p>
                         )}
                         {(client.latitude > 0 || client.longitude > 0) && (
-                          <p className="text-[10px] text-green-500">GPS OK</p>
+                          <p className="text-xs text-green-500">GPS OK</p>
                         )}
                         {client.siret && (
-                          <p className="text-[10px] text-gray-400">SIRET: {client.siret}</p>
+                          <p className="text-xs text-gray-400">SIRET: {client.siret}</p>
                         )}
                       </div>
                     </div>
@@ -1585,7 +1585,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-semibold text-gray-900">#{cmd.numero || cmd.easybeer_id}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                             cmd.statut === 'livree' ? 'bg-green-100 text-green-700' :
                             cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' :
                             'bg-yellow-100 text-yellow-700'
@@ -1646,7 +1646,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                       {/* Lignes produits */}
                       {lignes.length > 0 && (
                         <div className="pt-2 border-t border-gray-100">
-                          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-1.5">Produits ({lignes.length})</p>
+                          <p className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-1.5">Produits ({lignes.length})</p>
                           <div className="space-y-1">
                             {lignes.map((l: any, i: number) => (
                               <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-gray-50 rounded">
@@ -1669,10 +1669,10 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         if (Object.keys(rawObj).length === 0) return null;
                         return (
                           <details className="pt-2 border-t border-gray-100">
-                            <summary className="cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium">
+                            <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 font-medium">
                               Voir les données brutes EasyBeer
                             </summary>
-                            <pre className="mt-1.5 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600 max-h-60 overflow-y-auto">
+                            <pre className="mt-1.5 p-2 bg-gray-100 rounded text-xs overflow-x-auto whitespace-pre-wrap text-gray-600 max-h-60 overflow-y-auto">
                               {JSON.stringify(rawObj, null, 2)}
                             </pre>
                           </details>
@@ -1819,7 +1819,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         </span>
                       </div>
                       {log.processing_result && (
-                        <div className={`mt-1 px-2 py-1 rounded text-[11px] ${
+                        <div className={`mt-1 px-2 py-1 rounded text-xs ${
                           log.processing_result.startsWith('OK') ? 'bg-green-50 text-green-700' :
                           log.processing_result.startsWith('ERREUR') ? 'bg-red-50 text-red-700' :
                           log.processing_result.startsWith('ORPHELINE') ? 'bg-orange-50 text-orange-700' :
@@ -1830,7 +1830,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                       )}
                       <details className="mt-1">
                         <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Voir le payload</summary>
-                        <pre className="mt-1 p-2 bg-gray-100 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600">
+                        <pre className="mt-1 p-2 bg-gray-100 rounded text-xs overflow-x-auto whitespace-pre-wrap text-gray-600">
                           {JSON.stringify(payload, null, 2)}
                         </pre>
                       </details>

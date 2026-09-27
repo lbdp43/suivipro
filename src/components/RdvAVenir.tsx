@@ -16,7 +16,7 @@ export function PrisPar({ rdv, className = '' }: { rdv: Appointment; className?:
   if (!p) return null;
   const luiMeme = rdv.prospecteur_id === rdv.commercial_id;
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100 whitespace-nowrap ${className}`} title={luiMeme ? 'Rendez-vous pris par le commercial lui-même' : `Rendez-vous pris par ${p.prenom} ${p.nom}`}>
+    <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100 whitespace-nowrap ${className}`} title={luiMeme ? 'Rendez-vous pris par le commercial lui-même' : `Rendez-vous pris par ${p.prenom} ${p.nom}`}>
       <UserCheck className="w-3 h-3" /> pris par {luiMeme ? 'lui-même' : p.prenom}
     </span>
   );
@@ -51,7 +51,7 @@ export default function RdvAVenir({ commercialIds, titre = 'Rendez-vous à venir
       <button type="button" onClick={() => setOuvert(o => !o)} className="w-full flex items-center justify-between p-3 text-left">
         <h3 className="text-sm font-semibold text-sky-800 flex items-center gap-1.5">
           <CalendarClock className="w-4 h-4" /> {titre} ({rdvs.length})
-          {proches > 0 && proches < rdvs.length && <span className="text-[10px] font-normal text-sky-600">dont {proches} sous 7 jours</span>}
+          {proches > 0 && proches < rdvs.length && <span className="text-xs font-normal text-sky-600">dont {proches} sous 7 jours</span>}
         </h3>
         {ouvert ? <ChevronUp className="w-4 h-4 text-sky-400" /> : <ChevronDown className="w-4 h-4 text-sky-400" />}
       </button>
@@ -68,16 +68,16 @@ export default function RdvAVenir({ commercialIds, titre = 'Rendez-vous à venir
               <div key={rdv.id} className="flex items-center gap-3 rounded-lg border border-sky-100 bg-sky-50/40 px-3 py-2">
                 <div className="w-14 flex-shrink-0 text-center">
                   <p className="text-xs font-semibold text-sky-800 tabular-nums">{libelleJour(rdv.date)}</p>
-                  <p className="text-[11px] text-gray-500 tabular-nums flex items-center justify-center gap-0.5"><Clock className="w-3 h-3" />{rdv.heure_debut || '—'}</p>
+                  <p className="text-xs text-gray-500 tabular-nums flex items-center justify-center gap-0.5"><Clock className="w-3 h-3" />{rdv.heure_debut || '—'}</p>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <NomFiche prospectId={prospect?.id} clientId={client?.id} className="text-sm font-medium text-gray-800 truncate">{nom}</NomFiche>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${client ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>{client ? 'Client' : 'Prospect'}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${client ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>{client ? 'Client' : 'Prospect'}</span>
                     <PrisPar rdv={rdv} />
-                    {pour && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">pour {pour.prenom}</span>}
+                    {pour && <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">pour {pour.prenom}</span>}
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-0.5 flex-wrap">
+                  <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5 flex-wrap">
                     {ville && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{ville}</span>}
                     {rdv.lieu && rdv.lieu !== ville && <span className="truncate">{rdv.lieu}</span>}
                     {rdv.notes && <span className="italic truncate">{rdv.notes}</span>}

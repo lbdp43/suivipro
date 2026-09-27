@@ -63,7 +63,7 @@ export default function BoutonAppelerAutour({ points, compact = false, stopPropa
         ? `${aAppeler.length} prospects à moins de ${RAYON_APPELS_KM} km. La session prend les ${SESSION_MAX} meilleurs scores ; les suivants viendront au prochain appel, une fois ceux-là faits.`
         : `Lancer une session d'appel avec les ${aAppeler.length} prospects à moins de ${RAYON_APPELS_KM} km`}
       className={className || (compact
-        ? 'flex items-center gap-1 px-1.5 py-1 rounded-lg bg-purple-100 text-purple-700 text-[10px] font-semibold hover:bg-purple-200 whitespace-nowrap'
+        ? 'flex items-center gap-1 px-1.5 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-semibold hover:bg-purple-200 whitespace-nowrap'
         : 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 whitespace-nowrap')}
     >
       <Phone className={compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} />

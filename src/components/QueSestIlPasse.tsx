@@ -66,7 +66,7 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
                 className={`w-full text-left px-3 py-2.5 rounded-lg border-2 transition-colors ${issue === i.value ? (issueEstUnePerte(i.value) ? 'border-red-500 bg-red-50' : 'border-brewery-500 bg-brewery-50') : 'border-gray-200 hover:bg-gray-50'}`}
               >
                 <p className="text-sm font-medium text-gray-900 flex items-center gap-1.5">{i.label}</p>
-                <p className="text-[11px] text-gray-500 flex items-center gap-1"><ArrowRight className="w-3 h-3" /> {i.effet}</p>
+                <p className="text-xs text-gray-500 flex items-center gap-1"><ArrowRight className="w-3 h-3" /> {i.effet}</p>
               </button>
             ))}
           </div>

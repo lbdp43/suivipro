@@ -770,7 +770,7 @@ export default function GuidePage() {
                     const rf = ROLE_FILTERS.find(r => r.id === role);
                     if (!rf) return null;
                     return (
-                      <span key={role} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${rf.color}`}>
+                      <span key={role} className={`px-1.5 py-0.5 rounded text-xs font-medium ${rf.color}`}>
                         {rf.label}
                       </span>
                     );

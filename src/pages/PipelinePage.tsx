@@ -1,5 +1,5 @@
 import { useState, useMemo, DragEvent } from 'react';
-import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock, PhoneOff } from 'lucide-react';
+import { Phone, Mail, MapPin, GripVertical, Eye, Settings, Filter, Edit2, Trash2, Plus, X, Save, AlertTriangle, MessageSquare, ChevronDown, Calendar, ArrowUp, ArrowDown, CheckSquare, Square, ListChecks, Bell, Clock, PhoneOff } from 'lucide-react';
 import { aUnNumero } from '../../shared/normalisation';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
@@ -17,6 +17,9 @@ import RaisonPerteModal, { libelleRaisonPerte } from '../components/RaisonPerte'
 import { estEnZonePrioritaire } from '../utils/zones';
 import { Link } from 'react-router-dom';
 import { confirmer } from '../components/ui/Confirmation';
+import { useEcranEtroit } from '../utils/useEcranEtroit';
+import Fenetre from '../components/ui/Fenetre';
+import Bouton from '../components/ui/Bouton';
 
 export default function PipelinePage() {
   const { state, dispatch, dispatchLocal } = useApp();
@@ -36,6 +39,11 @@ export default function PipelinePage() {
   const [emailProspect, setEmailProspect] = useState<Prospect | null>(null);
   const [maxPerColumn, setMaxPerColumn] = useState(50);
   const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
+  // Sur téléphone, une étape à la fois, en pleine largeur : le glisser-déposer n'existe pas
+  // au doigt, on déplace par un menu sur la carte.
+  const etroit = useEcranEtroit();
+  const [etapeMobile, setEtapeMobile] = useState<string>('');
+  const [filtresOuverts, setFiltresOuverts] = useState(false);
   const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
   // Zones dessinées sur la carte ; « __hors__ » = géolocalisé mais dans aucune zone.
   const [filterZones, setFilterZones] = useState<Set<string>>(new Set());
@@ -331,12 +339,102 @@ export default function PipelinePage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex items-center gap-2 sm:gap-3">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-base sm:text-xl font-bold text-gray-900">Pipeline</h1>
-          <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les étapes</p>
+      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0 basis-full sm:basis-auto">
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900">Pipeline</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les étapes</p>
         </div>
-        {/* Filters */}
+        {/* Filtres : en ligne sur ordinateur, dans un tiroir sur téléphone. */}
+        {etroit ? (
+          <>
+            <button
+              className={`p-1.5 rounded-lg flex items-center gap-1 text-sm font-medium flex-shrink-0 ${hasActiveFilters ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+              onClick={() => setFiltresOuverts(true)}
+              aria-label={hasActiveFilters ? 'Filtres (actifs)' : 'Filtres'}
+            >
+              <Filter className="w-4 h-4" /> Filtres
+            </button>
+            <Fenetre ouvert={filtresOuverts} onFermer={() => setFiltresOuverts(false)} titre="Filtres du pipeline"
+              pied={<Bouton variante="principal" onClick={() => setFiltresOuverts(false)}>Voir le pipeline</Bouton>}>
+        <div className="flex flex-col gap-2">
+          {allSecteurs.length > 0 && (
+            <MultiSelectDropdown enLigne
+              label="Secteur"
+              options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
+              selected={filterSecteurs}
+              onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
+              color="amber"
+            />
+          )}
+          {state.commercialZones.length > 0 && (
+            <MultiSelectDropdown enLigne
+              label="Zone"
+              options={optionsZones}
+              selected={filterZones}
+              onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
+              color="amber"
+            />
+          )}
+          {allDepartments.length > 0 && (
+            <MultiSelectDropdown enLigne
+              label="Dept (CP)"
+              options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
+              selected={filterDepartments}
+              onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
+              color="teal"
+            />
+          )}
+          {allPostalCodes.length > 0 && (
+            <MultiSelectDropdown enLigne
+              label="Code postal"
+              options={allPostalCodes.map(c => ({ value: c, label: c }))}
+              selected={filterPostalCodes}
+              onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
+              color="teal"
+            />
+          )}
+          <button
+            className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
+              filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterAvecRdv(!filterAvecRdv)}
+            title="Filtrer les prospects ayant au moins un RDV"
+          >
+            <Calendar className="w-3 h-3" /> Avec RDV
+          </button>
+          <button
+            className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors flex-shrink-0 ${
+              filterSansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setFilterSansNumero(!filterSansNumero)}
+            title="Les prospects sans numéro de téléphone, à compléter"
+          >
+            <PhoneOff className="w-3 h-3" /> Sans numéro
+          </button>
+          <select
+            className={`text-xs sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
+              filterCommercial ? 'border-brewery-500 text-brewery-700' : 'border-gray-200 text-gray-500'
+            }`}
+            value={filterCommercial}
+            onChange={e => setFilterCommercial(e.target.value)}
+          >
+            <option value="">Tous les commerciaux</option>
+            {state.commerciaux.map(c => (
+              <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
+            ))}
+          </select>
+          {hasActiveFilters && (
+            <button
+              className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+              onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+            </Fenetre>
+          </>
+        ) : (
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {allSecteurs.length > 0 && (
             <MultiSelectDropdown
@@ -375,7 +473,7 @@ export default function PipelinePage() {
             />
           )}
           <button
-            className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors ${
+            className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
               filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
             onClick={() => setFilterAvecRdv(!filterAvecRdv)}
@@ -384,7 +482,7 @@ export default function PipelinePage() {
             <Calendar className="w-3 h-3" /> Avec RDV
           </button>
           <button
-            className={`px-2 py-1.5 text-[10px] font-medium rounded-lg flex items-center gap-1 transition-colors flex-shrink-0 ${
+            className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors flex-shrink-0 ${
               filterSansNumero ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
             onClick={() => setFilterSansNumero(!filterSansNumero)}
@@ -393,7 +491,7 @@ export default function PipelinePage() {
             <PhoneOff className="w-3 h-3" /> Sans numéro
           </button>
           <select
-            className={`text-[10px] sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
+            className={`text-xs sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
               filterCommercial ? 'border-brewery-500 text-brewery-700' : 'border-gray-200 text-gray-500'
             }`}
             value={filterCommercial}
@@ -406,22 +504,23 @@ export default function PipelinePage() {
           </select>
           {hasActiveFilters && (
             <button
-              className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+              className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
               onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
             >
               <X className="w-3 h-3" />
             </button>
           )}
         </div>
+        )}
         <button
-          className={`p-1.5 sm:px-2 sm:py-1.5 rounded-lg flex items-center gap-1 text-[10px] sm:text-xs font-medium flex-shrink-0 ${selection ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          className={`p-1.5 sm:px-2 sm:py-1.5 rounded-lg flex items-center gap-1 text-xs sm:text-xs font-medium flex-shrink-0 ${selection ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           onClick={() => selection ? quitterSelection() : setSelection(true)}
           title={selection ? 'Quitter la sélection' : 'Sélectionner plusieurs prospects (session d\'appel)'}
         >
           <CheckSquare className="w-4 h-4" /><span className="hidden sm:inline">{selection ? 'Terminer' : 'Sélectionner'}</span>
         </button>
         <select
-          className="text-[10px] sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
+          className="text-xs sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
           value={maxPerColumn}
           onChange={e => { setMaxPerColumn(Number(e.target.value)); setExpandedColumns(new Set()); }}
         >
@@ -566,7 +665,7 @@ export default function PipelinePage() {
               })}
             </div>
 
-            <p className="text-[10px] text-gray-400 flex items-center gap-1">
+            <p className="text-xs text-gray-400 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
               Supprimer une étape deplacera ses prospects vers la première étape restante
             </p>
@@ -578,7 +677,7 @@ export default function PipelinePage() {
       {selection && (
         <div className="px-3 sm:px-4 py-2 bg-brewery-50 border-b border-brewery-200 flex flex-wrap items-center gap-2">
           <span className="text-xs text-brewery-800 font-medium">{coches.size} sélectionné(s)</span>
-          <span className="text-[11px] text-brewery-600 hidden sm:inline">· cochez les cartes, dans une ou plusieurs colonnes</span>
+          <span className="text-xs text-brewery-600 hidden sm:inline">· cochez les cartes, dans une ou plusieurs colonnes</span>
           <div className="flex-1" />
           {coches.size > 0 && (
             <>
@@ -602,12 +701,32 @@ export default function PipelinePage() {
           <button className="p-1 text-gray-400 hover:text-gray-600" onClick={quitterSelection} title="Quitter la sélection"><X className="w-4 h-4" /></button>
         </div>
       )}
+      {etroit && (
+        <div className="flex gap-1.5 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2" role="tablist" aria-label="Étapes du pipeline">
+          {columns.map(col => {
+            const actif = (etapeMobile || columns[0]?.id) === col.id;
+            return (
+              <button
+                key={col.id}
+                role="tab"
+                aria-selected={actif}
+                onClick={() => setEtapeMobile(col.id)}
+                className={`flex min-h-10 flex-shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium ${actif ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'}`}
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: col.color }} />
+                {col.label}
+                <span className={`tabular-nums ${actif ? 'text-white/80' : 'text-gray-400'}`}>{(prospectsByStage[col.id] || []).length}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex-1 overflow-x-auto p-2 sm:p-4">
-        <div className="flex gap-2 sm:gap-4 h-full min-w-max">
-          {columns.map(col => (
+        <div className={`flex gap-2 sm:gap-4 h-full ${etroit ? '' : 'min-w-max'}`}>
+          {(etroit ? columns.filter(c => c.id === (etapeMobile || columns[0]?.id)) : columns).map(col => (
             <div
               key={col.id}
-              className={`kanban-column w-60 sm:w-72 flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
+              className={`kanban-column ${etroit ? 'w-full' : 'w-60 sm:w-72'} flex-shrink-0 flex flex-col rounded-xl border-2 transition-colors ${
                 dragOverColumn === col.id ? 'border-brewery-500 bg-brewery-50' : 'border-gray-200 bg-gray-50'
               }`}
               onDragOver={e => handleDragOver(e, col.id)}
@@ -620,7 +739,7 @@ export default function PipelinePage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-sm text-gray-900 truncate">{col.label}</h3>
                   {PIPELINE_DESCRIPTIONS[col.id] && (
-                    <p className="text-[10px] text-gray-400 leading-snug">({PIPELINE_DESCRIPTIONS[col.id]})</p>
+                    <p className="text-xs text-gray-400 leading-snug">({PIPELINE_DESCRIPTIONS[col.id]})</p>
                   )}
                 </div>
                 <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200 flex-shrink-0">
@@ -656,7 +775,7 @@ export default function PipelinePage() {
                     <div className="flex items-start gap-2">
                       {selection
                         ? (coches.has(prospect.id) ? <CheckSquare className="w-4 h-4 text-brewery-600 mt-0.5 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />)
-                        : <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />}
+                        : (etroit ? null : <GripVertical className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />)}
                       <div className="flex-1 min-w-0">
                         {(() => { const r = recits.get(prospect.id); const actif = !estTerminale(prospect.etape_pipeline); const stagne = actif && (r?.sansActivite === null || (r?.sansActivite ?? 0) >= SEUIL_STAGNATION_JOURS); return (
                           <div className="flex items-start justify-between gap-1">
@@ -664,9 +783,9 @@ export default function PipelinePage() {
                               {stagne && <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={r?.sansActivite === null ? 'Jamais contacté' : `Aucune activité depuis ${r?.sansActivite} jours`} />}
                               {prospect.nom_etablissement}
                             </h4>
-                            <span className="text-[9px] text-gray-400 tabular-nums flex-shrink-0 flex items-center gap-0.5" title="Jours dans cette étape"><Clock className="w-2.5 h-2.5" /> J+{r?.jours ?? 0}</span>
+                            <span className="text-xs text-gray-400 tabular-nums flex-shrink-0 flex items-center gap-0.5" title="Jours dans cette étape"><Clock className="w-2.5 h-2.5" /> J+{r?.jours ?? 0}</span>
                           </div>); })()}
-                        <p className="text-[10px] text-gray-500 mt-0.5">
+                        <p className="text-xs text-gray-500 mt-0.5">
                           {ESTABLISHMENT_LABELS[prospect.type_etablissement]}
                           {prospect.secteur && <span> - {prospect.secteur}</span>}
                         </p>
@@ -681,7 +800,7 @@ export default function PipelinePage() {
                             prospect.nom_etablissement, prospect.adresse, prospect.code_postal, prospect.ville,
                           );
                           return (
-                            <div className="flex items-center gap-1 mt-1 text-[10px]">
+                            <div className="flex items-center gap-1 mt-1 text-xs">
                               <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
                               {lien ? (
                                 <a
@@ -704,22 +823,22 @@ export default function PipelinePage() {
                         })()}
                         {(() => { const r = recits.get(prospect.id); const actif = !estTerminale(prospect.etape_pipeline); return (
                           <div className="mt-1.5 space-y-0.5">
-                            <p className="text-[10px] text-gray-500 truncate" title={texteDerniere(r?.derniere ?? null)}>{texteDerniere(r?.derniere ?? null)}</p>
+                            <p className="text-xs text-gray-500 truncate" title={texteDerniere(r?.derniere ?? null)}>{texteDerniere(r?.derniere ?? null)}</p>
                             {prospect.etape_pipeline === 'perdu' ? (
-                              prospect.raison_perte ? <p className="text-[10px] text-red-600 truncate">Perdu : {libelleRaisonPerte(prospect.raison_perte)}</p> : null
+                              prospect.raison_perte ? <p className="text-xs text-red-600 truncate">Perdu : {libelleRaisonPerte(prospect.raison_perte)}</p> : null
                             ) : actif ? (
                               r?.prochaine ? (
-                                <p className={`text-[10px] truncate flex items-center gap-1 ${r.prochaine.enRetard ? 'text-red-600 font-medium' : 'text-blue-700'}`} title={r.prochaine.rappel?.message || ''}>
+                                <p className={`text-xs truncate flex items-center gap-1 ${r.prochaine.enRetard ? 'text-red-600 font-medium' : 'text-blue-700'}`} title={r.prochaine.rappel?.message || ''}>
                                   <Bell className="w-2.5 h-2.5 flex-shrink-0" /> {r.prochaine.libelle} · {formatDate(r.prochaine.date)}{r.prochaine.enRetard ? ' · en retard' : ''}
                                 </p>
                               ) : (
-                                <p className="text-[10px] text-amber-700 flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" /> Aucune prochaine action</p>
+                                <p className="text-xs text-amber-700 flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" /> Aucune prochaine action</p>
                               )
                             ) : null}
                           </div>); })()}
 
                         {estEnZonePrioritaire(state, prospect) && (
-                          <span className="inline-block mt-1.5 text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium" title="Dans une zone prioritaire pour la prospection">★ Zone prioritaire</span>
+                          <span className="inline-block mt-1.5 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium" title="Dans une zone prioritaire pour la prospection">★ Zone prioritaire</span>
                         )}
                         {/* Tags */}
                         {prospect.tags.length > 0 && (
@@ -729,7 +848,7 @@ export default function PipelinePage() {
                               return tag ? (
                                 <span
                                   key={tagId}
-                                  className="text-white text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+                                  className="text-white text-xs px-1.5 py-0.5 rounded-full font-medium"
                                   style={{ backgroundColor: tag.couleur }}
                                 >
                                   {tag.nom}
@@ -774,9 +893,28 @@ export default function PipelinePage() {
                             <Eye className="w-3 h-3" />
                           </Link>
                           <div className="flex-1" />
-                          <span className="text-[10px] text-gray-400">
-                            Score: {prospect.score}
-                          </span>
+                          {etroit && !selection ? (
+                            <select
+                              aria-label={`Déplacer ${prospect.nom_etablissement} vers une autre étape`}
+                              className="max-w-[12rem] rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                              value=""
+                              onClick={e => e.stopPropagation()}
+                              onChange={async e => {
+                                const vers = e.target.value;
+                                if (!vers || vers === prospect.etape_pipeline) return;
+                                if (vers === 'perdu') { setPerteEnAttente(prospect); return; }
+                                try { await deplacer(prospect.id, vers); toast.success(`Déplacé vers « ${columns.find(c => c.id === vers)?.label || vers} »`); }
+                                catch { toast.error('Erreur lors du deplacement du prospect'); }
+                              }}
+                            >
+                              <option value="">Déplacer vers…</option>
+                              {columns.filter(c => c.id !== prospect.etape_pipeline).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              Score: {prospect.score}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -785,7 +923,7 @@ export default function PipelinePage() {
 
                 {!expandedColumns.has(col.id) && (prospectsByStage[col.id] || []).length > maxPerColumn && (
                   <button
-                    className="w-full py-2 text-[11px] font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center justify-center gap-1"
+                    className="w-full py-2 text-xs font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center justify-center gap-1"
                     onClick={() => setExpandedColumns(prev => { const s = new Set(prev); s.add(col.id); return s; })}
                   >
                     <ChevronDown className="w-3.5 h-3.5" />

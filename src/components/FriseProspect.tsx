@@ -149,7 +149,7 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
                   {e.texte}{e.qui ? <span className="text-gray-400"> · {e.qui}</span> : null}
                 </span>
                 {e.genre === 'rdv' && e.rdv && onCompteRendu && e.rdv.statut !== 'annule' && (
-                  <button onClick={() => onCompteRendu(e.rdv!)} className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${e.rdv.compte_rendu ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
+                  <button onClick={() => onCompteRendu(e.rdv!)} className={`flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-medium ${e.rdv.compte_rendu ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
                     {e.rdv.compte_rendu ? 'Modifier CR' : 'Compte-rendu'}
                   </button>
                 )}

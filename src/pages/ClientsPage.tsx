@@ -1108,8 +1108,8 @@ export default function ClientsPage() {
             </div>
           )}
 
-          {/* Visit filter quick buttons */}
-          <div className="flex gap-1.5 flex-wrap">
+          {/* Visit filter quick buttons — sur téléphone, une seule ligne qui défile au doigt. */}
+          <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 sm:pb-0 sm:flex-wrap sm:overflow-visible [&>button]:flex-shrink-0">
             <button
               onClick={() => { setFilterNoType(!filterNoType); setFilterTypes(new Set()); setCurrentPage(0); }}
               className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
@@ -1469,11 +1469,11 @@ export default function ClientsPage() {
                           <h3 className={`text-sm font-medium truncate ${client.statut === 'INACTIF' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                             {client.nom}
                           </h3>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusConfig.color}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${statusConfig.color}`}>
                             {statusConfig.label}
                           </span>
                           {decroche && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title={`Dernière commande le ${formatDate(decroche.derniere)}`}>
+                            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800" title={`Dernière commande le ${formatDate(decroche.derniere)}`}>
                               Décroche · {decroche.libelle}
                             </span>
                           )}
@@ -1489,7 +1489,7 @@ export default function ClientsPage() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-400 flex-wrap">
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
                           {client.tournee && <span className="text-brewery-600 font-medium">{client.tournee}</span>}
                           {isAdmin && commercial && (
                             <span className="flex items-center gap-1">
@@ -1505,7 +1505,7 @@ export default function ClientsPage() {
                           )}
                         </div>
                         {client.next_visit && (
-                          <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                          <div className={`flex items-center gap-1 mt-0.5 text-xs ${visitStatus === 'LATE' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                             <Calendar className="w-3 h-3" />
                             {visitStatus === 'LATE'
                               ? `En retard de ${joursDeRetard(client)} j — visite prévue le ${formatDate(client.next_visit)}${personalInfo.isPersonal && personalInfo.lastVisit ? ` (ma dernière visite : ${formatDate(personalInfo.lastVisit)})` : ''}`
@@ -1515,7 +1515,7 @@ export default function ClientsPage() {
                           </div>
                         )}
                         {client.notes && (
-                          <div className="flex items-start gap-1 mt-1 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded text-[11px] text-yellow-800">
+                          <div className="flex items-start gap-1 mt-1 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
                             <StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0 text-yellow-500" />
                             <span className="line-clamp-2">{client.notes}</span>
                           </div>
@@ -1959,7 +1959,7 @@ export default function ClientsPage() {
 
                   {dayRdvs.length > 1 && (
                     <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase mb-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
                         Agenda de {rdvCommercial?.prenom} le {formatDate(createdRdv?.date || '')}
                       </p>
                       <div className="space-y-1">
@@ -1974,7 +1974,7 @@ export default function ClientsPage() {
                             >
                               <span className="font-mono w-20 flex-shrink-0">{rdv.heure_debut}-{rdv.heure_fin}</span>
                               <span className="truncate">{cl?.nom || p?.nom_etablissement || 'RDV'}</span>
-                              {isCurrent && <span className="text-[9px] text-green-600 ml-auto">Nouveau</span>}
+                              {isCurrent && <span className="text-xs text-green-600 ml-auto">Nouveau</span>}
                             </div>
                           );
                         })}
@@ -2064,7 +2064,7 @@ export default function ClientsPage() {
                       placeholder="Notes sur cette interaction... (obligatoire)"
                     />
                     {!interactionComment.trim() && (
-                      <p className="text-[10px] text-red-500 mt-1">Le commentaire est obligatoire</p>
+                      <p className="text-xs text-red-500 mt-1">Le commentaire est obligatoire</p>
                     )}
                   </div>
                   <div className="flex justify-end gap-2">

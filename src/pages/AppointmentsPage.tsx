@@ -364,7 +364,7 @@ export default function AppointmentsPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {isEvent && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
                   {EVENT_TYPE_LABELS[rdv.event_type!]}
                 </span>
               )}
@@ -392,12 +392,12 @@ export default function AppointmentsPage() {
                   {rdvTelephone}
                 </a>
                 {rdvContact && (
-                  <span className="text-[10px] text-gray-400">({rdvContact})</span>
+                  <span className="text-xs text-gray-400">({rdvContact})</span>
                 )}
               </div>
             )}
           </div>
-          <span className={`badge text-[10px] ${statusColors[rdv.statut]}`}>
+          <span className={`badge text-xs ${statusColors[rdv.statut]}`}>
             {APPOINTMENT_STATUS_LABELS[rdv.statut]}
           </span>
         </div>
@@ -425,26 +425,26 @@ export default function AppointmentsPage() {
             <p className="text-gray-500 bg-gray-50 p-2 rounded">{rdv.notes}</p>
           )}
           {rdv.compte_rendu && (
-            <p className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded flex items-center gap-1">
+            <p className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded flex items-center gap-1">
               <ClipboardCheck className="w-3 h-3" /> {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
             </p>
           )}
           {rdv.notes_compte_rendu && (
-            <p className="text-[10px] text-gray-500 bg-indigo-50/50 px-2 py-1 rounded italic">{rdv.notes_compte_rendu}</p>
+            <p className="text-xs text-gray-500 bg-indigo-50/50 px-2 py-1 rounded italic">{rdv.notes_compte_rendu}</p>
           )}
-          <p className="text-[10px] text-gray-400 flex items-center gap-1">
+          <p className="text-xs text-gray-400 flex items-center gap-1">
             <Users className="w-3 h-3" /> {commercial?.prenom} {commercial?.nom}
           </p>
           {prospecteurCard && prospecteurCard.id !== commercial?.id && (
-            <p className="text-[10px] text-purple-400 flex items-center gap-1">
+            <p className="text-xs text-purple-400 flex items-center gap-1">
               <Phone className="w-3 h-3" /> Pris par {prospecteurCard.prenom} {prospecteurCard.nom}
             </p>
           )}
           {rdvParticipants.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-[10px] text-gray-400">Participants :</span>
+              <span className="text-xs text-gray-400">Participants :</span>
               {rdvParticipants.map(p => (
-                <span key={p!.id} className="text-[10px] bg-brewery-50 text-brewery-700 px-1.5 py-0.5 rounded font-medium">
+                <span key={p!.id} className="text-xs bg-brewery-50 text-brewery-700 px-1.5 py-0.5 rounded font-medium">
                   {p!.prenom}
                 </span>
               ))}
@@ -469,7 +469,7 @@ export default function AppointmentsPage() {
           )}
           {rdv.statut !== 'termine' && (
             <button
-              className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-[11px] font-medium"
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-xs font-medium"
               onClick={() => openCompteRendu(rdv)}
             >
               <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
@@ -501,26 +501,26 @@ export default function AppointmentsPage() {
           {/* Toggle Liste / Planning / Agenda */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
             <button
-              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'list' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setViewMode('list')}
             >
               <List className="w-3.5 h-3.5" /> Liste
             </button>
             <button
-              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'planning' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'planning' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setViewMode('planning')}
             >
               <CalendarDays className="w-3.5 h-3.5" /> Planning
             </button>
             <button
-              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'agenda' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-xs font-medium flex items-center gap-1 sm:gap-1.5 ${viewMode === 'agenda' ? 'bg-brewery-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setViewMode('agenda')}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Agenda
             </button>
           </div>
           <button
-            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
               showGoogleEvents ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
             onClick={() => setShowGoogleEvents(!showGoogleEvents)}
@@ -530,7 +530,7 @@ export default function AppointmentsPage() {
             <span className="hidden sm:inline">Google</span>
           </button>
           <button
-            className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
+            className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium"
             onClick={openExportModal}
             title="Exporter vers Google Agenda"
           >
@@ -538,7 +538,7 @@ export default function AppointmentsPage() {
             <span className="hidden sm:inline">Export Agenda</span>
           </button>
           <button
-            className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium"
+            className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium"
             onClick={openNewForm}
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> RDV
@@ -597,7 +597,7 @@ export default function AppointmentsPage() {
                 onClick={() => setFilterCommercial(filterCommercial === c.id ? '' : c.id)}
               >
                 {c.prenom} {c.nom}
-                <span className={`text-[10px] rounded-full w-4 h-4 flex items-center justify-center ${
+                <span className={`text-xs rounded-full w-4 h-4 flex items-center justify-center ${
                   filterCommercial === c.id ? 'bg-white/20' : 'bg-gray-200'
                 }`}>
                   {count}
@@ -607,7 +607,7 @@ export default function AppointmentsPage() {
           })}
           {activeFilterCount > 0 && (
             <button
-              className="text-[10px] text-red-500 hover:text-red-700 font-medium ml-1"
+              className="text-xs text-red-500 hover:text-red-700 font-medium ml-1"
               onClick={() => { setFilterStatus(''); setFilterCommercial(''); setFilterProspecteur(''); setFilterCompteRendu(''); }}
             >
               Réinitialiser
@@ -638,7 +638,7 @@ export default function AppointmentsPage() {
                 onClick={() => setFilterProspecteur(filterProspecteur === c.id ? '' : c.id)}
               >
                 {c.prenom} {c.nom}
-                <span className={`text-[10px] rounded-full w-4 h-4 flex items-center justify-center ${
+                <span className={`text-xs rounded-full w-4 h-4 flex items-center justify-center ${
                   filterProspecteur === c.id ? 'bg-white/20' : 'bg-gray-200'
                 }`}>
                   {count}
@@ -731,7 +731,7 @@ export default function AppointmentsPage() {
                 <p className="text-sm font-semibold text-gray-900">{getWeekLabel()}</p>
                 {weekOffset !== 0 && (
                   <button
-                    className="text-[10px] text-brewery-600 hover:underline mt-0.5"
+                    className="text-xs text-brewery-600 hover:underline mt-0.5"
                     onClick={() => setWeekOffset(0)}
                   >
                     Revenir a cette semaine
@@ -763,10 +763,10 @@ export default function AppointmentsPage() {
                           <span className="sm:hidden">{day.shortLabel}</span>
                         </span>
                         {day.isToday && (
-                          <span className="text-[9px] bg-brewery-600 text-white px-1.5 py-0.5 rounded-full font-medium">Aujourd'hui</span>
+                          <span className="text-xs bg-brewery-600 text-white px-1.5 py-0.5 rounded-full font-medium">Aujourd'hui</span>
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-400">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
+                      <span className="text-xs text-gray-400">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
                     </div>
                     {(() => { const jour = String(new Date(day.date + 'T12:00:00').getDay()); return resumes.length > 0 ? (
                       <div className={`px-4 pb-2 ${day.isToday ? 'bg-brewery-100/50 border-brewery-200' : 'bg-gray-50 border-gray-100'} border-b`}>
@@ -801,9 +801,9 @@ export default function AppointmentsPage() {
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <h4 className="font-medium text-xs text-purple-900 truncate">{evt.summary}</h4>
-                                        <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">Google</span>
+                                        <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">Google</span>
                                       </div>
-                                      <div className="flex items-center gap-3 mt-1 flex-wrap text-[11px] text-purple-700">
+                                      <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-purple-700">
                                         {startTime && (
                                           <span className="flex items-center gap-1">
                                             <Clock className="w-3 h-3 text-purple-400" />
@@ -850,7 +850,7 @@ export default function AppointmentsPage() {
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                       {rdvIsEvent && (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[rdv.event_type!]}`}>
                                           {EVENT_TYPE_LABELS[rdv.event_type!]}
                                         </span>
                                       )}
@@ -865,25 +865,25 @@ export default function AppointmentsPage() {
                                           {planName}{rdvCl ? ' (client)' : ''}
                                         </button>
                                       )}
-                                      <span className={`badge text-[9px] ${statusColors[rdv.statut]}`}>
+                                      <span className={`badge text-xs ${statusColors[rdv.statut]}`}>
                                         {APPOINTMENT_STATUS_LABELS[rdv.statut]}
                                       </span>
                                     </div>
                                     {!rdvIsEvent && prospect?.nom_contact && (
-                                      <p className="text-[11px] text-gray-500 mt-0.5">{prospect.nom_contact}</p>
+                                      <p className="text-xs text-gray-500 mt-0.5">{prospect.nom_contact}</p>
                                     )}
                                     {!rdvIsEvent && prospect?.telephone && (
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <a
                                           href={`tel:${prospect.telephone}`}
-                                          className="text-[11px] text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
+                                          className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
                                           onClick={e => e.stopPropagation()}
                                         >
                                           <Phone className="w-3 h-3" />
                                           {prospect.telephone}
                                         </a>
                                         {prospect.nom_contact && (
-                                          <span className="text-[10px] text-gray-400">({prospect.nom_contact})</span>
+                                          <span className="text-xs text-gray-400">({prospect.nom_contact})</span>
                                         )}
                                       </div>
                                     )}
@@ -922,15 +922,15 @@ export default function AppointmentsPage() {
                                       )}
                                     </div>
                                     {rdv.notes && (
-                                      <p className="text-[11px] text-gray-500 mt-1.5 italic bg-white/60 rounded px-2 py-1">{rdv.notes}</p>
+                                      <p className="text-xs text-gray-500 mt-1.5 italic bg-white/60 rounded px-2 py-1">{rdv.notes}</p>
                                     )}
                                     {rdv.compte_rendu && (
-                                      <p className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded mt-1 flex items-center gap-1 w-fit">
+                                      <p className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded mt-1 flex items-center gap-1 w-fit">
                                         <ClipboardCheck className="w-3 h-3" /> {APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}
                                       </p>
                                     )}
                                     {rdv.notes_compte_rendu && (
-                                      <p className="text-[10px] text-gray-500 bg-indigo-50/50 px-2 py-1 rounded mt-1 italic">{rdv.notes_compte_rendu}</p>
+                                      <p className="text-xs text-gray-500 bg-indigo-50/50 px-2 py-1 rounded mt-1 italic">{rdv.notes_compte_rendu}</p>
                                     )}
                                   </div>
 
@@ -947,7 +947,7 @@ export default function AppointmentsPage() {
                                     </button>
                                     {rdv.statut !== 'termine' && (
                                       <button
-                                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 text-[11px] font-medium"
+                                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 text-xs font-medium"
                                         onClick={() => openCompteRendu(rdv)}
                                       >
                                         <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
@@ -980,7 +980,7 @@ export default function AppointmentsPage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-center text-[11px] text-gray-400 py-2">Aucun rendez-vous</p>
+                        <p className="text-center text-xs text-gray-400 py-2">Aucun rendez-vous</p>
                       )}
                     </div>
                   </div>
@@ -1006,7 +1006,7 @@ export default function AppointmentsPage() {
               <p className="text-sm font-semibold text-gray-900">{getWeekLabel()}</p>
               {weekOffset !== 0 && (
                 <button
-                  className="text-[10px] text-brewery-600 hover:underline mt-0.5"
+                  className="text-xs text-brewery-600 hover:underline mt-0.5"
                   onClick={() => setWeekOffset(0)}
                 >
                   Revenir a cette semaine
@@ -1025,7 +1025,7 @@ export default function AppointmentsPage() {
           {resumes.length > 0 && (
             <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <div className="min-w-[700px] grid grid-cols-[60px_repeat(7,1fr)] gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1.5">
-                <div className="text-[10px] text-gray-400 flex items-center">Tournées</div>
+                <div className="text-xs text-gray-400 flex items-center">Tournées</div>
                 {JOURS_SEMAINE.map(jour => (
                   <div key={jour} className="min-w-0"><PucesTourneesDuJour resumes={resumes} jour={jour} onInfo={setInfoTournee} compact /></div>
                 ))}
@@ -1103,7 +1103,7 @@ export default function AppointmentsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-2">Période</label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] text-gray-400 mb-1">Du</label>
+                    <label className="block text-xs text-gray-400 mb-1">Du</label>
                     <input
                       type="date"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1112,7 +1112,7 @@ export default function AppointmentsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-gray-400 mb-1">Au</label>
+                    <label className="block text-xs text-gray-400 mb-1">Au</label>
                     <input
                       type="date"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1152,7 +1152,7 @@ export default function AppointmentsPage() {
                       const expClient = rdv.client_id ? state.clients.find(c => c.id === rdv.client_id) : undefined;
                       const commercial = state.commerciaux.find(c => c.id === rdv.commercial_id);
                       return (
-                        <div key={rdv.id} className="flex items-center justify-between text-[11px] text-gray-600 bg-white rounded px-2 py-1.5">
+                        <div key={rdv.id} className="flex items-center justify-between text-xs text-gray-600 bg-white rounded px-2 py-1.5">
                           <div className="flex-1 min-w-0">
                             <span className="font-medium">{expClient?.nom || prospect?.nom_etablissement || 'Inconnu'}</span>
                             <span className="text-gray-400 ml-1.5">{commercial?.prenom}</span>
@@ -1165,7 +1165,7 @@ export default function AppointmentsPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-gray-400 italic">Aucun RDV sur cette période</p>
+                  <p className="text-xs text-gray-400 italic">Aucun RDV sur cette période</p>
                 )}
               </div>
             </div>
@@ -1300,7 +1300,7 @@ export default function AppointmentsPage() {
                   })}
                 </div>
                 {formData.participants.length === 0 && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">Cliquez pour assigner des personnes</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Cliquez pour assigner des personnes</p>
                 )}
               </div>
 
@@ -1367,7 +1367,7 @@ export default function AppointmentsPage() {
                   </select>
                   {formData.recurrence === 'weekly' && (
                     <div className="mt-2 space-y-2">
-                      <p className="text-[11px] text-gray-500">Jours de la semaine :</p>
+                      <p className="text-xs text-gray-500">Jours de la semaine :</p>
                       <div className="flex flex-wrap gap-1.5">
                         {[1, 2, 3, 4, 5, 6, 0].map(day => {
                           const isSelected = formData.recurrence_days.includes(day);
@@ -1393,7 +1393,7 @@ export default function AppointmentsPage() {
                         })}
                       </div>
                       <div>
-                        <label className="block text-[11px] text-gray-500 mb-0.5">Jusqu'au :</label>
+                        <label className="block text-xs text-gray-500 mb-0.5">Jusqu'au :</label>
                         <input
                           type="date"
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1494,7 +1494,7 @@ export default function AppointmentsPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Email {!editProspectData.email && <span className="text-orange-500 text-[10px]">(manquant)</span>}
+                  Email {!editProspectData.email && <span className="text-orange-500 text-xs">(manquant)</span>}
                 </label>
                 <input
                   type="email"

@@ -243,7 +243,7 @@ export default function EmailTemplateModal(props: Props) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{tpl.nom}</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">{tpl.sujet}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{tpl.sujet}</p>
                     </div>
                     <ChevronRight className={`w-4 h-4 transition-colors ${selectedTemplateId === tpl.id ? 'text-purple-500' : 'text-gray-300'}`} />
                   </div>
@@ -275,7 +275,7 @@ export default function EmailTemplateModal(props: Props) {
                       <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-700 truncate">{doc.nom}</p>
-                        <p className="text-[10px] text-gray-400">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
+                        <p className="text-xs text-gray-400">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
                       </div>
                     </label>
                   ))}
@@ -284,7 +284,7 @@ export default function EmailTemplateModal(props: Props) {
               {selectedDocs.length > 0 && !showDocPicker && (
                 <div className="flex flex-wrap gap-1.5">
                   {selectedDocs.map(doc => (
-                    <span key={doc.id} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-[11px]">
+                    <span key={doc.id} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
                       <FileText className="w-3 h-3" />
                       {doc.nom}
                       <button className="hover:text-purple-900" onClick={() => toggleDoc(doc.id)}>
@@ -349,7 +349,7 @@ export default function EmailTemplateModal(props: Props) {
           >
             <Send className="w-4 h-4" /> Envoyer
             {selectedDocIds.length > 0 && (
-              <span className="bg-purple-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              <span className="bg-purple-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                 {selectedDocIds.length}
               </span>
             )}

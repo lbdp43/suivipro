@@ -65,19 +65,19 @@ export function ConflitsRdv({ conflits, conflitsGoogle }: { conflits: Appointmen
     <>
       {conflits.length > 0 && (
         <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-[11px] text-red-700 font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire : ce commercial a déjà un rendez-vous sur ce créneau</p>
+          <p className="text-xs text-red-700 font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire : ce commercial a déjà un rendez-vous sur ce créneau</p>
           {conflits.map(c => (
-            <p key={c.id} className="text-[10px] text-red-600 mt-0.5">{c.heure_debut}-{c.heure_fin} : {nomDe(c)}</p>
+            <p key={c.id} className="text-xs text-red-600 mt-0.5">{c.heure_debut}-{c.heure_fin} : {nomDe(c)}</p>
           ))}
         </div>
       )}
       {conflitsGoogle.length > 0 && (
         <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Attention : événement(s) Google Agenda sur ce créneau</p>
+          <p className="text-xs text-amber-700 font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Attention : événement(s) Google Agenda sur ce créneau</p>
           {conflitsGoogle.map(evt => {
             const debut = evt.start.includes('T') ? evt.start.substring(11, 16) : '';
             const fin = evt.end.includes('T') ? evt.end.substring(11, 16) : '';
-            return <p key={evt.id} className="text-[10px] text-amber-600 mt-0.5">{evt.allDay ? 'Journée entière' : `${debut}-${fin}`} : {evt.summary}</p>;
+            return <p key={evt.id} className="text-xs text-amber-600 mt-0.5">{evt.allDay ? 'Journée entière' : `${debut}-${fin}`} : {evt.summary}</p>;
           })}
         </div>
       )}
@@ -102,22 +102,22 @@ export default function ChampsRdv({ valeur, onChange, teinte = 'blue', exclureId
   return (
     <>
       <div>
-        <label className={`block text-[10px] ${t.label} mb-0.5 flex items-center gap-1`}><Users className="w-3 h-3" /> Commercial assigné au rendez-vous</label>
+        <label className={`block text-xs ${t.label} mb-0.5 flex items-center gap-1`}><Users className="w-3 h-3" /> Commercial assigné au rendez-vous</label>
         <select className={`w-full px-2 py-1.5 border ${t.champ} rounded-lg text-xs bg-white`} value={valeur.commercial_id} onChange={e => onChange({ commercial_id: e.target.value })}>
           {state.commerciaux.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
         </select>
       </div>
       <div className="flex gap-2">
         <div className="flex-1">
-          <label className={`block text-[10px] ${t.label} mb-0.5`}>Date *</label>
+          <label className={`block text-xs ${t.label} mb-0.5`}>Date *</label>
           <input type="date" className={`w-full px-2 py-1.5 border ${t.champ} rounded-lg text-xs bg-white`} value={valeur.date} onChange={e => onChange({ date: e.target.value })} />
         </div>
         <div className="w-20">
-          <label className={`block text-[10px] ${t.label} mb-0.5`}>Début</label>
+          <label className={`block text-xs ${t.label} mb-0.5`}>Début</label>
           <input type="time" className={`w-full px-2 py-1.5 border ${t.champ} rounded-lg text-xs bg-white`} value={valeur.heure_debut} onChange={e => onChange({ heure_debut: e.target.value })} />
         </div>
         <div className="w-20">
-          <label className={`block text-[10px] ${t.label} mb-0.5`}>Fin</label>
+          <label className={`block text-xs ${t.label} mb-0.5`}>Fin</label>
           <input type="time" className={`w-full px-2 py-1.5 border ${t.champ} rounded-lg text-xs bg-white`} value={valeur.heure_fin} onChange={e => onChange({ heure_fin: e.target.value })} />
         </div>
       </div>

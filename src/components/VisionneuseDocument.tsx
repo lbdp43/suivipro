@@ -60,7 +60,7 @@ export default function VisionneuseDocument({ doc, onClose, onOuvert, signature 
         <Eye className="w-5 h-5 text-white/70 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="font-semibold truncate">{doc.nom}</p>
-          {doc.consultation_seule && <p className="text-[11px] text-white/60">Consultation seule — ce document ne se télécharge pas</p>}
+          {doc.consultation_seule && <p className="text-xs text-white/60">Consultation seule — ce document ne se télécharge pas</p>}
         </div>
         <button className="p-2 rounded-lg hover:bg-white/10" onClick={onClose} aria-label="Fermer">
           <X className="w-6 h-6" />

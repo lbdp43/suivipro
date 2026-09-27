@@ -96,7 +96,7 @@ export default function OngletObjectifs() {
                       <div key={m.cle} className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-500" title={m.aide}>{m.label} / mois</span>
-                          {!isEditing && <span className={`text-[10px] font-medium ${couleur.texte}`}>{couleur.label}</span>}
+                          {!isEditing && <span className={`text-xs font-medium ${couleur.texte}`}>{couleur.label}</span>}
                         </div>
                         {isEditing ? (
                           <input
@@ -112,7 +112,7 @@ export default function OngletObjectifs() {
                             <div className="bg-gray-200 rounded-full h-2">
                               <div className={`h-2 rounded-full progress-bar ${couleur.barre}`} style={{ width: `${Math.min(m.pct, 100)}%` }} />
                             </div>
-                            <p className="text-[10px] text-gray-400">{m.objectif > 0 ? `${m.pct} % · attendu à ce jour : ${m.attendu}` : 'Fixez un objectif pour suivre l\'avancement'}</p>
+                            <p className="text-xs text-gray-400">{m.objectif > 0 ? `${m.pct} % · attendu à ce jour : ${m.attendu}` : 'Fixez un objectif pour suivre l\'avancement'}</p>
                           </>
                         )}
                       </div>

@@ -1446,7 +1446,7 @@ export default function ImportPage() {
             {crossMatches.length > 0 && (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 {/* Header */}
-                <div className="bg-gray-50 px-3 py-2 flex items-center gap-3 border-b border-gray-200 text-[10px] sm:text-xs font-medium text-gray-500">
+                <div className="bg-gray-50 px-3 py-2 flex items-center gap-3 border-b border-gray-200 text-xs sm:text-xs font-medium text-gray-500">
                   <button onClick={toggleCrossAll} className="flex-shrink-0">
                     {crossSelected.size === crossMatches.length
                       ? <CheckSquare className="w-4 h-4 text-brewery-600" />
@@ -1469,7 +1469,7 @@ export default function ImportPage() {
                     return (
                       <div
                         key={m.prospect.id}
-                        className={`px-3 py-2 flex items-center gap-3 text-[10px] sm:text-xs cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-brewery-50' : ''}`}
+                        className={`px-3 py-2 flex items-center gap-3 text-xs sm:text-xs cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-brewery-50' : ''}`}
                         onClick={() => toggleCrossSelect(m.prospect.id)}
                       >
                         <div className="flex-shrink-0">
@@ -1490,17 +1490,17 @@ export default function ImportPage() {
                           {m.prospect.telephone}
                         </div>
                         <div className="w-1/6 min-w-0">
-                          <span className="badge text-white text-[9px]" style={{ backgroundColor: stageColor }}>
+                          <span className="badge text-white text-xs" style={{ backgroundColor: stageColor }}>
                             {stageLabel}
                           </span>
                         </div>
                         <div className="w-1/6 min-w-0">
                           {m.matchType.includes('nom') && m.matchType.includes('tel') ? (
-                            <span className="badge bg-red-100 text-red-700 text-[9px]">Nom + Tel</span>
+                            <span className="badge bg-red-100 text-red-700 text-xs">Nom + Tel</span>
                           ) : m.matchType.includes('nom') ? (
-                            <span className="badge bg-amber-100 text-amber-700 text-[9px]">Nom</span>
+                            <span className="badge bg-amber-100 text-amber-700 text-xs">Nom</span>
                           ) : (
-                            <span className="badge bg-blue-100 text-blue-700 text-[9px]">Téléphone</span>
+                            <span className="badge bg-blue-100 text-blue-700 text-xs">Téléphone</span>
                           )}
                         </div>
                       </div>
@@ -1747,7 +1747,7 @@ export default function ImportPage() {
                 </div>
                 <div className="max-h-80 overflow-y-auto divide-y divide-amber-100">
                   {/* Header */}
-                  <div className="px-4 py-2 bg-amber-50/50 grid grid-cols-12 gap-2 text-[10px] font-medium text-gray-500">
+                  <div className="px-4 py-2 bg-amber-50/50 grid grid-cols-12 gap-2 text-xs font-medium text-gray-500">
                     <span className="col-span-3">Fichier</span>
                     <span className="col-span-3">Existant en base</span>
                     <span className="col-span-1">Match</span>
@@ -1764,7 +1764,7 @@ export default function ImportPage() {
                         <p className="text-gray-400 truncate">{d.existing.telephone || d.existing.email}</p>
                       </div>
                       <div className="col-span-1">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
                           d.matchType.includes('siret') ? 'bg-red-100 text-red-700' :
                           d.matchType.includes('+') ? 'bg-red-100 text-red-700' :
                           d.matchType === 'nom' ? 'bg-amber-100 text-amber-700' :
@@ -1775,19 +1775,19 @@ export default function ImportPage() {
                       </div>
                       <div className="col-span-5 flex gap-1">
                         <button
-                          className={`px-2 py-1 rounded text-[10px] font-medium ${d.action === 'skip' ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                          className={`px-2 py-1 rounded text-xs font-medium ${d.action === 'skip' ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                           onClick={() => setDuplicateAction(i, 'skip')}
                         >
                           Ignorer
                         </button>
                         <button
-                          className={`px-2 py-1 rounded text-[10px] font-medium ${d.action === 'overwrite' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                          className={`px-2 py-1 rounded text-xs font-medium ${d.action === 'overwrite' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
                           onClick={() => setDuplicateAction(i, 'overwrite')}
                         >
                           Ecraser l'existant
                         </button>
                         <button
-                          className={`px-2 py-1 rounded text-[10px] font-medium ${d.action === 'import' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                          className={`px-2 py-1 rounded text-xs font-medium ${d.action === 'import' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
                           onClick={() => setDuplicateAction(i, 'import')}
                         >
                           Importer quand même
@@ -1830,7 +1830,7 @@ export default function ImportPage() {
                           <p className="font-medium text-gray-800 truncate">{c.nom}</p>
                           <p className="text-gray-400 truncate">{c.ville || c.code_postal}</p>
                           {c.matched_prospect && (
-                            <p className="text-purple-600 truncate text-[10px]">Prospect: {c.matched_prospect.nom_etablissement}</p>
+                            <p className="text-purple-600 truncate text-xs">Prospect: {c.matched_prospect.nom_etablissement}</p>
                           )}
                         </div>
                         <div className="col-span-2 text-gray-600 truncate">{c.contact}</div>

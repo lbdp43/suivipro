@@ -114,28 +114,28 @@ export default function CallsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3">
           <div className="bg-green-50 p-2 sm:p-3 rounded-lg"><Phone className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" /></div>
           <div>
-            <p className="text-[10px] sm:text-sm text-gray-500">Aujourd'hui</p>
+            <p className="text-xs sm:text-sm text-gray-500">Aujourd'hui</p>
             <p className="text-lg sm:text-2xl font-bold text-gray-900">{todayCalls}</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3">
           <div className="bg-blue-50 p-2 sm:p-3 rounded-lg"><Phone className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" /></div>
           <div>
-            <p className="text-[10px] sm:text-sm text-gray-500">Cette semaine</p>
+            <p className="text-xs sm:text-sm text-gray-500">Cette semaine</p>
             <p className="text-lg sm:text-2xl font-bold text-gray-900">{weekCallsCount}</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3">
           <div className="bg-purple-50 p-2 sm:p-3 rounded-lg"><PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" /></div>
           <div>
-            <p className="text-[10px] sm:text-sm text-gray-500">Taux réponse</p>
+            <p className="text-xs sm:text-sm text-gray-500">Taux réponse</p>
             <p className="text-lg sm:text-2xl font-bold text-gray-900">{responseRate}%</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 flex items-center gap-3">
           <div className="bg-amber-50 p-2 sm:p-3 rounded-lg"><PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" /></div>
           <div>
-            <p className="text-[10px] sm:text-sm text-gray-500">Taux semaine</p>
+            <p className="text-xs sm:text-sm text-gray-500">Taux semaine</p>
             <p className="text-lg sm:text-2xl font-bold text-gray-900">{weekResponseRate}%</p>
           </div>
         </div>
@@ -162,7 +162,7 @@ export default function CallsPage() {
           {/* Filter by result */}
           <div className="flex gap-1.5 flex-wrap">
             <button
-              className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-colors ${!filterResult ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              className={`px-2.5 py-1 rounded-lg text-xs sm:text-xs font-medium transition-colors ${!filterResult ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               onClick={() => { setFilterResult(''); setCurrentPage(1); }}
             >
               Tous
@@ -170,7 +170,7 @@ export default function CallsPage() {
             {(Object.keys(CALL_RESULT_LABELS) as CallResult[]).map(r => (
               <button
                 key={r}
-                className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-colors ${filterResult === r ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`px-2.5 py-1 rounded-lg text-xs sm:text-xs font-medium transition-colors ${filterResult === r ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 onClick={() => { setFilterResult(filterResult === r ? '' : r); setCurrentPage(1); }}
               >
                 {CALL_RESULT_LABELS[r]}
@@ -199,15 +199,15 @@ export default function CallsPage() {
                   ) : (
                     <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">Inconnu</p>
                   )}
-                  <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">{call.notes || 'Aucune note'}</p>
+                  <p className="text-xs sm:text-xs text-gray-500 mt-0.5 truncate">{call.notes || 'Aucune note'}</p>
                 </div>
                 <div className="text-right flex-shrink-0 hidden sm:block">
                   <p className="text-xs font-medium text-gray-600">{CALL_RESULT_LABELS[call.resultat]}</p>
-                  <p className="text-[10px] text-gray-400">{formatDuration(call.duree)} - {commercial?.prenom}</p>
-                  <p className="text-[10px] text-gray-400">{formatTimeAgo(call.date)}</p>
+                  <p className="text-xs text-gray-400">{formatDuration(call.duree)} - {commercial?.prenom}</p>
+                  <p className="text-xs text-gray-400">{formatTimeAgo(call.date)}</p>
                 </div>
                 <div className="sm:hidden text-right flex-shrink-0">
-                  <p className="text-[10px] text-gray-500">{formatTimeAgo(call.date)}</p>
+                  <p className="text-xs text-gray-500">{formatTimeAgo(call.date)}</p>
                 </div>
                 {/* Edit/Delete buttons */}
                 <div className="flex gap-1 flex-shrink-0 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -300,7 +300,7 @@ export default function CallsPage() {
                 <p className="text-sm font-medium text-gray-900">
                   {state.prospects.find(p => p.id === editingCall.prospect_id)?.nom_etablissement || 'Inconnu'}
                 </p>
-                <p className="text-[10px] text-gray-400">{formatTimeAgo(editingCall.date)}</p>
+                <p className="text-xs text-gray-400">{formatTimeAgo(editingCall.date)}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Résultat</label>
@@ -323,7 +323,7 @@ export default function CallsPage() {
                   value={editForm.duree}
                   onChange={e => setEditForm(prev => ({ ...prev, duree: parseInt(e.target.value) || 0 }))}
                 />
-                <p className="text-[10px] text-gray-400 mt-0.5">{formatDuration(editForm.duree)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{formatDuration(editForm.duree)}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>

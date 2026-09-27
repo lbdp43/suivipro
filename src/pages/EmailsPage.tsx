@@ -144,7 +144,7 @@ export default function EmailsPage() {
         <div className="flex flex-wrap gap-2">
           {variables.map(v => (
             <span key={v.var} className="inline-flex items-center gap-1 px-2 py-1 bg-white rounded text-xs border border-blue-200">
-              <code className="text-blue-600 font-mono text-[10px]">{v.var}</code>
+              <code className="text-blue-600 font-mono text-xs">{v.var}</code>
               <span className="text-gray-500">{v.desc}</span>
             </span>
           ))}
@@ -215,7 +215,7 @@ export default function EmailsPage() {
                   <Mail className="w-4 h-4 text-gray-400" />
                   <h3 className="font-semibold text-sm text-gray-900 truncate">{template.nom}</h3>
                 </div>
-                <span className={`badge text-[10px] mt-2 ${templateTypeColors[template.type] || 'bg-gray-100 text-gray-600'}`}>
+                <span className={`badge text-xs mt-2 ${templateTypeColors[template.type] || 'bg-gray-100 text-gray-600'}`}>
                   {template.type}
                 </span>
               </div>

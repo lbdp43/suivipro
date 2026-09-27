@@ -481,16 +481,16 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             <div className="flex items-center gap-2 flex-wrap">
               <NomFiche prospectId={rdv.client_id ? undefined : rdv.prospect_id} clientId={rdv.client_id} className="font-semibold text-sm text-brewery-700">{entityName}</NomFiche>
               {rdvOwner && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{rdvOwner}</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{rdvOwner}</span>
               )}
-              {hasCR && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
+              {hasCR && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
               {rdv.heure_debut && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>}
               {rdv.lieu && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{rdv.lieu}</span>}
             </div>
-            {rdv.notes && <p className="text-[10px] text-gray-400 mt-1 italic line-clamp-1">{rdv.notes}</p>}
-            {hasCR && rdv.notes_compte_rendu && <p className="text-[10px] text-green-600 mt-1 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
+            {rdv.notes && <p className="text-xs text-gray-400 mt-1 italic line-clamp-1">{rdv.notes}</p>}
+            {hasCR && rdv.notes_compte_rendu && <p className="text-xs text-green-600 mt-1 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
           </div>
         </div>
         {/* Quick action buttons */}
@@ -553,7 +553,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                   {commercial?.prenom?.charAt(0) || '?'}
                 </div>
                 <span className="text-xs font-semibold text-gray-700">{commercialName}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 font-medium">{cRdvs.length}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-white text-gray-500 font-medium">{cRdvs.length}</span>
               </div>
               <div className="space-y-3">
                 {cRdvs.map(renderRdvCard)}
@@ -592,7 +592,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                 {client.nom}
               </Link>
               {clientOwner && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{clientOwner}</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{clientOwner}</span>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
@@ -613,7 +613,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
               {client.contact && <span className="text-gray-500">{client.contact}</span>}
             </div>
             {client.next_visit && (
-              <div className="mt-1 text-[10px] text-gray-400">
+              <div className="mt-1 text-xs text-gray-400">
                 Visite prevue: {client.next_visit}
                 {client.last_visit && ` — Dernière: ${client.last_visit}`}
               </div>
@@ -628,7 +628,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             )}
             {visited && interaction && (
               <div className="flex items-center gap-2 mt-1">
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                   interaction.type === 'VISITE' ? 'bg-green-100 text-green-700'
                   : interaction.type === 'APPEL' ? 'bg-blue-100 text-blue-700'
                   : 'bg-purple-100 text-purple-700'
@@ -638,7 +638,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             )}
             {client.notes && (
               <div className="mt-1.5 px-2 py-1.5 bg-yellow-50 rounded border border-yellow-100">
-                <p className="text-[10px] text-yellow-700 truncate">{client.notes}</p>
+                <p className="text-xs text-yellow-700 truncate">{client.notes}</p>
               </div>
             )}
           </div>
@@ -747,7 +747,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             <p className="text-sm font-semibold text-gray-800">
               Semaine du {new Date(weekDays[0].date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au {new Date(weekDays[6].date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
-            {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-[10px] text-brewery-600 hover:underline mt-0.5">Semaine actuelle</button>}
+            {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-xs text-brewery-600 hover:underline mt-0.5">Semaine actuelle</button>}
           </div>
           <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 rounded-lg hover:bg-gray-100 border border-gray-200"><ChevronRight className="w-4 h-4" /></button>
         </div>
@@ -804,23 +804,23 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-indigo-600">{stats.totalRdv}</p>
-            <p className="text-[10px] text-gray-500">RDV total</p>
+            <p className="text-xs text-gray-500">RDV total</p>
             {stats.totalRdv > 0 && (
               <div className="flex items-center justify-center gap-2 mt-1">
-                {stats.rdvFromProspection > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600">Prospection: {stats.rdvFromProspection}</span>}
-                {stats.rdvClients > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">Clients: {stats.rdvClients}</span>}
+                {stats.rdvFromProspection > 0 && <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600">Prospection: {stats.rdvFromProspection}</span>}
+                {stats.rdvClients > 0 && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">Clients: {stats.rdvClients}</span>}
               </div>
             )}
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-green-600">{stats.rdvWithCR}</p>
-            <p className="text-[10px] text-gray-500">Comptes rendus</p>
+            <p className="text-xs text-gray-500">Comptes rendus</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <p className="text-2xl font-bold text-orange-600">
               {stats.totalRdv > 0 ? Math.round((stats.rdvWithCR / stats.totalRdv) * 100) : 0}%
             </p>
-            <p className="text-[10px] text-gray-500">Taux CR</p>
+            <p className="text-xs text-gray-500">Taux CR</p>
           </div>
 
           {/* Result breakdown - interactive */}
@@ -828,7 +828,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             <div className="col-span-2 sm:col-span-3 bg-white rounded-xl border border-gray-200 p-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-gray-600">Résultats des RDV</p>
-                <p className="text-[10px] text-gray-400 italic">Cliquez pour voir le détail</p>
+                <p className="text-xs text-gray-400 italic">Cliquez pour voir le détail</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(stats.resultCounts).map(([key, count]) => {
@@ -889,12 +889,12 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <NomFiche prospectId={isClient ? undefined : rdv.prospect_id} clientId={rdv.client_id} className="text-sm font-medium text-brewery-700">{name}</NomFiche>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                               {isClient ? 'Client' : 'Prospect'}
                             </span>
                             <PrisPar rdv={rdv} />
                           </div>
-                          <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
+                          <div className="flex items-center gap-3 text-xs text-gray-500 mt-1 flex-wrap">
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{rdv.date}</span>
                             <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut} - {rdv.heure_fin}</span>
                             {ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{ville}</span>}
@@ -940,7 +940,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                                   {commercial?.prenom?.charAt(0) || '?'}
                                 </div>
                                 <span className="text-xs font-semibold text-gray-700">{commercialName}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 font-medium">{rdvs.length}</span>
+                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-white text-gray-500 font-medium">{rdvs.length}</span>
                               </div>
                               <div className="space-y-2">
                                 {rdvs.map(renderRdvCard)}
@@ -980,26 +980,26 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm text-gray-800">{group.label}</span>
-                      {group.zones.length > 0 && <span className="text-[10px] text-brewery-600 font-medium">{group.zones.join(', ')}</span>}
+                      {group.zones.length > 0 && <span className="text-xs text-brewery-600 font-medium">{group.zones.join(', ')}</span>}
                     </div>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {group.rdvs.length > 0 && (
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rdvDone === group.rdvs.length ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rdvDone === group.rdvs.length ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                           {group.rdvs.length} RDV {rdvDone > 0 && `(${rdvDone} CR)`}
                         </span>
                       )}
                       {group.clientsToVisit.length > 0 && (
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${visitedCount === group.clientsToVisit.length ? 'bg-green-100 text-green-700' : 'bg-cyan-100 text-cyan-700'}`}>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${visitedCount === group.clientsToVisit.length ? 'bg-green-100 text-green-700' : 'bg-cyan-100 text-cyan-700'}`}>
                           {visitedCount}/{group.clientsToVisit.length} clients visites
                         </span>
                       )}
                       {lateCount > 0 && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                           {lateCount} en retard
                         </span>
                       )}
                       {group.visites.length > 0 && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
                           {group.visites.length} interaction{group.visites.length > 1 ? 's' : ''}
                         </span>
                       )}
@@ -1024,7 +1024,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                       <div>
                         <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5" /> Clients a visiter ({group.clientsToVisit.length})
-                          <span className="text-[10px] font-normal text-gray-400 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
+                          <span className="text-xs font-normal text-gray-400 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
                         </p>
                         <div className="space-y-2">
                           {group.clientsToVisit.map(renderClientCard)}
@@ -1055,7 +1055,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                                   {commercialName && <span className="text-xs text-gray-500 ml-1">({commercialName.prenom})</span>}
                                   {v.comment && <p className="text-xs text-gray-500 truncate">{v.comment}</p>}
                                 </div>
-                                <span className={`text-[10px] font-medium ${typeTextColor}`}>{INTERACTION_TYPE_LABELS[v.type as InteractionType] || v.type}</span>
+                                <span className={`text-xs font-medium ${typeTextColor}`}>{INTERACTION_TYPE_LABELS[v.type as InteractionType] || v.type}</span>
                               </div>
                             );
                           })}
@@ -1087,7 +1087,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             </div>
             {/* Editable notes client */}
             <div className="mx-4 mt-4 p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
-              <label className="text-[10px] font-semibold text-yellow-800 mb-1 block">Notes client</label>
+              <label className="text-xs font-semibold text-yellow-800 mb-1 block">Notes client</label>
               <textarea
                 value={visitModalNotes}
                 onChange={e => setVisitModalNotes(e.target.value)}
@@ -1251,14 +1251,14 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                   if (conflicts.length === 0) return null;
                   return (
                     <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-[11px] text-red-700 font-medium flex items-center gap-1">
+                      <p className="text-xs text-red-700 font-medium flex items-center gap-1">
                         <AlertTriangle className="w-3.5 h-3.5" /> Conflit horaire !
                       </p>
                       {conflicts.map(c => {
                         const cp = c.prospect_id ? state.prospects.find((p: any) => p.id === c.prospect_id) : null;
                         const cc = c.client_id ? state.clients.find((cl: Client) => cl.id === c.client_id) : null;
                         return (
-                          <p key={c.id} className="text-[10px] text-red-600 mt-0.5">
+                          <p key={c.id} className="text-xs text-red-600 mt-0.5">
                             {c.heure_debut}-{c.heure_fin} : {cc?.nom || cp?.nom_etablissement || 'RDV'}
                           </p>
                         );

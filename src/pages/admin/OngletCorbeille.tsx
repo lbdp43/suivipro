@@ -171,7 +171,7 @@ export default function OngletCorbeille() {
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{dateEtHeure(e.supprime_le)}</td>
                       <td className="px-3 py-2 text-right">
                         {e.restaure_le ? (
-                          <span className="text-[11px] text-green-700 flex items-center gap-1 justify-end whitespace-nowrap">
+                          <span className="text-xs text-green-700 flex items-center gap-1 justify-end whitespace-nowrap">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             Remis par {qui(e.restaure_par_prenom, e.restaure_par_nom, e.restaure_par)}
                           </span>

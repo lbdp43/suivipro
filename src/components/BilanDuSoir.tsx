@@ -79,7 +79,7 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
     <div className="bg-white rounded-xl border border-indigo-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Moon className="w-4 h-4 text-indigo-600" /> Bilan du soir</h3>
-        <span className="text-[11px] text-gray-400">un message par commercial : RDV pris et appels passés sur ses clients aujourd'hui</span>
+        <span className="text-xs text-gray-400">un message par commercial : RDV pris et appels passés sur ses clients aujourd'hui</span>
       </div>
       {parCommercial.length === 0 ? (
         <p className="text-xs text-gray-400 italic">Aucun rendez-vous pris ni appel passé aujourd'hui pour un commercial : rien à envoyer.</p>
@@ -95,16 +95,16 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-sm font-semibold text-gray-800">
                     {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial inconnu'} <span className="text-xs font-normal text-gray-400">· {[liste.length ? `${liste.length} RDV` : '', appels.length ? `${appels.length} appel${appels.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</span>
-                    {fait && <span className="ml-2 text-[10px] text-green-700 inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> envoyé</span>}
+                    {fait && <span className="ml-2 text-xs text-green-700 inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> envoyé</span>}
                   </p>
                   <div className="flex gap-1.5">
                     <button onClick={() => copier(id, texte)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200" title="Copier le message"><Copy className="w-3.5 h-3.5" /> Copier</button>
                     {tel && <a href={`sms:${tel.replace(/\s/g, '')}?body=${encodeURIComponent(texte)}`} onClick={() => marquer(id)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100" title="Ouvrir un SMS pré-rempli"><MessageSquare className="w-3.5 h-3.5" /> SMS</a>}
                     {tel && <a href={`https://wa.me/${numeroInternational(tel)}?text=${encodeURIComponent(texte)}`} target="_blank" rel="noopener noreferrer" onClick={() => marquer(id)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-50 text-green-700 hover:bg-green-100" title="Ouvrir WhatsApp pré-rempli"><Send className="w-3.5 h-3.5" /> WhatsApp</a>}
-                    {!tel && <span className="text-[10px] text-amber-700 self-center">pas de téléphone sur sa fiche</span>}
+                    {!tel && <span className="text-xs text-amber-700 self-center">pas de téléphone sur sa fiche</span>}
                   </div>
                 </div>
-                <pre className="mt-2 text-[11px] text-gray-600 whitespace-pre-wrap font-sans bg-gray-50 rounded p-2 max-h-40 overflow-y-auto">{texte}</pre>
+                <pre className="mt-2 text-xs text-gray-600 whitespace-pre-wrap font-sans bg-gray-50 rounded p-2 max-h-40 overflow-y-auto">{texte}</pre>
               </div>
             );
           })}

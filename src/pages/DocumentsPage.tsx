@@ -355,7 +355,7 @@ export default function DocumentsPage() {
                           {doc.description && (
                             <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{doc.description}</p>
                           )}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-gray-400">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-400">
                             <span className="truncate max-w-full">{doc.nom_fichier}</span>
                             <span>{formatFileSize(doc.taille)}</span>
                             <span>Par {getUploaderName(doc.uploaded_by)}</span>
@@ -472,7 +472,7 @@ export default function DocumentsPage() {
                                 );
                               })}
                               {anciennes.length > 0 && (
-                                <p className="text-[11px] text-gray-400 pt-1">
+                                <p className="text-xs text-gray-400 pt-1">
                                   Versions précédentes : {anciennes.map(s => `${nomDe(s.user_id)} (v${s.version}, ${new Date(s.signe_le).toLocaleDateString('fr-FR')})`).join(' · ')}
                                 </p>
                               )}

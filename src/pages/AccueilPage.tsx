@@ -96,7 +96,7 @@ function Jauges({ personne }: { personne: Commercial }) {
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Target className="w-4 h-4 text-brewery-600" /> Mes objectifs du mois</h3>
-        <span className="text-[11px] text-gray-400">{MOIS[new Date().getMonth()]}</span>
+        <span className="text-xs text-gray-400">{MOIS[new Date().getMonth()]}</span>
       </div>
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${mesures.length + (personne.role !== 'prospection' ? 1 : 0) > 4 ? 'lg:grid-cols-3 xl:grid-cols-6' : mesures.length + (personne.role !== 'prospection' ? 1 : 0) > 2 ? 'lg:grid-cols-4' : ''} gap-4`}>
         {mesures.map(m => {
@@ -105,13 +105,13 @@ function Jauges({ personne }: { personne: Commercial }) {
             <div key={m.cle} title={m.aide}>
               <div className="flex items-baseline justify-between">
                 <span className="text-xs text-gray-500">{m.label}</span>
-                <span className={`text-[10px] font-medium ${c.texte}`}>{c.label}</span>
+                <span className={`text-xs font-medium ${c.texte}`}>{c.label}</span>
               </div>
               <p className="text-2xl font-bold text-gray-900 tabular-nums">{m.valeur} <span className="text-sm font-normal text-gray-400">/ {m.objectif || '—'}</span></p>
               <div className="bg-gray-200 rounded-full h-2 mt-1">
                 <div className={`h-2 rounded-full ${c.barre}`} style={{ width: `${Math.min(m.pct, 100)}%` }} />
               </div>
-              {m.objectif > 0 && <p className="text-[10px] text-gray-400 mt-0.5">attendu à ce jour : {m.attendu}</p>}
+              {m.objectif > 0 && <p className="text-xs text-gray-400 mt-0.5">attendu à ce jour : {m.attendu}</p>}
             </div>
           );
         })}
@@ -119,11 +119,11 @@ function Jauges({ personne }: { personne: Commercial }) {
           <div>
             <div className="flex items-baseline justify-between">
               <span className="text-xs text-gray-500">Comptes rendus</span>
-              <span className={`text-[10px] font-medium ${mois.rdvSansCr === 0 ? 'text-green-700' : 'text-amber-700'}`}>{mois.rdvSansCr === 0 ? 'À jour' : 'À rattraper'}</span>
+              <span className={`text-xs font-medium ${mois.rdvSansCr === 0 ? 'text-green-700' : 'text-amber-700'}`}>{mois.rdvSansCr === 0 ? 'À jour' : 'À rattraper'}</span>
             </div>
             <p className="text-2xl font-bold text-gray-900 tabular-nums">{mois.rdvSansCr === 0 ? <CheckCircle2 className="w-7 h-7 text-green-500 inline" /> : mois.rdvSansCr} <span className="text-sm font-normal text-gray-400">{mois.rdvSansCr === 0 ? '' : 'manquant(s)'}</span></p>
             <div className="bg-gray-200 rounded-full h-2 mt-1"><div className={`h-2 rounded-full ${mois.rdvSansCr === 0 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: mois.rdvSansCr === 0 ? '100%' : '40%' }} /></div>
-            {mois.rdvSansCr > 0 && <Link to="/semaine/bilan" className="text-[10px] text-brewery-600 hover:underline">Saisir les comptes rendus</Link>}
+            {mois.rdvSansCr > 0 && <Link to="/semaine/bilan" className="text-xs text-brewery-600 hover:underline">Saisir les comptes rendus</Link>}
           </div>
         )}
       </div>
@@ -228,7 +228,7 @@ function LigneRdv({ rdv, nom, cible, aQui, surCompteRendu }: {
           {aQui && <span className="text-xs text-gray-400"> · {aQui}</span>}
         </p>
         {lieu && (
-          <p className="text-[11px] truncate flex items-center gap-1">
+          <p className="text-xs truncate flex items-center gap-1">
             <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
             {lienMaps
               ? <a href={lienMaps} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate" title="Ouvrir dans Google Maps">{lieu}</a>
@@ -236,12 +236,12 @@ function LigneRdv({ rdv, nom, cible, aQui, surCompteRendu }: {
           </p>
         )}
       </div>
-      {rdv.compte_rendu && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}</span>}
+      {rdv.compte_rendu && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu] || rdv.compte_rendu}</span>}
       {surCompteRendu && (
         <button
           onClick={surCompteRendu}
           title={rdv.compte_rendu ? 'Modifier le compte rendu' : 'Faire le compte rendu'}
-          className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-[11px] font-medium bg-brewery-50 text-brewery-700 hover:bg-brewery-100 flex-shrink-0"
+          className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs font-medium bg-brewery-50 text-brewery-700 hover:bg-brewery-100 flex-shrink-0"
         >
           <ClipboardCheck className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">{rdv.compte_rendu ? 'Modifier' : 'Compte rendu'}</span>
@@ -289,7 +289,7 @@ function Section({ titre, compte, enfants }: { titre: string; compte: number; en
   if (compte === 0) return null;
   return (
     <div className="space-y-1">
-      <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">{titre} <span className="text-gray-400 font-normal tabular-nums">{compte}</span></p>
+      <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{titre} <span className="text-gray-400 font-normal tabular-nums">{compte}</span></p>
       {enfants}
     </div>
   );
@@ -363,7 +363,7 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   const rien = totalAppels === 0 && rdvPris.length === 0 && mesRdv.length === 0 && visites.length === 0;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3 space-y-3 text-[11px]">
+    <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3 space-y-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5 font-medium" role="group" aria-label="Période">
           <button type="button" onClick={() => setPeriode('jour')} className={`px-2 py-0.5 rounded-md ${periode === 'jour' ? 'bg-brewery-50 text-brewery-700' : 'text-gray-500 hover:text-gray-700'}`}>Aujourd'hui</button>
@@ -488,7 +488,7 @@ function ComptesRendusAFaire({ rdvs, surCompteRendu, proprietaire, moiId }: {
                 {g.titre && (
                   <p className={`text-xs font-semibold flex items-center gap-1.5 pt-1 ${aMoi ? 'text-amber-900' : 'text-gray-600'}`}>
                     {g.titre}
-                    {aMoi && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900">à vous</span>}
+                    {aMoi && <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900">à vous</span>}
                     <span className="text-gray-400 font-normal tabular-nums">{g.lignes.length}</span>
                   </p>
                 )}
@@ -508,7 +508,7 @@ function ComptesRendusAFaire({ rdvs, surCompteRendu, proprietaire, moiId }: {
         </div>
 
         {rdvs.length > CR_MAX && (
-          <p className="text-[11px] text-gray-500 mt-2">… et {rdvs.length - CR_MAX} autre{rdvs.length - CR_MAX > 1 ? 's' : ''} dans le bilan de la semaine.</p>
+          <p className="text-xs text-gray-500 mt-2">… et {rdvs.length - CR_MAX} autre{rdvs.length - CR_MAX > 1 ? 's' : ''} dans le bilan de la semaine.</p>
         )}
       </div>
     </BlocErreur>
@@ -640,13 +640,13 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
           <Carte titre={tournee.zones.length ? `Tournée du jour · ${tournee.zones.join(', ')}` : 'Clients à visiter aujourd\'hui'} icone={MapPin} lien="/semaine" compte={tournee.clients.length}
             vide={tournee.zones.length ? 'Aucun client actif dans ce secteur.' : 'Pas de secteur prévu aujourd\'hui, et aucune visite due.'} teinte="brewery"
             enfants={<div className="space-y-1 max-h-72 overflow-y-auto">
-              {tournee.notes && <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded p-1.5 mb-1">{tournee.notes}</p>}
+              {tournee.notes && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded p-1.5 mb-1">{tournee.notes}</p>}
               {tournee.clients.map(c => (
                 <Link key={c.id} to={`/clients?id=${c.id}`} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 rounded px-1">
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${estEnRetard(c, today) ? 'bg-red-500' : c.next_visit === today ? 'bg-amber-500' : 'bg-gray-300'}`} />
                   <span className="text-sm text-gray-800 truncate flex-1">{c.nom}</span>
-                  <span className="text-[11px] text-gray-400 truncate">{c.ville}</span>
-                  <span className="text-[10px] text-gray-400 w-20 text-right">{c.last_visit ? `vu le ${formatDate(c.last_visit)}` : 'jamais vu'}</span>
+                  <span className="text-xs text-gray-400 truncate">{c.ville}</span>
+                  <span className="text-xs text-gray-400 w-20 text-right">{c.last_visit ? `vu le ${formatDate(c.last_visit)}` : 'jamais vu'}</span>
                 </Link>
               ))}
             </div>} />
@@ -675,7 +675,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
                         <span className="text-red-600 font-medium tabular-nums">{joursDeRetard(c, today)} j</span>
                       </Link>
                     ))}
-                    {retards.length > 5 && <Link to="/clients" className="text-[11px] text-gray-400 hover:underline px-1">et {retards.length - 5} autre(s)…</Link>}
+                    {retards.length > 5 && <Link to="/clients" className="text-xs text-gray-400 hover:underline px-1">et {retards.length - 5} autre(s)…</Link>}
                   </div>
                 </div>
               )}
@@ -719,10 +719,10 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
           <div className="grid grid-cols-6 gap-2">
             {tournee.semaine.map((j, i) => (
               <Link key={j.k} to="/semaine" className={`rounded-lg border p-2 text-center ${j.k === dayKey ? 'border-brewery-300 bg-brewery-50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                <p className="text-[11px] font-semibold text-gray-700 capitalize">{['lun', 'mar', 'mer', 'jeu', 'ven', 'sam'][i]}</p>
+                <p className="text-xs font-semibold text-gray-700 capitalize">{['lun', 'mar', 'mer', 'jeu', 'ven', 'sam'][i]}</p>
                 <p className="text-lg font-bold text-gray-900 tabular-nums">{j.n}</p>
-                <p className="text-[10px] text-gray-400 truncate" title={j.zones.join(', ')}>{j.zones.length ? j.zones.join(', ') : '—'}</p>
-                {rdvSemaine[i] > 0 && <p className="text-[10px] text-indigo-600">{rdvSemaine[i]} RDV</p>}
+                <p className="text-xs text-gray-400 truncate" title={j.zones.join(', ')}>{j.zones.length ? j.zones.join(', ') : '—'}</p>
+                {rdvSemaine[i] > 0 && <p className="text-xs text-indigo-600">{rdvSemaine[i]} RDV</p>}
               </Link>
             ))}
           </div>
@@ -793,7 +793,7 @@ function SessionClientsDuJour({ moi }: { moi: Commercial }) {
                 <div key={c.id} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
                   {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                   <Link to={`/clients?id=${c.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{c.nom}</Link>
-                  <span className="text-[11px] text-gray-400 truncate max-w-[40%]">{c.ville}</span>
+                  <span className="text-xs text-gray-400 truncate max-w-[40%]">{c.ville}</span>
                 </div>); })}
             </div>
           </div>
@@ -841,7 +841,7 @@ function SessionProspectsDuJour({ moi }: { moi: Commercial }) {
                 <div key={p.id} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
                   {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                   <Link to={`/prospects?id=${p.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{p.nom_etablissement}</Link>
-                  <span className="text-[11px] text-gray-400 truncate max-w-[40%]">{p.ville}</span>
+                  <span className="text-xs text-gray-400 truncate max-w-[40%]">{p.ville}</span>
                 </div>); })}
             </div>
           </div>
@@ -859,9 +859,9 @@ function BoiteDeProspection({ moi }: { moi: Commercial }) {
       enfants={<div className="space-y-0.5 max-h-64 overflow-y-auto">
         {attente.slice(0, 8).map(s => (
           <Link key={s.id} to="/boite" className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 rounded">
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">{LIBELLES_SOURCE[s.source]}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">{LIBELLES_SOURCE[s.source]}</span>
             <span className="flex-1 min-w-0 truncate text-sm text-gray-800">{titreDuSignalement(s)}</span>
-            <span className="text-[11px] text-gray-500 whitespace-nowrap">{nomDe(s.partage_par)}{s.commercial_id ? ` → ${nomDe(s.commercial_id)}` : ''}</span>
+            <span className="text-xs text-gray-500 whitespace-nowrap">{nomDe(s.partage_par)}{s.commercial_id ? ` → ${nomDe(s.commercial_id)}` : ''}</span>
           </Link>
         ))}
         {attente.length > 8 && <p className="text-xs text-gray-500 pt-1">et {attente.length - 8} autre(s)…</p>}
@@ -943,8 +943,8 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
               {zonesPrio.map(({ zone, aAppeler: liste }) => { const c = getCommercial(zone.commercial_id); return (
                 <div key={zone.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50/60 border border-red-100">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{zone.nom || 'Zone'} <span className="text-[11px] text-gray-500 font-normal">· {c ? `${c.prenom} ${c.nom}` : ''}</span></p>
-                    {zone.consigne ? <p className="text-xs text-red-800">{zone.consigne}</p> : <p className="text-[11px] text-gray-400">Sans consigne</p>}
+                    <p className="text-sm font-medium text-gray-900 truncate">{zone.nom || 'Zone'} <span className="text-xs text-gray-500 font-normal">· {c ? `${c.prenom} ${c.nom}` : ''}</span></p>
+                    {zone.consigne ? <p className="text-xs text-red-800">{zone.consigne}</p> : <p className="text-xs text-gray-400">Sans consigne</p>}
                   </div>
                   <button onClick={() => sessionZone(liste.map(p => p.id))} disabled={liste.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50 whitespace-nowrap">
                     <Phone className="w-3.5 h-3.5" /> Session d'appel ({liste.length})
@@ -963,7 +963,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                 <Navigation className="w-4 h-4 text-blue-600" /> Ils passent déjà par là
               </h3>
             </div>
-            <p className="text-[11px] text-gray-500 mb-2.5">
+            <p className="text-xs text-gray-500 mb-2.5">
               Un rendez-vous est déjà posé : c'est le bon moment pour appeler les prospects du secteur et remplir la journée.
             </p>
             <div className="space-y-2">
@@ -972,9 +972,9 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {formatDate(t.date)} · {t.prenom}
-                      {t.villes.length > 0 && <span className="text-[11px] text-gray-500 font-normal"> · {t.villes.slice(0, 2).join(', ')}{t.villes.length > 2 ? '…' : ''}</span>}
+                      {t.villes.length > 0 && <span className="text-xs text-gray-500 font-normal"> · {t.villes.slice(0, 2).join(', ')}{t.villes.length > 2 ? '…' : ''}</span>}
                     </p>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-xs text-gray-500">
                       {t.rdvPoses} RDV déjà posé{t.rdvPoses > 1 ? 's' : ''} · {t.aAppeler.length} prospect{t.aAppeler.length > 1 ? 's' : ''} à appeler dans les {RAYON_APPELS_KM} km
                       {t.aAppeler.length > SESSION_MAX && <span> · les {SESSION_MAX} meilleurs d'abord</span>}
                     </p>
@@ -999,10 +999,10 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
             enfants={<div className="space-y-0.5 max-h-80 overflow-y-auto">
               {rappels.map(r => { const p = getProspect(r.prospect_id); const enRetard = r.date < today; return (
                 <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
-                  <span className={`text-[11px] tabular-nums w-16 ${enRetard ? 'text-red-600 font-medium' : 'text-gray-500'}`}>{enRetard ? formatDate(r.date) : r.heure}</span>
+                  <span className={`text-xs tabular-nums w-16 ${enRetard ? 'text-red-600 font-medium' : 'text-gray-500'}`}>{enRetard ? formatDate(r.date) : r.heure}</span>
                   <Link to={`/prospects?id=${r.prospect_id}`} className="flex-1 min-w-0">
                     <p className="text-sm text-gray-800 truncate">{p?.nom_etablissement || 'Prospect'}</p>
-                    <p className="text-[11px] text-gray-400 truncate">{r.message}</p>
+                    <p className="text-xs text-gray-400 truncate">{r.message}</p>
                   </Link>
                   {p?.telephone && <a href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>}
                 </div>); })}
@@ -1014,12 +1014,12 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
               <button onClick={() => startSession(aAppeler.map(p => p.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700">
                 <Phone className="w-3.5 h-3.5" /> Lancer la session d'appels ({aAppeler.length})
               </button>
-              {!maSession.session && <p className="text-[11px] text-gray-400 mb-2">Suggestions par score. Pour choisir vous-même : cochez des prospects dans <Link to="/prospects" className="underline">Prospects</Link> ou <Link to="/pipeline" className="underline">Pipeline</Link>, puis « Ma session du jour ».</p>}
+              {!maSession.session && <p className="text-xs text-gray-400 mb-2">Suggestions par score. Pour choisir vous-même : cochez des prospects dans <Link to="/prospects" className="underline">Prospects</Link> ou <Link to="/pipeline" className="underline">Pipeline</Link>, puis « Ma session du jour ».</p>}
               {aAppeler.map(p => (
                 <div key={p.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
                   <Link to={`/prospects?id=${p.id}`} className="flex-1 min-w-0">
                     <p className="text-sm text-gray-800 truncate">{p.nom_etablissement}</p>
-                    <p className="text-[11px] text-gray-400 truncate">{p.ville}{p.score ? ` · ${p.score} pts` : ''}</p>
+                    <p className="text-xs text-gray-400 truncate">{p.ville}{p.score ? ` · ${p.score} pts` : ''}</p>
                   </Link>
                   <a href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>
                 </div>
@@ -1033,9 +1033,9 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm mb-3"><Phone className="w-4 h-4 text-green-600" /> Mes appels aujourd'hui</h3>
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div><p className="text-2xl font-bold text-gray-900 tabular-nums">{appelsDuJour.length}</p><p className="text-[11px] text-gray-500">appels</p></div>
-              <div><p className="text-2xl font-bold text-green-600 tabular-nums">{appelsDuJour.filter(c => c.resultat === 'repondu').length}</p><p className="text-[11px] text-gray-500">répondus</p></div>
-              <div><p className="text-2xl font-bold text-indigo-600 tabular-nums">{rdvPrisDuJour.length}</p><p className="text-[11px] text-gray-500">RDV pris</p></div>
+              <div><p className="text-2xl font-bold text-gray-900 tabular-nums">{appelsDuJour.length}</p><p className="text-xs text-gray-500">appels</p></div>
+              <div><p className="text-2xl font-bold text-green-600 tabular-nums">{appelsDuJour.filter(c => c.resultat === 'repondu').length}</p><p className="text-xs text-gray-500">répondus</p></div>
+              <div><p className="text-2xl font-bold text-indigo-600 tabular-nums">{rdvPrisDuJour.length}</p><p className="text-xs text-gray-500">RDV pris</p></div>
             </div>
           </div>
         </BlocErreur>
@@ -1209,7 +1209,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
               <Link key={c.label} to={c.lien} className={`rounded-lg border p-2.5 ${c.n === 0 ? 'border-gray-100 text-gray-400' : c.grave ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'} hover:opacity-90`}>
                 <c.icone className="w-4 h-4 mb-1" />
                 <p className="text-xl font-bold tabular-nums leading-none">{c.n}</p>
-                <p className="text-[10px] mt-1 leading-tight">{c.label}</p>
+                <p className="text-xs mt-1 leading-tight">{c.label}</p>
               </Link>
             ))}
           </div>
@@ -1257,7 +1257,7 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
                       <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${deplie ? '' : '-rotate-90'}`} />
                       {p.prenom} {p.nom}
                     </p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : p.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{libelleRole(p)}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${p.role === 'prospection' ? 'bg-emerald-100 text-emerald-700' : p.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{libelleRole(p)}</span>
                   </td>
                   <td className="py-2 px-2 text-center text-gray-700 whitespace-nowrap">
                     {comm && <span><b className="tabular-nums">{rdvJour}</b> RDV · <b className="tabular-nums">{visites}</b> visites · <b className="tabular-nums">{appelsClients}</b> appels clients</span>}
@@ -1282,10 +1282,10 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
                   <td className="py-2 px-2">
                     <div className="flex flex-wrap gap-1.5">
                       {objectifs.map(o => { const c = COULEUR_ETAT[o.etat]; return (
-                        <span key={o.cle} title={`${o.label} : ${o.valeur} / ${o.objectif || '—'} (${c.label})`} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${o.etat === 'atteint' ? 'border-green-200 bg-green-50 text-green-700' : o.etat === 'dans_le_rythme' ? 'border-brewery-200 bg-brewery-50 text-brewery-700' : o.etat === 'en_retard' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 text-gray-400'}`}>
+                        <span key={o.cle} title={`${o.label} : ${o.valeur} / ${o.objectif || '—'} (${c.label})`} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs ${o.etat === 'atteint' ? 'border-green-200 bg-green-50 text-green-700' : o.etat === 'dans_le_rythme' ? 'border-brewery-200 bg-brewery-50 text-brewery-700' : o.etat === 'en_retard' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 text-gray-400'}`}>
                           {o.label} <b className="tabular-nums">{o.valeur}</b>/{o.objectif || '—'}
                         </span>); })}
-                      {derive > 0 && <span className="text-[10px] text-amber-700 self-center">{derive} en dérive</span>}
+                      {derive > 0 && <span className="text-xs text-amber-700 self-center">{derive} en dérive</span>}
                     </div>
                   </td>
                 </tr>

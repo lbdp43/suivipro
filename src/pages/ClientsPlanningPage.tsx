@@ -581,9 +581,9 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
             <div className="flex items-center gap-2">
               <ClipboardCheck className="w-4 h-4 text-indigo-500" />
               <p className="text-sm font-semibold text-gray-700">Résultats des RDV</p>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">{resultsData.totalRdv} RDV</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">{resultsData.totalRdv} RDV</span>
             </div>
-            <p className="text-[10px] text-gray-400 italic hidden sm:block">Cliquez pour voir le détail</p>
+            <p className="text-xs text-gray-400 italic hidden sm:block">Cliquez pour voir le détail</p>
           </div>
 
           {/* Period selector */}
@@ -598,7 +598,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
               <button
                 key={p.key}
                 onClick={() => { setResultsPeriod(p.key); setExpandedResult(null); }}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
                   resultsPeriod === p.key
                     ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300'
                     : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -607,11 +607,11 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                 {p.label}
               </button>
             ))}
-            <span className="text-[10px] text-gray-400 ml-1">({resultsData.periodLabel})</span>
+            <span className="text-xs text-gray-400 ml-1">({resultsData.periodLabel})</span>
           </div>
 
           {/* Stats summary */}
-          <div className="flex items-center gap-3 mb-3 text-[11px]">
+          <div className="flex items-center gap-3 mb-3 text-xs">
             <span className="text-gray-500"><strong className="text-green-600">{resultsData.rdvWithCR}</strong> CR saisis</span>
             <span className="text-gray-300">|</span>
             <span className="text-gray-500">Taux CR: <strong className={resultsData.totalRdv > 0 && resultsData.rdvWithCR / resultsData.totalRdv >= 0.8 ? 'text-green-600' : 'text-orange-600'}>{resultsData.totalRdv > 0 ? Math.round((resultsData.rdvWithCR / resultsData.totalRdv) * 100) : 0}%</strong></span>
@@ -672,11 +672,11 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <button onClick={() => { if (rdv.client_id) setSelectedClientId(rdv.client_id); }} className="text-sm font-medium text-brewery-700 hover:text-brewery-900 hover:underline text-left">{name}</button>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${info.isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${info.isClient ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
                                 {info.isClient ? 'Client' : 'Prospect'}
                               </span>
                             </div>
-                            <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1 flex-wrap">
+                            <div className="flex items-center gap-3 text-xs text-gray-500 mt-1 flex-wrap">
                               <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{(() => { const d = new Date(rdv.date.split('T')[0] + 'T12:00:00'); const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']; return `${jours[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; })()}</span>
                               <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>
                               {info.ville && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{info.ville}</span>}
@@ -746,7 +746,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
         </div>
         <div className="flex items-center gap-1">
           {planningWeekOffset !== 0 && (
-            <button onClick={() => setPlanningWeekOffset(0)} className="px-2 py-1 text-[10px] text-brewery-600 hover:bg-brewery-50 rounded">
+            <button onClick={() => setPlanningWeekOffset(0)} className="px-2 py-1 text-xs text-brewery-600 hover:bg-brewery-50 rounded">
               Aujourd'hui
             </button>
           )}
@@ -779,7 +779,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                   <div className="flex items-center gap-1.5 mb-1">
                     <Map className="w-3 h-3 text-red-500" />
                     <span className="text-xs font-medium text-red-600">{tournee}</span>
-                    <span className="text-[10px] text-red-400">({clients.length})</span>
+                    <span className="text-xs text-red-400">({clients.length})</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 ml-4">
                     {clients.map(c => (
@@ -789,8 +789,8 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                         className="px-2 py-1 bg-white border border-red-200 rounded text-xs text-red-700 hover:bg-red-100 transition-colors flex items-center gap-1"
                       >
                         <span className="font-medium">{c.nom}</span>
-                        <span className="text-[10px] text-red-400">{c.ville}</span>
-                        {c.next_visit && <span className="text-[9px] text-red-300">({c.next_visit.substring(5).replace('-', '/')})</span>}
+                        <span className="text-xs text-red-400">{c.ville}</span>
+                        {c.next_visit && <span className="text-xs text-red-300">({c.next_visit.substring(5).replace('-', '/')})</span>}
                       </button>
                     ))}
                   </div>
@@ -822,11 +822,11 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                 >
                   <h3 className={`text-sm font-semibold ${isToday ? 'text-brewery-700' : 'text-gray-700'}`}>
                     {day.label}
-                    {isToday && <span className="ml-2 px-1.5 py-0.5 bg-brewery-600 text-white rounded text-[10px]">Aujourd'hui</span>}
+                    {isToday && <span className="ml-2 px-1.5 py-0.5 bg-brewery-600 text-white rounded text-xs">Aujourd'hui</span>}
                   </h3>
                   <div className="flex items-center gap-2">
                     {day.visitDueCount > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
+                      <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
                         {day.visitDueCount} a visiter
                       </span>
                     )}
@@ -843,7 +843,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                   <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleSchedulingDay(day.dateStr); }}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
                         schedulingDay === day.dateStr
                           ? 'bg-brewery-600 text-white ring-2 ring-brewery-300'
                           : 'bg-gray-100 text-gray-500 hover:bg-brewery-50 hover:text-brewery-600'
@@ -855,7 +855,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleMassActionDay(day.dateStr); }}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
                         massActionDay === day.dateStr
                           ? 'bg-indigo-600 text-white ring-2 ring-indigo-300'
                           : 'bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'
@@ -895,16 +895,16 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <NomFiche prospectId={rdv.client_id ? undefined : rdv.prospect_id} clientId={rdv.client_id} className="font-semibold text-xs text-gray-800">{entityName}</NomFiche>
-                                    {isAdmin && comm && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{comm.prenom}</span>}
+                                    {isAdmin && comm && <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{comm.prenom}</span>}
                                     <PrisPar rdv={rdv} />
-                                    {hasCR && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
+                                    {hasCR && <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{APPOINTMENT_RESULT_LABELS[rdv.compte_rendu!] || rdv.compte_rendu}</span>}
                                   </div>
-                                  <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                                     {rdv.heure_debut && <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>}
                                     {rdv.lieu && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{rdv.lieu}</span>}
                                   </div>
-                                  {rdv.notes && <p className="text-[10px] text-gray-400 mt-0.5 italic line-clamp-1">{rdv.notes}</p>}
-                                  {hasCR && rdv.notes_compte_rendu && <p className="text-[10px] text-green-600 mt-0.5 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
+                                  {rdv.notes && <p className="text-xs text-gray-400 mt-0.5 italic line-clamp-1">{rdv.notes}</p>}
+                                  {hasCR && rdv.notes_compte_rendu && <p className="text-xs text-green-600 mt-0.5 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-gray-100">
@@ -939,15 +939,15 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <Map className="w-3.5 h-3.5 text-indigo-400" />
                             <span className="text-xs font-semibold text-indigo-600">{sector.zone}</span>
-                            <span className="text-[10px] text-gray-400">{sector.clients.length} client{sector.clients.length > 1 ? 's' : ''}</span>
+                            <span className="text-xs text-gray-400">{sector.clients.length} client{sector.clients.length > 1 ? 's' : ''}</span>
                             {sector.visitDueClients.length > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-600 rounded">
+                              <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-600 rounded">
                                 {sector.visitDueClients.length} en attente
                               </span>
                             )}
                           </div>
                           {sector.clients.length === 0 ? (
-                            <p className="text-[10px] text-gray-300 italic ml-5">Aucun client dans ce secteur</p>
+                            <p className="text-xs text-gray-300 italic ml-5">Aucun client dans ce secteur</p>
                           ) : (
                             <div className="flex flex-wrap gap-1.5 ml-5">
                               {sector.clients.map(c => {
@@ -980,11 +980,11 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                                     <span className="font-medium">{c.nom}</span>
                                     <span className="text-gray-400 ml-1">{c.ville}</span>
                                     {isDue && c.next_visit && (
-                                      <span className="text-[9px] ml-1 opacity-60">
+                                      <span className="text-xs ml-1 opacity-60">
                                         ({c.next_visit.substring(5).replace('-', '/')})
                                       </span>
                                     )}
-                                    {isAdmin && comm && <span className="text-[10px] text-gray-300 ml-1">• {comm.prenom}</span>}
+                                    {isAdmin && comm && <span className="text-xs text-gray-300 ml-1">• {comm.prenom}</span>}
                                   </button>
                                 );
                               })}
@@ -1021,7 +1021,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
           </span>
           <button
             onClick={() => setSelectedClients(new Set())}
-            className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
+            className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
           >
             Tout désélectionner
           </button>
@@ -1096,7 +1096,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                     <button
                       key={d}
                       onClick={() => setScheduleSlotDuration(d)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
                         scheduleSlotDuration === d
                           ? 'bg-brewery-100 text-brewery-700 ring-1 ring-brewery-300'
                           : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -1127,10 +1127,10 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                   if (!client) return null;
                   return (
                     <div key={entry.clientId} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2.5 border border-gray-200">
-                      <span className="text-[10px] text-gray-400 font-mono w-5 text-center">{idx + 1}</span>
+                      <span className="text-xs text-gray-400 font-mono w-5 text-center">{idx + 1}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800 truncate">{client.nom}</p>
-                        <p className="text-[11px] text-gray-400 truncate">{client.ville}{client.adresse ? ` - ${client.adresse}` : ''}</p>
+                        <p className="text-xs text-gray-400 truncate">{client.ville}{client.adresse ? ` - ${client.adresse}` : ''}</p>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <input
@@ -1259,7 +1259,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
           </span>
           <button
             onClick={() => setMassSelectedClients(new Set())}
-            className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap"
+            className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
           >
             Tout désélectionner
           </button>
@@ -1453,7 +1453,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                     {Array.from(massSelectedClients).map(id => {
                       const client = state.clients.find(c => c.id === id);
                       return client ? (
-                        <span key={id} className="text-[11px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
+                        <span key={id} className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
                           {client.nom}
                         </span>
                       ) : null;

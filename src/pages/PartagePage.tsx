@@ -178,7 +178,7 @@ export default function PartagePage() {
           <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
             <div className="px-3 py-2 flex items-center justify-between gap-2">
               <span className="font-semibold text-gray-900 truncate">{titreDuSignalement(envoye)}</span>
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">{LIBELLES_SOURCE[envoye.source]}</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">{LIBELLES_SOURCE[envoye.source]}</span>
             </div>
             {(envoye.fiche.adresse || envoye.fiche.ville) && (
               <div className="px-3 py-2 flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-gray-400" /><span className="text-gray-800">{[envoye.fiche.adresse, [envoye.fiche.code_postal, envoye.fiche.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</span></div>
@@ -196,7 +196,7 @@ export default function PartagePage() {
                   <li key={`${d.genre}-${d.id}`} className="flex items-center gap-2">
                     <Building2 className="w-3.5 h-3.5 text-amber-600" />
                     <Link to={d.genre === 'client' ? `/clients?id=${d.id}` : `/prospects?id=${d.id}`} className="text-brewery-700 hover:underline">{d.nom}{d.ville ? ` · ${d.ville}` : ''}</Link>
-                    <span className="text-[11px] bg-amber-100 px-1.5 py-0.5 rounded-full">{d.genre === 'client' ? 'client' : 'prospect'}</span>
+                    <span className="text-xs bg-amber-100 px-1.5 py-0.5 rounded-full">{d.genre === 'client' ? 'client' : 'prospect'}</span>
                   </li>
                 ))}
               </ul>

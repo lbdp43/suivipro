@@ -202,15 +202,15 @@ export default function AdminClientsDashboard() {
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center p-2 bg-green-50 rounded-lg">
                 <p className="text-lg font-bold text-green-700">{stats.global.visites_semaine_par_type?.VISITE || 0}</p>
-                <p className="text-[10px] text-green-600">Visites</p>
+                <p className="text-xs text-green-600">Visites</p>
               </div>
               <div className="text-center p-2 bg-blue-50 rounded-lg">
                 <p className="text-lg font-bold text-blue-700">{stats.global.visites_semaine_par_type?.APPEL || 0}</p>
-                <p className="text-[10px] text-blue-600">Appels</p>
+                <p className="text-xs text-blue-600">Appels</p>
               </div>
               <div className="text-center p-2 bg-purple-50 rounded-lg">
                 <p className="text-lg font-bold text-purple-700">{stats.global.visites_semaine_par_type?.RDV_PLANIFIE || 0}</p>
-                <p className="text-[10px] text-purple-600">RDV</p>
+                <p className="text-xs text-purple-600">RDV</p>
               </div>
             </div>
           </div>
@@ -219,15 +219,15 @@ export default function AdminClientsDashboard() {
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center p-2 bg-green-50 rounded-lg">
                 <p className="text-lg font-bold text-green-700">{stats.global.visites_mois_par_type?.VISITE || 0}</p>
-                <p className="text-[10px] text-green-600">Visites</p>
+                <p className="text-xs text-green-600">Visites</p>
               </div>
               <div className="text-center p-2 bg-blue-50 rounded-lg">
                 <p className="text-lg font-bold text-blue-700">{stats.global.visites_mois_par_type?.APPEL || 0}</p>
-                <p className="text-[10px] text-blue-600">Appels</p>
+                <p className="text-xs text-blue-600">Appels</p>
               </div>
               <div className="text-center p-2 bg-purple-50 rounded-lg">
                 <p className="text-lg font-bold text-purple-700">{stats.global.visites_mois_par_type?.RDV_PLANIFIE || 0}</p>
-                <p className="text-[10px] text-purple-600">RDV</p>
+                <p className="text-xs text-purple-600">RDV</p>
               </div>
             </div>
           </div>
@@ -258,27 +258,27 @@ export default function AdminClientsDashboard() {
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div className="text-center p-2 bg-gray-50 rounded-lg">
                   <p className="text-lg font-bold text-gray-900">{s.visites_semaine}</p>
-                  <p className="text-[10px] text-gray-500">Interactions sem.</p>
+                  <p className="text-xs text-gray-500">Interactions sem.</p>
                 </div>
                 <div className="text-center p-2 bg-gray-50 rounded-lg">
                   <p className="text-lg font-bold text-gray-900">{s.visites_mois}</p>
-                  <p className="text-[10px] text-gray-500">Interactions mois</p>
+                  <p className="text-xs text-gray-500">Interactions mois</p>
                 </div>
                 <div className="text-center p-2 bg-gray-50 rounded-lg">
                   <p className="text-lg font-bold text-gray-900">{s.taches_terminees_mois}</p>
-                  <p className="text-[10px] text-gray-500">Tâches term.</p>
+                  <p className="text-xs text-gray-500">Tâches term.</p>
                 </div>
               </div>
 
               {/* Type breakdown for this month */}
               <div className="flex gap-1.5 mb-3">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-medium">
                   {s.visites_mois_par_type?.VISITE || 0} visites
                 </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[10px] font-medium">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
                   {s.visites_mois_par_type?.APPEL || 0} appels
                 </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[10px] font-medium">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs font-medium">
                   {s.visites_mois_par_type?.RDV_PLANIFIE || 0} RDV
                 </span>
               </div>
@@ -372,7 +372,7 @@ export default function AdminClientsDashboard() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-800 truncate">{a.description}</p>
-                  <p className="text-[10px] text-gray-400">
+                  <p className="text-xs text-gray-400">
                     {a.commercial} - {formatDateLong(a.date)}
                   </p>
                   {a.comment && (
@@ -444,7 +444,7 @@ export default function AdminClientsDashboard() {
                         </div>
                         <div className="flex items-center gap-2">
                           {c.tournee && (
-                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px]">
+                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-xs">
                               {c.tournee}
                             </span>
                           )}

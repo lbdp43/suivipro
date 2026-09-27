@@ -151,13 +151,13 @@ export default function OngletActivite() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm text-gray-800">{entry.prenom} {entry.nom}</span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${info.color}`}>{info.label}</span>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${info.color}`}>{info.label}</span>
                         </div>
                         {entry.details && (
                           <p className="text-xs text-gray-600 mt-0.5 truncate">{entry.details}</p>
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0 whitespace-nowrap">
+                      <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">
                         {date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>

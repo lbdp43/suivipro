@@ -194,7 +194,7 @@ function ProspectionZonePicker({ entries, allZones, onAdd, onRemove, onSlotsChan
               >
                 +
               </button>
-              <span className="text-green-600 text-[10px] ml-0.5">RDV</span>
+              <span className="text-green-600 text-xs ml-0.5">RDV</span>
               <button
                 type="button"
                 onClick={() => onRemove(zone)}
@@ -685,7 +685,7 @@ export default function TourneesPage() {
                 {isMe && <span className="text-brewery-600 ml-1">(moi)</span>}
                 {readOnly && !isMe && <span className="text-gray-400 ml-1 text-xs">(lecture seule)</span>}
               </p>
-              <p className="text-[10px] text-gray-500">
+              <p className="text-xs text-gray-500">
                 {WEEK_PATTERN_LABELS[weekPattern]}
                 {!isActiveThisWeek && ' — pas cette semaine'}
               </p>
@@ -798,17 +798,17 @@ export default function TourneesPage() {
                           </div>
                           <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             {daySectorStats && daySectorStats.totalClients > 0 && (
-                              <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
+                              <span className="text-xs font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
                                 {daySectorStats.visitsDone}/{daySectorStats.totalClients} visites
                               </span>
                             )}
                             {totalSlotsForDay > 0 && (
-                              <span className="text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                              <span className="text-xs font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
                                 {totalSlotsForDay} RDV à prendre
                               </span>
                             )}
                             {dayRdvCount > 0 && (
-                              <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
+                              <span className="text-xs font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
                                 {dayRdvCount} RDV pris
                               </span>
                             )}
@@ -836,7 +836,7 @@ export default function TourneesPage() {
                             : 'bg-gray-50 border border-gray-100';
                       return (
                         <div key={day} className={`p-2 rounded-lg text-center ${cellClass}`}>
-                          <p className="text-[10px] font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
+                          <p className="text-xs font-medium text-gray-500 mb-1">{DAY_LABELS[day]}</p>
                           {zones.length > 0 ? (
                             <div className="space-y-0.5">
                               {zones.map((z, i) => {
@@ -845,7 +845,7 @@ export default function TourneesPage() {
                                   <div key={i}>
                                     <span className={`block text-xs font-medium ${slots ? 'text-green-700' : 'text-indigo-700'}`}>{z}</span>
                                     {slots && (
-                                      <span className="inline-block text-[10px] font-bold text-white bg-green-500 rounded-full px-1.5 leading-4 mt-0.5">
+                                      <span className="inline-block text-xs font-bold text-white bg-green-500 rounded-full px-1.5 leading-4 mt-0.5">
                                         {slots} RDV
                                       </span>
                                     )}
@@ -858,7 +858,7 @@ export default function TourneesPage() {
                           ) : null}
                           {daySectorStats && daySectorStats.totalClients > 0 && (
                             <div className={`mt-1 ${zones.length > 0 ? 'pt-1 border-t border-gray-200' : ''}`}>
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
+                              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5">
                                 <User className="w-2.5 h-2.5" />
                                 {daySectorStats.visitsDone}/{daySectorStats.totalClients} visites
                               </span>
@@ -866,7 +866,7 @@ export default function TourneesPage() {
                           )}
                           {totalSlotsForDay > 0 && (
                             <div className="mt-0.5">
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
                                 <Calendar className="w-2.5 h-2.5" />
                                 {totalSlotsForDay} à prendre
                               </span>
@@ -874,7 +874,7 @@ export default function TourneesPage() {
                           )}
                           {dayRdvCount > 0 && (
                             <div className="mt-0.5">
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
+                              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
                                 <Calendar className="w-2.5 h-2.5" />
                                 {dayRdvCount} pris
                               </span>
@@ -936,7 +936,7 @@ export default function TourneesPage() {
               {isEvenWeek ? 'paire' : 'impaire'}
             </span>
             {isCurrentWeek && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brewery-100 text-brewery-700 font-medium">
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-brewery-100 text-brewery-700 font-medium">
                 Cette semaine
               </span>
             )}
@@ -1042,9 +1042,9 @@ export default function TourneesPage() {
               <label className="text-xs font-semibold text-green-800">
                 Zones prioritaires pour la prospection
               </label>
-              <span className="text-[10px] text-green-600 font-normal">(visibles par les prospecteurs)</span>
+              <span className="text-xs text-green-600 font-normal">(visibles par les prospecteurs)</span>
             </div>
-            <p className="text-[11px] text-green-700 mb-2.5">
+            <p className="text-xs text-green-700 mb-2.5">
               {editingFor === currentUserId
                 ? 'Indiquez les secteurs ou vous souhaitez que la prospection vous cale des rendez-vous, et combien.'
                 : `Indiquez les secteurs ou la prospection doit caler des rendez-vous a ${nomCommercial(editingFor)}, et combien.`}

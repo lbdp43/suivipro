@@ -478,7 +478,7 @@ export default function PipelineCRPage() {
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
             <h1 className="text-base sm:text-xl font-bold text-gray-900">Suivi des rendez-vous</h1>
-            <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 hidden sm:block">
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5 hidden sm:block">
               Suivez la progression des RDV vers la conversion client
             </p>
           </div>
@@ -515,17 +515,17 @@ export default function PipelineCRPage() {
         {/* Filters row */}
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-gray-500 text-[10px]">Du</span>
+            <span className="text-gray-500 text-xs">Du</span>
             <input
               type="date"
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-[11px] bg-white"
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"
               value={filterDateStart}
               onChange={e => setFilterDateStart(e.target.value)}
             />
-            <span className="text-gray-500 text-[10px]">au</span>
+            <span className="text-gray-500 text-xs">au</span>
             <input
               type="date"
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-[11px] bg-white"
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"
               value={filterDateEnd}
               onChange={e => setFilterDateEnd(e.target.value)}
             />
@@ -533,7 +533,7 @@ export default function PipelineCRPage() {
 
           {isAdmin && (
             <select
-              className={`text-[10px] sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
+              className={`text-xs sm:text-xs border rounded-lg px-2 py-1.5 bg-white flex-shrink-0 ${
                 filterCommercial ? 'border-brewery-500 text-brewery-700' : 'border-gray-200 text-gray-500'
               }`}
               value={filterCommercial}
@@ -568,7 +568,7 @@ export default function PipelineCRPage() {
 
           {hasActiveFilters && (
             <button
-              className="px-2 py-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
+              className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
               onClick={() => { setFilterCommercial(''); setFilterSecteurs(new Set()); setFilterTypes(new Set()); }}
             >
               <X className="w-3 h-3" /> Reset
@@ -578,7 +578,7 @@ export default function PipelineCRPage() {
           <div className="flex-1" />
 
           <select
-            className="text-[10px] sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
+            className="text-xs sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
             value={maxPerColumn}
             onChange={e => { setMaxPerColumn(Number(e.target.value)); setExpandedColumns(new Set()); }}
           >
@@ -676,8 +676,8 @@ export default function PipelineCRPage() {
                     ) : (
                       <>
                         <span className="flex-1 text-sm font-medium text-gray-700">{col.label}</span>
-                        {col.builtin && <span className="text-[9px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">Defaut</span>}
-                        <span className="text-[10px] text-gray-400">{(aptsByColumn[col.id] || []).length} RDV</span>
+                        {col.builtin && <span className="text-xs text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">Defaut</span>}
+                        <span className="text-xs text-gray-400">{(aptsByColumn[col.id] || []).length} RDV</span>
                         <button className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" onClick={() => startEditColumn(col)} title="Modifier"><Pencil className="w-3.5 h-3.5" /></button>
                         {!col.builtin && (
                           <button className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => deleteColumn(col)} title="Supprimer"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -720,7 +720,7 @@ export default function PipelineCRPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-sm text-gray-900 truncate">{col.label}</h3>
-                      <p className="text-[9px] text-gray-400">{col.description}</p>
+                      <p className="text-xs text-gray-400">{col.description}</p>
                     </div>
                     <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200 font-bold">
                       {apts.length}
@@ -749,38 +749,38 @@ export default function PipelineCRPage() {
                           <div className="flex-1 min-w-0">
                             <h4 className="font-medium text-sm text-gray-900 truncate"><NomFiche prospectId={apt.client_id ? undefined : apt.prospect_id} clientId={apt.client_id}>{name}</NomFiche></h4>
 
-                            <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                            <p className="text-xs text-gray-500 mt-0.5 truncate">
                               {info.typeName}
                               {info.secteur && <span> - {info.secteur}</span>}
                             </p>
 
                             {info.ville && (
-                              <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
+                              <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
                                 <MapPin className="w-3 h-3" />
                                 <span className="truncate">{info.ville}</span>
                               </div>
                             )}
 
-                            <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400">
+                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
                               <Calendar className="w-3 h-3" />
                               {format(parseISO(apt.date), 'dd MMM yyyy', { locale: fr })}
                               {apt.heure_debut && <span className="ml-1">{apt.heure_debut}</span>}
                             </div>
 
-                            <div className="flex items-center gap-1 mt-1 text-[10px] flex-wrap">
+                            <div className="flex items-center gap-1 mt-1 text-xs flex-wrap">
                               <UserCheck className="w-3 h-3 text-brewery-400" />
                               <span className="text-brewery-600 truncate">{comName}</span>
                               <PrisPar rdv={apt} />
                             </div>
 
                             {apt.notes_compte_rendu && (
-                              <p className="mt-1.5 text-[10px] text-gray-500 bg-gray-50 rounded px-2 py-1 line-clamp-2 italic">
+                              <p className="mt-1.5 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1 line-clamp-2 italic">
                                 {apt.notes_compte_rendu}
                               </p>
                             )}
 
                             <div className="flex items-center gap-1.5 mt-2">
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                                 info.type === 'client' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
                               }`}>
                                 {info.type === 'client' ? 'Client' : 'Prospect'}
@@ -820,7 +820,7 @@ export default function PipelineCRPage() {
 
                   {!expandedColumns.has(col.id) && apts.length > maxPerColumn && (
                     <button
-                      className="w-full py-2 text-[11px] font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center justify-center gap-1"
+                      className="w-full py-2 text-xs font-medium text-brewery-600 hover:bg-brewery-50 rounded-lg flex items-center justify-center gap-1"
                       onClick={() => setExpandedColumns(prev => { const s = new Set(prev); s.add(col.id); return s; })}
                     >
                       <ChevronDown className="w-3.5 h-3.5" />
@@ -854,39 +854,39 @@ export default function PipelineCRPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-gray-400 uppercase tracking-wider">Établissement</label>
-                <p className="font-semibold text-gray-900"><NomFiche prospectId={detailApt.client_id ? undefined : detailApt.prospect_id} clientId={detailApt.client_id}>{getEntityName(detailApt)}</NomFiche> <span className="text-[10px] font-normal text-gray-400">· voir la fiche et l'historique</span></p>
+                <label className="text-xs text-gray-400 uppercase tracking-wider">Établissement</label>
+                <p className="font-semibold text-gray-900"><NomFiche prospectId={detailApt.client_id ? undefined : detailApt.prospect_id} clientId={detailApt.client_id}>{getEntityName(detailApt)}</NomFiche> <span className="text-xs font-normal text-gray-400">· voir la fiche et l'historique</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Date</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">Date</label>
                   <p className="text-sm text-gray-700">{format(parseISO(detailApt.date), 'EEEE dd MMMM yyyy', { locale: fr })}</p>
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Horaire</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">Horaire</label>
                   <p className="text-sm text-gray-700">{detailApt.heure_debut} - {detailApt.heure_fin}</p>
                 </div>
               </div>
               {detailApt.lieu && (
                 <div>
-                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Lieu</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">Lieu</label>
                   <p className="text-sm text-gray-700">{detailApt.lieu}</p>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Commercial</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">Commercial</label>
                   <p className="text-sm text-gray-700">{commercialMap.get(detailApt.commercial_id) || '-'}</p>
                 </div>
                 {detailApt.prospecteur_id && (
                   <div>
-                    <label className="text-[10px] text-gray-400 uppercase tracking-wider">Pris par</label>
+                    <label className="text-xs text-gray-400 uppercase tracking-wider">Pris par</label>
                     <p className="text-sm text-gray-700">{commercialMap.get(detailApt.prospecteur_id) || '-'}</p>
                   </div>
                 )}
               </div>
               <div>
-                <label className="text-[10px] text-gray-400 uppercase tracking-wider">Compte-rendu</label>
+                <label className="text-xs text-gray-400 uppercase tracking-wider">Compte-rendu</label>
                 <p className="text-sm">
                   {detailApt.compte_rendu ? (
                     <span
@@ -902,13 +902,13 @@ export default function PipelineCRPage() {
               </div>
               {detailApt.notes && (
                 <div>
-                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Notes RDV</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">Notes RDV</label>
                   <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-2">{detailApt.notes}</p>
                 </div>
               )}
               {detailApt.notes_compte_rendu && (
                 <div>
-                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Notes compte-rendu</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">Notes compte-rendu</label>
                   <p className="text-sm text-gray-700 bg-amber-50 rounded-lg p-2">{detailApt.notes_compte_rendu}</p>
                 </div>
               )}

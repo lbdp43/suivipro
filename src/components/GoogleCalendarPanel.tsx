@@ -99,7 +99,7 @@ export default function GoogleCalendarPanel() {
           </div>
           <div className="text-left">
             <p className="text-sm font-medium text-gray-900">Google Agenda</p>
-            <p className="text-[10px] text-gray-500">
+            <p className="text-xs text-gray-500">
               {!configured
                 ? 'Non configuré'
                 : connectedCount > 0
@@ -111,7 +111,7 @@ export default function GoogleCalendarPanel() {
         </div>
         <div className="flex items-center gap-2">
           {isCurrentUserConnected && (
-            <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
               <CheckCircle className="w-3 h-3" /> Connecté
             </span>
           )}
@@ -127,10 +127,10 @@ export default function GoogleCalendarPanel() {
               <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs font-medium text-amber-800">Configuration requise</p>
-                <p className="text-[11px] text-amber-700 mt-0.5">
+                <p className="text-xs text-amber-700 mt-0.5">
                   Pour activer Google Agenda, configurez les variables d'environnement :
                 </p>
-                <code className="text-[10px] text-amber-600 mt-1 block">
+                <code className="text-xs text-amber-600 mt-1 block">
                   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
                 </code>
               </div>
@@ -163,7 +163,7 @@ export default function GoogleCalendarPanel() {
                     <div>
                       <p className="text-xs font-medium text-green-800">Votre agenda est connecté</p>
                       {statusMap[currentUserId!]?.calendar_email && (
-                        <p className="text-[10px] text-green-600">{statusMap[currentUserId!].calendar_email}</p>
+                        <p className="text-xs text-green-600">{statusMap[currentUserId!].calendar_email}</p>
                       )}
                     </div>
                   </div>
@@ -180,7 +180,7 @@ export default function GoogleCalendarPanel() {
 
               {/* Status of all team members */}
               <div>
-                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Équipe</p>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Équipe</p>
                 <div className="space-y-1.5">
                   {state.commerciaux.map(c => {
                     const status = statusMap[c.id];
@@ -190,12 +190,12 @@ export default function GoogleCalendarPanel() {
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-300'}`} />
                           <span className="text-xs text-gray-700">{c.prenom} {c.nom}</span>
-                          {c.id === currentUserId && <span className="text-[9px] text-gray-400">(vous)</span>}
+                          {c.id === currentUserId && <span className="text-xs text-gray-400">(vous)</span>}
                         </div>
                         <div className="flex items-center gap-2">
                           {isConnected ? (
                             <>
-                              <span className="text-[10px] text-gray-400">{status.calendar_email}</span>
+                              <span className="text-xs text-gray-400">{status.calendar_email}</span>
                               {(c.id === currentUserId || state.currentUser?.role === 'admin') && (
                                 <button
                                   onClick={() => handleDisconnect(c.id)}
@@ -208,7 +208,7 @@ export default function GoogleCalendarPanel() {
                               )}
                             </>
                           ) : (
-                            <span className="text-[10px] text-gray-400">Non connecté</span>
+                            <span className="text-xs text-gray-400">Non connecté</span>
                           )}
                         </div>
                       </div>

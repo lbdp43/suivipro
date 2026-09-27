@@ -200,14 +200,14 @@ export default function CommercialAgenda({
               key={i}
               className={`p-2 text-center border-l border-gray-200 ${isToday ? 'bg-brewery-50' : 'bg-gray-50'}`}
             >
-              <div className={`text-[10px] font-medium ${isToday ? 'text-brewery-600' : 'text-gray-500'}`}>
+              <div className={`text-xs font-medium ${isToday ? 'text-brewery-600' : 'text-gray-500'}`}>
                 {DAY_NAMES[i]}
               </div>
               <div className={`text-sm font-bold ${isToday ? 'text-brewery-700' : 'text-gray-900'}`}>
                 {day.getDate()}
               </div>
               {rdvCount > 0 && (
-                <div className={`text-[9px] mt-0.5 ${isToday ? 'text-brewery-500' : 'text-gray-400'}`}>
+                <div className={`text-xs mt-0.5 ${isToday ? 'text-brewery-500' : 'text-gray-400'}`}>
                   {rdvCount} RDV
                 </div>
               )}
@@ -223,7 +223,7 @@ export default function CommercialAgenda({
           {hours.map(h => (
             <div
               key={h}
-              className="absolute left-0 right-0 text-[10px] text-gray-400 text-right pr-2 -translate-y-1/2"
+              className="absolute left-0 right-0 text-xs text-gray-400 text-right pr-2 -translate-y-1/2"
               style={{ top: (h - HOUR_START) * SLOT_HEIGHT }}
             >
               {h}:00
@@ -292,7 +292,7 @@ export default function CommercialAgenda({
                       className="absolute left-0.5 right-0.5 top-0 rounded border border-dashed border-purple-300 bg-purple-50/70 px-1.5 py-0.5 z-0"
                       title={`${evt.summary} — toute la journée${qui ? ` (${qui})` : ''}`}
                     >
-                      <p className="text-[9px] font-medium text-purple-800 truncate">{evt.summary}</p>
+                      <p className="text-xs font-medium text-purple-800 truncate">{evt.summary}</p>
                     </div>
                   );
                 }
@@ -322,9 +322,9 @@ export default function CommercialAgenda({
                     title={`${evt.summary} — ${heureDebut}${heureFin ? `-${heureFin}` : ''}${qui ? ` (${qui})` : ''} — Google Agenda`}
                   >
                     <div className="px-1.5 py-0.5">
-                      <p className="text-[10px] font-semibold text-purple-900 truncate">{evt.summary}</p>
+                      <p className="text-xs font-semibold text-purple-900 truncate">{evt.summary}</p>
                       {hauteurGoogle >= 36 && (
-                        <p className="text-[9px] text-purple-600 truncate">
+                        <p className="text-xs text-purple-600 truncate">
                           {heureDebut}{heureFin ? `-${heureFin}` : ''}{!filterCommercial && qui ? ` · ${qui}` : ''}
                         </p>
                       )}
@@ -368,17 +368,17 @@ export default function CommercialAgenda({
                       {isConflict && (
                         <AlertTriangle className="w-3 h-3 text-red-500 float-right mt-0.5" />
                       )}
-                      <p className={`text-[10px] font-semibold truncate ${isConflict ? 'text-red-700' : agendaIsEvent ? 'text-gray-800' : sc.text}`}>
+                      <p className={`text-xs font-semibold truncate ${isConflict ? 'text-red-700' : agendaIsEvent ? 'text-gray-800' : sc.text}`}>
                         {agendaIsEvent && <span className="text-[8px] opacity-70">{EVENT_TYPE_LABELS[rdv.event_type!]} - </span>}
                         {agendaName}
                       </p>
                       {height >= 36 && (
-                        <p className="text-[9px] text-gray-500 truncate">
+                        <p className="text-xs text-gray-500 truncate">
                           {rdv.heure_debut}-{rdv.heure_fin}
                         </p>
                       )}
                       {height >= 52 && !filterCommercial && (
-                        <p className="text-[9px] text-gray-400 truncate">
+                        <p className="text-xs text-gray-400 truncate">
                           {commercial?.prenom}
                           {(rdv.participants || []).length > 0 && ` +${rdv.participants!.length}`}
                         </p>
@@ -410,15 +410,15 @@ export default function CommercialAgenda({
       {/* Legend */}
       {!filterCommercial && (
         <div className="p-3 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center">
-          <span className="text-[10px] text-gray-500 font-medium">Commerciaux :</span>
+          <span className="text-xs text-gray-500 font-medium">Commerciaux :</span>
           {commerciaux.map((c, i) => (
-            <span key={c.id} className="flex items-center gap-1.5 text-[10px] text-gray-600">
+            <span key={c.id} className="flex items-center gap-1.5 text-xs text-gray-600">
               <span className={`w-3 h-3 rounded-sm border-l-[3px] ${COMMERCIAL_COLORS[i % COMMERCIAL_COLORS.length]} bg-white border border-gray-200`} />
               {c.prenom} {c.nom}
             </span>
           ))}
           {conflictIds.size > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-red-600 font-medium ml-2">
+            <span className="flex items-center gap-1 text-xs text-red-600 font-medium ml-2">
               <AlertTriangle className="w-3 h-3" /> {conflictIds.size} conflit{conflictIds.size > 1 ? 's' : ''}
             </span>
           )}

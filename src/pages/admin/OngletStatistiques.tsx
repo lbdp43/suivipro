@@ -66,32 +66,32 @@ export default function OngletStatistiques() {
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Phone className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.todayCalls}</p>
-                  <p className="text-[10px] text-gray-500">Appels aujourd'hui</p>
+                  <p className="text-xs text-gray-500">Appels aujourd'hui</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Phone className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.weekCalls}</p>
-                  <p className="text-[10px] text-gray-500">Appels semaine</p>
+                  <p className="text-xs text-gray-500">Appels semaine</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Phone className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.monthCalls}</p>
-                  <p className="text-[10px] text-gray-500">Appels mois</p>
+                  <p className="text-xs text-gray-500">Appels mois</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Calendar className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.monthRdv}</p>
-                  <p className="text-[10px] text-gray-500">RDV mois</p>
+                  <p className="text-xs text-gray-500">RDV mois</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <TrendingUp className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.responseRate}%</p>
-                  <p className="text-[10px] text-gray-500">Taux réponse</p>
+                  <p className="text-xs text-gray-500">Taux réponse</p>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg text-center">
                   <Award className="w-4 h-4 text-gray-400 mx-auto mb-1" />
                   <p className="text-xl font-bold text-gray-900">{stats.conversionRate}%</p>
-                  <p className="text-[10px] text-gray-500">Taux conversion</p>
+                  <p className="text-xs text-gray-500">Taux conversion</p>
                 </div>
               </div>
 

@@ -318,7 +318,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
                     {task.statut === 'TERMINEE' ? <Check className="w-4 h-4 text-green-500" /> : <div className="w-4 h-4 border-2 border-gray-300 rounded" />}
                   </button>
                   <span className={`flex-1 truncate ${task.statut === 'TERMINEE' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.titre}</span>
-                  {task.date_echeance && <span className={`text-[10px] flex-shrink-0 ${task.date_echeance < dateLocale(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>{formatDate(task.date_echeance)}</span>}
+                  {task.date_echeance && <span className={`text-xs flex-shrink-0 ${task.date_echeance < dateLocale(new Date()) && task.statut !== 'TERMINEE' ? 'text-red-500' : 'text-gray-400'}`}>{formatDate(task.date_echeance)}</span>}
                   <button onClick={() => supprimerTache(task.id)} className="flex-shrink-0 p-0.5 rounded hover:bg-red-50"><X className="w-3 h-3 text-gray-400 hover:text-red-500" /></button>
                 </div>
               ))}
@@ -331,23 +331,23 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Chiffres EasyBeer</h3>
             <div className="grid grid-cols-2 gap-2 mb-2">
               <div className="p-2.5 bg-emerald-50 rounded-lg">
-                <div className="text-[10px] text-emerald-700 uppercase tracking-wide">CA total</div>
+                <div className="text-xs text-emerald-700 uppercase tracking-wide">CA total</div>
                 <div className="text-sm font-bold text-emerald-900">{statsCommandes.totalTtc.toFixed(0)} € TTC</div>
-                <div className="text-[10px] text-emerald-700">{statsCommandes.nb} commande{statsCommandes.nb > 1 ? 's' : ''} · panier moyen {statsCommandes.panierMoyen.toFixed(0)} €</div>
+                <div className="text-xs text-emerald-700">{statsCommandes.nb} commande{statsCommandes.nb > 1 ? 's' : ''} · panier moyen {statsCommandes.panierMoyen.toFixed(0)} €</div>
               </div>
               <div className="p-2.5 bg-blue-50 rounded-lg">
-                <div className="text-[10px] text-blue-700 uppercase tracking-wide">12 derniers mois</div>
+                <div className="text-xs text-blue-700 uppercase tracking-wide">12 derniers mois</div>
                 <div className="text-sm font-bold text-blue-900">{statsCommandes.ca12Mois.toFixed(0)} € TTC</div>
               </div>
               <div className="p-2.5 bg-gray-50 rounded-lg">
-                <div className="text-[10px] text-gray-500 uppercase tracking-wide">Dernière commande</div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Dernière commande</div>
                 <div className="text-sm font-bold text-gray-900">{(statsCommandes.derniere.montant_ttc || 0).toFixed(0)} €</div>
-                <div className="text-[10px] text-gray-500">{formatDate(statsCommandes.derniere.date_commande)} · il y a {statsCommandes.joursDepuisDerniere} j</div>
+                <div className="text-xs text-gray-500">{formatDate(statsCommandes.derniere.date_commande)} · il y a {statsCommandes.joursDepuisDerniere} j</div>
               </div>
               <div className={`p-2.5 rounded-lg ${statsCommandes.enRetard ? 'bg-red-50' : 'bg-gray-50'}`}>
-                <div className={`text-[10px] uppercase tracking-wide ${statsCommandes.enRetard ? 'text-red-700' : 'text-gray-500'}`}>Fréquence d'achat</div>
+                <div className={`text-xs uppercase tracking-wide ${statsCommandes.enRetard ? 'text-red-700' : 'text-gray-500'}`}>Fréquence d'achat</div>
                 <div className={`text-sm font-bold ${statsCommandes.enRetard ? 'text-red-900' : 'text-gray-900'}`}>{statsCommandes.frequenceJours != null ? `tous les ~${statsCommandes.frequenceJours} j` : '—'}</div>
-                {statsCommandes.enRetard && <div className="text-[10px] text-red-700 font-medium">En retard sur son rythme</div>}
+                {statsCommandes.enRetard && <div className="text-xs text-red-700 font-medium">En retard sur son rythme</div>}
               </div>
             </div>
           </div>
@@ -358,7 +358,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Commandes ({commandes.length})</h3>
             {topProduits.length > 0 && (
               <div className="mb-2.5 p-2.5 bg-emerald-50 rounded-lg border border-emerald-100">
-                <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">Produits les plus commandés</p>
+                <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">Produits les plus commandés</p>
                 <div className="space-y-1">
                   {topProduits.map((p, i) => (
                     <div key={i} className="flex items-center justify-between text-xs"><span className="truncate flex-1 text-gray-700">{i + 1}. {p.produit}</span><span className="flex-shrink-0 ml-2 font-semibold text-emerald-700">x{p.quantite}</span></div>
@@ -371,25 +371,25 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
                 <div key={cmd.id} className="p-2.5 bg-gray-50 rounded-lg">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-medium text-gray-900">{cmd.numero ? `#${cmd.numero}` : 'Commande'}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${cmd.statut === 'livree' ? 'bg-green-100 text-green-700' : cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${cmd.statut === 'livree' ? 'bg-green-100 text-green-700' : cmd.statut === 'annulee' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
                       {cmd.statut === 'livree' ? 'Livrée' : cmd.statut === 'annulee' ? 'Annulée' : 'En cours'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500">
+                  <div className="flex items-center justify-between text-xs text-gray-500">
                     <span>{cmd.date_commande ? formatDate(cmd.date_commande) : ''}</span>
                     {cmd.montant_ttc > 0 && <span className="font-semibold text-gray-700">{cmd.montant_ttc.toFixed(2)} € TTC</span>}
                   </div>
                   {cmd.lignes && cmd.lignes.length > 0 && (
                     <div className="mt-1.5 space-y-0.5">
                       {cmd.lignes.slice(0, 6).map((l, i) => (
-                        <div key={i} className="flex justify-between text-[10px] text-gray-500"><span className="truncate flex-1">{l.nom_produit || l.produit}</span><span className="flex-shrink-0 ml-2">x{l.quantite}</span></div>
+                        <div key={i} className="flex justify-between text-xs text-gray-500"><span className="truncate flex-1">{l.nom_produit || l.produit}</span><span className="flex-shrink-0 ml-2">x{l.quantite}</span></div>
                       ))}
-                      {cmd.lignes.length > 6 && <p className="text-[10px] text-gray-400">+{cmd.lignes.length - 6} autres produits</p>}
+                      {cmd.lignes.length > 6 && <p className="text-xs text-gray-400">+{cmd.lignes.length - 6} autres produits</p>}
                     </div>
                   )}
                 </div>
               ))}
-              {commandes.length > 8 && <p className="text-[10px] text-gray-400 text-center">+{commandes.length - 8} autres commandes</p>}
+              {commandes.length > 8 && <p className="text-xs text-gray-400 text-center">+{commandes.length - 8} autres commandes</p>}
             </div>
           </div>
         )}
@@ -410,9 +410,9 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-gray-900">{INTERACTION_TYPE_LABELS[interaction.type]}</span>
-                        <span className="text-[10px] text-gray-400">{formatDate(interaction.date)}</span>
+                        <span className="text-xs text-gray-400">{formatDate(interaction.date)}</span>
                       </div>
-                      {comm && <p className="text-[10px] text-gray-500">{comm.prenom} {comm.nom}</p>}
+                      {comm && <p className="text-xs text-gray-500">{comm.prenom} {comm.nom}</p>}
                       {interaction.comment && <p className="text-xs text-gray-600 mt-1">{interaction.comment}</p>}
                     </div>
                   </div>

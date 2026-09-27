@@ -66,7 +66,7 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   a_contacter: '#3b82f6',
   contacte: '#8b5cf6',
   proposition: '#f97316',
-  negociation: '#ef4444',
+  negociation: '#eab308',
   gagne: '#22c55e',
   client_gagne: '#16a34a',
   perdu: '#dc2626',

@@ -59,7 +59,7 @@ export default function RappelsTachesPage() {
               className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${onglet === 'rappels' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
               <Bell className="w-4 h-4" /> Rappels
-              {rappelsDus > 0 && <span className="ml-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">{rappelsDus}</span>}
+              {rappelsDus > 0 && <span className="ml-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">{rappelsDus}</span>}
             </button>
             <button
               role="tab"
@@ -68,7 +68,7 @@ export default function RappelsTachesPage() {
               className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${onglet === 'taches' ? 'bg-white text-brewery-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
               <ListTodo className="w-4 h-4" /> Tâches
-              {tachesOuvertes > 0 && <span className="ml-1 bg-gray-200 text-gray-700 text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">{tachesOuvertes}</span>}
+              {tachesOuvertes > 0 && <span className="ml-1 bg-gray-200 text-gray-700 text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">{tachesOuvertes}</span>}
             </button>
           </div>
         </div>
