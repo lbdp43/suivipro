@@ -25,7 +25,8 @@ export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, 
 
 /** Les outils que ce rôle a le droit d'appeler (matrice du cahier des charges). */
 const INTERDITS = {
-  prospection: ['chercher_client', 'fiche_client', 'clients_en_retard', 'visites_et_appels', 'noter_visite_ou_appel'],
+  // Pas de lecture des clients ; mais elle note l'appel chez un client qu'on lui confie par une tâche.
+  prospection: ['chercher_client', 'fiche_client', 'clients_en_retard', 'visites_et_appels'],
 };
 
 export function outilsDuRole(role) {

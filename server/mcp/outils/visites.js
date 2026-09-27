@@ -100,6 +100,21 @@ const lire = {
 
 /** Le client visé : un des siens (tous pour l'administrateur), par référence ou par nom. */
 async function trouverLeClient(utilisateur, recherche) {
+  // La prospection cherche parmi les clients qu'on lui a confiés (une tâche ouverte à son nom).
+  if (utilisateur.role === 'prospection') {
+    const q = normaliserPourComparaison(recherche);
+    const confies = (await db.query(
+      `SELECT DISTINCT c.* FROM clients c JOIN tasks_client t ON t.client_id = c.id
+        WHERE t.commercial_id = $1 AND t.statut <> 'TERMINEE' ORDER BY c.nom`, [utilisateur.id]
+    )).rows;
+    const parId = confies.filter(c => c.id === recherche);
+    if (parId.length) return parId;
+    const exacts = confies.filter(c => normaliserPourComparaison(c.nom) === q);
+    if (exacts.length) return exacts;
+    const proches = confies.filter(c => normaliserPourComparaison(c.nom).includes(q));
+    if (proches.length) return proches;
+    throw new HorsPerimetre(`« ${recherche} » ne fait pas partie des clients qui vous sont confiés. Ce sont ceux pour lesquels une tâche ouverte vous est assignée (voir « mes_actions »).`);
+  }
   const parId = (await db.query('SELECT * FROM clients WHERE id = $1', [recherche])).rows[0];
   if (parId) {
     if (!estAdmin(utilisateur) && parId.commercial_id !== utilisateur.id) {
@@ -122,7 +137,7 @@ const noter = {
   nom: 'noter_visite_ou_appel',
   titre: 'Noter une visite ou un appel chez un client',
   ecrit: true,
-  description: 'Enregistre dans SuiviPro une visite ou un appel chez un de vos clients, avec les règles de l\'appli : un appel compte comme une visite (dernière visite, prochaine visite recalculée), sauf s\'il est resté sans réponse ; rien ne se note à l\'avance. Peut aussi terminer des tâches ouvertes du client et créer une tâche de suivi. En deux temps : sans « confirmer », montre ce qui va se passer (et les tâches ouvertes du client) sans rien écrire ; « confirmer: true » seulement après l\'accord de la personne.',
+  description: 'Enregistre dans SuiviPro une visite ou un appel chez un de vos clients, avec les règles de l\'appli : un appel compte comme une visite (dernière visite, prochaine visite recalculée), sauf s\'il est resté sans réponse ; rien ne se note à l\'avance. Peut aussi terminer des tâches ouvertes du client et créer une tâche de suivi. Pour la prospection : seulement chez les clients qu\'on lui a confiés par une tâche ouverte (« mes_actions » les liste). En deux temps : sans « confirmer », montre ce qui va se passer (et les tâches ouvertes du client) sans rien écrire ; « confirmer: true » seulement après l\'accord de la personne.',
   schema: {
     client: z.string().describe('Le nom du client (ou sa référence). En cas d\'homonymes, les candidats sont renvoyés avec leur référence.'),
     type: z.enum(['visite', 'appel']).describe('Visite sur place, ou appel.'),
