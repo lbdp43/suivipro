@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { REGLES } from '../../../shared/regles.js';
 import {
   LIBELLES_TYPE_CLIENT, FREQUENCES_VISITE, LIBELLES_ETAPE, LIBELLES_RESULTAT_APPEL,
-  LIBELLES_STATUT_VISITE, LIBELLES_ROLE,
+  LIBELLES_STATUT_VISITE, LIBELLES_ROLE, LIBELLES_RESULTAT_RDV,
 } from '../../../shared/libelles.js';
-import { RAISONS_PERTE, TYPES_ACTION, SEUIL_STAGNATION_JOURS, issuesPourAction } from '../../../shared/tunnel.js';
+import { RAISONS_PERTE, TYPES_ACTION, SEUIL_STAGNATION_JOURS, issuesPourAction, etapeApresCompteRendu } from '../../../shared/tunnel.js';
+import { RESULTATS_CR, SUITE_OBLIGATOIRE } from '../../lib/compteRendu.js';
 import { SCORE_DE_BASE } from '../../../shared/score.js';
 import { bloc } from '../format.js';
 
@@ -81,6 +82,20 @@ const SUJETS = {
     'Ces numéros portent leur propre clé de contrôle, et SuiviPro la vérifie : un numéro dont la clé ne tombe pas juste est écarté, et la réponse le dit. Ne devinez jamais un SIRET, et ne le reconstruisez pas en ajoutant « 00001 » à un SIREN — un faux numéro a l\'air vrai et se propage jusqu\'à la facturation. Pas de numéro vaut mieux qu\'un numéro inventé.',
     'Ces quatre champs sont les mêmes partout : sur la fiche d\'un prospect, sur celle d\'un client, et dans « deposer_dans_la_boite » — le prospect créé depuis la boîte les garde. « fiche_prospect » et « fiche_client » les affichent, ou disent « non renseignée » : c\'est ainsi qu\'on voit ce qu\'il reste à trouver.',
   ),
+  comptes_rendus: () => bloc(
+    '# Le compte rendu d\'un rendez-vous',
+    'Un rendez-vous passé attend son compte rendu : un résultat, et des notes qui disent ce qui s\'est dit. Le résultat décide de la suite, comme dans l\'écran de SuiviPro :',
+    ...RESULTATS_CR.map(r => {
+      const etape = etapeApresCompteRendu(r, 'gagne');
+      const suite = SUITE_OBLIGATOIRE.includes(r) ? ' ; une date de relance est obligatoire'
+        : r === 'decale' ? ' ; la nouvelle date est obligatoire et crée un nouveau rendez-vous' : '';
+      return `- ${r} (${LIBELLES_RESULTAT_RDV[r]}) : ${etape ? `le prospect passe en « ${LIBELLES_ETAPE[etape] || etape} »` : 'l\'étape ne bouge pas'}${r === 'pas_interesse' ? ', avec une raison de perte' : ''}${suite}.`;
+    }),
+    'Une étape terminale (client gagné, perdu) ne recule jamais. Pour un prospect, la relance devient un rappel dans ses actions ; pour un client, une tâche de suivi.',
+    'Les outils d\'écriture travaillent en deux temps : un appel sans « confirmer » décrit ce qui va se passer et n\'écrit rien ; l\'appel avec « confirmer: true » ne se fait qu\'après l\'accord de la personne. Chaque écriture est journalisée « via Claude », avec le nom de celui qui écrit et, si c\'est un administrateur pour un collègue, le nom du collègue.',
+    'Un compte rendu déjà écrit ne se réécrit pas ici : on le corrige dans SuiviPro. Un rendez-vous à venir ou annulé n\'a pas de compte rendu.',
+    `Une action du tunnel se termine par une issue propre à son type ; une issue de perte demande une raison : ${Object.values(RAISONS_PERTE).join(', ')}.`,
+  ),
   vocabulaire: () => bloc(
     '# Vocabulaire',
     '- Prospect : établissement pas encore client, suivi dans le tunnel de vente.',
@@ -96,9 +111,9 @@ const SUJETS = {
 export default [{
   nom: 'contexte',
   titre: 'Les règles de SuiviPro',
-  description: 'Les règles métier de La Brasserie des Plantes : fréquences de visite, couleurs d\'un client, étapes du tunnel de vente, appels et relances, semaines de tournée, rôles, identité légale (raison sociale, SIREN, SIRET, TVA), vocabulaire. À lire avant d\'interpréter les autres outils. Ne lit aucune donnée.',
+  description: 'Les règles métier de La Brasserie des Plantes : fréquences de visite, couleurs d\'un client, étapes du tunnel de vente, appels et relances, semaines de tournée, rôles, identité légale (raison sociale, SIREN, SIRET, TVA), compte rendu d\'un rendez-vous, vocabulaire. À lire avant d\'interpréter les autres outils. Ne lit aucune donnée.',
   schema: {
-    sujet: z.enum(['tout', 'frequences', 'couleurs', 'tunnel', 'appels', 'tournees', 'roles', 'identite', 'vocabulaire'])
+    sujet: z.enum(['tout', 'frequences', 'couleurs', 'tunnel', 'appels', 'tournees', 'roles', 'identite', 'comptes_rendus', 'vocabulaire'])
       .optional().describe('Le sujet voulu ; « tout » par défaut.'),
   },
   executer: async ({ sujet }) => {
