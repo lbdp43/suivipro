@@ -20,6 +20,7 @@ import { useLancerSession } from '../hooks/useSessionAppel';
 import RdvAVenir, { PrisPar } from '../components/RdvAVenir';
 import { NomFiche } from '../components/FicheProspectModal';
 import { noterInteraction } from '../utils/interactions';
+import Fenetre from '../components/ui/Fenetre';
 
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
@@ -1043,8 +1044,8 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
 
       {/* Scheduling Modal */}
       {showSchedulingModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowSchedulingModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowSchedulingModal(false)} titre="Planifier les visites" largeur="normale">
+          <div className="flex max-h-[85dvh] flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div>
@@ -1185,13 +1186,12 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
               </button>
             </div>
           </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Confirmation modal before export */}
       {showConfirmExport && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setShowConfirmExport(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut auPremierPlan onFermer={() => setShowConfirmExport(false)} titre="Confirmer les visites" largeur="etroite">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-brewery-100 flex items-center justify-center">
@@ -1246,8 +1246,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                 {scheduleSaving ? 'Enregistrement...' : 'Valider et exporter'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
 
       {/* Mass action floating bar */}
@@ -1274,8 +1273,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
 
       {/* Mass Action Modal */}
       {showMassActionModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowMassActionModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <Fenetre ouvert brut onFermer={() => setShowMassActionModal(false)} titre="Actions de masse" largeur="etroite">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div>
@@ -1481,8 +1479,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                 {massSaving ? 'En cours...' : massAction === 'inactif' ? 'Confirmer la desactivation' : massAction === 'tache' ? `Créer ${massSelectedClients.size} tâche(s)` : 'Valider'}
               </button>
             </div>
-          </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   );
