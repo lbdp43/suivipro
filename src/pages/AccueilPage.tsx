@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
   ChevronRight, ChevronDown, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
@@ -67,10 +67,31 @@ function Carte({ titre, icone: Icone, lien, compte, enfants, vide, teinte = 'gra
   );
 }
 
+/** Des objectifs sont-ils fixés ce mois-ci ? Sans eux, les jauges ne disent que « — ». */
+function useObjectifsFixes(personne: Commercial): boolean {
+  const { stateComplet } = useApp();
+  return useMemo(() => mesurerObjectifs(stateComplet, personne).some(m => m.objectif > 0), [stateComplet, personne]);
+}
+
 function Jauges({ personne }: { personne: Commercial }) {
   const { stateComplet } = useApp();
   const mesures = useMemo(() => mesurerObjectifs(stateComplet, personne), [stateComplet, personne]);
   const mois = useMemo(() => mesurerLeMois(stateComplet, personne), [stateComplet, personne]);
+  // Aucun objectif fixé : les jauges ne mesureraient rien. On garde une ligne repliée, en bas
+  // de l'accueil, avec les chiffres du mois ; le détail s'ouvre au besoin.
+  if (!mesures.some(m => m.objectif > 0)) {
+    return (
+      <details className="bg-white rounded-xl border border-gray-200 group">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2 text-sm text-gray-600 [&::-webkit-details-marker]:hidden">
+          <Target className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <span className="font-medium text-gray-800">Mon mois</span>
+          <span className="truncate text-gray-500">{mesures.map(m => `${m.valeur} ${m.label.toLowerCase()}`).join(' · ')}</span>
+          <ChevronRight className="ml-auto w-4 h-4 text-gray-400 transition-transform group-open:rotate-90 flex-shrink-0" />
+        </summary>
+        <div className="px-4 pb-3 text-xs text-gray-500">Pas d'objectif fixé ce mois-ci : l'administration les règle dans Administration → Objectifs.</div>
+      </details>
+    );
+  }
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex items-center justify-between mb-3">
@@ -107,6 +128,38 @@ function Jauges({ personne }: { personne: Commercial }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Le bandeau « Aujourd'hui » : ce qui attend, d'un coup d'œil, et d'un doigt vers l'endroit
+ * où le faire. Un compteur à zéro est grisé plutôt que caché : « 0 retard » est une bonne
+ * nouvelle qui se lit aussi.
+ */
+function Aujourdhui({ elements }: { elements: { cle: string; court: string; label: string; n: number; vers: string; teinte: string; icone: React.ComponentType<{ className?: string }> }[] }) {
+  const navigate = useNavigate();
+  const aller = (vers: string) => {
+    if (vers.startsWith('#')) document.getElementById(vers.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else navigate(vers);
+  };
+  return (
+    <nav aria-label="Aujourd'hui" className="grid grid-cols-5 gap-1.5 sm:gap-2">
+      {elements.map(e => (
+        <button
+          key={e.cle}
+          onClick={() => aller(e.vers)}
+          aria-label={`${e.n} ${e.label}`}
+          className={`flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-2 text-center transition-colors sm:flex-row sm:justify-start sm:gap-2.5 sm:px-3 sm:text-left ${e.n > 0 ? `${e.teinte} hover:brightness-95` : 'border-gray-200 bg-white text-gray-400 hover:bg-gray-50'}`}
+        >
+          <e.icone className="hidden w-5 h-5 flex-shrink-0 sm:block" />
+          <span className="min-w-0">
+            <span className="block text-xl font-bold leading-none tabular-nums">{e.n}</span>
+            <span className="block text-xs font-medium leading-tight sm:hidden">{e.court}</span>
+            <span className="hidden truncate text-xs font-medium sm:block">{e.label}</span>
+          </span>
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -550,11 +603,19 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
     .filter(a => (a.commercial_id === moi.id || (a.participants || []).includes(moi.id)) && rdvSansCompteRendu(a, now))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
   [state.appointments, moi.id, minute]);
-  const sansCr = useMemo(() => state.appointments.filter(a => a.commercial_id === moi.id && rdvSansCompteRendu(a, now)).sort((a, b) => b.date.localeCompare(a.date)), [state.appointments, moi.id, minute]);
   const taches = useMemo(() => state.tasksClient.filter(t => t.commercial_id === moi.id && t.statut !== 'TERMINEE' && t.date_echeance && t.date_echeance <= today).sort((a, b) => (a.date_echeance || '').localeCompare(b.date_echeance || '')), [state.tasksClient, moi.id, today]);
   const rappels = useMemo(() => state.reminders.filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today), [state.reminders, moi.id, today]);
 
-  const aRattraper = retards.length + sansCr.length + taches.length + rappels.length;
+  // Les comptes rendus ont leur propre bloc, juste sous le bandeau : on ne les répète pas ici.
+  const aRattraper = retards.length + taches.length + rappels.length;
+  const objectifsFixes = useObjectifsFixes(moi);
+  const bandeau = [
+    { cle: 'rdv', court: 'RDV', label: 'RDV aujourd\'hui', n: rdvDuJour.length, vers: '#rdv-du-jour', teinte: 'border-brewery-200 bg-brewery-50 text-brewery-800', icone: Calendar },
+    { cle: 'cr', court: 'CR à faire', label: 'comptes rendus à faire', n: crAFaire.length, vers: '#cr-a-faire', teinte: 'border-amber-300 bg-amber-50 text-amber-900', icone: ClipboardCheck },
+    { cle: 'retards', court: 'retards', label: retards.length > 1 ? 'clients en retard' : 'client en retard', n: retards.length, vers: '#a-rattraper', teinte: 'border-red-200 bg-red-50 text-red-800', icone: AlertTriangle },
+    { cle: 'taches', court: 'tâches', label: taches.length > 1 ? 'tâches du jour' : 'tâche du jour', n: taches.length, vers: '/taches', teinte: 'border-purple-200 bg-purple-50 text-purple-800', icone: ClipboardCheck },
+    { cle: 'rappels', court: 'rappels', label: rappels.length > 1 ? 'rappels à traiter' : 'rappel à traiter', n: rappels.length, vers: '/rappels', teinte: 'border-indigo-200 bg-indigo-50 text-indigo-800', icone: Phone },
+  ];
   // Le compte rendu se saisit ici même, sur la ligne du rendez-vous du jour.
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
 
@@ -563,13 +624,14 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
       <Bonjour personne={moi} sousTitre={(perimetre === 'equipe' ? 'vue de toute l\'équipe' : 'mes clients') + (faitDeLaProspection(moi) ? ' · prospection' : '')} />
       <DocumentsASigner moi={moi} />
 
-      <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
+      {/* D'abord ce qu'il y a à faire aujourd'hui ; les objectifs viennent en tête seulement
+          s'il y en a de fixés. */}
+      <Aujourdhui elements={bandeau} />
+      {objectifsFixes && <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>}
 
-      {!faitDeLaProspection(moi) && <BlocErreur titre="Ma session d'appel du jour"><SessionProspectsDuJour moi={moi} /></BlocErreur>}
+      <div id="cr-a-faire" className="scroll-mt-4"><ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} /></div>
 
-      <BlocErreur titre="Ma session d'appel clients"><SessionClientsDuJour moi={moi} /></BlocErreur>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div id="rdv-du-jour" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-4">
         <BlocErreur titre="Rendez-vous du jour">
           <Carte titre="Rendez-vous aujourd'hui" icone={Calendar} lien="/rdv" compte={rdvDuJour.length} vide="Aucun rendez-vous aujourd'hui." teinte="brewery"
             enfants={<div>{rdvDuJour.map(r => <LigneRdv key={r.id} rdv={r} nom={nomDuRdv(r, getProspect, getClient)} cible={cibleDuRdv(r, getProspect, getClient)} surCompteRendu={() => setCompteRenduRdv(r)} />)}</div>} />
@@ -591,8 +653,12 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
         </BlocErreur>
       </div>
 
+      {!faitDeLaProspection(moi) && <BlocErreur titre="Ma session d'appel du jour"><SessionProspectsDuJour moi={moi} /></BlocErreur>}
+
+      <BlocErreur titre="Ma session d'appel clients"><SessionClientsDuJour moi={moi} /></BlocErreur>
+
       <BlocErreur titre="À rattraper">
-        <div className={`bg-white rounded-xl border ${aRattraper ? 'border-amber-200' : 'border-gray-200'} p-4`}>
+        <div id="a-rattraper" className={`bg-white rounded-xl border ${aRattraper ? 'border-amber-200' : 'border-gray-200'} p-4 scroll-mt-4`}>
           <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm mb-3">
             <AlertTriangle className={`w-4 h-4 ${aRattraper ? 'text-amber-600' : 'text-gray-400'}`} /> À rattraper
             {aRattraper === 0 && <span className="text-xs font-normal text-green-700 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> rien en attente</span>}
@@ -610,19 +676,6 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
                       </Link>
                     ))}
                     {retards.length > 5 && <Link to="/clients" className="text-[11px] text-gray-400 hover:underline px-1">et {retards.length - 5} autre(s)…</Link>}
-                  </div>
-                </div>
-              )}
-              {sansCr.length > 0 && (
-                <div>
-                  <Link to="/semaine/bilan" className="text-xs font-semibold text-amber-700 hover:underline">{sansCr.length} rendez-vous sans compte rendu</Link>
-                  <div className="mt-1 space-y-0.5">
-                    {sansCr.slice(0, 5).map(r => (
-                      <Link key={r.id} to="/semaine/bilan" className="flex items-center justify-between text-xs py-1 hover:bg-gray-50 rounded px-1">
-                        <span className="text-gray-800 truncate">{nomDuRdv(r, getProspect, getClient)}</span>
-                        <span className="text-gray-400 tabular-nums">{formatDate(r.date)} {r.heure_debut}</span>
-                      </Link>
-                    ))}
                   </div>
                 </div>
               )}
@@ -686,7 +739,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
         </>
       )}
 
-      <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
+      {!objectifsFixes && <BlocErreur titre="Mon mois"><Jauges personne={moi} /></BlocErreur>}
 
       <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
@@ -1016,14 +1069,16 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
   [state.appointments, moi.id, minute]);
   const [compteRenduRdv, setCompteRenduRdv] = useState<Appointment | null>(null);
+  const objectifsFixes = useObjectifsFixes(moi);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 fade-in">
       <Bonjour personne={moi} sousTitre="prospection" />
       <DocumentsASigner moi={moi} />
-      <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>
-      <BlocsProspection moi={moi} />
+      {objectifsFixes && <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>}
       <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
+      <BlocsProspection moi={moi} />
+      {!objectifsFixes && <BlocErreur titre="Mon mois"><Jauges personne={moi} /></BlocErreur>}
       <CompteRenduModal rdv={compteRenduRdv} onClose={() => setCompteRenduRdv(null)} />
     </div>
   );
