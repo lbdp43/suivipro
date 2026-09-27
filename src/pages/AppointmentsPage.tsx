@@ -527,7 +527,7 @@ export default function AppointmentsPage() {
             title={showGoogleEvents ? 'Masquer Google Agenda' : 'Afficher Google Agenda'}
           >
             <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Google</span>
+            <span className="sr-only sm:not-sr-only">Google</span>
           </button>
           <button
             className="bg-blue-50 text-blue-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium"
@@ -535,7 +535,7 @@ export default function AppointmentsPage() {
             title="Exporter vers Google Agenda"
           >
             <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Export Agenda</span>
+            <span className="sr-only sm:not-sr-only">Export Agenda</span>
           </button>
           <button
             className="bg-brewery-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-brewery-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium"

@@ -517,7 +517,7 @@ export default function PipelinePage() {
           onClick={() => selection ? quitterSelection() : setSelection(true)}
           title={selection ? 'Quitter la sélection' : 'Sélectionner plusieurs prospects (session d\'appel)'}
         >
-          <CheckSquare className="w-4 h-4" /><span className="hidden sm:inline">{selection ? 'Terminer' : 'Sélectionner'}</span>
+          <CheckSquare className="w-4 h-4" /><span className="sr-only sm:not-sr-only">{selection ? 'Terminer' : 'Sélectionner'}</span>
         </button>
         <select
           className="text-xs sm:text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 bg-white flex-shrink-0"
@@ -540,7 +540,7 @@ export default function PipelinePage() {
           onClick={() => setShowSettings(!showSettings)}
         >
           <Settings className="w-4 h-4" />
-          <span className="hidden sm:inline">Gérer les étapes</span>
+          <span className="sr-only sm:not-sr-only">Gérer les étapes</span>
           <span className="sm:hidden">Étapes</span>
         </button>
       </div>
@@ -580,7 +580,7 @@ export default function PipelinePage() {
                     />
                   ))}
                 </div>
-                <button className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium" onClick={addColumn}>
+                <button aria-label="Ajouter la colonne" className="px-3 py-1.5 bg-brewery-600 text-white rounded-lg text-xs font-medium" onClick={addColumn}>
                   <Save className="w-3 h-3" />
                 </button>
                 <button aria-label="Annuler" className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
@@ -637,7 +637,7 @@ export default function PipelinePage() {
                             />
                           ))}
                         </div>
-                        <button className="p-1 text-green-600 hover:text-green-700" onClick={saveEditColumn}>
+                        <button aria-label="Enregistrer la colonne" className="p-1 text-green-600 hover:text-green-700" onClick={saveEditColumn}>
                           <Save className="w-4 h-4" />
                         </button>
                         <button aria-label="Annuler" className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}>

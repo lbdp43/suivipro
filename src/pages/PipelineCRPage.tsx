@@ -624,7 +624,7 @@ export default function PipelineCRPage() {
                     />
                   ))}
                 </div>
-                <button className="p-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700" onClick={addColumn}>
+                <button aria-label="Ajouter la colonne" className="p-1.5 bg-brewery-600 text-white rounded-lg hover:bg-brewery-700" onClick={addColumn}>
                   <Check className="w-4 h-4" />
                 </button>
                 <button aria-label="Annuler" className="p-1.5 text-gray-400 hover:text-gray-600" onClick={() => setShowAddForm(false)}>
@@ -670,7 +670,7 @@ export default function PipelineCRPage() {
                             />
                           ))}
                         </div>
-                        <button className="p-1 text-green-600 hover:bg-green-50 rounded" onClick={saveEditColumn}><Save className="w-3.5 h-3.5" /></button>
+                        <button aria-label="Enregistrer la colonne" className="p-1 text-green-600 hover:bg-green-50 rounded" onClick={saveEditColumn}><Save className="w-3.5 h-3.5" /></button>
                         <button aria-label="Annuler" className="p-1 text-gray-400 hover:text-gray-600" onClick={() => setEditingColumn(null)}><X className="w-3.5 h-3.5" /></button>
                       </>
                     ) : (

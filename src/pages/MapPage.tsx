@@ -411,7 +411,7 @@ export default function MapPage() {
             onClick={() => { setShowFilters(!showFilters); if (!showFilters) setShowRdvPanel(false); }}
           >
             <Filter className="w-4 h-4" />
-            <span className="hidden sm:inline">Filtres</span>
+            <span className="sr-only sm:not-sr-only">Filtres</span>
             {activeFilterCount > 0 && (
               <span className="bg-white text-brewery-600 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                 {activeFilterCount}
@@ -426,7 +426,7 @@ export default function MapPage() {
             onClick={() => { setShowProspects(!showProspects); if (!showProspects === false && !showClients) setShowClients(true); }}
           >
             <MapPin className="w-4 h-4" />
-            <span className="hidden sm:inline">Prospects</span>
+            <span className="sr-only sm:not-sr-only">Prospects</span>
           </button>
           {/* Bouton Clients */}
           <button
@@ -436,7 +436,7 @@ export default function MapPage() {
             onClick={() => { setShowClients(!showClients); if (!showClients === false && !showProspects) setShowProspects(true); }}
           >
             <Building2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Clients</span>
+            <span className="sr-only sm:not-sr-only">Clients</span>
             {showClients && filteredClients.length > 0 && (
               <span className="text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center bg-white/20">
                 {filteredClients.length}
@@ -452,7 +452,7 @@ export default function MapPage() {
             title="Afficher/masquer les secteurs dessines par les commerciaux"
           >
             <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Secteurs</span>
+            <span className="sr-only sm:not-sr-only">Secteurs</span>
           </button>
           {/* Dessiner une zone directement sur la carte — réservé aux commerciaux et à l'admin. */}
           {peutDefinirZones && <button
@@ -463,7 +463,7 @@ export default function MapPage() {
             title="Dessiner, modifier ou supprimer une zone point par point sur la carte"
           >
             <Pencil className="w-4 h-4" />
-            <span className="hidden sm:inline">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
+            <span className="sr-only sm:not-sr-only">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
           </button>}
           {/* Sélectionner plusieurs fiches d'un coup, pour agir sur le lot. */}
           {peutSelectionner && <button
@@ -474,7 +474,7 @@ export default function MapPage() {
             title="Choisir plusieurs prospects ou clients pour les attribuer, les desactiver ou les supprimer"
           >
             <CheckSquare className="w-4 h-4" />
-            <span className="hidden sm:inline">{modeSelection ? 'Terminer la sélection' : 'Sélectionner'}</span>
+            <span className="sr-only sm:not-sr-only">{modeSelection ? 'Terminer la sélection' : 'Sélectionner'}</span>
           </button>}
           {/* Bouton RDV */}
           <button
@@ -521,7 +521,7 @@ export default function MapPage() {
               <>
                 <span>
                   {maxMarkers === 0 ? filteredProspects.length : Math.min(filteredProspects.length, maxMarkers)}{maxMarkers > 0 && filteredProspects.length > maxMarkers && `/${filteredProspects.length}`}
-                  <span className="hidden sm:inline"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
+                  <span className="sr-only sm:not-sr-only"> prospect{filteredProspects.length > 1 ? 's' : ''}</span>
                 </span>
                 {showClients && (
                   <span className="text-emerald-600 font-medium">

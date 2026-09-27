@@ -420,7 +420,7 @@ export default function Layout() {
               title="Carte des prospects"
             >
               <Map className="w-4 h-4" />
-              <span className="hidden sm:inline">Carte</span>
+              <span className="sr-only sm:not-sr-only">Carte</span>
             </Link>
             {/* Notifications */}
             <div className="relative" ref={notifRef}>

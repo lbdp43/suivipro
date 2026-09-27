@@ -314,7 +314,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             <div className="space-y-1">
               {[...tasks].sort((a, b) => (a.statut === 'TERMINEE' ? 1 : 0) - (b.statut === 'TERMINEE' ? 1 : 0)).slice(0, 5).map(task => (
                 <div key={task.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-xs">
-                  <button onClick={() => basculerTache(task)} className="flex-shrink-0">
+                  <button onClick={() => basculerTache(task)} className="flex-shrink-0" aria-label={task.statut === 'TERMINEE' ? `Rouvrir la tâche ${task.titre}` : `Marquer la tâche ${task.titre} comme faite`}>
                     {task.statut === 'TERMINEE' ? <Check className="w-4 h-4 text-green-500" /> : <div className="w-4 h-4 border-2 border-gray-300 rounded" />}
                   </button>
                   <span className={`flex-1 truncate ${task.statut === 'TERMINEE' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.titre}</span>

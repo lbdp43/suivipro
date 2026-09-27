@@ -929,7 +929,7 @@ export default function ClientsPage() {
               </button>
               <button onClick={handleExportClients} className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors" title="Exporter">
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Export</span>
+                <span className="sr-only sm:not-sr-only">Export</span>
               </button>
               {isAdmin && (
                 <button
@@ -939,12 +939,12 @@ export default function ClientsPage() {
                   title="Recalcule la prochaine visite pour les clients sans recurrence (commercial assigne, mais date jamais calculee)"
                 >
                   <RefreshCw className={`w-4 h-4 ${recalculatingRecurrence ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Récurrences</span>
+                  <span className="sr-only sm:not-sr-only">Récurrences</span>
                 </button>
               )}
               <button onClick={openNewForm} className="flex items-center gap-1.5 px-3 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 transition-colors">
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Nouveau client</span>
+                <span className="sr-only sm:not-sr-only">Nouveau client</span>
               </button>
             </div>
           </div>
@@ -971,7 +971,7 @@ export default function ClientsPage() {
               className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm ${showFilters ? 'bg-brewery-50 border-brewery-300 text-brewery-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
             >
               <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">Filtres</span>
+              <span className="sr-only sm:not-sr-only">Filtres</span>
             </button>
           </div>
 
