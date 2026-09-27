@@ -7,10 +7,28 @@ import { dateLocale } from '../../shared/regles.js';
 import { parseCommercial, parseProspect, parseSessionAppel } from '../lib/parse.js';
 import { parseSignalement, SELECT_SIGNALEMENTS } from './signalements.js';
 import { COLONNES_DOCUMENT, documentPourEcran } from './documents.js';
+import { etatCommun } from '../lib/etatCache.js';
 
 const router = Router();
 
 router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
+  // L'état commun est le même pour tous : calculé une fois, gardé tant que personne n'écrit
+  // (lib/etatCache.js). Seul ce que la personne a ouvert lui est propre, et léger.
+  const [commun, ouvertures] = await Promise.all([
+    etatCommun(calculerEtatCommun),
+    db.query('SELECT doc_id, version FROM document_ouvertures WHERE user_id = $1', [req.user.id]),
+  ]);
+  const ouvertJson = JSON.stringify(ouvertures.rows);
+  // L'écran redemande l'état toutes les 30 s. Quand rien n'a changé, on répond « 304 »
+  // sans corps : l'empreinte sert d'ETag, l'écran garde ce qu'il a.
+  const empreinte = `"${commun.empreinte}-${crypto.createHash('md5').update(ouvertJson).digest('hex').slice(0, 8)}"`;
+  res.set('ETag', empreinte);
+  res.set('Cache-Control', 'no-cache');
+  if (req.headers['if-none-match'] === empreinte) return res.status(304).end();
+  res.type('application/json').send(`${commun.corps.slice(0, -1)},"documentOuvertures":${ouvertJson}}`);
+}));
+
+async function calculerEtatCommun() {
   // Tout le monde reçoit tout : la prospection est commune, et les clients des collègues
   // sont consultables (remplacements, appels de dépannage). Le PÉRIMÈTRE affiché
   // (« Mes clients » / « Toute l'équipe ») est une bascule d'écran, appliquée une seule
@@ -18,7 +36,7 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const hier = dateLocale(new Date(Date.now() - 86400000));
-  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones, signalements, documentSignatures, documentOuvertures] = await Promise.all([
+  const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones, signalements, documentSignatures] = await Promise.all([
     db.query('SELECT * FROM prospects'),
     db.query('SELECT * FROM calls'),
     db.query('SELECT * FROM appointments'),
@@ -42,13 +60,12 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     // La boîte de prospection : tout ce qui attend, un mois de traités, et ce qui est rattaché à
     // une fiche (ses photos restent visibles sur la fiche).
     db.query(`${SELECT_SIGNALEMENTS} WHERE s.statut = 'a_qualifier' OR s.created_at >= $1 OR s.prospect_id <> '' OR s.client_id <> '' ORDER BY s.created_at DESC`, [dateLocale(new Date(Date.now() - 30 * 86400000))]),
-    // Qui a signé quoi (toutes versions : l'historique), et ce que la personne a déjà ouvert
-    // — le bouton « J'ai lu » ne s'allume qu'après l'ouverture.
+    // Qui a signé quoi (toutes versions : l'historique). Ce que chacun a ouvert est à part,
+    // propre à la personne — le bouton « J'ai lu » ne s'allume qu'après l'ouverture.
     db.query('SELECT doc_id, user_id, version, signe_le FROM document_signatures ORDER BY signe_le'),
-    db.query('SELECT doc_id, version FROM document_ouvertures WHERE user_id = $1', [req.user.id]),
   ]);
 
-  const etat = {
+  return {
     prospects: prospects.rows.map(parseProspect),
     calls: calls.rows,
     appointments: appointments.rows,
@@ -59,7 +76,6 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     pipelineColumns: pipelineColumns.rows,
     documents: documents.rows.map(documentPourEcran),
     documentSignatures: documentSignatures.rows,
-    documentOuvertures: documentOuvertures.rows,
     clients: clients.rows,
     interactions: interactions.rows,
     tasksClient: tasksClient.rows,
@@ -69,14 +85,6 @@ router.get('/state', authMiddleware, asyncHandler(async (req, res) => {
     signalements: signalements.rows.map(parseSignalement),
     commercialZones: commercialZones.rows.map(z => { let c = z.coordinates; try { c = JSON.parse(c); } catch { c = []; } return { ...z, coordinates: Array.isArray(c) ? c : [], prioritaire: !!z.prioritaire, consigne: z.consigne || '' }; }),
   };
-  // L'écran redemande l'état toutes les 30 s. Quand rien n'a changé, on répond « 304 »
-  // sans corps : l'empreinte du JSON sert d'ETag, l'écran garde ce qu'il a.
-  const corps = JSON.stringify(etat);
-  const empreinte = `"${crypto.createHash('md5').update(corps).digest('hex')}"`;
-  res.set('ETag', empreinte);
-  res.set('Cache-Control', 'no-cache');
-  if (req.headers['if-none-match'] === empreinte) return res.status(304).end();
-  res.type('application/json').send(corps);
-}));
+}
 
 export default router;

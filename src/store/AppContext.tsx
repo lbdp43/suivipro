@@ -5,7 +5,8 @@ import {
   Client, Interaction, TaskClient, TourneeConfig, Commande, CommercialZone, Signalement,
 } from '../types';
 import { faitDeLaProspection } from '../utils/roles';
-import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin } from '../api/client';
+import { syncAction, loadFullState, getMe, getToken, setToken, login as apiLogin, empreinteEtatActuelle, definirEmpreinteEtat, setEchecEcritureHandler } from '../api/client';
+import { lireEtatGarde, garderEtat, idDuJeton } from '../utils/cacheEtat';
 
 // Périmètre d'affichage des clients. « moi » = mes clients + les fiches libres ; « equipe » =
 // toute l'équipe (remplacement d'un collègue). Appliqué ICI, une seule fois, il vaut pour
@@ -361,6 +362,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pollPausedUntilRef.current = Date.now() + durationMs;
   }, []);
 
+  // Un état reçu du serveur (ou relu sur le téléphone) remplace l'état affiché ; celui du
+  // serveur est aussi gardé sur le téléphone pour le prochain démarrage.
+  const appliquerEtat = useCallback((data: any, user: Commercial | null, garder = true) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    rawDispatch({
+      type: 'SET_STATE',
+      payload: {
+        ...data,
+        currentUser: user,
+        pipelineColumns: data.pipelineColumns?.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
+      },
+    });
+    if (garder && user) garderEtat({ userId: user.id, empreinte: empreinteEtatActuelle(), currentUser: user, data });
+  }, []);
+
   // Wrapped dispatch that also syncs to API
   const dispatch: React.Dispatch<Action> = useCallback((action: Action) => {
     rawDispatch(action);
@@ -378,14 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentUserRef.current = user;
       // Load full state from API
       const data = await loadFullState(true);
-      rawDispatch({
-        type: 'SET_STATE',
-        payload: {
-          ...data,
-          currentUser: user,
-          pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
-        },
-      });
+      appliquerEtat(data, user);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur de connexion';
       setAuthError(message);
@@ -400,7 +408,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rawDispatch({ type: 'SET_STATE', payload: emptyState });
   }, []);
 
-  // On mount: check for existing token and restore session
+  // Au démarrage : l'état gardé sur le téléphone s'affiche tout de suite, puis le serveur
+  // le met à jour en arrière-plan (« 304 » s'il n'a pas bougé). Sans état gardé, on attend
+  // le serveur comme avant. Hors connexion, l'état gardé reste affiché.
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -408,20 +418,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Try to restore session
     (async () => {
+      const garde = await lireEtatGarde(idDuJeton(token) || '');
+      if (garde) {
+        currentUserRef.current = garde.currentUser as Commercial;
+        definirEmpreinteEtat(garde.empreinte);
+        appliquerEtat(garde.data, garde.currentUser as Commercial, false);
+        setLoading(false);
+        try {
+          const user = await getMe();
+          currentUserRef.current = user;
+          const data = await loadFullState();
+          if (data) appliquerEtat(data, user);
+          else rawDispatch({ type: 'SET_CURRENT_USER', payload: user });
+        } catch (err) {
+          // Hors connexion ou serveur injoignable : on garde ce qu'on a. Une session expirée,
+          // elle, recharge la page d'elle-même (api/client.ts).
+          console.warn('[Démarrage] mise à jour impossible, état gardé affiché :', err);
+        }
+        return;
+      }
       try {
         const user = await getMe();
         currentUserRef.current = user;
         const data = await loadFullState(true);
-        rawDispatch({
-          type: 'SET_STATE',
-          payload: {
-            ...data,
-            currentUser: user,
-            pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
-          },
-        });
+        appliquerEtat(data, user);
       } catch {
         // Token invalid, clear it
         setToken(null);
@@ -429,30 +450,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     })();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-reload polling every 30s for multi-user sync
+  // L'état est redemandé toutes les 30 s, et tout de suite quand l'appli revient au premier
+  // plan (téléphone déverrouillé, retour depuis une autre appli) ou après une écriture qui
+  // a échoué (l'écran l'avait déjà affichée : le serveur la corrige).
   useEffect(() => {
     const token = getToken();
     if (!token || loading) return;
 
     let consecutiveErrors = 0;
-    const poll = async () => {
-      if (document.visibilityState !== 'visible') return;
-      if (Date.now() < pollPausedUntilRef.current) return;
+    let dernier = Date.now();
+    const poll = async (forcer = false) => {
+      if (!forcer && document.visibilityState !== 'visible') return;
+      if (!forcer && Date.now() < pollPausedUntilRef.current) return;
+      dernier = Date.now();
       try {
-        const data = await loadFullState();
+        const data = await loadFullState(forcer);
         // Rien n'a changé (304) : on ne touche pas à l'état, aucun écran ne se redessine.
-        if (data) {
-          rawDispatch({
-            type: 'SET_STATE',
-            payload: {
-              ...data,
-              currentUser: currentUserRef.current,
-              pipelineColumns: data.pipelineColumns.length > 0 ? data.pipelineColumns : defaultPipelineColumns,
-            },
-          });
-        }
+        if (data) appliquerEtat(data, currentUserRef.current);
         consecutiveErrors = 0;
       } catch (err) {
         consecutiveErrors++;
@@ -463,9 +479,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const interval = setInterval(poll, 30000);
-    return () => clearInterval(interval);
-  }, [loading]);
+    const auRetour = () => {
+      if (document.visibilityState === 'visible' && Date.now() - dernier > 5000) poll();
+    };
+    document.addEventListener('visibilitychange', auRetour);
+    window.addEventListener('online', auRetour);
+    setEchecEcritureHandler(() => { poll(true); });
+
+    const interval = setInterval(() => poll(), 30000);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', auRetour);
+      window.removeEventListener('online', auRetour);
+      setEchecEcritureHandler(null);
+    };
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getProspect = useCallback((id: string) => state.prospects.find(p => p.id === id), [state.prospects]);
   const getCallsForProspect = useCallback((pid: string) => state.calls.filter(c => c.prospect_id === pid), [state.calls]);

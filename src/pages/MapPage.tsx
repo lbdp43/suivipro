@@ -26,7 +26,19 @@ import FilterPresets from '../components/FilterPresets';
 import SelectionCarte from '../components/SelectionCarte';
 
 // Custom marker icon factory
+// Une icône par couleur et par état, pas une par marqueur et par rendu : react-leaflet
+// remplace l'icône de chaque marqueur dès qu'elle change d'identité, et la carte entière se
+// redessinait à chaque rafraîchissement des données.
+const ICONES = new Map<string, L.DivIcon>();
+
 function createMarkerIcon(color: string, selectionne = false): L.DivIcon {
+  const cle = `${color}|${selectionne ? 1 : 0}`;
+  let icone = ICONES.get(cle);
+  if (!icone) { icone = fabriquerIcone(color, selectionne); ICONES.set(cle, icone); }
+  return icone;
+}
+
+function fabriquerIcone(color: string, selectionne: boolean): L.DivIcon {
   // Une fiche sélectionnée porte un anneau sombre : on doit voir son lot d'un coup d'œil,
   // sans compter les points un par un, avant de lancer une action dessus.
   const contour = selectionne
