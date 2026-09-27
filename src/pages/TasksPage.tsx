@@ -14,6 +14,7 @@ import { generateId } from '../utils/helpers';
 import { apiPost, apiPut, apiDelete } from '../api/client';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import { telephoneDuClient } from '../utils/sessionAppel';
+import { noterInteraction } from '../utils/interactions';
 
 interface Task {
   id: string;
@@ -216,9 +217,10 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
         date: new Date().toISOString(),
         comment: (outcomePrefix + crComment.trim()).trim(),
         date_creation: new Date().toISOString(),
+        // Pas de réponse : l'appel ne compte pas comme visite.
+        sans_reponse: crOutcome === 'pas_repondu',
       };
-      await apiPost('/interactions', interaction);
-      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction as any });
+      await noterInteraction(interaction, dispatchLocal);
 
       if (crCompleteTask && crTask.statut !== 'TERMINEE') {
         const terminee = await apiPut(`/tasks-client/${crTask.id}`, { ...crTask, statut: 'TERMINEE' }) as TaskClient;

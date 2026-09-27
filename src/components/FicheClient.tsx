@@ -14,6 +14,7 @@ import { PhotosPartagees } from './PhotosSignalement';
 import CarteFiche from './CarteFiche';
 import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
+import { noterInteraction } from '../utils/interactions';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
 // ouverte depuis Semaine : identité, contact, visites, actions rapides, notes, tâches,
@@ -121,8 +122,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
       comment: interactionComment.trim(), date_creation: now,
     };
     try {
-      await apiPost('/interactions', interaction);
-      dispatchLocal({ type: 'ADD_INTERACTION', payload: interaction });
+      await noterInteraction(interaction, dispatchLocal);
       if (interactionEnLigne === 'RDV_PLANIFIE' && interactionDate) {
         const rdv = {
           id: generateId('rdv'), prospect_id: '', client_id: client.id, commercial_id: state.currentUser?.id || '', prospecteur_id: state.currentUser?.id || '',

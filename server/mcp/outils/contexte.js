@@ -8,6 +8,7 @@ import {
 } from '../../../shared/libelles.js';
 import { RAISONS_PERTE, TYPES_ACTION, SEUIL_STAGNATION_JOURS, issuesPourAction, etapeApresCompteRendu } from '../../../shared/tunnel.js';
 import { RESULTATS_CR, SUITE_OBLIGATOIRE } from '../../lib/compteRendu.js';
+import { ISSUES_APPEL_CLIENT } from '../../../shared/visites.js';
 import { SCORE_DE_BASE } from '../../../shared/score.js';
 import { bloc } from '../format.js';
 
@@ -96,6 +97,15 @@ const SUJETS = {
     'Un compte rendu déjà écrit ne se réécrit pas ici : on le corrige dans SuiviPro. Un rendez-vous à venir ou annulé n\'a pas de compte rendu.',
     `Une action du tunnel se termine par une issue propre à son type ; une issue de perte demande une raison : ${Object.values(RAISONS_PERTE).join(', ')}.`,
   ),
+  visites: () => bloc(
+    '# Visites et appels chez un client',
+    '- Une visite, c\'est un passage sur place OU un appel : les deux font avancer le calendrier (dernière visite, prochaine visite selon la fréquence du client).',
+    '- Un appel resté sans réponse ne compte pas : personne au bout, le client n\'a pas été vu. Un rendez-vous planifié non plus : il n\'a pas encore eu lieu.',
+    '- Rien ne se note à l\'avance : une visite à venir est un rendez-vous planifié.',
+    '- Une date plus ancienne que la dernière visite connue s\'ajoute à l\'historique sans faire reculer le calendrier.',
+    `- Issues d'un appel : ${ISSUES_APPEL_CLIENT.map(i => `${i.value} (${i.label}${i.suite ? `, suite conseillée : « ${i.suite.titre} » à ${i.suite.jours} j` : ''})`).join(', ')}.`,
+    '- « noter_visite_ou_appel » écrit sur vos propres clients (l\'administrateur, pour tous et pour un collègue), toujours en deux temps : aperçu, puis confirmation après accord. Le commentaire est obligatoire.',
+  ),
   vocabulaire: () => bloc(
     '# Vocabulaire',
     '- Prospect : établissement pas encore client, suivi dans le tunnel de vente.',
@@ -111,9 +121,9 @@ const SUJETS = {
 export default [{
   nom: 'contexte',
   titre: 'Les règles de SuiviPro',
-  description: 'Les règles métier de La Brasserie des Plantes : fréquences de visite, couleurs d\'un client, étapes du tunnel de vente, appels et relances, semaines de tournée, rôles, identité légale (raison sociale, SIREN, SIRET, TVA), compte rendu d\'un rendez-vous, vocabulaire. À lire avant d\'interpréter les autres outils. Ne lit aucune donnée.',
+  description: 'Les règles métier de La Brasserie des Plantes : fréquences de visite, couleurs d\'un client, étapes du tunnel de vente, appels et relances, semaines de tournée, rôles, identité légale (raison sociale, SIREN, SIRET, TVA), compte rendu d\'un rendez-vous, visites et appels chez un client, vocabulaire. À lire avant d\'interpréter les autres outils. Ne lit aucune donnée.',
   schema: {
-    sujet: z.enum(['tout', 'frequences', 'couleurs', 'tunnel', 'appels', 'tournees', 'roles', 'identite', 'comptes_rendus', 'vocabulaire'])
+    sujet: z.enum(['tout', 'frequences', 'couleurs', 'tunnel', 'appels', 'tournees', 'roles', 'identite', 'comptes_rendus', 'visites', 'vocabulaire'])
       .optional().describe('Le sujet voulu ; « tout » par défaut.'),
   },
   executer: async ({ sujet }) => {

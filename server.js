@@ -11,6 +11,7 @@ import cron from 'node-cron';
 import { dbReady } from './server/db.js';
 import apiRoutes, { runZoneSync, syncNocturneEasybeer, purgerJournaux, runClientSync } from './server/routes.js';
 import { rattacherTout } from './server/lib/zones.js';
+import { reparerDernieresVisitesFutures } from './server/lib/visitesClient.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 import googleContactsRoutes from './server/google-contacts.js';
 import mcpRoutes from './server/mcp/index.js';
@@ -177,6 +178,10 @@ dbReady.then(() => {
   // Rattache les fiches géolocalisées aux zones dessinées (une fois, après les migrations).
   rattacherTout().then(b => console.log(`[ZONES] ${b.zones} zone(s), ${b.prospects_modifies} prospect(s) et ${b.clients_modifies} client(s) mis à jour`))
     .catch(e => console.error('[ZONES] Rattachement échec:', e.message));
+
+  // Des « dernières visites » dans le futur (visites planifiées notées comme faites) : remises d'aplomb.
+  reparerDernieresVisitesFutures().then(n => { if (n) console.log(`[VISITES] ${n} client(s) avec une dernière visite dans le futur, recalculé(s)`); })
+    .catch(e => console.error('[VISITES] Réparation échec:', e.message));
 
   // CRON: Synchro nocturne Easybeer (filet de sécurité) — tous les jours 02:30 UTC
   cron.schedule('30 2 * * *', async () => {

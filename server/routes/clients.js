@@ -8,6 +8,7 @@ import { rattacherEntite } from '../lib/zones.js';
 import { changerEtape } from '../lib/tunnel.js';
 import { EMAIL_RE, PHONE_RE, validationError } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
+import { enregistrerInteraction, recalculerCalendrier, InteractionRefusee, InteractionInterdite } from '../lib/visitesClient.js';
 import { archiver, Introuvable } from '../lib/corbeille.js';
 
 const router = Router();
@@ -143,82 +144,30 @@ router.get('/interactions', authMiddleware, asyncHandler(async (req, res) => {
   res.json(result.rows);
 }));
 
+// Une visite ou un appel : la règle vit dans lib/visitesClient.js, la même pour Claude.
+// Le calendrier du client (dernière et prochaine visite) est renvoyé à jour.
 router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
-  const i = req.body;
-  if (!i.client_id) return validationError(res, ['client_id est requis']);
-  if (!i.type) return validationError(res, ['type est requis']);
-
-  const now = new Date().toISOString();
-  const commercialId = i.commercial_id || req.user.id;
-
-  // Transaction: insert interaction + update client's visit dates atomically
-  const dbClient = await db.connect();
   try {
-    await dbClient.query('BEGIN');
-
-    await dbClient.query(
-      `INSERT INTO interactions (id, client_id, commercial_id, type, date, comment, date_creation)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [i.id, i.client_id, commercialId, i.type, i.date || now, i.comment || '', i.date_creation || now]
-    );
-
-    // Update client's last_visit and calculate next_visit. Un appel passé depuis une session
-    // d'appel (sans_visite) ne vaut pas visite : le calendrier des visites ne bouge pas.
-    const clientResult = i.sans_visite ? { rows: [] } : await dbClient.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [i.client_id]);
-    if (clientResult.rows.length > 0) {
-      const client = clientResult.rows[0];
-      const visitDate = i.date || now;
-      let nextVisit = null;
-      if (client.statut === 'ACTIF') {
-        nextVisit = await calculateNextVisit(client.type_client, client.custom_recurrence, visitDate);
-      }
-      await dbClient.query(
-        'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
-        [visitDate.split('T')[0], nextVisit, now, i.client_id]
-      );
-    }
-
-    await dbClient.query('COMMIT');
+    const r = await enregistrerInteraction(req.body || {}, { id: req.user.id, role: req.user.role }, { via: 'app' });
+    res.json({ ok: true, ...r });
   } catch (err) {
-    await dbClient.query('ROLLBACK');
+    if (err instanceof InteractionInterdite) return res.status(403).json({ error: err.message });
+    if (err instanceof InteractionRefusee) return validationError(res, [err.message]);
     throw err;
-  } finally {
-    dbClient.release();
   }
-
-  await logActivity(req.user.id, 'visite_client', `${i.type}${i.comment ? ': ' + i.comment.substring(0, 100) : ''}`, 'client', i.client_id);
-  res.json({ ok: true });
 }));
 
 router.delete('/interactions/:id', authMiddleware, asyncHandler(async (req, res) => {
-  // Get the interaction before deleting to know which client to update
-  const interaction = await db.query('SELECT client_id FROM interactions WHERE id = $1', [req.params.id]);
-
-  await db.query('DELETE FROM interactions WHERE id = $1', [req.params.id]);
-
-  // Recalculate last_visit and next_visit for the client
-  if (interaction.rows.length > 0) {
-    const clientId = interaction.rows[0].client_id;
-    const lastInteraction = await db.query(
-      "SELECT date FROM interactions WHERE client_id = $1 AND type IN ('VISITE','APPEL') ORDER BY date DESC LIMIT 1",
-      [clientId]
-    );
-    const clientResult = await db.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [clientId]);
-    if (clientResult.rows.length > 0) {
-      const client = clientResult.rows[0];
-      const lastVisit = lastInteraction.rows.length > 0 ? lastInteraction.rows[0].date : null;
-      let nextVisit = null;
-      if (lastVisit && client.statut === 'ACTIF') {
-        nextVisit = await calculateNextVisit(client.type_client, client.custom_recurrence, lastVisit);
-      }
-      await db.query(
-        'UPDATE clients SET last_visit = $1, next_visit = $2, date_modification = $3 WHERE id = $4',
-        [lastVisit ? String(lastVisit).split('T')[0] : null, nextVisit, new Date().toISOString(), clientId]
-      );
-    }
+  const interaction = (await db.query('SELECT client_id, commercial_id FROM interactions WHERE id = $1', [req.params.id])).rows[0];
+  if (!interaction) return res.json({ ok: true, client: null });
+  // On retire ce qu'on a noté soi-même ; l'administrateur, tout.
+  if (req.user.role !== 'admin' && interaction.commercial_id !== req.user.id) {
+    return res.status(403).json({ error: 'Seul celui qui l\'a notée (ou un administrateur) peut retirer cette visite.' });
   }
-
-  res.json({ ok: true });
+  await db.query('DELETE FROM interactions WHERE id = $1', [req.params.id]);
+  await recalculerCalendrier(interaction.client_id);
+  const client = (await db.query('SELECT * FROM clients WHERE id = $1', [interaction.client_id])).rows[0] || null;
+  res.json({ ok: true, client });
 }));
 
 router.get('/tasks-client', authMiddleware, asyncHandler(async (req, res) => {

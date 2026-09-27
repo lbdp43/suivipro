@@ -47,7 +47,7 @@ function resumeClient(c, prenoms) {
 
 
 /** Les clients du périmètre, filtrés par la base : ce qui ne remonte pas ne traverse pas le réseau. */
-async function chargerClients(utilisateur, demandeCommercial, outil, f = {}) {
+export async function chargerClients(utilisateur, demandeCommercial, outil, f = {}) {
   const { ids } = await perimetre(utilisateur, demandeCommercial, 'clients', outil);
   const params = [];
   let sql = `SELECT * FROM clients WHERE 1=1${clause('commercial_id', ids, params)}`;

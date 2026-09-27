@@ -17,7 +17,7 @@ import { logActivity } from '../../lib/journal.js';
 import { estAdmin, trouverCommercial, HorsPerimetre } from '../perimetre.js';
 import { LIMITE_DEFAUT, LIMITE_MAX, borner, dateFr, ligne, bloc, entete, extrait, nommer } from '../format.js';
 
-const CONFIRMER = z.boolean().optional().describe('Laisser vide (ou false) pour voir ce qui va se passer sans rien enregistrer. Mettre true SEULEMENT après l\'accord explicite de la personne sur ce résumé.');
+export const CONFIRMER = z.boolean().optional().describe('Laisser vide (ou false) pour voir ce qui va se passer sans rien enregistrer. Mettre true SEULEMENT après l\'accord explicite de la personne sur ce résumé.');
 
 /** À qui s'appliquent les listes : soi, ou — pour l'administrateur — le collègue nommé, ou toute l'équipe. */
 async function pourQui(utilisateur, commercial) {
@@ -35,7 +35,7 @@ function verifierProprietaire(utilisateur, commercialId, quoi) {
   }
 }
 
-const deuxTemps = (lignes) => bloc(
+export const deuxTemps = (lignes) => bloc(
   'À CONFIRMER — rien n\'est encore enregistré :',
   ...lignes.map(l => `- ${l}`),
   '',

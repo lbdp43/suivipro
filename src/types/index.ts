@@ -94,15 +94,10 @@ export type CallResult = 'repondu' | 'pas_de_reponse' | 'messagerie' | 'injoigna
 
 export const CALL_RESULT_LABELS = LIBELLES_RESULTAT_APPEL as Record<CallResult, string>;
 /** Comment s'est passé un appel avec un CLIENT (enregistré comme interaction « APPEL »). */
-export type IssueAppelClient = 'commande' | 'interesse' | 'courtoisie' | 'probleme' | 'pas_de_reponse' | 'a_rappeler';
-export const ISSUES_APPEL_CLIENT: { value: IssueAppelClient; label: string; suite?: { titre: string; jours: number } }[] = [
-  { value: 'commande', label: 'Commande passée ou à venir' },
-  { value: 'interesse', label: 'Intéressé, à relancer', suite: { titre: 'Relancer après l\'appel', jours: 7 } },
-  { value: 'courtoisie', label: 'Appel de courtoisie, besoin de rien' },
-  { value: 'probleme', label: 'Problème ou mécontentement', suite: { titre: 'Suivre le problème signalé', jours: 2 } },
-  { value: 'pas_de_reponse', label: 'Pas de réponse', suite: { titre: 'Rappeler (pas de réponse)', jours: 2 } },
-  { value: 'a_rappeler', label: 'À rappeler plus tard', suite: { titre: 'Rappeler', jours: 7 } },
-];
+// Les issues d'un appel client vivent dans shared/visites.js, avec la règle de ce qui compte
+// comme une visite : le serveur et Claude les lisent aussi.
+import { ISSUES_APPEL_CLIENT, type IssueAppelClient } from '../../shared/visites';
+export { ISSUES_APPEL_CLIENT, type IssueAppelClient };
 export const ISSUE_APPEL_CLIENT_LABELS: Record<IssueAppelClient, string> = Object.fromEntries(ISSUES_APPEL_CLIENT.map(i => [i.value, i.label])) as Record<IssueAppelClient, string>;
 
 /** Résultats qu'on peut choisir à la main pour un appel (« Email envoyé » est posé automatiquement). */
@@ -527,6 +522,8 @@ export interface Interaction {
   date: string;
   comment: string;
   date_creation: string;
+  /** Fait avancer le calendrier des visites (visite, appel abouti) — posé par le serveur. */
+  compte_visite?: boolean;
 }
 
 export interface TaskClient {
