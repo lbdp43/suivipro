@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { dateLocale, statutVisite, joursDeRetard } from '../../shared/regles';
 import {
   X, Phone, Mail, MapPin, User, Edit2, Calendar, ChevronLeft,
-  CheckCircle2, PhoneCall, Navigation, ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2, CloudOff,
+  CheckCircle2, PhoneCall, ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2, CloudOff,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
@@ -15,6 +15,7 @@ import CarteFiche from './CarteFiche';
 import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import { noterInteraction } from '../utils/interactions';
+import FriseClient from './FriseClient';
 import { useFileEnvois } from './EnvoisEnAttente';
 import { confirmer } from './ui/Confirmation';
 
@@ -397,7 +398,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
         )}
 
         <div className="px-4 pt-2 pb-4 border-t border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Historique ({interactions.length})</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Ce qui s'est passé</h3>
           {/* Notées sans réseau : pas encore dans SuiviPro, le calendrier n'a pas encore bougé. */}
           {enAttente.length > 0 && (
             <div className="mb-2 space-y-1.5">
@@ -412,30 +413,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
               ))}
             </div>
           )}
-          {interactions.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-4">Aucune interaction enregistrée</p>
-          ) : (
-            <div className="space-y-2">
-              {interactions.slice(0, 20).map(interaction => {
-                const comm = getCommercial(interaction.commercial_id);
-                return (
-                  <div key={interaction.id} className="flex gap-3 p-2.5 bg-gray-50 rounded-lg">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${interaction.type === 'VISITE' ? 'bg-green-100' : interaction.type === 'APPEL' ? 'bg-blue-100' : 'bg-purple-100'}`}>
-                      {interaction.type === 'VISITE' ? <Navigation className="w-4 h-4 text-green-600" /> : interaction.type === 'APPEL' ? <PhoneCall className="w-4 h-4 text-blue-600" /> : <Calendar className="w-4 h-4 text-purple-600" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-gray-900">{INTERACTION_TYPE_LABELS[interaction.type]}</span>
-                        <span className="text-xs text-gray-400">{formatDate(interaction.date)}</span>
-                      </div>
-                      {comm && <p className="text-xs text-gray-500">{comm.prenom} {comm.nom}</p>}
-                      {interaction.comment && <p className="text-xs text-gray-600 mt-1">{interaction.comment}</p>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <FriseClient client={client} />
         </div>
 
         {/* Ou c'est, en grand et tout en bas : une adresse ecrite ne dit pas si

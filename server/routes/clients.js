@@ -68,7 +68,7 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
     return validationError(res, ['nom est requis']);
   }
 
-  const actuel = (await db.query('SELECT commercial_id FROM clients WHERE id = $1', [req.params.id])).rows[0];
+  const actuel = (await db.query('SELECT commercial_id, statut, custom_recurrence FROM clients WHERE id = $1', [req.params.id])).rows[0];
   if (!actuel) return res.status(404).json({ error: 'Client introuvable' });
 
   // Toute l'équipe peut corriger n'importe quelle fiche (remplacements, dépannage) : le
@@ -94,7 +94,47 @@ router.put('/clients/:id', authMiddleware, asyncHandler(async (req, res) => {
      c.raison_sociale || '', c.siren || '', c.tva_intracom || '']
   );
   await rattacherEntite('clients', req.params.id);
+  await journaliserChangements(req.user.id, req.params.id, c.nom, actuel, {
+    statut: c.statut || 'ACTIF',
+    custom_recurrence: c.custom_recurrence ?? null,
+    commercial_id: commercialFinal,
+  });
   res.json({ ok: true });
+}));
+
+// Ce qui change la vie d'une fiche — activée ou non, rythme des visites, commercial — va au
+// journal : la frise de la fiche client le montre, à côté des visites et des commandes.
+const texteFrequence = (jours) => (jours ? `tous les ${jours} jours` : 'rythme par défaut du type');
+
+async function journaliserChangements(auteurId, clientId, nom, avant, apres) {
+  if ((avant.statut === 'INACTIF') !== (apres.statut === 'INACTIF')) {
+    const reactive = apres.statut !== 'INACTIF';
+    await logActivity(auteurId, reactive ? 'client_reactive' : 'client_desactive', `${nom} ${reactive ? 'réactivé' : 'désactivé'}`, 'client', clientId);
+  }
+  const rythmeAvant = avant.custom_recurrence == null ? null : Number(avant.custom_recurrence);
+  const rythmeApres = apres.custom_recurrence == null ? null : Number(apres.custom_recurrence);
+  if (rythmeAvant !== rythmeApres) {
+    await logActivity(auteurId, 'recurrence_client', `${nom} : ${texteFrequence(rythmeAvant)} → ${texteFrequence(rythmeApres)}`, 'client', clientId);
+  }
+  if ((avant.commercial_id || null) !== (apres.commercial_id || null)) {
+    const noms = await db.query('SELECT id, prenom, nom FROM commerciaux WHERE id = ANY($1)', [[avant.commercial_id, apres.commercial_id].filter(Boolean)]);
+    const qui = id => { const p = noms.rows.find(r => r.id === id); return p ? `${p.prenom} ${p.nom}` : 'personne'; };
+    await logActivity(auteurId, 'client_reattribue', `${nom} : ${qui(avant.commercial_id)} → ${qui(apres.commercial_id)}`, 'client', clientId);
+  }
+}
+
+// Les changements de fiche, pour la frise : activée ou non, rythme, commercial, création.
+const ACTIONS_FICHE = ['creation_client', 'client_reactive', 'client_desactive', 'recurrence_client', 'client_reattribue', 'client_fusionne', 'signalement_rattache'];
+
+router.get('/clients/:id/journal', authMiddleware, asyncHandler(async (req, res) => {
+  const r = await db.query(
+    `SELECT al.id, al.action, al.details, al.created_at, al.user_id, c.prenom, c.nom
+       FROM activity_log al LEFT JOIN commerciaux c ON c.id = al.user_id
+      WHERE al.entity_type = 'client' AND al.entity_id = $1 AND al.action = ANY($2)
+      ORDER BY al.created_at DESC LIMIT 100`,
+    [req.params.id, ACTIONS_FICHE]
+  );
+  res.json(r.rows);
 }));
 
 // Supprimer ne détruit plus : la fiche part dans la corbeille avec ses visites, ses
