@@ -965,6 +965,11 @@ async function initDatabase(attempt = 1) {
       )`);
       await client.query("DELETE FROM oauth_codes WHERE expire_le < $1", [new Date().toISOString()]);
     } catch (err) { console.log('oauth migration:', err.message); }
+    // Ce que l'IA (Claude, ChatGPT) peut faire pour chacun : la liste des familles d'outils
+    // coupées par l'administration (server/mcp/familles.js). Vide = tout est ouvert.
+    try {
+      await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS ia_refus TEXT NOT NULL DEFAULT '[]'");
+    } catch (err) { console.log('ia_refus migration:', err.message); }
     // L'événement Google Agenda posé pour ce rendez-vous : on garde son identifiant et le
     // calendrier où il est, pour le modifier plus tard au lieu d'en créer un deuxième —
     // et pour le retirer du bon agenda si le rendez-vous change de commercial.

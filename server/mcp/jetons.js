@@ -38,7 +38,7 @@ export async function porteurDuJeton(valeur) {
   if (!valeur || !String(valeur).startsWith(PREFIXE)) return null;
   const r = await db.query(
     `SELECT j.id, j.commercial_id, j.expire_le, j.revoque_le,
-            c.prenom, c.nom, c.role, c.prospection
+            c.prenom, c.nom, c.role, c.prospection, c.ia_refus
        FROM mcp_jetons j JOIN commerciaux c ON c.id = j.commercial_id
       WHERE j.empreinte = $1 AND c.actif IS NOT FALSE`,
     [empreinteDe(valeur)]
@@ -53,6 +53,7 @@ export async function porteurDuJeton(valeur) {
     nom: j.nom,
     role: j.role,
     faitDeLaProspection: j.role === 'prospection' || !!j.prospection,
+    iaRefus: j.ia_refus || '[]',
   };
 }
 

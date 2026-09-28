@@ -11,6 +11,7 @@ import { useApp } from '../../store/AppContext';
 import { useToast } from '../../components/Toast';
 import { libelleRole } from '../../utils/roles';
 import { confirmer } from '../../components/ui/Confirmation';
+import DroitsIA from './DroitsIA';
 
 interface Jeton {
   id: string;
@@ -123,6 +124,8 @@ export default function OngletAccesClaude() {
           <p className="text-gray-400">Tout compte actif peut se brancher ainsi ; il ne voit que ce qu'il voit déjà dans l'appli. Un compte retiré de l'équipe perd ses accès.</p>
         </div>
       </div>
+
+      <DroitsIA />
 
       {nouveau && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
