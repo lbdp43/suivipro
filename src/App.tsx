@@ -1,5 +1,5 @@
-import { Suspense } from 'react';
-import { pageParesseuse } from './utils/pageParesseuse';
+import { Suspense, useEffect } from 'react';
+import { pageParesseuse, prechargerAuCalme } from './utils/pageParesseuse';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './store/AppContext';
 import { Beer } from 'lucide-react';
@@ -32,10 +32,38 @@ const AnnuairePage = pageParesseuse(() => import('./pages/AnnuairePage'));
 const SemainePage = pageParesseuse(() => import('./pages/SemainePage'));
 const RappelsTachesPage = pageParesseuse(() => import('./pages/RappelsTachesPage'));
 
+// Le temps qu'une page arrive : sa silhouette (un titre, des lignes) plutôt qu'une roue qui
+// tourne — l'œil sait déjà où regarder, et l'attente paraît plus courte.
+// La page où l'on arrive (l'accueil, le plus souvent) commence à se télécharger tout de suite,
+// en même temps que les données, plutôt qu'après elles.
+const PAGE_DE_DEPART: Record<string, () => Promise<unknown>> = {
+  '/': () => import('./pages/AccueilPage'),
+  '/clients': () => import('./pages/ClientsPage'),
+  '/prospects': () => import('./pages/ProspectsPage'),
+  '/pipeline': () => import('./pages/PipelinePage'),
+  '/rappels': () => import('./pages/RappelsTachesPage'),
+  '/semaine': () => import('./pages/SemainePage'),
+  '/rdv': () => import('./pages/AppointmentsPage'),
+  '/carte': () => import('./pages/MapPage'),
+};
+PAGE_DE_DEPART[window.location.pathname]?.().catch(() => { /* la page réessaiera à l'affichage */ });
+
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center py-20">
-      <div className="w-7 h-7 border-3 border-brewery-600 border-t-transparent rounded-full animate-spin" />
+    <div className="animate-pulse p-4 sm:p-6" aria-busy="true" aria-label="Chargement de la page">
+      <div className="mb-2 h-7 w-48 rounded-lg bg-gray-200" />
+      <div className="mb-6 h-4 w-72 max-w-full rounded bg-gray-100" />
+      <div className="space-y-3">
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4">
+            <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gray-100" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-4 w-1/2 rounded bg-gray-200" />
+              <div className="h-3 w-3/4 rounded bg-gray-100" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -59,6 +87,8 @@ function RouteStatistiques({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { state, loading } = useApp();
+  // Connecté et affiché : le reste de l'appli se télécharge au calme.
+  useEffect(() => { if (state.currentUser && !loading) prechargerAuCalme(); }, [state.currentUser, loading]);
 
   if (loading) {
     return (

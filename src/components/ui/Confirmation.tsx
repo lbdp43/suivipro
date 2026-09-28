@@ -4,10 +4,14 @@
 //
 // Le texte peut garder ses retours à la ligne ; la première phrase devient le titre, le
 // reste l'explication. Le bouton reprend le verbe de la question (« Supprimer », « Vider »…).
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { AlertTriangle, HelpCircle } from 'lucide-react';
-import Fenetre from './Fenetre';
 import Bouton from './Bouton';
+import { pageParesseuse } from '../../utils/pageParesseuse';
+
+// La fenêtre (et sa bibliothèque de tiroir) se télécharge à la première question, ou avant,
+// au calme : l'ouverture de l'appli n'en a pas besoin.
+const Fenetre = pageParesseuse(() => import('./Fenetre'));
 
 export interface OptionsConfirmation {
   titre?: string;
@@ -62,6 +66,7 @@ export function HoteConfirmation() {
   const repondre = (oui: boolean) => { demande.repondre(oui); setDemande(null); };
 
   return (
+    <Suspense fallback={null}>
     <Fenetre
       ouvert
       auPremierPlan
@@ -77,5 +82,6 @@ export function HoteConfirmation() {
     >
       {detail ? <p className="whitespace-pre-line text-sm text-encre-douce">{detail}</p> : null}
     </Fenetre>
+    </Suspense>
   );
 }
