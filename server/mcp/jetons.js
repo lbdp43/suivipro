@@ -33,14 +33,14 @@ export async function creerJeton({ commercialId, nom, creePar }) {
   return { id, valeur, expire_le: expire.toISOString() };
 }
 
-/** Le porteur du jeton, ou null : révoqué, expiré et inconnu se répondent pareil. */
+/** Le porteur du jeton, ou null : révoqué, expiré, inconnu ou compte retiré se répondent pareil. */
 export async function porteurDuJeton(valeur) {
   if (!valeur || !String(valeur).startsWith(PREFIXE)) return null;
   const r = await db.query(
     `SELECT j.id, j.commercial_id, j.expire_le, j.revoque_le,
             c.prenom, c.nom, c.role, c.prospection
        FROM mcp_jetons j JOIN commerciaux c ON c.id = j.commercial_id
-      WHERE j.empreinte = $1`,
+      WHERE j.empreinte = $1 AND c.actif IS NOT FALSE`,
     [empreinteDe(valeur)]
   );
   const j = r.rows[0];

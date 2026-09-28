@@ -946,6 +946,25 @@ async function initDatabase(attempt = 1) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_mcp_jetons_empreinte ON mcp_jetons(empreinte)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_mcp_jetons_commercial ON mcp_jetons(commercial_id)');
     } catch (err) { console.log('mcp_jetons migration:', err.message); }
+    // La connexion OAuth du MCP (ChatGPT) : les clients qui se sont inscrits, et les codes
+    // de connexion d'une dizaine de minutes. Les jetons obtenus vont dans mcp_jetons.
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS oauth_clients (
+        id TEXT PRIMARY KEY,
+        nom TEXT NOT NULL DEFAULT '',
+        redirect_uris TEXT NOT NULL DEFAULT '[]',
+        cree_le TEXT NOT NULL
+      )`);
+      await client.query(`CREATE TABLE IF NOT EXISTS oauth_codes (
+        empreinte TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        commercial_id TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        code_challenge TEXT NOT NULL,
+        expire_le TEXT NOT NULL
+      )`);
+      await client.query("DELETE FROM oauth_codes WHERE expire_le < $1", [new Date().toISOString()]);
+    } catch (err) { console.log('oauth migration:', err.message); }
     // L'événement Google Agenda posé pour ce rendez-vous : on garde son identifiant et le
     // calendrier où il est, pour le modifier plus tard au lieu d'en créer un deuxième —
     // et pour le retirer du bon agenda si le rendez-vous change de commercial.
