@@ -71,6 +71,7 @@ const SUJETS = {
     `- ${LIBELLES_ROLE.admin} : voit toute l'équipe, clients comme prospects.`,
     `- ${LIBELLES_ROLE.commercial} : ses clients et ses prospects ; un collègue seulement s'il le nomme, et c'est journalisé.`,
     `- ${LIBELLES_ROLE.prospection} : prospects, pipeline, boîte de prospection et rendez-vous qu'elle a pris. Pas d'accès aux fiches clients ; elle note l'appel chez un client qu'on lui confie par une tâche.`,
+    'Modifier les fiches : un commercial désactive ou réactive ses clients et règle leur récurrence de visite ; il change l\'étape de ses prospects et de ceux sans commercial. La prospection change l\'étape de tous les prospects, mais ne touche pas aux clients. L\'administrateur fait tout, sur toute l\'équipe.',
   ),
   identite: () => bloc(
     '# L\'identité légale d\'un établissement',

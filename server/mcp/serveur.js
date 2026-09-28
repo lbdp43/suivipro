@@ -13,6 +13,7 @@ import outilsAgenda from './outils/agenda.js';
 import outilsBoite from './outils/boite.js';
 import outilsSuivi from './outils/suivi.js';
 import outilsVisites from './outils/visites.js';
+import outilsFiches, { ModificationRefusee } from './outils/fiches.js';
 import { HorsPerimetre } from './perimetre.js';
 import { DepotRefuse } from '../lib/boiteProspection.js';
 import { CompteRenduRefuse, CompteRenduInterdit } from '../lib/compteRendu.js';
@@ -21,12 +22,13 @@ import { journaliserAppel, journaliserRefus, verifierSeuils } from './journal.js
 import { reponse } from './format.js';
 import { LIBELLES_ROLE } from '../../shared/libelles.js';
 
-export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsBoite, ...outilsSuivi, ...outilsVisites];
+export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsBoite, ...outilsSuivi, ...outilsVisites, ...outilsFiches];
 
 /** Les outils que ce rôle a le droit d'appeler (matrice du cahier des charges). */
 const INTERDITS = {
   // Pas de lecture des clients ; mais elle note l'appel chez un client qu'on lui confie par une tâche.
-  prospection: ['chercher_client', 'fiche_client', 'clients_en_retard', 'visites_et_appels'],
+  // Elle change l'étape des prospects, mais ne désactive pas de client et ne règle pas leurs visites.
+  prospection: ['chercher_client', 'fiche_client', 'clients_en_retard', 'visites_et_appels', 'activer_ou_desactiver_client', 'regler_recurrence'],
 };
 
 export function outilsDuRole(role) {
@@ -37,7 +39,7 @@ export function outilsDuRole(role) {
 function messageDErreur(err) {
   // Un refus (hors périmètre, dépôt incomplet) est une réponse, pas une panne : on le rend
   // tel quel, sans encombrer les journaux d'une pile d'appels.
-  if (err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduRefuse || err instanceof InteractionRefusee) return err.message;
+  if (err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduRefuse || err instanceof InteractionRefusee || err instanceof ModificationRefusee) return err.message;
   console.error('[MCP] Outil en échec :', err.stack || err.message);
   return `La demande n'a pas abouti : ${String(err.message || err).slice(0, 200)}`;
 }
@@ -52,9 +54,9 @@ export function construireServeur(utilisateur) {
     {
       instructions: [
         `Vous parlez à SuiviPro, le logiciel commercial de La Brasserie des Plantes, pour le compte de ${utilisateur.prenom} ${utilisateur.nom} (${LIBELLES_ROLE[utilisateur.role] || utilisateur.role}).`,
-        'Quelques gestes modifient quelque chose. « deposer_dans_la_boite » range un établissement dans la boîte de prospection, à qualifier par l\'équipe. « ecrire_compte_rendu », « terminer_action » et « terminer_tache » font le suivi des rendez-vous avec les règles de l\'écran : étape du tunnel, relance ou tâche de suivi, nouveau rendez-vous si c\'est décalé. « noter_visite_ou_appel » note une visite ou un appel chez un client (« noter_visites_en_serie » pour toute une tournée, un commentaire par client) : un appel compte comme une visite, sauf sans réponse.',
-        'Ces outils de suivi travaillent en deux temps : un premier appel sans « confirmer » montre ce qui va être fait, sans rien écrire ; montrez-le à la personne, et n\'appelez avec « confirmer: true » qu\'après son accord explicite. N\'inventez jamais un résultat, une date de relance ni une raison de perte : demandez-les. Les sujets « comptes_rendus » et « visites » de « contexte » donnent les règles.',
-        'Tout le reste est en lecture seule : aucun prospect, client ou réglage ne peut être créé ni supprimé. « proposer_mail » prépare un texte et n\'envoie rien.',
+        'Quelques gestes modifient quelque chose. « deposer_dans_la_boite » range un établissement dans la boîte de prospection, à qualifier par l\'équipe. « ecrire_compte_rendu », « terminer_action » et « terminer_tache » font le suivi des rendez-vous avec les règles de l\'écran : étape du tunnel, relance ou tâche de suivi, nouveau rendez-vous si c\'est décalé. « noter_visite_ou_appel » note une visite ou un appel chez un client (« noter_visites_en_serie » pour toute une tournée, un commentaire par client) : un appel compte comme une visite, sauf sans réponse. « activer_ou_desactiver_client » et « regler_recurrence » tiennent les fiches clients à jour (état actif, fréquence et prochaine visite) ; « changer_etape_prospect » déplace des prospects dans le tunnel — c\'est aussi ainsi qu\'on écarte un prospect (« ne pas contacter », « perdu »).',
+        'Ces outils qui écrivent travaillent en deux temps : un premier appel sans « confirmer » montre ce qui va être fait, sans rien écrire ; montrez-le à la personne, et n\'appelez avec « confirmer: true » qu\'après son accord explicite. N\'inventez jamais un résultat, une date de relance ni une raison de perte : demandez-les. Les sujets « comptes_rendus » et « visites » de « contexte » donnent les règles.',
+        'Tout le reste est en lecture seule : aucun prospect ni client ne peut être créé ni supprimé, et les réglages de l\'appli ne se changent pas d\'ici. « proposer_mail » prépare un texte et n\'envoie rien.',
         'Appelez « contexte » avant d\'interpréter des états, des étapes ou des couleurs : les règles de la maison y sont écrites.',
         'Les réponses citent les établissements par leur nom et leur ville. Les listes indiquent toujours le total réel, même tronquées.',
         'L\'identité légale d\'un établissement (raison sociale, SIREN, SIRET, numéro de TVA) se lit sur sa fiche et se transmet au dépôt. Ces numéros sont vérifiés par leur clé de contrôle : un numéro faux est écarté et la réponse le dit. Ne les devinez jamais — le sujet « identite » de « contexte » explique ce que chacun désigne.',
@@ -86,7 +88,7 @@ export function construireServeur(utilisateur) {
           // Une saisie incomplète (compte rendu sans notes, relance sans date) n'est pas une
           // tentative hors périmètre : elle est journalisée à part et ne compte pas dans les seuils.
           const refuse = err instanceof HorsPerimetre || err instanceof DepotRefuse || err instanceof CompteRenduInterdit || err instanceof InteractionInterdite;
-          const saisie = !refuse && (err instanceof CompteRenduRefuse || err instanceof InteractionRefusee);
+          const saisie = !refuse && (err instanceof CompteRenduRefuse || err instanceof InteractionRefusee || err instanceof ModificationRefusee);
           await journaliserAppel({ utilisateur, outil: outil.nom, filtres: args, resultats: 0, ms: Date.now() - debut, mention: saisie ? 'saisie' : refuse ? 'refus' : 'erreur' });
           if (refuse) { await journaliserRefus(utilisateur, outil.nom, err.message); verifierSeuils(utilisateur); }
           return { ...reponse(messageDErreur(err)), isError: true };
