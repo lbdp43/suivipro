@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {  Users, Target, Tag, BarChart3, MapPin, Activity, Bot, Trash2 } from 'lucide-react';
 
 
@@ -20,6 +21,19 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
   const [activeTab, setActiveTab] = useState<'team' | 'objectives' | 'tags' | 'commercials' | 'easybeer' | 'tournees' | 'activity' | 'claude' | 'corbeille'>(pageEasybeer ? 'easybeer' : 'team');
 
   const [ebOnglet, setEbOnglet] = useState<'connexion' | 'synchronisation' | 'controle'>('connexion');
+
+  // « ?onglet=… » ouvre directement un onglet : c'est là que mènent les notifications
+  // (doublon EasyBeer → Contrôle, usage inhabituel → Accès IA…).
+  const [params] = useSearchParams();
+  const ongletDemande = params.get('onglet');
+  useEffect(() => {
+    if (!ongletDemande) return;
+    if (pageEasybeer) {
+      if (ongletDemande === 'connexion' || ongletDemande === 'synchronisation' || ongletDemande === 'controle') setEbOnglet(ongletDemande);
+    } else if (['team', 'objectives', 'tags', 'commercials', 'tournees', 'activity', 'claude', 'corbeille'].includes(ongletDemande)) {
+      setActiveTab(ongletDemande as typeof activeTab);
+    }
+  }, [ongletDemande, pageEasybeer]);
 
   const tabs = [
     { id: 'team' as const, label: 'Équipe', icon: Users },

@@ -577,7 +577,7 @@ export type CommandeStatut = 'en_cours' | 'livree' | 'annulee';
 
 export const COMMANDE_STATUT_LABELS: Record<CommandeStatut, string> = {
   en_cours: 'En cours',
-  livree: 'Livree',
+  livree: 'Livrée',
   annulee: 'Annulée',
 };
 

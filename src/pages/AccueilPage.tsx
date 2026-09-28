@@ -16,6 +16,7 @@ import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } 
 import { formatDate } from '../utils/helpers';
 import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
+import ChiffresCles from '../components/ChiffresCles';
 import BlocErreur from '../components/BlocErreur';
 import BilanDuSoir from '../components/BilanDuSoir';
 import CompteRenduModal from '../components/CompteRenduModal';
@@ -628,6 +629,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
       {/* D'abord ce qu'il y a à faire aujourd'hui ; les objectifs viennent en tête seulement
           s'il y en a de fixés. */}
       <Aujourdhui elements={bandeau} />
+      <BlocErreur titre="Mes chiffres"><ChiffresCles pour={moi.id} /></BlocErreur>
       {objectifsFixes && <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>}
 
       <div id="cr-a-faire" className="scroll-mt-4"><ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} /></div>
@@ -1076,6 +1078,7 @@ function AccueilProspection({ moi }: { moi: Commercial }) {
     <div className="p-4 sm:p-6 space-y-4 fade-in">
       <Bonjour personne={moi} sousTitre="prospection" />
       <DocumentsASigner moi={moi} />
+      <BlocErreur titre="Mes chiffres"><ChiffresCles pour={moi.id} prospection /></BlocErreur>
       {objectifsFixes && <BlocErreur titre="Mes objectifs"><Jauges personne={moi} /></BlocErreur>}
       <ComptesRendusAFaire rdvs={crAFaire} surCompteRendu={r => () => setCompteRenduRdv(r)} />
       <BlocsProspection moi={moi} />
@@ -1198,6 +1201,8 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
       </div>
 
       <DocumentsASigner moi={moi} />
+
+      <BlocErreur titre="Chiffres de l'équipe"><ChiffresCles pour={null} /></BlocErreur>
 
       <BlocErreur titre="Problèmes à régler">
         <div className={`bg-white rounded-xl border ${nbProblemes ? 'border-amber-200' : 'border-gray-200'} p-4`}>

@@ -13,6 +13,7 @@ import { getCallsToday, getCallsThisWeek, getCallsThisMonth, getAppointmentsThis
 import { objectifAppels } from '../utils/objectifs';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
+import ChiffresCles from '../components/ChiffresCles';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import AdminClientsDashboard from '../components/AdminClientsDashboard';
@@ -775,6 +776,8 @@ export default function DashboardPage() {
       {/* Page header */}
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Statistiques</h1>
 
+      <ChiffresDeLEquipe />
+
       {/* Bandeau alertes */}
       {totalAlerts > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -1506,5 +1509,27 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Les chiffres clés, pour l'équipe ou pour une personne : sur l'accueil, chacun ne voit que
+// les siens ; ici on compare.
+function ChiffresDeLEquipe() {
+  const { state } = useApp();
+  const [pour, setPour] = useState<string>('');
+  const membres = state.commerciaux.filter(c => (c as { actif?: boolean }).actif !== false && c.role !== 'admin');
+  const choisi = membres.find(c => c.id === pour);
+  return (
+    <section aria-label="Chiffres clés" className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">Chiffres clés</h2>
+        <select value={pour} onChange={e => setPour(e.target.value)} aria-label="Chiffres de qui ?"
+          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700">
+          <option value="">Toute l'équipe</option>
+          {membres.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+        </select>
+      </div>
+      <ChiffresCles key={pour || 'equipe'} pour={pour || null} prospection={choisi?.role === 'prospection'} />
+    </section>
   );
 }
