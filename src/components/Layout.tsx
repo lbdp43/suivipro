@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Map, 
   Bell, Menu, Beer, LogOut, Shield, User, Clock, BookOpen, ScanLine, Search,
-  CheckCheck, ChevronDown,
+  ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { apiPut } from '../api/client';
@@ -12,6 +12,11 @@ import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
 import { pageParesseuse } from '../utils/pageParesseuse';
 import EnvoisEnAttente from './EnvoisEnAttente';
+import type { NotificationRecue } from './CentreNotifications';
+import { useEcranEtroit } from '../utils/useEcranEtroit';
+
+// Le centre de notifications ne se télécharge qu'à la première ouverture de la cloche.
+const CentreNotifications = pageParesseuse(() => import('./CentreNotifications'));
 
 // La recherche se télécharge à sa première ouverture (ou avant, au calme) : l'ouverture de
 // l'appli n'en a pas besoin.
@@ -33,46 +38,6 @@ function useHorsLigne() {
 }
 
 
-interface Notification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  read: boolean;
-  created_at: string;
-  data?: string;
-}
-
-function timeAgo(dateStr: string) {
-  const now = new Date();
-  const d = new Date(dateStr);
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "a l'instant";
-  if (diffMin < 60) return `il y a ${diffMin}min`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `il y a ${diffH}h`;
-  const diffD = Math.floor(diffH / 24);
-  return `il y a ${diffD}j`;
-}
-
-const NOTIF_ICONS: Record<string, string> = {
-  TASK_ASSIGNED: '📋',
-  TASK_COMPLETED: '✅',
-  VISIT_REMINDER: '📍',
-  NEW_CLIENT_ASSIGNED: '🏢',
-  CLIENT_PENDING: '⏳',
-  commande: '📦',
-  commande_auto: '📦',
-  commande_orpheline: '⚠️',
-  easybeer_client_linked: '🔗',
-  easybeer_client_created: '🆕',
-  easybeer_client_pending: '⏳',
-  easybeer_doublon: '⚠️',
-  signalement: '📣',
-  info: 'ℹ️',
-};
-
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const horsLigne = useHorsLigne();
@@ -89,7 +54,8 @@ export default function Layout() {
   }, []);
 
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const ecranEtroit = useEcranEtroit();
+  const [notifications, setNotifications] = useState<NotificationRecue[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [openSections, setOpenSections] = useState<Set<string> | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -168,9 +134,9 @@ export default function Layout() {
         setNotifOpen(false);
       }
     };
-    if (notifOpen) document.addEventListener('mousedown', handler);
+    if (notifOpen && !ecranEtroit) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [notifOpen]);
+  }, [notifOpen, ecranEtroit]);
 
   const markAsRead = async (notifId: string) => {
     if (!token) return;
@@ -449,6 +415,8 @@ export default function Layout() {
                     : 'text-gray-500 hover:bg-brewery-50 hover:text-brewery-700'
                 }`}
                 title="Notifications"
+                aria-label={unreadCount ? `Notifications, ${unreadCount} non lue(s)` : 'Notifications'}
+                aria-expanded={notifOpen}
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
@@ -458,53 +426,15 @@ export default function Layout() {
                 )}
               </button>
 
-              {notifOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl border border-gray-200 shadow-lg z-50 max-h-96 flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                    <h3 className="font-semibold text-sm text-gray-900">Notifications</h3>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={markAllRead}
-                        className="flex items-center gap-1 text-xs text-brewery-600 hover:text-brewery-700"
-                      >
-                        <CheckCheck className="w-3 h-3" />
-                        Tout marquer lu
-                      </button>
-                    )}
-                  </div>
-                  <div className="overflow-y-auto flex-1">
-                    {notifications.length === 0 ? (
-                      <div className="py-8 text-center text-sm text-gray-400">
-                        Aucune notification
-                      </div>
-                    ) : notifications.map(n => (
-                      <div
-                        key={n.id}
-                        className={`px-4 py-3 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 transition-colors ${
-                          !n.read ? 'bg-brewery-50/50' : ''
-                        }`}
-                        onClick={() => { if (!n.read) markAsRead(n.id); }}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="text-sm mt-0.5">{NOTIF_ICONS[n.type] || NOTIF_ICONS.info}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm ${!n.read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                              {n.title}
-                            </p>
-                            {n.message && (
-                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
-                            )}
-                            <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
-                          </div>
-                          {!n.read && (
-                            <div className="w-2 h-2 bg-brewery-500 rounded-full mt-1.5 flex-shrink-0" />
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {notifOpen && <Suspense fallback={null}><CentreNotifications
+                ouvert={notifOpen}
+                telephone={ecranEtroit}
+                notifications={notifications}
+                nonLues={unreadCount}
+                onLue={markAsRead}
+                onToutLu={markAllRead}
+                onFermer={() => setNotifOpen(false)}
+              /></Suspense>}
             </div>
 
             {/* Le rôle est masqué sur téléphone : la barre doit tenir dans 360 px. */}
