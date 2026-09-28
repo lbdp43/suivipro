@@ -317,12 +317,12 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
     try {
       // Un appel compte comme une visite, sauf s'il est resté sans réponse (shared/visites.js).
       // Tâches terminées et tâche de suivi partent avec lui : tout passe, ou rien.
-      await noterInteraction({
+      const r = await noterInteraction({
         id: generateId('int'), client_id: client.id, type: 'APPEL', issue: issueClient as IssueAppelClient, comment: callNotes.trim(),
         taches_faites: [...tachesCochees],
         nouvelle_tache: nouvelleTache && nouvelleTache.titre.trim() ? { titre: nouvelleTache.titre.trim(), date: nouvelleTache.date || null } : null,
-      }, dispatchLocal);
-      toast.success(tachesCochees.size ? `Appel enregistré · ${tachesCochees.size} tâche(s) faite(s)` : 'Appel enregistré');
+      }, dispatchLocal, { clientNom: client.nom });
+      if (!r.enAttente) toast.success(tachesCochees.size ? `Appel enregistré · ${tachesCochees.size} tâche(s) faite(s)` : 'Appel enregistré');
       setCallActive(false);
       setCallTimer(0);
       if (!suivantDeSession()) setShowModal(false);

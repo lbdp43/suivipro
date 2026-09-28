@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { dateLocale, statutVisite, joursDeRetard } from '../../shared/regles';
 import {
   X, Phone, Mail, MapPin, User, Edit2, Calendar, ChevronLeft,
-  CheckCircle2, PhoneCall, Navigation, ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2,
+  CheckCircle2, PhoneCall, Navigation, ListTodo, Plus, Check, StickyNote, Save, Eye, EyeOff, Trash2, CloudOff,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
@@ -15,6 +15,7 @@ import CarteFiche from './CarteFiche';
 import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import { noterInteraction } from '../utils/interactions';
+import { useFileEnvois } from './EnvoisEnAttente';
 import { confirmer } from './ui/Confirmation';
 
 // LA fiche d'un client, la même dans le panneau de la page Clients et dans la fenêtre
@@ -39,6 +40,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
   const { state, dispatchLocal, getCommercial, getInteractionsForClient, getTasksForClient, getCommandesForClient } = useApp();
   const toast = useToast();
   const interactions = getInteractionsForClient(client.id);
+  const enAttente = useFileEnvois().filter(e => e.saisie.client_id === client.id);
   const tasks = getTasksForClient(client.id);
   const commandes = getCommandesForClient(client.id);
 
@@ -123,7 +125,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
       comment: interactionComment.trim(), date_creation: now,
     };
     try {
-      await noterInteraction(interaction, dispatchLocal);
+      const r = await noterInteraction(interaction, dispatchLocal, { clientNom: client.nom });
       if (interactionEnLigne === 'RDV_PLANIFIE' && interactionDate) {
         const rdv = {
           id: generateId('rdv'), prospect_id: '', client_id: client.id, commercial_id: state.currentUser?.id || '', prospecteur_id: state.currentUser?.id || '',
@@ -132,7 +134,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
         };
         try { await apiPost('/appointments', rdv); dispatchLocal({ type: 'ADD_APPOINTMENT', payload: rdv }); } catch { /* le rendez-vous est secondaire */ }
       }
-      toast.success('Interaction enregistrée');
+      if (!r.enAttente) toast.success('Interaction enregistrée');
       setInteractionEnLigne(null); setInteractionComment(''); setInteractionDate('');
     } catch { toast.error("Erreur lors de l'enregistrement"); }
   };
@@ -396,6 +398,20 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
 
         <div className="px-4 pt-2 pb-4 border-t border-gray-100">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Historique ({interactions.length})</h3>
+          {/* Notées sans réseau : pas encore dans SuiviPro, le calendrier n'a pas encore bougé. */}
+          {enAttente.length > 0 && (
+            <div className="mb-2 space-y-1.5">
+              {enAttente.map(e => (
+                <div key={e.id} className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 text-xs ${e.etat === 'a_revoir' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                  <CloudOff className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium">{e.saisie.type === 'APPEL' ? 'Appel' : 'Visite'} · {e.etat === 'a_revoir' ? `refusée : ${e.raison}` : "en attente d'envoi"}</span>
+                    {e.saisie.comment && <span className="block truncate opacity-80">{e.saisie.comment}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {interactions.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-4">Aucune interaction enregistrée</p>
           ) : (

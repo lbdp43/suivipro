@@ -87,7 +87,10 @@ async function request(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Erreur ${res.status}`);
+    // Le code HTTP voyage avec l'erreur : un refus (4xx) ne se traite pas comme une panne (5xx).
+    const erreur = new Error(body.error || `Erreur ${res.status}`) as Error & { status?: number };
+    erreur.status = res.status;
+    throw erreur;
   }
 
   return res.json();

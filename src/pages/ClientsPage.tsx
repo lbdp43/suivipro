@@ -718,7 +718,7 @@ export default function ClientsPage() {
       date_creation: now,
     };
     try {
-      await noterInteraction(interaction, dispatchLocal);
+      await noterInteraction(interaction, dispatchLocal, { clientNom: interactionClient.nom });
     } catch {
       toast.error('Erreur lors de l\'enregistrement');
       return;

@@ -225,15 +225,13 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
         date_creation: new Date().toISOString(),
         // Pas de réponse : l'appel ne compte pas comme visite.
         sans_reponse: crOutcome === 'pas_repondu',
+        // La tâche se termine avec la visite, dans le même envoi : tout passe, ou rien —
+        // et sans réseau, elles partent ensemble au retour du réseau.
+        taches_faites: crCompleteTask && crTask.statut !== 'TERMINEE' ? [crTask.id] : [],
       };
-      await noterInteraction(interaction, dispatchLocal);
+      const r = await noterInteraction(interaction, dispatchLocal, { clientNom: getClientById(crTask.client_id)?.nom });
 
-      if (crCompleteTask && crTask.statut !== 'TERMINEE') {
-        const terminee = await apiPut(`/tasks-client/${crTask.id}`, { ...crTask, statut: 'TERMINEE' }) as TaskClient;
-        dispatchLocal({ type: 'UPDATE_TASK_CLIENT', payload: terminee });
-      }
-
-      toast.success(crType === 'APPEL' ? 'Appel enregistré' : 'Visite enregistrée');
+      if (!r.enAttente) toast.success(crType === 'APPEL' ? 'Appel enregistré' : 'Visite enregistrée');
       setCrTask(null);
     } catch {
       toast.error('Erreur enregistrement');

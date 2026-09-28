@@ -147,6 +147,17 @@ router.get('/interactions', authMiddleware, asyncHandler(async (req, res) => {
 // Une visite ou un appel : la règle vit dans lib/visitesClient.js, la même pour Claude.
 // Le calendrier du client (dernière et prochaine visite) est renvoyé à jour.
 router.post('/interactions', authMiddleware, asyncHandler(async (req, res) => {
+  // Déjà reçue ? Une visite notée sans réseau peut arriver deux fois (le téléphone renvoie
+  // quand la réponse s'est perdue) : on la reconnaît à son identifiant, choisi sur le
+  // téléphone, et on répond comme la première fois sans rien refaire.
+  const id = typeof req.body?.id === 'string' ? req.body.id : '';
+  if (id) {
+    const deja = (await db.query('SELECT * FROM interactions WHERE id = $1', [id])).rows[0];
+    if (deja && (deja.commercial_id === req.user.id || req.user.role === 'admin' || deja.client_id === req.body.client_id)) {
+      const client = (await db.query('SELECT * FROM clients WHERE id = $1', [deja.client_id])).rows[0] || null;
+      return res.json({ ok: true, deja: true, interaction: deja, client, taches_faites: [], nouvelle_tache: null });
+    }
+  }
   try {
     const r = await enregistrerInteraction(req.body || {}, { id: req.user.id, role: req.user.role }, { via: 'app' });
     res.json({ ok: true, ...r });
