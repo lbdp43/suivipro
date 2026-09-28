@@ -4,6 +4,8 @@
 // La liste des fournisseurs n'est pas ici : elle est dans shared/fondsDeCarte.js, parce
 // que le serveur doit l'autoriser dans sa politique de sécurité (Content-Security-Policy).
 // Deux listes qui divergent, c'est une carte blanche sans le moindre message d'erreur.
+// Les styles de Leaflet voyagent avec la carte : l'ouverture de l'appli n'en a pas besoin.
+import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
 import { TileLayer } from 'react-leaflet';
 import { FONDS_DE_CARTE, type FondDeCarte } from '../../shared/fondsDeCarte';

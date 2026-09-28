@@ -1,5 +1,5 @@
 // La recherche de SuiviPro : un client, un prospect ou une page, depuis n'importe quel écran.
-// La loupe de l'en-tête l'ouvre, et Ctrl+K (⌘K sur Mac) au clavier.
+// La loupe de l'en-tête l'ouvre, et Ctrl+K (⌘K sur Mac) au clavier (écouté dans Layout).
 //
 // Tout est cherché dans les données déjà présentes sur le téléphone (lot « données
 // rapides ») : pas d'aller-retour au serveur, les résultats suivent la frappe, même hors
@@ -48,14 +48,7 @@ export default function RechercheGlobale({ ouvert, onChanger }: { ouvert: boolea
   const differe = useDeferredValue(texte);
   const q = normaliserPourComparaison(differe.trim());
 
-  // Ctrl+K / ⌘K, partout.
-  useEffect(() => {
-    const touche = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); onChanger(!ouvert); }
-    };
-    document.addEventListener('keydown', touche);
-    return () => document.removeEventListener('keydown', touche);
-  }, [ouvert, onChanger]);
+  // Ctrl+K / ⌘K : écouté par Layout, qui monte cette palette à sa première ouverture.
   useEffect(() => { if (!ouvert) setTexte(''); }, [ouvert]);
 
   // L'index se refait quand les données changent, pas à chaque lettre.

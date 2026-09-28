@@ -37,7 +37,7 @@
 @media print { :root { color-scheme: light; } }
 
 /* Les valeurs sombres de ces couleurs sont dans tailwind.config.js, avec celles des classes. */
-.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgb(var(--c-surface)); color: rgb(var(--c-encre)); }
+.leaflet-container .leaflet-popup-content-wrapper, .leaflet-container .leaflet-popup-tip { background: rgb(var(--c-surface)); color: rgb(var(--c-encre)); }
 /* La carte garde ses tuiles claires : en sombre, on les assombrit juste assez. */
 .leaflet-tile-pane { filter: var(--filtre-carte, none); }
 
@@ -48,7 +48,7 @@
 ::-webkit-scrollbar-thumb:hover { background: rgb(var(--p-slate-500)); }
 
 /* Leaflet fixes */
-.leaflet-container { width: 100%; height: 100%; z-index: 1; }
+div.leaflet-container { width: 100%; height: 100%; z-index: 1; }
 
 /* Kanban drag styles */
 .kanban-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }

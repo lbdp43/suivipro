@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { dateLocale } from '../../shared/regles';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
@@ -10,7 +10,11 @@ import { useApp } from '../store/AppContext';
 import { apiPut } from '../api/client';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
-import RechercheGlobale from './RechercheGlobale';
+import { pageParesseuse } from '../utils/pageParesseuse';
+
+// La recherche se télécharge à sa première ouverture (ou avant, au calme) : l'ouverture de
+// l'appli n'en a pas besoin.
+const RechercheGlobale = pageParesseuse(() => import('./RechercheGlobale'));
 import { nouvelleVersionDisponible, rechargerUneFois } from '../utils/version';
 import { libelleRole, faitDeLaProspection } from '../utils/roles';
 import { Link } from 'react-router-dom';
@@ -72,6 +76,16 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const horsLigne = useHorsLigne();
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
+  const [rechercheMontee, setRechercheMontee] = useState(false);
+  useEffect(() => { if (rechercheOuverte) setRechercheMontee(true); }, [rechercheOuverte]);
+  // Ctrl+K / ⌘K, partout — même avant que la recherche soit téléchargée.
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setRechercheOuverte(o => !o); }
+    };
+    document.addEventListener('keydown', touche);
+    return () => document.removeEventListener('keydown', touche);
+  }, []);
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -514,7 +528,11 @@ export default function Layout() {
           </BlocErreur>
         </main>
       </div>
-      <RechercheGlobale ouvert={rechercheOuverte} onChanger={setRechercheOuverte} />
+      {rechercheMontee && (
+        <Suspense fallback={null}>
+          <RechercheGlobale ouvert={rechercheOuverte} onChanger={setRechercheOuverte} />
+        </Suspense>
+      )}
 
     </div>
   );

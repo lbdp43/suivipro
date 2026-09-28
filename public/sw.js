@@ -48,9 +48,10 @@ async function fichier(request) {
   const reponse = await fetch(request);
   if (reponse.ok) {
     await cache.put(request, reponse.clone());
-    // Au-delà de 150 fichiers, les plus anciens partent (versions précédentes de l'appli).
+    // Au-delà de 300 fichiers, les plus anciens partent (versions précédentes de l'appli).
+    // Une version entière, préchargée au calme, en compte environ 140 : elle tient en entier.
     const cles = await cache.keys();
-    if (cles.length > 150) await Promise.all(cles.slice(0, cles.length - 150).map(k => cache.delete(k)));
+    if (cles.length > 300) await Promise.all(cles.slice(0, cles.length - 300).map(k => cache.delete(k)));
   }
   return reponse;
 }

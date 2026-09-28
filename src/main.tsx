@@ -7,7 +7,6 @@ import { ToastProvider } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
 import App from './App';
 import { rechargerUneFois } from './utils/version';
-import 'leaflet/dist/leaflet.css';
 import './index.css';
 
 // Application installable (écran d'accueil du téléphone) : c'est ce qui fait apparaître
