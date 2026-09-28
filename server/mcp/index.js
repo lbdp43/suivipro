@@ -10,6 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { porteurDuJeton, marquerUtilisation } from './jetons.js';
 import { construireServeur, outilsDuRole } from './serveur.js';
 import { verifierReveil } from './journal.js';
+import { adresseFicheRessource } from './oauth.js';
 import db from '../db.js';
 
 const routeur = express.Router();
@@ -20,7 +21,7 @@ routeur.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Token', 'X-Api-Key', 'X-Suivipro-Token', 'X-Access-Token', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'],
-  exposedHeaders: ['mcp-session-id', 'mcp-protocol-version'],
+  exposedHeaders: ['mcp-session-id', 'mcp-protocol-version', 'www-authenticate'],
 }));
 
 routeur.use(rateLimit({
@@ -35,10 +36,12 @@ routeur.use(rateLimit({
 
 routeur.use(express.json({ limit: '1mb' }));
 
-// Pas d'en-tête « WWW-Authenticate » : un client qui le voit croit à un service de
-// connexion OAuth, part chercher une inscription qui n'existe pas, et affiche
-// « problème de connexion ». Ici l'accès se fait par un jeton d'en-tête, point.
-function refus(res, message) {
+// Le refus dit où se connecter (« WWW-Authenticate ») : c'est ce qui lance la connexion
+// OAuth de ChatGPT (oauth.js). Un client qui passe déjà son jeton en en-tête, comme Claude,
+// n'est jamais refusé ainsi et ne voit pas la différence.
+function refus(req, res, message, jetonFourni) {
+  const erreur = jetonFourni ? ', error="invalid_token"' : '';
+  res.set('WWW-Authenticate', `Bearer resource_metadata="${adresseFicheRessource(req)}"${erreur}`);
   return res.status(401).json({
     jsonrpc: '2.0',
     error: { code: -32001, message },
@@ -65,12 +68,12 @@ function jetonDeLaRequete(req) {
 async function identifier(req, res) {
   const jeton = jetonDeLaRequete(req);
   if (!jeton) {
-    refus(res, 'Jeton manquant. Dans les réglages du connecteur : Authentification « Aucun », puis un en-tête supplémentaire « x-token » avec votre accès Claude (créé dans SuiviPro, Administration → Accès Claude).');
+    refus(req, res, 'Jeton manquant. ChatGPT : authentification OAuth. Claude : authentification « Aucun » et un en-tête « x-token » avec votre accès (SuiviPro, Administration → Accès IA).', false);
     return null;
   }
   const utilisateur = await porteurDuJeton(jeton);
   if (!utilisateur) {
-    refus(res, 'Jeton invalide, révoqué ou expiré. Demandez-en un nouveau dans SuiviPro (Administration → Accès Claude).');
+    refus(req, res, 'Jeton invalide, révoqué ou expiré. Reconnectez le connecteur, ou demandez un nouvel accès (SuiviPro, Administration → Accès IA).', true);
     return null;
   }
   return utilisateur;

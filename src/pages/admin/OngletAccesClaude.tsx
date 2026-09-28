@@ -1,4 +1,5 @@
-// Les accès Claude (MCP) : créer un jeton pour quelqu'un, voir qui s'en sert, révoquer.
+// Les accès IA (MCP) : créer un jeton pour quelqu'un (Claude), voir ceux que ChatGPT a
+// obtenus par connexion, voir qui s'en sert, révoquer.
 //
 // Un jeton appartient à une personne et porte son rôle : c'est ce qui permet de répondre
 // à « mes clients » et de savoir, dans le journal, qui a lu quoi. Sa valeur ne s'affiche
@@ -48,7 +49,7 @@ export default function OngletAccesClaude() {
       const r = await apiGet<{ jetons: Jeton[] }>('/mcp/jetons');
       setJetons(r.jetons || []);
     } catch (err) {
-      toast.error(`Accès Claude illisibles : ${(err as Error).message}`);
+      toast.error(`Accès IA illisibles : ${(err as Error).message}`);
     } finally {
       setChargement(false);
     }
@@ -98,21 +99,28 @@ export default function OngletAccesClaude() {
     <div className="space-y-4">
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-          <Bot className="w-4 h-4 text-brewery-600" /> Accès Claude
+          <Bot className="w-4 h-4 text-brewery-600" /> Accès IA — Claude et ChatGPT
         </h2>
         <p className="text-xs text-gray-500 mt-1">
-          Un accès permet de poser des questions à SuiviPro depuis Claude.
+          Un accès permet de poser des questions à SuiviPro depuis Claude ou ChatGPT.
           Chaque personne a le sien : il porte son rôle, et ne montre que ce qu'elle voit déjà à l'écran.
           Claude peut aussi <strong>écrire les comptes rendus de rendez-vous</strong>, noter une visite ou un appel chez un client, terminer les actions et les tâches, et déposer dans la boîte de prospection —
           avec les mêmes règles que l'écran, et toujours en deux temps : il montre ce qu'il va faire, et n'enregistre qu'après votre accord.
-          Chaque écriture est journalisée « via Claude ». Rien ne peut être supprimé par ce chemin.
+          Chaque écriture est journalisée. Rien ne peut être supprimé par ce chemin.
         </p>
         <div className="text-xs text-gray-500 mt-3 space-y-1">
           <p className="font-medium text-gray-700">À brancher dans Claude — Réglages → Connecteurs → connecteur personnalisé :</p>
           <p>1. Nom <code className="bg-gray-100 px-1 rounded">suivipro</code>, adresse <code className="bg-gray-100 px-1 rounded">{window.location.origin}/mcp</code></p>
           <p>2. Authentification : <strong>Aucun</strong> — SuiviPro n'utilise pas de service de connexion OAuth, mais un jeton.</p>
           <p>3. En-têtes de requête supplémentaires : nom <code className="bg-gray-100 px-1 rounded">x-token</code>, valeur = le jeton ci-dessous.</p>
-          <p className="text-gray-400">Si le connecteur propose « Toujours requis » et tente de s'inscrire auprès d'un service de connexion, c'est qu'il n'est pas sur « Aucun » : il échouera.</p>
+          <p className="text-gray-400">Claude peut aussi se brancher comme ChatGPT, par connexion (authentification OAuth) : aucun jeton à copier.</p>
+        </div>
+        <div className="text-xs text-gray-500 mt-3 space-y-1">
+          <p className="font-medium text-gray-700">À brancher dans ChatGPT — Réglages → Applications et connecteurs → Mode développeur, puis « Créer » :</p>
+          <p>1. Nom <code className="bg-gray-100 px-1 rounded">SuiviPro</code>, adresse du serveur MCP <code className="bg-gray-100 px-1 rounded">{window.location.origin}/mcp</code></p>
+          <p>2. Authentification : <strong>OAuth</strong>. Laissez vides l'identifiant et le secret : ChatGPT s'inscrit tout seul.</p>
+          <p>3. ChatGPT ouvre une page SuiviPro : chacun s'y connecte avec son e-mail et son mot de passe. L'accès apparaît ci-dessous, au nom de la personne, valable un an.</p>
+          <p className="text-gray-400">Tout compte actif peut se brancher ainsi ; il ne voit que ce qu'il voit déjà dans l'appli. Un compte retiré de l'équipe perd ses accès.</p>
         </div>
       </div>
 
@@ -162,6 +170,7 @@ export default function OngletAccesClaude() {
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {j.prenom} {j.nom_commercial}
                     <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{j.role}</span>
+                    {j.nom && <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-brewery-50 text-brewery-700">{j.nom}</span>}
                     <span className="ml-2 text-xs font-mono text-gray-400">…{j.indice}</span>
                   </p>
                   <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-3">
@@ -185,7 +194,7 @@ export default function OngletAccesClaude() {
           <div className="space-y-1">
             {anciens.map(j => (
               <p key={j.id} className="text-xs text-gray-400">
-                {j.prenom} {j.nom_commercial} · …{j.indice} · {j.revoque_le ? `révoqué le ${dateCourte(j.revoque_le)}` : `expiré le ${dateCourte(j.expire_le)}`} · {j.appels} requête(s)
+                {j.prenom} {j.nom_commercial} · {j.nom} · …{j.indice} · {j.revoque_le ? `révoqué le ${dateCourte(j.revoque_le)}` : `expiré le ${dateCourte(j.expire_le)}`} · {j.appels} requête(s)
               </p>
             ))}
           </div>

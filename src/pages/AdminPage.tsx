@@ -29,7 +29,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
     { id: 'tournees' as const, label: 'Tournées', icon: MapPin },
     { id: 'activity' as const, label: 'Activité', icon: Activity },
     { id: 'corbeille' as const, label: 'Corbeille', icon: Trash2 },
-    { id: 'claude' as const, label: 'Accès Claude', icon: Bot },
+    { id: 'claude' as const, label: 'Accès IA', icon: Bot },
   ];
 
   const ebOnglets = [

@@ -16,6 +16,7 @@ import { invaliderApresEcriture } from './server/lib/etatCache.js';
 import googleCalendarRoutes from './server/google-calendar.js';
 import googleContactsRoutes from './server/google-contacts.js';
 import mcpRoutes from './server/mcp/index.js';
+import oauthMcp from './server/mcp/oauth.js';
 import { hotesDesFonds } from './shared/fondsDeCarte.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,13 +33,9 @@ app.set('trust proxy', 1);
 // rendus, visites…) rendent périmé l'état commun, comme celles de l'appli.
 app.use('/mcp', invaliderApresEcriture, mcpRoutes);
 
-// Un client MCP qui n'a pas trouvé de service de connexion va sonder ces adresses. Sans
-// réponse nette, il reçoit la page de l'application (200, du HTML), en conclut qu'un OAuth
-// existe, tente une inscription impossible et affiche « problème de connexion ».
-app.use((req, res, next) => {
-  if (!req.path.startsWith('/.well-known/oauth-')) return next();
-  return res.status(404).json({ error: 'SuiviPro n\'utilise pas OAuth : l\'accès au MCP se fait par un jeton d\'en-tête.' });
-});
+// La connexion OAuth du MCP (ChatGPT) : fiches « .well-known », inscription, page de
+// connexion, échange du code. Avant helmet : la page de connexion pose sa propre politique.
+app.use(oauthMcp);
 
 // Les domaines des fonds de carte, autorisés pour les images.
 //
