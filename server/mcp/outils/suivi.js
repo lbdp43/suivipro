@@ -222,7 +222,7 @@ const terminer = {
     if (!a.confirmer) return { resultats: 0, texte: deuxTemps(resume) };
     const fait = await terminerAction(r.prospect_id, { rappelId: r.id, type, issue: a.issue, raison, note: a.note || '', commercialId: r.commercial_id }, utilisateur.id);
     if (!fait || fait.erreur) throw new CompteRenduRefuse(fait?.erreur || 'Action introuvable.');
-    await logActivity(utilisateur.id, 'action_terminee', `${r.nom_etablissement} : ${TYPES_ACTION[type]} → ${issue.label} (via Claude)`, 'prospect', r.prospect_id);
+    await logActivity(utilisateur.id, 'action_terminee', `${r.nom_etablissement} : ${TYPES_ACTION[type]} → ${issue.label} (via IA)`, 'prospect', r.prospect_id);
     return { resultats: 1, texte: bloc('Action terminée dans SuiviPro :', ...resume.map(l => `- ${l}`)) };
   },
 };
@@ -247,7 +247,7 @@ const terminerTache = {
     if (!a.confirmer) return { resultats: 0, texte: deuxTemps(resume) };
     const description = a.note ? `${t.description ? `${t.description}\n` : ''}[Fait] ${a.note}` : t.description;
     await db.query("UPDATE tasks_client SET statut = 'TERMINEE', completed_at = $1, description = $2 WHERE id = $3", [new Date().toISOString(), description, t.id]);
-    await logActivity(utilisateur.id, 'tache_terminee', `${t.titre}${t.nom_client ? ` (${t.nom_client})` : ''} (via Claude)`, 'task', t.id);
+    await logActivity(utilisateur.id, 'tache_terminee', `${t.titre}${t.nom_client ? ` (${t.nom_client})` : ''} (via IA)`, 'task', t.id);
     return { resultats: 1, texte: bloc('Tâche terminée dans SuiviPro :', ...resume.map(l => `- ${l}`)) };
   },
 };

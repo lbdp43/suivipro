@@ -215,8 +215,8 @@ export async function enregistrerCompteRendu(rdvId, saisie, auteur, { via = 'app
   const { rdv, cible, plan } = lu;
   const pour = auteur.id !== rdv.commercial_id && rdv.commercial_prenom ? ` pour ${rdv.commercial_prenom}` : '';
   await logActivity(auteur.id, 'compte_rendu_rdv',
-    `${cible.nom} : ${LIBELLES_RESULTAT_RDV[plan.resultat]}${pour}${via === 'claude' ? ' (via Claude)' : ''}`, 'appointment', rdvId);
-  if (nouveau) await logActivity(auteur.id, 'creation_rdv', `RDV décalé au ${nouveau.date}${via === 'claude' ? ' (via Claude)' : ''}`, 'appointment', nouveau.id);
+    `${cible.nom} : ${LIBELLES_RESULTAT_RDV[plan.resultat]}${pour}${via === 'claude' ? ' (via IA)' : ''}`, 'appointment', rdvId);
+  if (nouveau) await logActivity(auteur.id, 'creation_rdv', `RDV décalé au ${nouveau.date}${via === 'claude' ? ' (via IA)' : ''}`, 'appointment', nouveau.id);
 
   // L'agenda Google suit (événement complété, nouveau rendez-vous posé). Un échec n'annule rien.
   try { await poserRendezVous(rdvId); } catch { /* l'agenda n'est qu'un reflet */ }

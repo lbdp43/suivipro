@@ -139,9 +139,9 @@ export default function FriseClient({ client }: { client: Client }) {
       l.push({ id: `t-${t.id}`, date: t.completed_at || t.date_creation, genre: 'tache', titre: `Tâche faite · ${t.titre}`, detail: t.description || undefined, qui: qui(t.commercial_id) });
     }
     for (const j of journal) {
-      const viaIA = /\(via Claude\)/.test(j.details);
+      const viaIA = /\(via (Claude|IA)\)/.test(j.details);
       // Le journal répète le nom du client et parle en dates brutes : on garde l'essentiel.
-      let detail = j.details.replace(/\s*\(via Claude\)/g, '');
+      let detail = j.details.replace(/\s*\(via (Claude|IA)\)/g, '');
       if (detail.startsWith(client.nom)) detail = detail.slice(client.nom.length).replace(/^\s*:?\s*/, '');
       detail = detail.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_m, a, m, d) => `${d}/${m}/${a}`);
       if (/^(réactivé|désactivé)$/.test(detail)) detail = '';

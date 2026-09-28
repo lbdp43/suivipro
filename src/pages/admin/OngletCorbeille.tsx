@@ -43,7 +43,7 @@ const LIBELLES: Record<string, [string, string]> = {
   tasks_client: ['tâche', 'tâches'],
   commandes: ['commande', 'commandes'],
   google_calendar_tokens: ['lien Google Agenda retiré', 'liens Google Agenda retirés'],
-  mcp_jetons: ['accès Claude retiré', 'accès Claude retirés'],
+  mcp_jetons: ['accès IA retiré', 'accès IA retirés'],
 };
 
 function detailDuResume(resume: string): string {
@@ -84,7 +84,7 @@ export default function OngletCorbeille() {
 
   const restaurer = async (e: Entree) => {
     const message = e.type === 'membre'
-      ? `Remettre « ${e.nom} » dans l'équipe ? Son lien Google Agenda et son accès Claude ne sont pas rendus : à redonner si besoin.`
+      ? `Remettre « ${e.nom} » dans l'équipe ? Son lien Google Agenda et son accès IA ne sont pas rendus : à redonner si besoin.`
       : `Remettre « ${e.nom} » en place, avec tout ce qui a été rangé avec ?`;
     if (!await confirmer(message)) return;
     setEnCours(e.id);

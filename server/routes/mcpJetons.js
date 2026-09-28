@@ -20,7 +20,7 @@ router.post('/mcp/jetons', authMiddleware, adminOnly, asyncHandler(async (req, r
   if (personne.rows.length === 0) return res.status(404).json({ error: 'Personne introuvable' });
 
   const jeton = await creerJeton({ commercialId, nom, creePar: req.user.id });
-  await logActivity(req.user.id, 'mcp_jeton_cree', `Accès Claude créé pour ${personne.rows[0].prenom} ${personne.rows[0].nom}`, 'mcp', jeton.id);
+  await logActivity(req.user.id, 'mcp_jeton_cree', `Accès IA créé pour ${personne.rows[0].prenom} ${personne.rows[0].nom}`, 'mcp', jeton.id);
   // La seule réponse qui contient la valeur complète : elle ne repassera plus.
   return res.status(201).json(jeton);
 }));
@@ -28,7 +28,7 @@ router.post('/mcp/jetons', authMiddleware, adminOnly, asyncHandler(async (req, r
 router.delete('/mcp/jetons/:id', authMiddleware, adminOnly, asyncHandler(async (req, res) => {
   const fait = await revoquerJeton(req.params.id);
   if (!fait) return res.status(404).json({ error: 'Accès introuvable ou déjà révoqué' });
-  await logActivity(req.user.id, 'mcp_jeton_revoque', 'Accès Claude révoqué', 'mcp', req.params.id);
+  await logActivity(req.user.id, 'mcp_jeton_revoque', 'Accès IA révoqué', 'mcp', req.params.id);
   return res.json({ ok: true });
 }));
 

@@ -218,7 +218,7 @@ export async function enregistrerInteraction(saisie, auteur, { via = 'app', ...o
   const i = plan.interaction;
   const pour = i.commercial_id !== auteur.id && plan.commercialPrenom ? ` pour ${plan.commercialPrenom}` : '';
   await logActivity(auteur.id, 'visite_client',
-    `${i.type}${i.comment ? ': ' + i.comment.substring(0, 100) : ''}${pour}${via === 'claude' ? ' (via Claude)' : ''}`, 'client', i.client_id);
+    `${i.type}${i.comment ? ': ' + i.comment.substring(0, 100) : ''}${pour}${via === 'claude' ? ' (via IA)' : ''}`, 'client', i.client_id);
 
   const [client, taches] = await Promise.all([
     db.query('SELECT * FROM clients WHERE id = $1', [i.client_id]).then(r => r.rows[0]),
