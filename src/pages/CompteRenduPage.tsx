@@ -403,7 +403,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         id: generateId(), client_id: visitModalClient.id, commercial_id: userId!,
         type: visitModalType, date: now, comment: visitModalComment.trim(), date_creation: now,
       };
-      await noterInteraction(interaction, dispatchLocal);
+      const r = await noterInteraction(interaction, dispatchLocal, { clientNom: visitModalClient.nom });
 
       // Save client notes if changed
       const full = getClient(visitModalClient.id);
@@ -415,7 +415,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         } catch { /* notes save is secondary */ }
       }
 
-      toast.success(visitModalType === 'VISITE' ? `Visite enregistrée pour ${visitModalClient.nom}` : `Appel enregistré pour ${visitModalClient.nom}`);
+      if (!r.enAttente) toast.success(visitModalType === 'VISITE' ? `Visite enregistrée pour ${visitModalClient.nom}` : `Appel enregistré pour ${visitModalClient.nom}`);
       setVisitModalClient(null);
     } catch { toast.error('Erreur lors de la sauvegarde'); }
     finally { setSaving(null); }

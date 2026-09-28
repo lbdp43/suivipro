@@ -11,6 +11,7 @@ import { apiPut } from '../api/client';
 import { groupesDuMenu, groupesOuvertsParDefaut } from './menu';
 import BlocErreur from './BlocErreur';
 import { pageParesseuse } from '../utils/pageParesseuse';
+import EnvoisEnAttente from './EnvoisEnAttente';
 
 // La recherche se télécharge à sa première ouverture (ou avant, au calme) : l'ouverture de
 // l'appli n'en a pas besoin.
@@ -436,6 +437,8 @@ export default function Layout() {
               <Map className="w-4 h-4" />
               <span className="sr-only sm:not-sr-only">Carte</span>
             </Link>
+            {/* Visites notées sans réseau, en attente d'envoi (rien quand la file est vide). */}
+            <EnvoisEnAttente />
             {/* Notifications */}
             <div className="relative" ref={notifRef}>
               <button
@@ -518,7 +521,7 @@ export default function Layout() {
         {/* Page content */}
         {horsLigne && (
           <div className="bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2" role="status">
-            Hors connexion : vous voyez les dernières données reçues. Ce que vous modifiez maintenant ne sera pas enregistré.
+            Hors connexion : vous voyez les dernières données reçues. Les visites et appels que vous notez chez un client sont gardés sur le téléphone et partiront au retour du réseau ; le reste ne peut pas être enregistré.
           </div>
         )}
         <main className="flex-1 overflow-auto fin-de-page">
