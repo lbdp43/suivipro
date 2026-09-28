@@ -8,7 +8,7 @@ import cors from 'cors';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { porteurDuJeton, marquerUtilisation } from './jetons.js';
-import { construireServeur, outilsDuRole } from './serveur.js';
+import { construireServeur, outilsPermis } from './serveur.js';
 import { verifierReveil } from './journal.js';
 import { adresseFicheRessource } from './oauth.js';
 import db from '../db.js';
@@ -88,7 +88,7 @@ routeur.get('/etat', async (req, res) => {
     lecture_seule: true,
     vous: `${utilisateur.prenom} ${utilisateur.nom}`,
     role: utilisateur.role,
-    outils: outilsDuRole(utilisateur.role).map(o => o.nom),
+    outils: outilsPermis(utilisateur).map(o => o.nom),
   });
 });
 

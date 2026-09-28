@@ -94,7 +94,7 @@ const SUJETS = {
       return `- ${r} (${LIBELLES_RESULTAT_RDV[r]}) : ${etape ? `le prospect passe en « ${LIBELLES_ETAPE[etape] || etape} »` : 'l\'étape ne bouge pas'}${r === 'pas_interesse' ? ', avec une raison de perte' : ''}${suite}.`;
     }),
     'Une étape terminale (client gagné, perdu) ne recule jamais. Pour un prospect, la relance devient un rappel dans ses actions ; pour un client, une tâche de suivi.',
-    'Les outils d\'écriture travaillent en deux temps : un appel sans « confirmer » décrit ce qui va se passer et n\'écrit rien ; l\'appel avec « confirmer: true » ne se fait qu\'après l\'accord de la personne. Chaque écriture est journalisée « via Claude », avec le nom de celui qui écrit et, si c\'est un administrateur pour un collègue, le nom du collègue.',
+    'Les outils d\'écriture travaillent en deux temps : un appel sans « confirmer » décrit ce qui va se passer et n\'écrit rien ; l\'appel avec « confirmer: true » ne se fait qu\'après l\'accord de la personne. Chaque écriture est journalisée « via IA », avec le nom de celui qui écrit et, si c\'est un administrateur pour un collègue, le nom du collègue.',
     'Un compte rendu déjà écrit ne se réécrit pas ici : on le corrige dans SuiviPro. Un rendez-vous à venir ou annulé n\'a pas de compte rendu.',
     `Une action du tunnel se termine par une issue propre à son type ; une issue de perte demande une raison : ${Object.values(RAISONS_PERTE).join(', ')}.`,
   ),

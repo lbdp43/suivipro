@@ -133,7 +133,7 @@ export const LIBELLES_ROLE = {
 };
 
 export const LIBELLES_SOURCE_SIGNALEMENT = {
-  claude: 'Claude',
+  claude: 'IA',
   google_maps: 'Google Maps',
   instagram: 'Instagram',
   facebook: 'Facebook',

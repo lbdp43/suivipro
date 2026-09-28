@@ -10,7 +10,7 @@ export const LIBELLES_SOURCE: Record<SourceSignalement, string> = {
   site: 'Site ou article',
   texte: 'Texte',
   photo: 'Photo',
-  claude: 'Claude',
+  claude: 'IA',
 };
 
 /**

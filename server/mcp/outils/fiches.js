@@ -154,7 +154,7 @@ const activer = {
     const maintenant = new Date().toISOString();
     for (const { c, prochaine } of plans) {
       await db.query('UPDATE clients SET statut = $1, next_visit = $2, date_modification = $3 WHERE id = $4', [actif ? 'ACTIF' : 'INACTIF', prochaine, maintenant, c.id]);
-      await logActivity(utilisateur.id, actif ? 'client_reactive' : 'client_desactive', `${c.nom} ${actif ? 'réactivé' : 'désactivé'} (via Claude)`, 'client', c.id);
+      await logActivity(utilisateur.id, actif ? 'client_reactive' : 'client_desactive', `${c.nom} ${actif ? 'réactivé' : 'désactivé'} (via IA)`, 'client', c.id);
     }
     return { resultats: plans.length, texte: bloc(`${plans.length} client(s) ${actif ? 'réactivé(s)' : 'désactivé(s)'} dans SuiviPro :`, ...lignes.map(l => `- ${l}`)) };
   },
@@ -206,7 +206,7 @@ const recurrence = {
     const maintenant = new Date().toISOString();
     for (const { c, custom, prochaine, frequence } of plans) {
       await db.query('UPDATE clients SET custom_recurrence = $1, next_visit = $2, date_modification = $3 WHERE id = $4', [custom, prochaine, maintenant, c.id]);
-      await logActivity(utilisateur.id, 'recurrence_client', `${c.nom} : ${frequence}${prochaine ? `, prochaine visite ${prochaine}` : ''} (via Claude)`, 'client', c.id);
+      await logActivity(utilisateur.id, 'recurrence_client', `${c.nom} : ${frequence}${prochaine ? `, prochaine visite ${prochaine}` : ''} (via IA)`, 'client', c.id);
     }
     return { resultats: plans.length, texte: bloc(`${plans.length} client(s) mis à jour dans SuiviPro :`, ...lignes.map(l => `- ${l}`)) };
   },

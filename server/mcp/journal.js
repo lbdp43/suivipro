@@ -71,7 +71,7 @@ async function dejaPrevenu(utilisateurId, signal) {
 async function alerter(utilisateur, signal, message) {
   if (await dejaPrevenu(utilisateur.id, signal)) return;
   await logActivity(utilisateur.id, 'mcp_alerte', message.slice(0, 300), 'mcp', signal);
-  await notifyAdmins('mcp_usage', 'Accès Claude : usage inhabituel', message, { commercial_id: utilisateur.id, signal });
+  await notifyAdmins('mcp_usage', 'Accès IA : usage inhabituel', message, { commercial_id: utilisateur.id, signal });
 }
 
 /**
@@ -94,11 +94,11 @@ export async function verifierSeuils(utilisateur) {
       compter(utilisateur.id, 'mcp\\_collegue', 24),
       compter(utilisateur.id, 'mcp\\_refus', 1),
     ]);
-    if (heure > SEUILS.appels_par_heure) await alerter(utilisateur, 'appels_par_heure', `${qui} : ${heure} requêtes Claude en une heure.`);
-    if (fiches > SEUILS.fiches_par_jour) await alerter(utilisateur, 'fiches_par_jour', `${qui} : ${fiches} fiches détaillées lues aujourd'hui via Claude.`);
-    if (contacts > SEUILS.contacts_par_jour) await alerter(utilisateur, 'contacts_par_jour', `${qui} : ${contacts} lectures de coordonnées aujourd'hui via Claude.`);
-    if (collegues > SEUILS.collegues_par_jour) await alerter(utilisateur, 'collegues_par_jour', `${qui} : ${collegues} consultations de fiches de collègues aujourd'hui via Claude.`);
-    if (refus > SEUILS.refus_par_heure) await alerter(utilisateur, 'refus_par_heure', `${qui} : ${refus} demandes hors périmètre refusées en une heure via Claude.`);
+    if (heure > SEUILS.appels_par_heure) await alerter(utilisateur, 'appels_par_heure', `${qui} : ${heure} requêtes IA en une heure.`);
+    if (fiches > SEUILS.fiches_par_jour) await alerter(utilisateur, 'fiches_par_jour', `${qui} : ${fiches} fiches détaillées lues aujourd'hui via l'IA.`);
+    if (contacts > SEUILS.contacts_par_jour) await alerter(utilisateur, 'contacts_par_jour', `${qui} : ${contacts} lectures de coordonnées aujourd'hui via l'IA.`);
+    if (collegues > SEUILS.collegues_par_jour) await alerter(utilisateur, 'collegues_par_jour', `${qui} : ${collegues} consultations de fiches de collègues aujourd'hui via l'IA.`);
+    if (refus > SEUILS.refus_par_heure) await alerter(utilisateur, 'refus_par_heure', `${qui} : ${refus} demandes hors périmètre refusées en une heure via l'IA.`);
   } catch (err) {
     console.error('[MCP] Vérification des seuils impossible :', err.message);
   }
@@ -110,7 +110,7 @@ export async function verifierReveil(utilisateur, derniereUtilisation) {
   const jours = (Date.now() - new Date(derniereUtilisation).getTime()) / 86400000;
   if (jours < 30) return;
   try {
-    await alerter(utilisateur, 'reveil', `${utilisateur.prenom} ${utilisateur.nom} : accès Claude réutilisé après ${Math.round(jours)} jours d'inactivité.`);
+    await alerter(utilisateur, 'reveil', `${utilisateur.prenom} ${utilisateur.nom} : accès IA réutilisé après ${Math.round(jours)} jours d'inactivité.`);
   } catch (err) {
     console.error('[MCP] Alerte de réveil impossible :', err.message);
   }

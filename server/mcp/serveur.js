@@ -21,6 +21,7 @@ import { InteractionRefusee, InteractionInterdite } from '../lib/visitesClient.j
 import { journaliserAppel, journaliserRefus, verifierSeuils } from './journal.js';
 import { reponse } from './format.js';
 import { LIBELLES_ROLE } from '../../shared/libelles.js';
+import { outilsCoupes, famillesCoupees } from './familles.js';
 
 export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsBoite, ...outilsSuivi, ...outilsVisites, ...outilsFiches];
 
@@ -34,6 +35,16 @@ const INTERDITS = {
 export function outilsDuRole(role) {
   const interdits = INTERDITS[role] || [];
   return OUTILS.filter(o => !interdits.includes(o.nom));
+}
+
+/**
+ * Les outils de cette personne : ceux de son rôle, moins les familles que
+ * l'administration lui a coupées (Administration → Accès IA). Vaut pour tous ses accès,
+ * Claude comme ChatGPT.
+ */
+export function outilsPermis(utilisateur) {
+  const coupes = outilsCoupes(utilisateur.iaRefus);
+  return outilsDuRole(utilisateur.role).filter(o => !coupes.has(o.nom));
 }
 
 function messageDErreur(err) {
@@ -61,11 +72,14 @@ export function construireServeur(utilisateur) {
         'Les réponses citent les établissements par leur nom et leur ville. Les listes indiquent toujours le total réel, même tronquées.',
         'L\'identité légale d\'un établissement (raison sociale, SIREN, SIRET, numéro de TVA) se lit sur sa fiche et se transmet au dépôt. Ces numéros sont vérifiés par leur clé de contrôle : un numéro faux est écarté et la réponse le dit. Ne les devinez jamais — le sujet « identite » de « contexte » explique ce que chacun désigne.',
         'Les photos ne sortent jamais du logiciel : seul leur nombre est indiqué.',
+        ...(famillesCoupees(utilisateur.iaRefus).length ? [
+          `L'administration n'a pas ouvert à cette personne : ${famillesCoupees(utilisateur.iaRefus).map(f => f.libelle.toLowerCase()).join(', ')}. Les outils correspondants n'existent pas ici : si on vous le demande, dites que ce n'est pas autorisé pour ce compte et qu'il faut voir avec l'administrateur de SuiviPro.`,
+        ] : []),
       ].join('\n'),
     }
   );
 
-  for (const outil of outilsDuRole(utilisateur.role)) {
+  for (const outil of outilsPermis(utilisateur)) {
     serveur.registerTool(
       outil.nom,
       {
