@@ -98,9 +98,10 @@ export async function terminerAction(prospectId, { rappelId, type, issue, raison
         duree: 0,
         resultat: 'repondu',
         notes: note || '',
+        origine: 'rappel',
       };
       await db.query(
-        'INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        "INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes, origine) VALUES ($1,$2,$3,$4,$5,$6,$7,'rappel')",
         [appel.id, appel.prospect_id, appel.commercial_id, appel.date, appel.duree, appel.resultat, appel.notes]
       );
     }

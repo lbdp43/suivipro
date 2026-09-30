@@ -30,7 +30,10 @@ router.post('/calls', authMiddleware, asyncHandler(async (req, res) => {
   await logActivity(req.user.id, 'appel', `Résultat: ${c.resultat}`, 'call', c.id);
   // L'appel passé clôt les actions « appeler » échues de ce prospect.
   const rappelsTermines = c.resultat === 'email_envoye' ? [] : await cloreActionsAppel(c.prospect_id, dateLocale(new Date()));
-  res.json({ ok: true, rappels_termines: rappelsTermines });
+  // Un appel qui clôt un rappel « Appeler » vient de ce rappel ; les autres, d'une session.
+  const origine = c.resultat === 'email_envoye' ? '' : (rappelsTermines.length ? 'rappel' : 'session');
+  if (origine) await db.query('UPDATE calls SET origine = $1 WHERE id = $2', [origine, c.id]);
+  res.json({ ok: true, rappels_termines: rappelsTermines, origine });
 }));
 
 router.put('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
