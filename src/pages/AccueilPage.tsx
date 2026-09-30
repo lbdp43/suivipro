@@ -12,7 +12,7 @@ import { tourneesAGarnir, RAYON_APPELS_KM, SESSION_MAX } from '../utils/voisinag
 import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
-import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, CALL_RESULT_LABELS } from '../types';
+import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, APPOINTMENT_STATUS_LABELS, CALL_RESULT_LABELS } from '../types';
 import { formatDate } from '../utils/helpers';
 import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
@@ -340,6 +340,49 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
     return { rappels: liste.filter(x => x.origine === 'rappel'), sessions: liste.filter(x => x.origine !== 'rappel') };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.calls, state.reminders, personne.id, periode, debut, fin, today]);
+  // Le rendez-vous obtenu au téléphone : pris par cette personne, sur ce prospect, le jour
+  // de l'appel — rattaché au dernier appel passé avant sa prise (ou, à défaut, au dernier
+  // appel de la journée).
+  const rdvParAppel = useMemo(() => {
+    const m = new Map<string, Appointment[]>();
+    const appels = state.calls.filter(c => c.commercial_id === personne.id);
+    for (const a of state.appointments) {
+      if (a.prospecteur_id !== personne.id || !a.prospect_id || !a.created_at) continue;
+      const jour = jourDe(a.created_at);
+      const memeJour = appels.filter(c => c.prospect_id === a.prospect_id && jourDe(c.date) === jour).sort((x, y) => x.date.localeCompare(y.date));
+      if (!memeJour.length) continue;
+      const pris = new Date(a.created_at).getTime() + 10 * 60 * 1000;
+      const avant = memeJour.filter(c => new Date(c.date).getTime() <= pris);
+      const appel = (avant.length ? avant : memeJour)[(avant.length ? avant : memeJour).length - 1];
+      m.set(appel.id, [...(m.get(appel.id) || []), a]);
+    }
+    return m;
+  }, [state.calls, state.appointments, personne.id]);
+  const [rdvOuverts, setRdvOuverts] = useState<Set<string>>(new Set());
+  const basculerRdv = (id: string) => setRdvOuverts(v => { const n = new Set(v); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const detailRdv = (a: Appointment) => {
+    const passe = a.date < today;
+    const aVenir = !passe && a.statut !== 'termine' && !rdvAnnule(a);
+    return (
+      <div className="mt-1 mb-2 ml-1 rounded-md border border-purple-200 bg-white px-2.5 py-2 space-y-1">
+        <p className="text-gray-800"><span className="font-medium">{formatDate(a.date)}{a.heure_debut ? ` à ${a.heure_debut}` : ''}</span>{a.lieu ? ` · ${a.lieu}` : ''} · pour {prenom(a.commercial_id)}</p>
+        <p className="text-gray-500">Pris le {formatDate(a.created_at || '')}{a.created_at && /T\d{2}:\d{2}/.test(a.created_at) ? ` à ${new Date(a.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''} · {APPOINTMENT_STATUS_LABELS[a.statut] || a.statut}</p>
+        {a.notes && <p className="text-gray-600 whitespace-pre-line"><span className="text-gray-400">Noté à la prise : </span>{a.notes}</p>}
+        {a.compte_rendu ? (
+          <div className="rounded bg-green-50 px-2 py-1">
+            <p className="font-medium text-green-800">Compte rendu : {APPOINTMENT_RESULT_LABELS[a.compte_rendu] || a.compte_rendu}</p>
+            {a.notes_compte_rendu && <p className="text-green-900 whitespace-pre-line">{a.notes_compte_rendu}</p>}
+          </div>
+        ) : rdvAnnule(a) ? (
+          <p className="text-red-600">Rendez-vous annulé.</p>
+        ) : aVenir ? (
+          <p className="text-purple-700">À venir : le compte rendu sera visible ici une fois fait.</p>
+        ) : (
+          <p className="text-amber-700">Passé, compte rendu pas encore fait par {prenom(a.commercial_id)}.</p>
+        )}
+      </div>
+    );
+  };
   const [toutVoir, setToutVoir] = useState<Set<string>>(new Set());
   const voirTout = (cle: string) => setToutVoir(v => new Set([...v, cle]));
   const quand = (d: string) => {
@@ -359,6 +402,14 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
               {p?.ville && <span className="text-gray-400">{p.ville}</span>}
               <span className={c.resultat === 'repondu' ? 'text-green-700' : 'text-gray-400'}>· {CALL_RESULT_LABELS[c.resultat] || c.resultat}</span>
               {estime && cle === 'rappels' && <span className="text-gray-300" title="Appel d'avant la mise en ligne : l'origine est estimée">≈</span>}
+              {(rdvParAppel.get(c.id) || []).map(a => (
+                <button key={a.id} type="button" onClick={() => basculerRdv(a.id)} aria-expanded={rdvOuverts.has(a.id)}
+                  className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium ${a.compte_rendu ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'}`}>
+                  <Calendar className="h-3 w-3" /> RDV pris {formatDate(a.date)}{a.compte_rendu ? ` · ${APPOINTMENT_RESULT_LABELS[a.compte_rendu] || a.compte_rendu}` : ''}
+                  <ChevronDown className={`h-3 w-3 transition-transform ${rdvOuverts.has(a.id) ? 'rotate-180' : ''}`} />
+                </button>
+              ))}
+              {(rdvParAppel.get(c.id) || []).filter(a => rdvOuverts.has(a.id)).map(a => <div key={`d-${a.id}`} className="basis-full">{detailRdv(a)}</div>)}
             </li>
           );
         })}
@@ -460,7 +511,22 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
         )}
         {prosp && (
           <Section titre="Rendez-vous pris" compte={rdvPris.length} enfants={
-            <ul className="space-y-0.5">{rdvPris.slice(0, DETAIL_MAX).map(a => ligneRdv(a, true))}{coupee(rdvPris.length)}</ul>
+            <ul className="space-y-0.5">{rdvPris.slice(0, DETAIL_MAX).map(a => (
+              <Fragment key={a.id}>
+                <li className="flex flex-wrap items-baseline gap-x-1.5">
+                  <button type="button" onClick={() => basculerRdv(a.id)} aria-expanded={rdvOuverts.has(a.id)} className="flex flex-wrap items-baseline gap-x-1.5 text-left">
+                    <ChevronDown className={`h-3 w-3 self-center text-gray-400 transition-transform ${rdvOuverts.has(a.id) ? 'rotate-180' : ''}`} />
+                    <span className="text-gray-500 tabular-nums">{formatDate(a.date)}{a.heure_debut ? ` ${a.heure_debut}` : ''}</span>
+                    <span className="text-gray-800">{nomDeLaCible(a)}</span>
+                    <span className="text-gray-400">pour {prenom(a.commercial_id)}</span>
+                    {a.compte_rendu
+                      ? <span className="text-green-700">· {APPOINTMENT_RESULT_LABELS[a.compte_rendu] || a.compte_rendu}</span>
+                      : a.date < today ? <span className="text-amber-700">· CR à faire</span> : <span className="text-purple-700">· à venir</span>}
+                  </button>
+                </li>
+                {rdvOuverts.has(a.id) && <li>{detailRdv(a)}{lienDeLaCible(a) && <Link to={lienDeLaCible(a)} className="ml-1 text-brewery-700 hover:underline">Ouvrir la fiche</Link>}</li>}
+              </Fragment>
+            ))}{coupee(rdvPris.length)}</ul>
           } />
         )}
         {comm && (
@@ -1371,7 +1437,10 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
                 {deplie && (
                   <tr className="border-b border-gray-100">
                     <td colSpan={5} className="p-2">
-                      <DetailMembre personne={p} prosp={prosp} comm={comm} debut={semaine.debut} fin={semaine.fin} today={today} />
+                      {/* Le tableau défile de côté sur téléphone : le détail, lui, reste calé sur l'écran. */}
+                      <div className="sticky left-2 w-[min(100%,calc(100vw-4rem))]">
+                        <DetailMembre personne={p} prosp={prosp} comm={comm} debut={semaine.debut} fin={semaine.fin} today={today} />
+                      </div>
                     </td>
                   </tr>
                 )}
