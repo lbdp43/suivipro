@@ -81,8 +81,32 @@ export async function terminerAction(prospectId, { rappelId, type, issue, raison
       [prochaine.id, prochaine.prospect_id, prochaine.commercial_id, prochaine.date, prochaine.heure, prochaine.message, prochaine.statut, prochaine.type]
     );
   }
+  // Terminer un « Appeler », c'est avoir appelé : l'appel est enregistré, pour qu'il compte
+  // (équipe, statistiques, frise du prospect) comme ceux passés depuis l'écran d'appel —
+  // sauf si cet appel-là vient déjà d'être noté (écran d'appel dans la demi-heure).
+  let appel = null;
+  if (typeAction === 'appeler') {
+    const auteur = userId || commercialId || rappel?.commercial_id;
+    const depuis = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const recent = await db.query('SELECT 1 FROM calls WHERE prospect_id = $1 AND commercial_id = $2 AND date >= $3 LIMIT 1', [prospectId, auteur, depuis]);
+    if (recent.rows.length === 0) {
+      appel = {
+        id: `call-${crypto.randomUUID()}`,
+        prospect_id: prospectId,
+        commercial_id: auteur,
+        date: new Date().toISOString(),
+        duree: 0,
+        resultat: 'repondu',
+        notes: note || '',
+      };
+      await db.query(
+        'INSERT INTO calls (id, prospect_id, commercial_id, date, duree, resultat, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [appel.id, appel.prospect_id, appel.commercial_id, appel.date, appel.duree, appel.resultat, appel.notes]
+      );
+    }
+  }
   const apres = await db.query('SELECT * FROM prospects WHERE id = $1', [prospectId]);
-  return { prospect: apres.rows[0], rappel, prochaine, etape: effet.etape };
+  return { prospect: apres.rows[0], rappel, prochaine, etape: effet.etape, appel };
 }
 
 /** Un appel enregistré clôt les actions « appeler » échues de ce prospect. Renvoie les identifiants clos. */

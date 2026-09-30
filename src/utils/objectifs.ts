@@ -62,7 +62,11 @@ export function mesurerLeMois(state: AppState, personne: Commercial, maintenant 
   const finExclue = debutDuMois(new Date(maintenant.getFullYear(), maintenant.getMonth() + 1, 1));
   const id = personne.id;
 
-  const appels = state.calls.filter(c => c.commercial_id === id && dansLeMois(c.date, debut, finExclue)).length;
+  // Pour la prospection, les appels aux clients (tâches) comptent aussi, comme dans le
+  // tableau de l'équipe ; un commercial les voit à part, avec ses visites.
+  const appelsClients = estCommercial(personne) ? 0
+    : state.interactions.filter(i => i.commercial_id === id && i.type === 'APPEL' && dansLeMois(i.date, debut, finExclue)).length;
+  const appels = state.calls.filter(c => c.commercial_id === id && dansLeMois(c.date, debut, finExclue)).length + appelsClients;
   const rdvPris = state.appointments.filter(a => a.prospecteur_id === id && dansLeMois(a.created_at, debut, finExclue)).length;
   const rdvRealises = state.appointments.filter(a =>
     a.commercial_id === id && !rdvAnnule(a) && dansLeMois(a.date, debut, finExclue) && (a.statut === 'termine' || !!a.compte_rendu)

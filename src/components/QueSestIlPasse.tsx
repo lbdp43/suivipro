@@ -6,13 +6,13 @@ import { ClipboardCheck, X, ArrowRight } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
 import { apiPost } from '../api/client';
-import { Prospect, Reminder, PIPELINE_LABELS } from '../types';
+import { Call, Prospect, Reminder, PIPELINE_LABELS } from '../types';
 import { TYPES_ACTION, issuesPourAction, issueEstUnePerte } from '../../shared/tunnel';
 import { SelectRaisonPerte } from './RaisonPerte';
 import { formatDate } from '../utils/helpers';
 import Fenetre from './ui/Fenetre';
 
-interface Reponse { prospect: Prospect; rappel: Reminder | null; prochaine: Reminder | null; etape: string | null }
+interface Reponse { prospect: Prospect; rappel: Reminder | null; prochaine: Reminder | null; etape: string | null; appel?: Call | null }
 
 export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect: Prospect; rappel: Reminder; onClose: () => void }) {
   const { state, dispatchLocal } = useApp();
@@ -35,6 +35,7 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
       dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
       if (r.rappel) dispatchLocal({ type: 'UPDATE_REMINDER', payload: r.rappel });
       if (r.prochaine) dispatchLocal({ type: 'ADD_REMINDER', payload: r.prochaine });
+      if (r.appel) dispatchLocal({ type: 'ADD_CALL', payload: r.appel });
       const morceaux = ['Action terminée'];
       if (r.etape) morceaux.push(`prospect en « ${libelleEtape(r.etape)} »`);
       if (r.prochaine) morceaux.push(`prochaine action : ${TYPES_ACTION[r.prochaine.type || 'autre']} le ${formatDate(r.prochaine.date)}`);

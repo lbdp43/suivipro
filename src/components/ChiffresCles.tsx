@@ -22,7 +22,7 @@ const DEFINITIONS: Record<Sorte, {
   couleur: string;
 }> = {
   visites: { titre: 'Visites et appels', icone: Navigation, lien: '/clients', periode: 'cette semaine', couleur: 'text-green-600' },
-  appels: { titre: 'Appels prospects', icone: Phone, lien: '/appels', periode: 'cette semaine', couleur: 'text-blue-600' },
+  appels: { titre: 'Appels', icone: Phone, lien: '/appels', periode: 'cette semaine', couleur: 'text-blue-600' },
   rdv: { titre: 'RDV pris', icone: CalendarCheck, lien: '/rdv', periode: 'cette semaine', couleur: 'text-purple-600' },
   retards: { titre: 'Clients en retard', icone: AlertTriangle, lien: '/clients', periode: "aujourd'hui", inverse: true, couleur: 'text-red-600' },
   ca: { titre: 'CA EasyBeer', icone: Euro, lien: '/easybeer', periode: 'ce mois-ci, HT', euros: true, couleur: 'text-amber-600' },
@@ -101,7 +101,7 @@ export default function ChiffresCles({ pour, prospection = false }: { pour: stri
     const maintenant = new Date();
     const l: { sorte: Sorte; chiffre: ChiffreCle }[] = [];
     if (prospection) {
-      l.push({ sorte: 'appels', chiffre: appelsProspects(calls, pour, maintenant) });
+      l.push({ sorte: 'appels', chiffre: appelsProspects(calls, interactions, pour, maintenant) });
       l.push({ sorte: 'rdv', chiffre: rdvPris(appointments, pour, maintenant) });
     } else {
       l.push({ sorte: 'visites', chiffre: visitesEtAppels(interactions, pour, maintenant) });
