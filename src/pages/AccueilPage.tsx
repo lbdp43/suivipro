@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
   ChevronRight, ChevronDown, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
-  Navigation, FileSignature, StickyNote,
+  Navigation, FileSignature,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
@@ -394,6 +394,8 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   const [appelsOuverts, setAppelsOuverts] = useState<Set<string>>(new Set());
   const basculerAppel = (id: string) => setAppelsOuverts(v => { const n = new Set(v); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const libelleEtape = (id: string) => state.pipelineColumns.find(col => col.id === id)?.label || (PIPELINE_LABELS as Record<string, string>)[id] || id;
+  // Un bout de ce qui a été noté, sur la ligne même : l'essentiel sans déplier.
+  const extrait = (texte: string) => { const t = texte.replace(/\s+/g, ' ').trim(); return t.length > 160 ? `${t.slice(0, 160).trimEnd()}…` : t; };
   const detailAppel = (c: Call, depuisRappel: boolean) => {
     const p = getProspect(c.prospect_id);
     const rappel = depuisRappel
@@ -431,13 +433,13 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
           const p = getProspect(c.prospect_id);
           return (
             <li key={c.id} className="flex flex-wrap items-baseline gap-x-1.5">
-              <button type="button" onClick={() => basculerAppel(c.id)} aria-expanded={appelsOuverts.has(c.id)} className="flex flex-wrap items-baseline gap-x-1.5 text-left">
+              <button type="button" onClick={() => basculerAppel(c.id)} aria-expanded={appelsOuverts.has(c.id)} className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5 text-left">
                 <ChevronDown className={`h-3 w-3 self-center text-gray-400 transition-transform ${appelsOuverts.has(c.id) ? 'rotate-180' : ''}`} />
                 <span className="text-gray-500 tabular-nums">{quand(c.date)}</span>
                 <span className={p ? 'text-gray-800' : 'text-gray-400'}>{p ? p.nom_etablissement : 'prospect retiré'}</span>
                 {p?.ville && <span className="text-gray-400">{p.ville}</span>}
                 <span className={c.resultat === 'repondu' ? 'text-green-700' : 'text-gray-400'}>· {CALL_RESULT_LABELS[c.resultat] || c.resultat}</span>
-                {c.notes?.trim() && <StickyNote className="h-3 w-3 self-center text-gray-400" aria-label="avec des notes" />}
+                {c.notes?.trim() && !appelsOuverts.has(c.id) && <span className="basis-full pl-[18px] line-clamp-2 break-words italic text-gray-500">— {extrait(c.notes)}</span>}
               </button>
               {estime && cle === 'rappels' && <span className="text-gray-300" title="Appel d'avant la mise en ligne : l'origine est estimée">≈</span>}
               {(rdvParAppel.get(c.id) || []).map(a => (
@@ -535,13 +537,13 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
                 const c = getClient(i.client_id);
                 return (
                   <li key={i.id} className="flex flex-wrap items-baseline gap-x-1.5">
-                    <button type="button" onClick={() => basculerAppel(i.id)} aria-expanded={appelsOuverts.has(i.id)} className="flex flex-wrap items-baseline gap-x-1.5 text-left">
+                    <button type="button" onClick={() => basculerAppel(i.id)} aria-expanded={appelsOuverts.has(i.id)} className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5 text-left">
                       <ChevronDown className={`h-3 w-3 self-center text-gray-400 transition-transform ${appelsOuverts.has(i.id) ? 'rotate-180' : ''}`} />
                       <span className="text-gray-500 tabular-nums">{quand(i.date)}</span>
                       <span className={c ? 'text-gray-800' : 'text-gray-400'}>{c ? c.nom : 'client retiré'}</span>
                       {c?.ville && <span className="text-gray-400">{c.ville}</span>}
                       <span className={i.compte_visite === false ? 'text-gray-400' : 'text-green-700'}>· {i.compte_visite === false ? 'sans réponse' : 'répondu'}</span>
-                      {i.comment?.trim() && <StickyNote className="h-3 w-3 self-center text-gray-400" aria-label="avec des notes" />}
+                      {i.comment?.trim() && !appelsOuverts.has(i.id) && <span className="basis-full pl-[18px] line-clamp-2 break-words italic text-gray-500">— {extrait(i.comment)}</span>}
                     </button>
                     {appelsOuverts.has(i.id) && (
                       <div className="basis-full mt-1 mb-2 ml-1 rounded-md border border-gray-200 bg-white px-2.5 py-2 space-y-1">
