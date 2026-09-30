@@ -301,7 +301,9 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   personne: Commercial; prosp: boolean; comm: boolean;
   debut: string; fin: string; today: string;
 }) {
-  const { state, getProspect, getClient } = useApp();
+  // Tout ce qu'a fait la personne, pas seulement ce qui touche « mes clients » : le tableau
+  // de l'équipe ne dépend pas du bouton Moi / Équipe.
+  const { stateComplet: state, getProspect, getClient } = useApp();
   const [periode, setPeriode] = useState<'jour' | 'semaine'>('jour');
   const dedans = (d: string) => (periode === 'jour' ? d === today : d >= debut && d <= fin);
   const prenom = (id: string) => state.commerciaux.find(c => c.id === id)?.prenom || '—';
@@ -362,7 +364,7 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   };
 
   const coupee = (n: number) => (n > DETAIL_MAX ? <li className="text-gray-400">… et {n - DETAIL_MAX} autre{n - DETAIL_MAX > 1 ? 's' : ''}</li> : null);
-  const rien = totalAppels === 0 && rdvPris.length === 0 && mesRdv.length === 0 && visites.length === 0;
+  const rien = totalAppels === 0 && auTelephone.length === 0 && rdvPris.length === 0 && mesRdv.length === 0 && visites.length === 0;
 
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3 space-y-3 text-xs">
@@ -378,7 +380,7 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
         {prosp && (
-          <Section titre="Appels de prospection" compte={totalAppels} enfants={
+          <Section titre="Appels de prospection (sessions et rappels)" compte={totalAppels} enfants={
             <ul className="space-y-0.5">
               {parSecteur.slice(0, DETAIL_MAX).map(([secteur, e]) => (
                 <li key={secteur} className="flex items-baseline justify-between gap-2">
@@ -387,6 +389,23 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
                 </li>
               ))}
               {coupee(parSecteur.length)}
+            </ul>
+          } />
+        )}
+        {prosp && !comm && auTelephone.length > 0 && (
+          <Section titre="Appels clients (tâches)" compte={auTelephone.length} enfants={
+            <ul className="space-y-0.5">
+              {auTelephone.slice(0, DETAIL_MAX).map(i => {
+                const c = getClient(i.client_id);
+                return (
+                  <li key={i.id} className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-gray-500 tabular-nums">{formatDate(i.date)}</span>
+                    {c ? <Link to={`/clients?id=${c.id}`} className="text-gray-800 hover:text-brewery-700 hover:underline">{c.nom}</Link> : <span className="text-gray-400">client retiré</span>}
+                    {i.compte_visite === false && <span className="text-gray-400">· sans réponse</span>}
+                  </li>
+                );
+              })}
+              {coupee(auTelephone.length)}
             </ul>
           } />
         )}
@@ -885,6 +904,8 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
     .filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today)
     .sort((a, b) => a.date.localeCompare(b.date) || a.heure.localeCompare(b.heure)), [state.reminders, moi.id, today]);
   const appelsDuJour = useMemo(() => state.calls.filter(c => c.commercial_id === moi.id && jourDe(c.date) === today), [state.calls, moi.id, today]);
+  // Les appels aux clients (tâches) comptent aussi dans « Mes appels aujourd'hui ».
+  const appelsClientsDuJour = useMemo(() => state.interactions.filter(i => i.commercial_id === moi.id && i.type === 'APPEL' && jourDe(i.date) === today), [state.interactions, moi.id, today]);
   const rdvPrisDuJour = useMemo(() => state.appointments
     .filter(a => a.prospecteur_id === moi.id && jourDe(a.created_at) === today && !rdvAnnule(a))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')), [state.appointments, moi.id, today]);
@@ -1036,8 +1057,8 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm mb-3"><Phone className="w-4 h-4 text-green-600" /> Mes appels aujourd'hui</h3>
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div><p className="text-2xl font-bold text-gray-900 tabular-nums">{appelsDuJour.length}</p><p className="text-xs text-gray-500">appels</p></div>
-              <div><p className="text-2xl font-bold text-green-600 tabular-nums">{appelsDuJour.filter(c => c.resultat === 'repondu').length}</p><p className="text-xs text-gray-500">répondus</p></div>
+              <div><p className="text-2xl font-bold text-gray-900 tabular-nums">{appelsDuJour.length + appelsClientsDuJour.length}</p><p className="text-xs text-gray-500">appels{appelsClientsDuJour.length ? ` (dont ${appelsClientsDuJour.length} client${appelsClientsDuJour.length > 1 ? 's' : ''})` : ''}</p></div>
+              <div><p className="text-2xl font-bold text-green-600 tabular-nums">{appelsDuJour.filter(c => c.resultat === 'repondu').length + appelsClientsDuJour.filter(i => i.compte_visite !== false).length}</p><p className="text-xs text-gray-500">répondus</p></div>
               <div><p className="text-2xl font-bold text-indigo-600 tabular-nums">{rdvPrisDuJour.length}</p><p className="text-xs text-gray-500">RDV pris</p></div>
             </div>
           </div>
@@ -1143,8 +1164,11 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
       visites: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'VISITE' && dedans(jourDe(i.date))).length,
       appelsClients: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'APPEL' && dedans(jourDe(i.date))).length,
     });
-    const jour = mesurer(d => d === today);
-    const sem = mesurer(d => d >= semaine.debut && d <= semaine.fin);
+    // Pour la prospection, un appel est un appel : aux prospects (sessions, rappels) comme
+    // aux clients (tâches). Un commercial qui prospecte voit déjà ses appels clients à part.
+    const avecClients = (m: ReturnType<typeof mesurer>) => (comm ? m : { ...m, appels: m.appels + m.appelsClients });
+    const jour = avecClients(mesurer(d => d === today));
+    const sem = avecClients(mesurer(d => d >= semaine.debut && d <= semaine.fin));
     const { appels, rdvPris, rdv: rdvJour, visites } = jour;
     const retards = state.clients.filter(c => c.commercial_id === p.id && estEnRetard(c, today)).length;
     const sansCr = state.appointments.filter(a => a.commercial_id === p.id && rdvSansCompteRendu(a, now)).length;

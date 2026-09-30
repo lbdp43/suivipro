@@ -67,9 +67,12 @@ export function visitesEtAppels(interactions: Interaction[], pour: string | null
   return parSemaine(jours, aujourdhui);
 }
 
-/** Appels passés aux prospects (pour la prospection, à la place des visites). */
-export function appelsProspects(calls: Call[], pour: string | null, aujourdhui = new Date()): ChiffreCle {
-  const jours = calls.filter(c => !pour || c.commercial_id === pour).map(c => jourDe(c.date));
+/** Les appels de la prospection : aux prospects (sessions, rappels) et aux clients (tâches). */
+export function appelsProspects(calls: Call[], interactions: Interaction[], pour: string | null, aujourdhui = new Date()): ChiffreCle {
+  const jours = [
+    ...calls.filter(c => !pour || c.commercial_id === pour).map(c => jourDe(c.date)),
+    ...interactions.filter(i => i.type === 'APPEL' && (!pour || i.commercial_id === pour)).map(i => jourDe(i.date)),
+  ];
   return parSemaine(jours, aujourdhui);
 }
 
