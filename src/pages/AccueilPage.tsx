@@ -12,7 +12,7 @@ import { tourneesAGarnir, RAYON_APPELS_KM, SESSION_MAX } from '../utils/voisinag
 import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
-import { Appointment, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS } from '../types';
+import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, CALL_RESULT_LABELS } from '../types';
 import { formatDate } from '../utils/helpers';
 import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
@@ -324,6 +324,51 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   }, [state.calls, personne.id, periode, debut, fin, today]);
   const totalAppels = parSecteur.reduce((n, [, e]) => n + e.total, 0);
 
+  // Les appels un par un, rangés par origine. Depuis la mise en ligne, le serveur note si
+  // l'appel a clos un rappel « Appeler » ; pour les appels d'avant, on l'estime : le
+  // prospect avait un rappel « Appeler » prévu ce jour-là ou avant, et clos depuis.
+  const appelsDetail = useMemo(() => {
+    const rappelsClos = state.reminders.filter(r => (r.type || 'appeler') === 'appeler' && r.statut === 'termine');
+    const liste = state.calls
+      .filter(c => c.commercial_id === personne.id && dedans(jourDe(c.date)))
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(c => {
+        const estime = !c.origine;
+        const origine = c.origine || (rappelsClos.some(r => r.prospect_id === c.prospect_id && r.date <= jourDe(c.date)) ? 'rappel' : 'session');
+        return { c, origine, estime };
+      });
+    return { rappels: liste.filter(x => x.origine === 'rappel'), sessions: liste.filter(x => x.origine !== 'rappel') };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.calls, state.reminders, personne.id, periode, debut, fin, today]);
+  const [toutVoir, setToutVoir] = useState<Set<string>>(new Set());
+  const voirTout = (cle: string) => setToutVoir(v => new Set([...v, cle]));
+  const quand = (d: string) => {
+    const h = /T\d{2}:\d{2}/.test(d) ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+    return periode === 'jour' ? h : `${formatDate(d)}${h ? ` ${h}` : ''}`;
+  };
+  const listeAppels = (cle: string, l: { c: Call; estime: boolean }[]) => {
+    const visibles = toutVoir.has(cle) ? l : l.slice(0, DETAIL_MAX);
+    return (
+      <ul className="space-y-0.5">
+        {visibles.map(({ c, estime }) => {
+          const p = getProspect(c.prospect_id);
+          return (
+            <li key={c.id} className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-gray-500 tabular-nums">{quand(c.date)}</span>
+              {p ? <Link to={`/prospects?id=${p.id}`} className="text-gray-800 hover:text-brewery-700 hover:underline">{p.nom_etablissement}</Link> : <span className="text-gray-400">prospect retiré</span>}
+              {p?.ville && <span className="text-gray-400">{p.ville}</span>}
+              <span className={c.resultat === 'repondu' ? 'text-green-700' : 'text-gray-400'}>· {CALL_RESULT_LABELS[c.resultat] || c.resultat}</span>
+              {estime && cle === 'rappels' && <span className="text-gray-300" title="Appel d'avant la mise en ligne : l'origine est estimée">≈</span>}
+            </li>
+          );
+        })}
+        {l.length > visibles.length && (
+          <li><button type="button" onClick={() => voirTout(cle)} className="text-brewery-700 hover:underline">Voir les {l.length - visibles.length} autres</button></li>
+        )}
+      </ul>
+    );
+  };
+
   const rdvPris = useMemo(() => state.appointments
     .filter(a => a.prospecteur_id === personne.id && dedans(jourDe(a.created_at)) && !rdvAnnule(a))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
@@ -379,33 +424,37 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
       {rien && <p className="text-gray-400">Rien d'enregistré sur cette période.</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-        {prosp && (
-          <Section titre="Appels de prospection (sessions et rappels)" compte={totalAppels} enfants={
-            <ul className="space-y-0.5">
-              {parSecteur.slice(0, DETAIL_MAX).map(([secteur, e]) => (
-                <li key={secteur} className="flex items-baseline justify-between gap-2">
-                  <span className="text-gray-700 truncate">{secteur}</span>
-                  <span className="text-gray-500 tabular-nums whitespace-nowrap">{e.total} · {e.repondus} répondu{e.repondus > 1 ? 's' : ''}</span>
-                </li>
+        {prosp && totalAppels > 0 && (
+          <div className="space-y-2 sm:col-span-2">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Appels de prospection <span className="text-gray-400 font-normal tabular-nums">{totalAppels}</span></p>
+            <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
+              {parSecteur.map(([secteur, e]) => (
+                <span key={secteur}><span className="text-gray-700">{secteur}</span> <span className="tabular-nums">{e.total}</span>{e.repondus ? <span className="text-green-700"> · {e.repondus} rép.</span> : null}</span>
               ))}
-              {coupee(parSecteur.length)}
-            </ul>
-          } />
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+              <Section titre="Depuis un rappel" compte={appelsDetail.rappels.length} enfants={listeAppels('rappels', appelsDetail.rappels)} />
+              <Section titre="En session" compte={appelsDetail.sessions.length} enfants={listeAppels('sessions', appelsDetail.sessions)} />
+            </div>
+          </div>
         )}
         {prosp && !comm && auTelephone.length > 0 && (
           <Section titre="Appels clients (tâches)" compte={auTelephone.length} enfants={
             <ul className="space-y-0.5">
-              {auTelephone.slice(0, DETAIL_MAX).map(i => {
+              {(toutVoir.has('taches') ? auTelephone : auTelephone.slice(0, DETAIL_MAX)).map(i => {
                 const c = getClient(i.client_id);
                 return (
                   <li key={i.id} className="flex flex-wrap items-baseline gap-x-1.5">
-                    <span className="text-gray-500 tabular-nums">{formatDate(i.date)}</span>
+                    <span className="text-gray-500 tabular-nums">{quand(i.date)}</span>
                     {c ? <Link to={`/clients?id=${c.id}`} className="text-gray-800 hover:text-brewery-700 hover:underline">{c.nom}</Link> : <span className="text-gray-400">client retiré</span>}
-                    {i.compte_visite === false && <span className="text-gray-400">· sans réponse</span>}
+                    {c?.ville && <span className="text-gray-400">{c.ville}</span>}
+                    <span className={i.compte_visite === false ? 'text-gray-400' : 'text-green-700'}>· {i.compte_visite === false ? 'sans réponse' : 'répondu'}</span>
                   </li>
                 );
               })}
-              {coupee(auTelephone.length)}
+              {!toutVoir.has('taches') && auTelephone.length > DETAIL_MAX && (
+                <li><button type="button" onClick={() => voirTout('taches')} className="text-brewery-700 hover:underline">Voir les {auTelephone.length - DETAIL_MAX} autres</button></li>
+              )}
             </ul>
           } />
         )}

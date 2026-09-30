@@ -335,6 +335,8 @@ export interface Call {
   duree: number; // seconds
   resultat: CallResult;
   notes: string;
+  /** 'rappel' : l'appel a clos une action « Appeler » ; 'session' : le reste ; vide : appel d'avant. */
+  origine?: 'rappel' | 'session' | '';
 }
 
 export interface Appointment {

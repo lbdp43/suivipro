@@ -5,7 +5,7 @@ import { useApp } from '../store/AppContext';
 import { faitDeLaProspection } from '../utils/roles';
 import RappelContactRdv, { rdvSansContact } from './RappelContactRdv';
 import { useToast } from './Toast';
-import { Appointment, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT } from '../types';
+import { Appointment, Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, formatDate } from '../utils/helpers';
 import { ouvrirDansGoogleAgenda } from '../utils/agenda';
@@ -360,8 +360,8 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
         resultat: callResult,
         notes: callNotes,
       };
-      const reponseAppel = await apiPost('/calls', callPayload) as { rappels_termines?: string[] };
-      dispatchLocal({ type: 'ADD_CALL', payload: callPayload });
+      const reponseAppel = await apiPost('/calls', callPayload) as { rappels_termines?: string[]; origine?: Call['origine'] };
+      dispatchLocal({ type: 'ADD_CALL', payload: { ...callPayload, origine: reponseAppel.origine || '' } });
       // L'appel clôt les actions « appeler » échues de ce prospect.
       for (const id of reponseAppel.rappels_termines || []) {
         const r = state.reminders.find(x => x.id === id);

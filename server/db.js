@@ -970,6 +970,11 @@ async function initDatabase(attempt = 1) {
     try {
       await client.query("ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS ia_refus TEXT NOT NULL DEFAULT '[]'");
     } catch (err) { console.log('ia_refus migration:', err.message); }
+    // D'où vient un appel de prospection : 'rappel' (il a clos une action « Appeler »),
+    // 'session' (le reste). Vide pour les appels d'avant : l'écran l'estime.
+    try {
+      await client.query("ALTER TABLE calls ADD COLUMN IF NOT EXISTS origine TEXT NOT NULL DEFAULT ''");
+    } catch (err) { console.log('calls.origine migration:', err.message); }
     // L'événement Google Agenda posé pour ce rendez-vous : on garde son identifiant et le
     // calendrier où il est, pour le modifier plus tard au lieu d'en créer un deuxième —
     // et pour le retirer du bon agenda si le rendez-vous change de commercial.
