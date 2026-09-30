@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Calendar, MapPin, Phone, Bell, AlertTriangle, ClipboardCheck, ListTodo, Building2,
   ChevronRight, ChevronDown, Target, ShoppingCart, RefreshCw, Users, BarChart3, Link2, CheckCircle2, Clock, ListChecks, Trash2, Star, Inbox,
-  Navigation, FileSignature,
+  Navigation, FileSignature, StickyNote,
 } from 'lucide-react';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
@@ -12,8 +12,8 @@ import { tourneesAGarnir, RAYON_APPELS_KM, SESSION_MAX } from '../utils/voisinag
 import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
-import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, APPOINTMENT_STATUS_LABELS, CALL_RESULT_LABELS } from '../types';
-import { formatDate } from '../utils/helpers';
+import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, APPOINTMENT_STATUS_LABELS, CALL_RESULT_LABELS, PIPELINE_LABELS } from '../types';
+import { formatDate, formatDuration } from '../utils/helpers';
 import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import ChiffresCles from '../components/ChiffresCles';
@@ -389,6 +389,40 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
     const h = /T\d{2}:\d{2}/.test(d) ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
     return periode === 'jour' ? h : `${formatDate(d)}${h ? ` ${h}` : ''}`;
   };
+  // Le détail d'un appel : durée, résultat, ce qui a été noté pendant l'appel, le rappel
+  // qui l'a amené, et à qui on parlait.
+  const [appelsOuverts, setAppelsOuverts] = useState<Set<string>>(new Set());
+  const basculerAppel = (id: string) => setAppelsOuverts(v => { const n = new Set(v); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const libelleEtape = (id: string) => state.pipelineColumns.find(col => col.id === id)?.label || (PIPELINE_LABELS as Record<string, string>)[id] || id;
+  const detailAppel = (c: Call, depuisRappel: boolean) => {
+    const p = getProspect(c.prospect_id);
+    const rappel = depuisRappel
+      ? state.reminders
+        .filter(r => r.prospect_id === c.prospect_id && (r.type || 'appeler') === 'appeler' && r.date <= jourDe(c.date))
+        .sort((a, b) => b.date.localeCompare(a.date))[0]
+      : undefined;
+    return (
+      <div className="mt-1 mb-2 ml-1 rounded-md border border-gray-200 bg-white px-2.5 py-2 space-y-1">
+        <p className="text-gray-800">
+          <span className="font-medium">{CALL_RESULT_LABELS[c.resultat] || c.resultat}</span>
+          {c.duree ? ` · ${formatDuration(c.duree)} au téléphone` : ''}
+          {' · '}{formatDate(c.date)}{/T\d{2}:\d{2}/.test(c.date) ? ` à ${new Date(c.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+        </p>
+        {c.notes?.trim()
+          ? <p className="whitespace-pre-line rounded bg-gray-50 px-2 py-1 text-gray-800">{c.notes.trim()}</p>
+          : <p className="text-gray-400">Aucune note prise pendant l'appel.</p>}
+        {rappel && <p className="text-gray-600"><span className="text-gray-400">Rappel du {formatDate(rappel.date)} : </span>{rappel.message}</p>}
+        {p && (
+          <p className="text-gray-600">
+            {p.nom_contact && <span>{p.nom_contact} · </span>}
+            {p.telephone && <a href={`tel:${p.telephone}`} className="text-brewery-700 hover:underline">{p.telephone}</a>}
+            {p.telephone && ' · '}étape actuelle : {libelleEtape(p.etape_pipeline)}
+          </p>
+        )}
+        {p && <Link to={`/prospects?id=${p.id}`} className="inline-block text-brewery-700 hover:underline">Ouvrir la fiche</Link>}
+      </div>
+    );
+  };
   const listeAppels = (cle: string, l: { c: Call; estime: boolean }[]) => {
     const visibles = toutVoir.has(cle) ? l : l.slice(0, DETAIL_MAX);
     return (
@@ -397,10 +431,14 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
           const p = getProspect(c.prospect_id);
           return (
             <li key={c.id} className="flex flex-wrap items-baseline gap-x-1.5">
-              <span className="text-gray-500 tabular-nums">{quand(c.date)}</span>
-              {p ? <Link to={`/prospects?id=${p.id}`} className="text-gray-800 hover:text-brewery-700 hover:underline">{p.nom_etablissement}</Link> : <span className="text-gray-400">prospect retiré</span>}
-              {p?.ville && <span className="text-gray-400">{p.ville}</span>}
-              <span className={c.resultat === 'repondu' ? 'text-green-700' : 'text-gray-400'}>· {CALL_RESULT_LABELS[c.resultat] || c.resultat}</span>
+              <button type="button" onClick={() => basculerAppel(c.id)} aria-expanded={appelsOuverts.has(c.id)} className="flex flex-wrap items-baseline gap-x-1.5 text-left">
+                <ChevronDown className={`h-3 w-3 self-center text-gray-400 transition-transform ${appelsOuverts.has(c.id) ? 'rotate-180' : ''}`} />
+                <span className="text-gray-500 tabular-nums">{quand(c.date)}</span>
+                <span className={p ? 'text-gray-800' : 'text-gray-400'}>{p ? p.nom_etablissement : 'prospect retiré'}</span>
+                {p?.ville && <span className="text-gray-400">{p.ville}</span>}
+                <span className={c.resultat === 'repondu' ? 'text-green-700' : 'text-gray-400'}>· {CALL_RESULT_LABELS[c.resultat] || c.resultat}</span>
+                {c.notes?.trim() && <StickyNote className="h-3 w-3 self-center text-gray-400" aria-label="avec des notes" />}
+              </button>
               {estime && cle === 'rappels' && <span className="text-gray-300" title="Appel d'avant la mise en ligne : l'origine est estimée">≈</span>}
               {(rdvParAppel.get(c.id) || []).map(a => (
                 <button key={a.id} type="button" onClick={() => basculerRdv(a.id)} aria-expanded={rdvOuverts.has(a.id)}
@@ -409,6 +447,7 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
                   <ChevronDown className={`h-3 w-3 transition-transform ${rdvOuverts.has(a.id) ? 'rotate-180' : ''}`} />
                 </button>
               ))}
+              {appelsOuverts.has(c.id) && <div className="basis-full">{detailAppel(c, cle === 'rappels')}</div>}
               {(rdvParAppel.get(c.id) || []).filter(a => rdvOuverts.has(a.id)).map(a => <div key={`d-${a.id}`} className="basis-full">{detailRdv(a)}</div>)}
             </li>
           );
@@ -496,10 +535,23 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
                 const c = getClient(i.client_id);
                 return (
                   <li key={i.id} className="flex flex-wrap items-baseline gap-x-1.5">
-                    <span className="text-gray-500 tabular-nums">{quand(i.date)}</span>
-                    {c ? <Link to={`/clients?id=${c.id}`} className="text-gray-800 hover:text-brewery-700 hover:underline">{c.nom}</Link> : <span className="text-gray-400">client retiré</span>}
-                    {c?.ville && <span className="text-gray-400">{c.ville}</span>}
-                    <span className={i.compte_visite === false ? 'text-gray-400' : 'text-green-700'}>· {i.compte_visite === false ? 'sans réponse' : 'répondu'}</span>
+                    <button type="button" onClick={() => basculerAppel(i.id)} aria-expanded={appelsOuverts.has(i.id)} className="flex flex-wrap items-baseline gap-x-1.5 text-left">
+                      <ChevronDown className={`h-3 w-3 self-center text-gray-400 transition-transform ${appelsOuverts.has(i.id) ? 'rotate-180' : ''}`} />
+                      <span className="text-gray-500 tabular-nums">{quand(i.date)}</span>
+                      <span className={c ? 'text-gray-800' : 'text-gray-400'}>{c ? c.nom : 'client retiré'}</span>
+                      {c?.ville && <span className="text-gray-400">{c.ville}</span>}
+                      <span className={i.compte_visite === false ? 'text-gray-400' : 'text-green-700'}>· {i.compte_visite === false ? 'sans réponse' : 'répondu'}</span>
+                      {i.comment?.trim() && <StickyNote className="h-3 w-3 self-center text-gray-400" aria-label="avec des notes" />}
+                    </button>
+                    {appelsOuverts.has(i.id) && (
+                      <div className="basis-full mt-1 mb-2 ml-1 rounded-md border border-gray-200 bg-white px-2.5 py-2 space-y-1">
+                        {i.comment?.trim()
+                          ? <p className="whitespace-pre-line rounded bg-gray-50 px-2 py-1 text-gray-800">{i.comment.trim()}</p>
+                          : <p className="text-gray-400">Aucune note prise pendant l'appel.</p>}
+                        {c && <p className="text-gray-600">{c.contact && <span>{c.contact} · </span>}{(c.telephone || c.telephone_mobile) && <a href={`tel:${c.telephone || c.telephone_mobile}`} className="text-brewery-700 hover:underline">{c.telephone || c.telephone_mobile}</a>}</p>}
+                        {c && <Link to={`/clients?id=${c.id}`} className="inline-block text-brewery-700 hover:underline">Ouvrir la fiche</Link>}
+                      </div>
+                    )}
                   </li>
                 );
               })}
