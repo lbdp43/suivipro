@@ -25,6 +25,22 @@ import Fenetre from '../components/ui/Fenetre';
 
 // embarque : rendu dans la page Semaine (volet « À préparer ») — le bloc « Résultats des RDV »
 // est alors dans le volet Bilan, on ne l'affiche pas deux fois.
+/**
+ * Le jour où dater des visites notées depuis une journée de la semaine : ce jour-là s'il est
+ * passé, sinon aujourd'hui (une visite ne se note pas à l'avance).
+ */
+function jourDesVisites(jourChoisi: string | null): string {
+  const aujourdhui = dateLocale(new Date());
+  return jourChoisi && jourChoisi < aujourdhui ? jourChoisi : aujourdhui;
+}
+
+/** « aujourd'hui » ou « mar. 29/9 ». */
+function libelleJour(jour: string): string {
+  if (jour === dateLocale(new Date())) return "aujourd'hui";
+  const d = new Date(`${jour}T12:00:00`);
+  return `${d.toLocaleDateString('fr-FR', { weekday: 'short' })} ${d.getDate()}/${d.getMonth() + 1}`;
+}
+
 export default function ClientsPlanningPage({ embarque = false }: { embarque?: boolean } = {}) {
   const { state, dispatchLocal, getCommercial } = useApp();
   const toast = useToast();
@@ -279,19 +295,39 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
         }
         toast.success(`Note ajoutee a ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
       } else if (massAction === 'visite') {
+        // Notées après coup pour un jour passé de la semaine, les visites sont datées de ce
+        // jour-là : la prochaine visite se calcule à partir du vrai passage.
+        const jour = jourDesVisites(massActionDay);
+        let notees = 0;
+        let enFile = 0;
+        const echecs: { id: string; texte: string }[] = [];
+        // Un client refusé n'arrête pas les autres : on dit lesquels, à la fin.
         for (const clientId of clientIds) {
-          const interaction: Interaction = {
-            id: generateId('int'),
-            client_id: clientId,
-            commercial_id: userId,
-            type: 'VISITE',
-            date: now,
-            comment: massNote.trim() || 'Visite enregistrée',
-            date_creation: now,
-          };
-          await noterInteraction(interaction, dispatchLocal);
+          const nom = state.clients.find(c => c.id === clientId)?.nom || clientId;
+          try {
+            const r = await noterInteraction({
+              id: generateId('int'),
+              client_id: clientId,
+              commercial_id: userId,
+              type: 'VISITE',
+              date: jour === dateLocale(new Date()) ? now : `${jour}T12:00:00`,
+              comment: massNote.trim() || 'Visite enregistrée',
+            }, dispatchLocal, { clientNom: nom });
+            if (r.enAttente) enFile++; else notees++;
+          } catch (err) {
+            echecs.push({ id: clientId, texte: `${nom} : ${(err as Error).message}` });
+          }
         }
-        toast.success(`Visite enregistrée pour ${clientIds.length} client${clientIds.length > 1 ? 's' : ''}`);
+        const pluriel = (n: number) => (n > 1 ? 's' : '');
+        if (notees) toast.success(`Visite notée pour ${notees} client${pluriel(notees)}, datée du ${libelleJour(jour)} : prochaine visite recalculée`);
+        if (enFile) toast.info(`${enFile} visite${pluriel(enFile)} gardée${pluriel(enFile)} sur le téléphone : le calendrier se mettra à jour au retour du réseau`);
+        if (echecs.length) {
+          toast.error(`${echecs.length} visite${pluriel(echecs.length)} non notée${pluriel(echecs.length)} — ${echecs.map(e => e.texte).join(' ; ')}`);
+          // Restent sélectionnés ceux qui n'ont pas pu être notés, pour réessayer.
+          setMassSelectedClients(new Set(echecs.map(e => e.id)));
+          setShowMassActionModal(false);
+          return;
+        }
       } else if (massAction === 'commercial') {
         if (!massCommercialId) { toast.error('Sélectionnez un commercial'); setMassSaving(false); return; }
         for (const clientId of clientIds) {
@@ -1225,7 +1261,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
               </div>
 
               <p className="text-xs text-gray-500 italic mb-4">
-                Les visites seront enregistrees sur la fiche de chaque client et la prochaine visite sera recalculee automatiquement. Le fichier .ICS sera telecharge pour import dans Google Agenda.
+                Un rendez-vous sera ajouté sur la fiche de chaque client et le fichier .ICS sera téléchargé pour Google Agenda. La prochaine visite ne change pas encore : elle se recalcule quand la visite est notée faite (bouton « Actions », puis « Enregistrer visite »).
               </p>
             </div>
 
@@ -1343,7 +1379,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                 <div>
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-2">
                     <p className="text-sm text-green-700">
-                      Une visite sera enregistrée pour chaque client. La date de prochaine visite sera automatiquement recalculee.
+                      Une visite sera notée pour chaque client, datée du <strong>{libelleJour(jourDesVisites(massActionDay))}</strong>. La prochaine visite sera recalculée à partir de cette date.
                     </p>
                   </div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">Commentaire (optionnel)</label>
