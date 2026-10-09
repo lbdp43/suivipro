@@ -5,7 +5,7 @@
 import crypto from 'crypto';
 import db from '../db.js';
 import { logActivity } from './journal.js';
-import { appliquerIssue, estTerminale } from '../../shared/tunnel.js';
+import { appliquerIssue, estTerminale, issuesPourAction } from '../../shared/tunnel.js';
 import { dateLocale } from '../../shared/regles.js';
 
 /**
@@ -60,6 +60,28 @@ export async function terminerAction(prospectId, { rappelId, type, issue, raison
     await db.query('UPDATE reminders SET statut = $1, message = $2 WHERE id = $3', ['termine', message, rappel.id]);
     rappel = { ...rappel, statut: 'termine', message };
   }
+  // Un passage noté sans qu'il ait été prévu : il est gardé comme une action faite
+  // aujourd'hui, pour qu'il apparaisse dans « Ce qui s'est passé ».
+  let passage = null;
+  if (!rappel && typeAction === 'passer') {
+    // « Passé sur place » va de soi ; « Personne de disponible » mérite d'être écrit.
+    const issueLibelle = issue === 'passe' ? '' : issuesPourAction('passer').find(i => i.value === issue)?.label || '';
+    const maintenant = new Date();
+    passage = {
+      id: `rem-${crypto.randomUUID()}`,
+      prospect_id: prospectId,
+      commercial_id: userId || commercialId,
+      date: dateLocale(maintenant),
+      heure: `${String(maintenant.getHours()).padStart(2, '0')}:${String(maintenant.getMinutes()).padStart(2, '0')}`,
+      message: [issueLibelle, note].filter(Boolean).join(' · '),
+      statut: 'termine',
+      type: 'passer',
+    };
+    await db.query(
+      'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [passage.id, passage.prospect_id, passage.commercial_id, passage.date, passage.heure, passage.message, passage.statut, passage.type]
+    );
+  }
   if (effet.etape) await changerEtape(prospectId, effet.etape, userId, { raison });
 
   let prochaine = null;
@@ -107,7 +129,7 @@ export async function terminerAction(prospectId, { rappelId, type, issue, raison
     }
   }
   const apres = await db.query('SELECT * FROM prospects WHERE id = $1', [prospectId]);
-  return { prospect: apres.rows[0], rappel, prochaine, etape: effet.etape, appel };
+  return { prospect: apres.rows[0], rappel, prochaine, etape: effet.etape, appel, passage };
 }
 
 /** Un appel enregistré clôt les actions « appeler » échues de ce prospect. Renvoie les identifiants clos. */

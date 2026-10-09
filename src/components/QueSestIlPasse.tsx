@@ -1,23 +1,29 @@
 // « Que s'est-il passé ? » : on termine une action (relancer par mail, attendre une réponse,
 // à faire) en disant son issue. Le serveur clôt le rappel, déplace l'étape et crée la
 // prochaine action ; on affiche ce qui a changé.
+//
+// Sans rappel, c'est un passage sur place noté à l'improviste (« Noter un passage ») : le
+// serveur le garde comme une action faite, et la suite est la même.
 import { useState } from 'react';
 import { ClipboardCheck, X, ArrowRight } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
 import { apiPost } from '../api/client';
-import { Call, Prospect, Reminder, PIPELINE_LABELS } from '../types';
+import { Call, Prospect, Reminder, TypeAction, PIPELINE_LABELS } from '../types';
 import { TYPES_ACTION, issuesPourAction, issueEstUnePerte } from '../../shared/tunnel';
 import { SelectRaisonPerte } from './RaisonPerte';
 import { formatDate } from '../utils/helpers';
 import Fenetre from './ui/Fenetre';
 
-interface Reponse { prospect: Prospect; rappel: Reminder | null; prochaine: Reminder | null; etape: string | null; appel?: Call | null }
+interface Reponse { prospect: Prospect; rappel: Reminder | null; prochaine: Reminder | null; etape: string | null; appel?: Call | null; passage?: Reminder | null }
 
-export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect: Prospect; rappel: Reminder; onClose: () => void }) {
+/** Ce qu'on laisse ou fait lors d'un passage : un appui l'ajoute à la note. */
+const LORS_DU_PASSAGE = ['Catalogue laissé', 'Tarifs laissés', 'Dégustation', 'Échantillons laissés', 'Vu le gérant', 'Carte de visite laissée'];
+
+export default function QueSestIlPasse({ prospect, rappel = null, typeSansRappel = 'passer', onClose }: { prospect: Prospect; rappel?: Reminder | null; typeSansRappel?: TypeAction; onClose: () => void }) {
   const { state, dispatchLocal } = useApp();
   const toast = useToast();
-  const type = rappel.type || 'autre';
+  const type = rappel ? rappel.type || 'autre' : typeSansRappel;
   const issues = issuesPourAction(type);
   const [issue, setIssue] = useState('');
   const [raison, setRaison] = useState('');
@@ -31,12 +37,13 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
     if (!valide || enCours) return;
     setEnCours(true);
     try {
-      const r = await apiPost(`/prospects/${prospect.id}/action`, { rappel_id: rappel.id, type, issue, raison_perte: raison, note: note.trim() }) as Reponse;
+      const r = await apiPost(`/prospects/${prospect.id}/action`, { rappel_id: rappel?.id, type, issue, raison_perte: raison, note: note.trim() }) as Reponse;
       dispatchLocal({ type: 'UPDATE_PROSPECT', payload: r.prospect });
       if (r.rappel) dispatchLocal({ type: 'UPDATE_REMINDER', payload: r.rappel });
+      if (r.passage) dispatchLocal({ type: 'ADD_REMINDER', payload: r.passage });
       if (r.prochaine) dispatchLocal({ type: 'ADD_REMINDER', payload: r.prochaine });
       if (r.appel) dispatchLocal({ type: 'ADD_CALL', payload: r.appel });
-      const morceaux = ['Action terminée'];
+      const morceaux = [rappel ? 'Action terminée' : 'Passage noté'];
       if (r.etape) morceaux.push(`prospect en « ${libelleEtape(r.etape)} »`);
       if (r.prochaine) morceaux.push(`prochaine action : ${TYPES_ACTION[r.prochaine.type || 'autre']} le ${formatDate(r.prochaine.date)}`);
       toast.success(morceaux.join(' · '));
@@ -52,8 +59,8 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
     <Fenetre ouvert brut onFermer={onClose} titre="Que s'est-il passé ?" largeur="etroite">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-gray-900 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-brewery-600" /> Que s'est-il passé ?</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{prospect.nom_etablissement} · {TYPES_ACTION[type]}{rappel.message ? ` — ${rappel.message}` : ''}</p>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-brewery-600" /> {rappel ? 'Que s\'est-il passé ?' : 'Noter un passage'}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{prospect.nom_etablissement} · {rappel ? `${TYPES_ACTION[type]}${rappel.message ? ` — ${rappel.message}` : ''}` : 'aujourd\'hui'}</p>
           </div>
           <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
         </div>
@@ -72,6 +79,20 @@ export default function QueSestIlPasse({ prospect, rappel, onClose }: { prospect
             ))}
           </div>
           {perte && <SelectRaisonPerte value={raison} onChange={setRaison} />}
+          {type === 'passer' && issue !== 'personne' && (
+            <div className="flex flex-wrap gap-1.5">
+              {LORS_DU_PASSAGE.map(q => {
+                const mis = note.split(' · ').includes(q);
+                return (
+                  <button key={q} type="button" aria-pressed={mis}
+                    onClick={() => setNote(n => { const l = n.split(' · ').map(x => x.trim()).filter(Boolean); return (mis ? l.filter(x => x !== q) : [...l, q]).join(' · '); })}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border ${mis ? 'bg-brewery-600 border-brewery-600 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                    {q}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Note (facultatif)</label>
             <textarea className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-16 resize-none" value={note} onChange={e => setNote(e.target.value)} placeholder="Ce qu'il faut retenir…" />

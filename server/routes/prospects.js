@@ -154,7 +154,7 @@ router.post('/prospects/:id/action', authMiddleware, asyncHandler(async (req, re
   const r = await terminerAction(req.params.id, { rappelId: rappel_id, type, issue, raison: raison_perte || '', note: note || '', commercialId: req.user.id }, req.user.id);
   if (!r) return res.status(404).json({ error: 'Prospect introuvable' });
   if (r.erreur) return validationError(res, [r.erreur]);
-  res.json({ ok: true, prospect: parseProspect(r.prospect), rappel: r.rappel, prochaine: r.prochaine, etape: r.etape, appel: r.appel });
+  res.json({ ok: true, prospect: parseProspect(r.prospect), rappel: r.rappel, prochaine: r.prochaine, etape: r.etape, appel: r.appel, passage: r.passage });
 }));
 
 // Historique des étapes d'un prospect, pour la frise de sa fiche.
