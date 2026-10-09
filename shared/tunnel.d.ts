@@ -1,4 +1,4 @@
-export type TypeAction = 'appeler' | 'relancer_mail' | 'attendre_reponse' | 'autre';
+export type TypeAction = 'appeler' | 'relancer_mail' | 'attendre_reponse' | 'passer' | 'autre';
 export type RaisonPerte = 'pas_interesse' | 'deja_fournisseur' | 'trop_cher' | 'ferme' | 'injoignable' | 'autre';
 
 export const ETAPES_TERMINALES: string[];

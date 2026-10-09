@@ -38,7 +38,7 @@ function tunnel() {
 }
 
 function appels() {
-  const suites = ['relancer_mail', 'attendre_reponse'].flatMap(type =>
+  const suites = ['relancer_mail', 'attendre_reponse', 'passer'].flatMap(type =>
     issuesPourAction(type).map(i => `- ${TYPES_ACTION[type]} → « ${i.label} » : ${i.effet}`)
   );
   return bloc(

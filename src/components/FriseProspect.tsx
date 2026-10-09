@@ -2,7 +2,7 @@
 // et une seule frise chronologique de tout ce qui s'est passé : appels, mails, rendez-vous
 // et comptes rendus, actions faites, changements d'étape.
 import { useEffect, useMemo, useState } from 'react';
-import { Phone, Mail, Calendar, Bell, CheckCircle2, ArrowRightLeft, AlertTriangle, Plus, CalendarClock, ClipboardCheck, Ban } from 'lucide-react';
+import { Phone, Mail, Calendar, Bell, CheckCircle2, ArrowRightLeft, AlertTriangle, Plus, CalendarClock, ClipboardCheck, Ban, MapPin } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from './Toast';
 import { useCallModal } from './CallModal';
@@ -14,7 +14,7 @@ import { formatDate, formatTimeAgo, generateId } from '../utils/helpers';
 import QueSestIlPasse from './QueSestIlPasse';
 import { libelleRaisonPerte } from './RaisonPerte';
 
-interface Evenement { id: string; date: string; genre: 'appel' | 'mail' | 'rdv' | 'action_faite' | 'action' | 'etape'; texte: string; qui: string; rdv?: Appointment; enRetard?: boolean }
+interface Evenement { id: string; date: string; genre: 'appel' | 'mail' | 'rdv' | 'passage' | 'action_faite' | 'action' | 'etape'; texte: string; qui: string; rdv?: Appointment; enRetard?: boolean }
 
 export default function FriseProspect({ prospect, onCompteRendu }: { prospect: Prospect; onCompteRendu?: (rdv: Appointment) => void }) {
   const { state, dispatchLocal, getCommercial } = useApp();
@@ -23,6 +23,7 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
   const aujourdhui = dateLocale(new Date());
   const [etapes, setEtapes] = useState<ProspectEtape[]>([]);
   const [aTerminer, setATerminer] = useState<Reminder | null>(null);
+  const [noterPassage, setNoterPassage] = useState(false);
   const [nouvelle, setNouvelle] = useState<{ type: TypeAction; date: string; message: string } | null>(null);
   const qui = (id: string | null | undefined) => { const c = id ? getCommercial(id) : undefined; return c ? c.prenom : ''; };
   const libelleEtape = (id: string) => state.pipelineColumns.find(c => c.id === id)?.label || (PIPELINE_LABELS as Record<string, string>)[id] || id;
@@ -54,7 +55,8 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
     for (const r of state.reminders) {
       if (r.prospect_id !== prospect.id) continue;
       const type = TYPES_ACTION[r.type || 'appeler'] || 'À faire';
-      if (r.statut === 'termine') l.push({ id: r.id, date: `${r.date}T${r.heure || '23:59'}`, genre: 'action_faite', texte: `${type} · ${r.message || ''}`, qui: qui(r.commercial_id) });
+      if (r.statut === 'termine' && r.type === 'passer') l.push({ id: r.id, date: `${r.date}T${r.heure || '12:00'}`, genre: 'passage', texte: `Passage sur place${r.message ? ` · ${r.message.replace(/\n\[Fait\] /g, ' · ')}` : ''}`, qui: qui(r.commercial_id) });
+      else if (r.statut === 'termine') l.push({ id: r.id, date: `${r.date}T${r.heure || '23:59'}`, genre: 'action_faite', texte: `${type} · ${r.message || ''}`, qui: qui(r.commercial_id) });
       else l.push({ id: r.id, date: `${r.date}T${r.heure || '09:00'}`, genre: 'action', texte: `${type} · ${r.message || ''}`, qui: qui(r.commercial_id), enRetard: r.date < aujourdhui });
     }
     for (const e of etapes) {
@@ -79,7 +81,7 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
   const dansJours = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return dateLocale(d); };
   const terminer = (r: Reminder) => { if ((r.type || 'appeler') === 'appeler') startCall(prospect.id); else setATerminer(r); };
 
-  const icone = (g: Evenement['genre']) => g === 'appel' ? <Phone className="w-3.5 h-3.5 text-gray-500" /> : g === 'mail' ? <Mail className="w-3.5 h-3.5 text-blue-500" /> : g === 'rdv' ? <Calendar className="w-3.5 h-3.5 text-green-600" /> : g === 'action_faite' ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : g === 'action' ? <Bell className="w-3.5 h-3.5 text-amber-500" /> : <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500" />;
+  const icone = (g: Evenement['genre']) => g === 'appel' ? <Phone className="w-3.5 h-3.5 text-gray-500" /> : g === 'mail' ? <Mail className="w-3.5 h-3.5 text-blue-500" /> : g === 'rdv' ? <Calendar className="w-3.5 h-3.5 text-green-600" /> : g === 'passage' ? <MapPin className="w-3.5 h-3.5 text-brewery-600" /> : g === 'action_faite' ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : g === 'action' ? <Bell className="w-3.5 h-3.5 text-amber-500" /> : <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500" />;
 
   return (
     <div className="space-y-4">
@@ -88,7 +90,10 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
         <div className="flex items-center justify-between gap-2 mb-2">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Bell className="w-4 h-4 text-amber-500" /> Prochaine action</h3>
           {!terminale && !nouvelle && (
-            <button onClick={() => setNouvelle({ type: 'appeler', date: dansJours(2), message: '' })} className="text-xs text-brewery-600 hover:underline flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Nouvelle action</button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setNoterPassage(true)} className="text-xs text-brewery-600 hover:underline flex items-center gap-1" title="Je suis passé sur place (catalogue laissé, dégustation…)"><MapPin className="w-3.5 h-3.5" /> Noter un passage</button>
+              <button onClick={() => setNouvelle({ type: 'appeler', date: dansJours(2), message: '' })} className="text-xs text-brewery-600 hover:underline flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Nouvelle action</button>
+            </div>
           )}
         </div>
         {terminale ? (
@@ -138,7 +143,7 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
       {/* Frise */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm"><ArrowRightLeft className="w-4 h-4 text-indigo-500" /> Ce qui s'est passé ({evenements.length})</h3>
-        {evenements.length === 0 ? <p className="text-sm text-gray-400">Rien encore : ni appel, ni mail, ni rendez-vous.</p> : (
+        {evenements.length === 0 ? <p className="text-sm text-gray-400">Rien encore : ni appel, ni mail, ni passage, ni rendez-vous.</p> : (
           <div className="relative pl-5 space-y-2.5">
             <div className="absolute left-[7px] top-1 bottom-1 w-px bg-gray-200" />
             {evenements.map(e => (
@@ -160,6 +165,7 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
       </div>
 
       {aTerminer && <QueSestIlPasse prospect={prospect} rappel={aTerminer} onClose={() => setATerminer(null)} />}
+      {noterPassage && <QueSestIlPasse prospect={prospect} typeSansRappel="passer" onClose={() => setNoterPassage(false)} />}
     </div>
   );
 }

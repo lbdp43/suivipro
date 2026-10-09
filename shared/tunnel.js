@@ -17,6 +17,7 @@ export const TYPES_ACTION = {
   appeler: 'Appeler',
   relancer_mail: 'Relancer par mail',
   attendre_reponse: 'Attendre une réponse',
+  passer: 'Passer sur place',
   autre: 'À faire',
 };
 
@@ -39,6 +40,12 @@ export function issuesPourAction(type) {
       return [
         { value: 'mail_envoye', label: 'Mail envoyé', effet: 'Négociation, puis on attend la réponse 7 jours.' },
         { value: 'pas_envoye', label: 'Pas encore envoyé', effet: 'On reporte de 2 jours.' },
+        { value: 'pas_interesse', label: 'Pas intéressé', effet: 'Le prospect passe en « Perdu ».' },
+      ];
+    case 'passer':
+      return [
+        { value: 'passe', label: 'Passé sur place', effet: 'Le prospect passe en « Contacté » s\'il ne l\'était pas, puis un appel dans 7 jours pour faire le point.' },
+        { value: 'personne', label: 'Personne de disponible', effet: 'Un appel dans 3 jours pour reprendre contact.' },
         { value: 'pas_interesse', label: 'Pas intéressé', effet: 'Le prospect passe en « Perdu ».' },
       ];
     case 'attendre_reponse':
@@ -72,6 +79,12 @@ export function appliquerIssue(type, issue, etapeActuelle) {
       return { etape: terminale || etapeActuelle === 'negociation' ? null : 'negociation', prochaine: { type: 'attendre_reponse', delaiJours: 7, message: 'Réponse au mail attendue' }, perdu: false };
     }
     return { etape: null, prochaine: { type: 'relancer_mail', delaiJours: 2, message: 'Relancer par mail' }, perdu: false };
+  }
+  if (type === 'passer') {
+    if (issue === 'passe') {
+      return { etape: ETAPES_ENTREE.includes(etapeActuelle) ? 'contacte' : null, prochaine: { type: 'appeler', delaiJours: 7, message: 'Faire le point après le passage' }, perdu: false };
+    }
+    return { etape: null, prochaine: { type: 'appeler', delaiJours: 3, message: 'Reprendre contact : personne au passage' }, perdu: false };
   }
   if (type === 'attendre_reponse') {
     if (issue === 'reponse_positive') {

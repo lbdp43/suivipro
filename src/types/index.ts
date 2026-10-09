@@ -363,7 +363,7 @@ export interface Appointment {
   recurrence_end_date?: string; // date de fin de recurrence
 }
 
-export type TypeAction = 'appeler' | 'relancer_mail' | 'attendre_reponse' | 'autre';
+export type TypeAction = 'appeler' | 'relancer_mail' | 'attendre_reponse' | 'passer' | 'autre';
 
 /** Un rappel est la PROCHAINE ACTION d'un prospect : typée, datée, à quelqu'un. */
 export interface Reminder {
