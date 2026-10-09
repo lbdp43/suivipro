@@ -46,6 +46,10 @@ export default function PipelinePage() {
   const [etapeMobile, setEtapeMobile] = useState<string>('');
   const [filtresOuverts, setFiltresOuverts] = useState(false);
   const [filterSecteurs, setFilterSecteurs] = useState<Set<string>>(new Set());
+  // Type d'établissement : bar, restaurant, cave, comité d'entreprise…
+  const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set());
+  // Tags : un prospect passe s'il porte au moins un des tags cochés.
+  const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
   // Zones dessinées sur la carte ; « __hors__ » = géolocalisé mais dans aucune zone.
   const [filterZones, setFilterZones] = useState<Set<string>>(new Set());
   const optionsZones = useMemo(() => {
@@ -118,6 +122,24 @@ export default function PipelinePage() {
     return ids;
   }, [state.appointments]);
 
+  // Les types présents dans le pipeline, dans l'ordre des libellés, avec leur nombre.
+  const optionsTypes = useMemo(() => {
+    const compte = new Map<string, number>();
+    state.prospects.forEach(p => { const t = p.type_etablissement || 'autre'; compte.set(t, (compte.get(t) || 0) + 1); });
+    return (Object.keys(ESTABLISHMENT_LABELS) as (keyof typeof ESTABLISHMENT_LABELS)[])
+      .filter(t => compte.has(t))
+      .map(t => ({ value: t as string, label: `${ESTABLISHMENT_LABELS[t]} (${compte.get(t)})` }));
+  }, [state.prospects]);
+
+  const optionsTags = useMemo(() => {
+    const compte = new Map<string, number>();
+    state.prospects.forEach(p => (p.tags || []).forEach(t => compte.set(t, (compte.get(t) || 0) + 1)));
+    return state.tags
+      .filter(t => compte.has(t.id))
+      .sort((a, b) => a.nom.localeCompare(b.nom))
+      .map(t => ({ value: t.id, label: `${t.nom} (${compte.get(t.id)})` }));
+  }, [state.prospects, state.tags]);
+
   const allSecteurs = useMemo(() =>
     [...new Set(state.prospects.map(p => p.secteur).filter(Boolean))].sort()
   , [state.prospects]);
@@ -153,7 +175,7 @@ export default function PipelinePage() {
     setter(next);
   };
 
-  const hasActiveFilters = filterSecteurs.size > 0 || filterZones.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '';
+  const hasActiveFilters = filterTypes.size > 0 || filterTags.size > 0 || filterSecteurs.size > 0 || filterZones.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '';
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -190,6 +212,8 @@ export default function PipelinePage() {
 
   const prospectsByStage = useMemo(() => {
     const filtered = state.prospects.filter(p => {
+      if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement || 'autre')) return false;
+      if (filterTags.size > 0 && !(p.tags || []).some(t => filterTags.has(t))) return false;
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterZones.size > 0 && !filterZones.has(p.zone_id || ((p.latitude && p.longitude) ? '__hors__' : ''))) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
@@ -210,7 +234,7 @@ export default function PipelinePage() {
       map['_orphaned'] = orphaned;
     }
     return map;
-  }, [state.prospects, columns, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, prospectIdsForCommercial, prospectIdsWithRdv, filterZones]);
+  }, [state.prospects, columns, filterTypes, filterTags, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, prospectIdsForCommercial, prospectIdsWithRdv, filterZones]);
 
   const handleDragStart = (e: DragEvent, prospectId: string) => {
     setDraggedId(prospectId);
@@ -340,8 +364,8 @@ export default function PipelinePage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3">
-        <div className="flex-1 min-w-0 basis-full sm:basis-auto">
+      <div className="p-3 sm:p-4 bg-white border-b border-gray-200 flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0 basis-full">
           <h1 className="text-lg sm:text-xl font-bold text-gray-900">Pipeline</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5 hidden sm:block">Glissez-deposez les prospects entre les étapes</p>
         </div>
@@ -358,6 +382,24 @@ export default function PipelinePage() {
             <Fenetre ouvert={filtresOuverts} onFermer={() => setFiltresOuverts(false)} titre="Filtres du pipeline"
               pied={<Bouton variante="principal" onClick={() => setFiltresOuverts(false)}>Voir le pipeline</Bouton>}>
         <div className="flex flex-col gap-2">
+          {optionsTypes.length > 0 && (
+            <MultiSelectDropdown enLigne
+              label="Type"
+              options={optionsTypes}
+              selected={filterTypes}
+              onToggle={v => toggleFilter(filterTypes, v, setFilterTypes)}
+              color="brewery"
+            />
+          )}
+          {optionsTags.length > 0 && (
+            <MultiSelectDropdown enLigne
+              label="Tag"
+              options={optionsTags}
+              selected={filterTags}
+              onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
+              color="brewery"
+            />
+          )}
           {allSecteurs.length > 0 && (
             <MultiSelectDropdown enLigne
               label="Secteur"
@@ -427,7 +469,7 @@ export default function PipelinePage() {
           {hasActiveFilters && (
             <button aria-label="Effacer les filtres"
               className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
+              onClick={() => { setFilterTypes(new Set()); setFilterTags(new Set()); setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
             >
               <X className="w-3 h-3" />
             </button>
@@ -436,7 +478,25 @@ export default function PipelinePage() {
             </Fenetre>
           </>
         ) : (
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          {optionsTypes.length > 0 && (
+            <MultiSelectDropdown
+              label="Type"
+              options={optionsTypes}
+              selected={filterTypes}
+              onToggle={v => toggleFilter(filterTypes, v, setFilterTypes)}
+              color="brewery"
+            />
+          )}
+          {optionsTags.length > 0 && (
+            <MultiSelectDropdown
+              label="Tag"
+              options={optionsTags}
+              selected={filterTags}
+              onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
+              color="brewery"
+            />
+          )}
           {allSecteurs.length > 0 && (
             <MultiSelectDropdown
               label="Secteur"
@@ -506,7 +566,7 @@ export default function PipelinePage() {
           {hasActiveFilters && (
             <button aria-label="Effacer les filtres"
               className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium flex items-center gap-1"
-              onClick={() => { setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
+              onClick={() => { setFilterTypes(new Set()); setFilterTags(new Set()); setFilterZones(new Set()); setFilterSecteurs(new Set()); setFilterPostalCodes(new Set()); setFilterDepartments(new Set()); setFilterAvecRdv(false); setFilterSansNumero(false); setFilterCommercial(''); }}
             >
               <X className="w-3 h-3" />
             </button>
