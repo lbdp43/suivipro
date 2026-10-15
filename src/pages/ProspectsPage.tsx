@@ -615,8 +615,13 @@ export default function ProspectsPage() {
     try {
       if (editingProspect) {
         const payload = { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect;
-        await apiPut(`/prospects/${editingProspect.id}`, payload);
+        const reponse = await apiPut(`/prospects/${editingProspect.id}`, payload) as { etape_pipeline?: Prospect['etape_pipeline'] };
         dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
+        // Numéro attribué à une fiche qui l'attendait : le serveur l'a remise à son ancienne étape.
+        if (reponse?.etape_pipeline) {
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: editingProspect.id, stage: reponse.etape_pipeline } });
+          toast.success(`Numéro attribué : ${payload.nom_etablissement} revient en « ${PIPELINE_LABELS[reponse.etape_pipeline] || reponse.etape_pipeline} »`);
+        }
       } else {
         const payload = {
           ...formData,

@@ -60,6 +60,7 @@ const SUJETS = {
   tunnel: () => bloc(
     '# Les étapes du tunnel de vente', tunnel(), '',
     `Un prospect stagne au-delà de ${SEUIL_STAGNATION_JOURS} jours sans activité.`,
+    'Numéro à attribuer : le numéro de la fiche n\'est pas attribué (appel « injoignable »). La fiche y attend qu\'on lui trouve un numéro ; dès qu\'un numéro est saisi, elle revient d\'elle-même à l\'étape qu\'elle avait avant.',
     `Raisons de perte : ${Object.values(RAISONS_PERTE).join(', ')}.`,
     `Types d'action : ${Object.values(TYPES_ACTION).join(', ')}.`,
     `Score : il part de ${SCORE_DE_BASE} et bouge selon les points des étiquettes, borné entre 0 et 100.`,

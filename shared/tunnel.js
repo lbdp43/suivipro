@@ -8,6 +8,11 @@
 export const ETAPES_TERMINALES = ['client_gagne', 'perdu', 'ne_pas_contacter'];
 /** Étapes d'entrée : le prospect n'a encore jamais été joint. */
 export const ETAPES_ENTREE = ['partage', 'nouveau_datagouv', 'nouveau', 'a_contacter'];
+/**
+ * Le numéro n'est pas attribué : le prospect attend ici qu'on lui en trouve un. Dès qu'un
+ * numéro est saisi sur sa fiche, il revient à l'étape où il était (etapeApresNumero).
+ */
+export const ETAPE_NUMERO = 'numero_a_attribuer';
 
 export function estTerminale(etape) {
   return ETAPES_TERMINALES.includes(etape);
@@ -96,12 +101,25 @@ export function appliquerIssue(type, issue, etapeActuelle) {
 }
 
 /** Étape après un appel enregistré, ou null s'il ne bouge pas. */
-export function etapeApresAppel({ issueNegative, rdvPris, memo }, etapeActuelle) {
+export function etapeApresAppel({ issueNegative, rdvPris, memo, injoignable }, etapeActuelle) {
   if (issueNegative === 'pas_interesse') return 'perdu';
   if (issueNegative === 'ne_pas_contacter') return 'ne_pas_contacter';
+  // Numéro non attribué : la fiche part chercher un numéro, sauf si le tunnel est déjà joué.
+  if (injoignable && !estTerminale(etapeActuelle) && etapeActuelle !== 'gagne' && etapeActuelle !== ETAPE_NUMERO) return ETAPE_NUMERO;
   if (rdvPris && !['gagne', ...ETAPES_TERMINALES].includes(etapeActuelle)) return 'gagne';
   if (memo && ETAPES_ENTREE.includes(etapeActuelle)) return 'contacte';
   return null;
+}
+
+/**
+ * L'étape où remettre un prospect quand son numéro vient d'être attribué : celle qu'il avait
+ * en entrant dans « Numéro à attribuer », d'après son historique d'étapes (la plus récente
+ * d'abord) ; « À contacter » si on ne sait pas.
+ */
+export function etapeApresNumero(historique) {
+  const entree = (historique || []).find(e => e.vers === ETAPE_NUMERO);
+  const de = entree && entree.de;
+  return de && de !== ETAPE_NUMERO ? de : 'a_contacter';
 }
 
 /** Étape après un compte rendu de rendez-vous, ou null s'il ne bouge pas. */

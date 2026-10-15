@@ -66,6 +66,7 @@ export const LIBELLES_ETAPE = {
   nouveau_datagouv: 'Importé Datagouv',
   nouveau: 'Nouveau',
   a_contacter: 'À contacter',
+  numero_a_attribuer: 'Numéro à attribuer',
   contacte: 'Contacte',
   proposition: 'Proposition',
   negociation: 'Negociation',

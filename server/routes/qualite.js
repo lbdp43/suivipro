@@ -9,7 +9,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler, authMiddleware, isAdmin, adminOnly } from '../lib/auth.js';
 import { logActivity } from '../lib/journal.js';
-import { changerEtape } from '../lib/tunnel.js';
+import { changerEtape, retourApresNumero } from '../lib/tunnel.js';
 import { rattacherEntite } from '../lib/zones.js';
 import { geocodeServer } from '../lib/geo.js';
 import { parseProspect } from '../lib/parse.js';
@@ -318,6 +318,7 @@ router.post('/qualite/completer/:id', ...acces, asyncHandler(async (req, res) =>
     annulation: { avant, apres: apresChamps },
   });
   await logActivity(req.user.id, 'modification_prospect', `${apres.nom_etablissement} (qualité)`, 'prospect', p.id);
+  if (maj.telephone !== undefined) await retourApresNumero(p.id, { etapeAvant: p.etape_pipeline, telephoneAvant: p.telephone }, maj.telephone, req.user.id);
   const final = (await db.query('SELECT * FROM prospects WHERE id = $1', [req.params.id])).rows[0];
   res.json({ ok: true, prospect: parseProspect(final) });
 }));

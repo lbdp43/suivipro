@@ -5,7 +5,8 @@
 import crypto from 'crypto';
 import db from '../db.js';
 import { logActivity } from './journal.js';
-import { appliquerIssue, estTerminale, issuesPourAction } from '../../shared/tunnel.js';
+import { appliquerIssue, estTerminale, issuesPourAction, ETAPE_NUMERO, etapeApresNumero } from '../../shared/tunnel.js';
+import { aUnNumero, chiffresTelephone } from '../../shared/normalisation.js';
 import { dateLocale } from '../../shared/regles.js';
 
 /**
@@ -36,6 +37,22 @@ export async function changerEtape(prospectId, vers, userId, { raison = '', exec
     await logActivity(userId, 'etape_prospect', `${actuel.rows[0].nom_etablissement} : ${de} → ${vers}${raisonPerte ? ` (${raisonPerte})` : ''}`, 'prospect', prospectId);
   }
   return true;
+}
+
+/**
+ * Un numéro vient d'être saisi sur une fiche qui attendait en « Numéro à attribuer » : elle
+ * revient à l'étape qu'elle avait avant. Renvoie la nouvelle étape, ou null si rien ne bouge
+ * (pas dans cette étape, numéro vide, ou inchangé).
+ */
+export async function retourApresNumero(prospectId, { etapeAvant, telephoneAvant }, telephoneApres, userId) {
+  if (etapeAvant !== ETAPE_NUMERO || !aUnNumero(telephoneApres)) return null;
+  if (chiffresTelephone(telephoneApres) === chiffresTelephone(telephoneAvant)) return null;
+  const historique = (await db.query(
+    'SELECT de, vers FROM prospect_etapes WHERE prospect_id = $1 ORDER BY date DESC', [prospectId]
+  )).rows;
+  const vers = etapeApresNumero(historique);
+  const change = await changerEtape(prospectId, vers, userId);
+  return change ? vers : null;
 }
 
 /**

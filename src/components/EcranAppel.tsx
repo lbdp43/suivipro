@@ -5,7 +5,7 @@ import { useApp } from '../store/AppContext';
 import { faitDeLaProspection } from '../utils/roles';
 import RappelContactRdv, { rdvSansContact } from './RappelContactRdv';
 import { useToast } from './Toast';
-import { Appointment, Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT } from '../types';
+import { Appointment, Call, CallResult, CALL_RESULT_LABELS, RESULTATS_APPEL_SAISISSABLES, IssueAppelClient, ISSUES_APPEL_CLIENT, PIPELINE_LABELS, Prospect } from '../types';
 import { scoreDepuisTags } from '../../shared/score';
 import { generateId, formatDurationTimer, formatDate } from '../utils/helpers';
 import { ouvrirDansGoogleAgenda } from '../utils/agenda';
@@ -13,7 +13,7 @@ import FicheProspect from './FicheProspect';
 import FicheClient from './FicheClient';
 import { telephoneDuClient } from '../utils/sessionAppel';
 import ChampsRdv, { type ValeurRdv } from './ChampsRdv';
-import { apiPost, apiPut } from '../api/client';
+import { apiPost, apiPut, apiPatch } from '../api/client';
 import { noterInteraction } from '../utils/interactions';
 import { etapeApresAppel } from '../../shared/tunnel';
 import { SelectRaisonPerte } from './RaisonPerte';
@@ -383,7 +383,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
         const hasRdv = !!(showRdv && rdvDate);
 
         // Règle unique du tunnel (shared/tunnel.js) : issue négative, RDV pris, mémo.
-        const newStage = (etapeApresAppel({ issueNegative: negativeOutcome, rdvPris: hasRdv, memo: hasMemo }, prospect.etape_pipeline) || prospect.etape_pipeline) as typeof prospect.etape_pipeline;
+        const newStage = (etapeApresAppel({ issueNegative: negativeOutcome, rdvPris: hasRdv, memo: hasMemo, injoignable: callResult === 'injoignable' }, prospect.etape_pipeline) || prospect.etape_pipeline) as typeof prospect.etape_pipeline;
         const maintenant = new Date().toISOString();
         const updatedProspect = {
           ...prospect,
@@ -480,7 +480,18 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
         if (r) dispatchLocal({ type: 'UPDATE_REMINDER', payload: { ...r, statut: 'termine' } });
       }
       let quand = '';
-      const dejaPrevu = state.reminders.some(r => r.prospect_id === prospectId && r.statut === 'actif' && !clos.has(r.id));
+      // Numéro non attribué : pas de rappel (rappeler un faux numéro ne sert à rien), la fiche
+      // part en « Numéro à attribuer » et reviendra d'elle-même quand un numéro sera saisi.
+      const prospect = state.prospects.find(p => p.id === prospectId);
+      if (resultat === 'injoignable') {
+        const vers = prospect ? etapeApresAppel({ injoignable: true }, prospect.etape_pipeline) : null;
+        if (vers) {
+          await apiPatch(`/prospects/${prospectId}/stage`, { etape_pipeline: vers });
+          dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospectId, stage: vers as Prospect['etape_pipeline'] } });
+          quand = ` · fiche en « ${PIPELINE_LABELS[vers as Prospect['etape_pipeline']] || vers} »`;
+        }
+      }
+      const dejaPrevu = resultat === 'injoignable' || state.reminders.some(r => r.prospect_id === prospectId && r.statut === 'actif' && !clos.has(r.id));
       if (!dejaPrevu) {
         const d = new Date(); d.setDate(d.getDate() + 2);
         const reminderPayload = {
@@ -492,7 +503,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
         dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
         quand = ` · rappel ${formatDate(reminderPayload.date)}`;
       }
-      toast.success(`${CALL_RESULT_LABELS[resultat]} noté${quand}`);
+      toast.success(`${resultat === 'injoignable' ? 'Numéro non attribué' : CALL_RESULT_LABELS[resultat]} noté${quand}`);
       setCallActive(false);
       setCallTimer(0);
       if (!suivantDeSession()) setShowModal(false);
@@ -762,8 +773,12 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                       className="px-4 py-2.5 rounded-full bg-gray-100 border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-200 flex items-center gap-1.5 disabled:opacity-50">
                       <PhoneMissed className="w-4 h-4" /> Pas de réponse
                     </button>
+                    <button disabled={saving} onClick={() => enregistrerSansReponse('injoignable')}
+                      className="px-4 py-2.5 rounded-full bg-slate-100 border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-200 flex items-center gap-1.5 disabled:opacity-50">
+                      <Ban className="w-4 h-4" /> Numéro non attribué
+                    </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">L'appel est noté sans notes ni tag, et un rappel est programmé dans 2 jours.</p>
+                  <p className="text-xs text-gray-400 mt-2">L'appel est noté sans notes ni tag. Messagerie ou pas de réponse : rappel dans 2 jours. Numéro non attribué : la fiche passe en « Numéro à attribuer » et reviendra à son étape dès qu'un numéro sera saisi.</p>
                 </div>
               )}
 
@@ -835,7 +850,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                         );
                       })}
                     </div>
-                    {SANS_REPONSE.includes(callResult) && <p className="text-xs text-amber-700 mt-1.5">Personne au bout : notes et tag facultatifs, le prospect ne bouge pas.</p>}
+                    {SANS_REPONSE.includes(callResult) && <p className="text-xs text-amber-700 mt-1.5">{callResult === 'injoignable' ? 'Numéro non attribué : notes et tag facultatifs, la fiche passe en « Numéro à attribuer » jusqu\'à ce qu\'un numéro soit saisi.' : 'Personne au bout : notes et tag facultatifs, le prospect ne bouge pas.'}</p>}
                   </div>
 
                   {/* Negative outcomes: pas interesse / ne pas contacter */}

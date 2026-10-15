@@ -6,7 +6,7 @@ import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
 import { logActivity } from '../lib/journal.js';
 import { rattacherEntite, rattacherTout } from '../lib/zones.js';
-import { changerEtape, terminerAction } from '../lib/tunnel.js';
+import { changerEtape, terminerAction, retourApresNumero } from '../lib/tunnel.js';
 import { parseProspect, parseSessionAppel } from '../lib/parse.js';
 import { scoreProspect } from '../lib/scores.js';
 import { validateProspect, validationError } from '../lib/validation.js';
@@ -45,6 +45,8 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (errors.length > 0) return validationError(res, errors);
 
   const scoreMaj = await scoreProspect(p.tags, p.score || 50);
+  const avant = (await db.query('SELECT etape_pipeline, telephone FROM prospects WHERE id = $1', [req.params.id])).rows[0];
+  if (!avant) return res.status(404).json({ error: 'Prospect introuvable' });
   // L'étape ne se change que par changerEtape (historique, date d'entrée, raison de perte).
   await db.query(
     `UPDATE prospects SET nom_etablissement=$1, type_etablissement=$2, nom_contact=$3, telephone=$4, email=$5, adresse=$6, ville=$7, code_postal=$8, departement=$9, secteur=$10, latitude=$11, longitude=$12, tags=$13, commercial_id=$14, notes=$15, date_modification=$16, score=$17, raison_sociale=$19, siren=$20, siret=$21, tva_intracom=$22 WHERE id=$18`,
@@ -52,9 +54,11 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
      p.raison_sociale || '', p.siren || '', p.siret || '', p.tva_intracom || '']
   );
   if (p.etape_pipeline) await changerEtape(req.params.id, p.etape_pipeline, req.user.id, { raison: p.raison_perte || '' });
+  // Un numéro attribué à une fiche qui l'attendait : elle reprend son ancienne étape.
+  const retour = await retourApresNumero(req.params.id, { etapeAvant: avant.etape_pipeline, telephoneAvant: avant.telephone }, p.telephone, req.user.id);
   await rattacherEntite('prospects', req.params.id);
-  await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${p.etape_pipeline}`, 'prospect', req.params.id);
-  res.json({ ok: true });
+  await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${retour || p.etape_pipeline}`, 'prospect', req.params.id);
+  res.json({ ok: true, etape_pipeline: retour || undefined });
 }));
 
 // Supprimer ne détruit plus : la fiche part dans la corbeille avec ses appels, ses
