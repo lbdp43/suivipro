@@ -8,7 +8,7 @@ import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { apiGet, apiPost } from '../api/client';
-import { Prospect, ESTABLISHMENT_LABELS, PIPELINE_LABELS, EstablishmentType } from '../types';
+import { Prospect, Reminder, ESTABLISHMENT_LABELS, PIPELINE_LABELS, EstablishmentType } from '../types';
 import { aCompleter, manquesDeLaFiche, manquesBloquants, estQualifiable, ETAPES_A_TRIER, LIBELLES_MANQUE, Manque } from '../../shared/qualite';
 import { candidatsDoublons } from '../../shared/rapprochement';
 import { faitDeLaProspection } from '../utils/roles';
@@ -556,8 +556,10 @@ function OngletACompleter({ liste }: { liste: Prospect[] }) {
   const appliquer = async (champs: Record<string, string>, fait: string) => {
     setAvancement({ fait: 0, sur: cochees.length });
     const r = await enSerie(cochees, async p => {
-      const res = await apiPost(`/qualite/completer/${encodeURIComponent(p.id)}`, champs) as { prospect: Prospect };
+      const res = await apiPost(`/qualite/completer/${encodeURIComponent(p.id)}`, champs) as { prospect: Prospect; rappel?: Reminder };
       dispatchLocal({ type: 'UPDATE_PROSPECT', payload: res.prospect });
+      // Numéro attribué à une fiche qui l'attendait : le serveur l'a remise à son étape, avec un rappel pour demain.
+      if (res.rappel) dispatchLocal({ type: 'ADD_REMINDER', payload: res.rappel });
     }, n => setAvancement({ fait: n, sur: cochees.length }));
     setAvancement(null);
     sel.vider();

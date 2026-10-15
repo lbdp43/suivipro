@@ -57,8 +57,8 @@ router.put('/prospects/:id', authMiddleware, asyncHandler(async (req, res) => {
   // Un numéro attribué à une fiche qui l'attendait : elle reprend son ancienne étape.
   const retour = await retourApresNumero(req.params.id, { etapeAvant: avant.etape_pipeline, telephoneAvant: avant.telephone }, p.telephone, req.user.id);
   await rattacherEntite('prospects', req.params.id);
-  await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${retour || p.etape_pipeline}`, 'prospect', req.params.id);
-  res.json({ ok: true, etape_pipeline: retour || undefined });
+  await logActivity(req.user.id, 'modification_prospect', `${p.nom_etablissement} → ${retour?.vers || p.etape_pipeline}`, 'prospect', req.params.id);
+  res.json({ ok: true, etape_pipeline: retour?.vers || undefined, rappel: retour?.rappel || undefined });
 }));
 
 // Supprimer ne détruit plus : la fiche part dans la corbeille avec ses appels, ses

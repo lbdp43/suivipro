@@ -318,9 +318,9 @@ router.post('/qualite/completer/:id', ...acces, asyncHandler(async (req, res) =>
     annulation: { avant, apres: apresChamps },
   });
   await logActivity(req.user.id, 'modification_prospect', `${apres.nom_etablissement} (qualité)`, 'prospect', p.id);
-  if (maj.telephone !== undefined) await retourApresNumero(p.id, { etapeAvant: p.etape_pipeline, telephoneAvant: p.telephone }, maj.telephone, req.user.id);
+  const retour = maj.telephone !== undefined ? await retourApresNumero(p.id, { etapeAvant: p.etape_pipeline, telephoneAvant: p.telephone }, maj.telephone, req.user.id) : null;
   const final = (await db.query('SELECT * FROM prospects WHERE id = $1', [req.params.id])).rows[0];
-  res.json({ ok: true, prospect: parseProspect(final) });
+  res.json({ ok: true, prospect: parseProspect(final), rappel: retour?.rappel || undefined });
 }));
 
 // ---------------------------------------------------------------------------------------

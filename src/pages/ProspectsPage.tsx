@@ -27,7 +27,7 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, PIPELINE_DESCRIPTIONS,
     Appointment,
-  EstablishmentType, PipelineStage, Prospect, Tag as TagType,
+  EstablishmentType, PipelineStage, Prospect, Reminder, Tag as TagType,
   CLIENT_TYPE_LABELS, CLIENT_TYPE_FAMILIES, CLIENT_VISIT_FREQUENCIES,
   ClientType,
 } from '../types';
@@ -615,12 +615,14 @@ export default function ProspectsPage() {
     try {
       if (editingProspect) {
         const payload = { ...editingProspect, ...formData, ...geoData, date_modification: now } as Prospect;
-        const reponse = await apiPut(`/prospects/${editingProspect.id}`, payload) as { etape_pipeline?: Prospect['etape_pipeline'] };
+        const reponse = await apiPut(`/prospects/${editingProspect.id}`, payload) as { etape_pipeline?: Prospect['etape_pipeline']; rappel?: Reminder };
         dispatchLocal({ type: 'UPDATE_PROSPECT', payload });
-        // Numéro attribué à une fiche qui l'attendait : le serveur l'a remise à son ancienne étape.
+        // Numéro attribué à une fiche qui l'attendait : le serveur l'a remise à son ancienne
+        // étape, avec un rappel pour demain s'il n'y avait rien de prévu.
         if (reponse?.etape_pipeline) {
           dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: editingProspect.id, stage: reponse.etape_pipeline } });
-          toast.success(`Numéro attribué : ${payload.nom_etablissement} revient en « ${PIPELINE_LABELS[reponse.etape_pipeline] || reponse.etape_pipeline} »`);
+          if (reponse.rappel) dispatchLocal({ type: 'ADD_REMINDER', payload: reponse.rappel });
+          toast.success(`Numéro attribué : ${payload.nom_etablissement} revient en « ${PIPELINE_LABELS[reponse.etape_pipeline] || reponse.etape_pipeline} »${reponse.rappel ? ' · à appeler demain' : ''}`);
         }
       } else {
         const payload = {
