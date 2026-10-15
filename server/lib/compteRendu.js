@@ -176,8 +176,8 @@ export async function enregistrerCompteRendu(rdvId, saisie, auteur, { via = 'app
     if (plan.suite?.genre === 'rappel') {
       rappel = { id: `rem-${crypto.randomUUID()}`, prospect_id: cible.id, commercial_id: rdv.commercial_id, date: plan.suite.date, heure: plan.suite.heure, message: plan.suite.message, statut: 'actif', type: plan.suite.type };
       await cx.query(
-        'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-        [rappel.id, rappel.prospect_id, rappel.commercial_id, rappel.date, rappel.heure, rappel.message, rappel.statut, rappel.type]
+        'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [rappel.id, rappel.prospect_id, rappel.commercial_id, rappel.date, rappel.heure, rappel.message, rappel.statut, rappel.type, new Date().toISOString()]
       );
     }
     if (plan.suite?.genre === 'tache') {

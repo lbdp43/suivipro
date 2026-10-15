@@ -819,6 +819,21 @@ async function initDatabase(attempt = 1) {
     // Tunnel de vente : type d'action sur les rappels, raison de perte et date d'entrée dans
     // l'étape sur les prospects, historique des changements d'étape.
     try { await client.query("ALTER TABLE reminders ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'appeler'"); } catch { /* déjà là */ }
+    // Quand un rappel a été créé : c'est ce qui permet de dire « prochaine action : rappeler
+    // le 16 » sur la ligne de l'appel qui l'a provoqué (journal de prospection).
+    try { await client.query("ALTER TABLE reminders ADD COLUMN IF NOT EXISTS created_at TEXT"); } catch { /* déjà là */ }
+    // Le jour, à l'heure de Paris, d'un horodatage gardé en texte. Le serveur tourne en UTC :
+    // « left(date, 10) » met un appel de 00 h 30 à la veille. Une valeur illisible retombe
+    // sur ses dix premiers caractères plutôt que de faire échouer la requête.
+    try {
+      await client.query(`CREATE OR REPLACE FUNCTION jour_paris(t text) RETURNS text LANGUAGE plpgsql STABLE AS $$
+        BEGIN
+          IF t IS NULL OR t = '' THEN RETURN NULL; END IF;
+          RETURN to_char((t::timestamptz) AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD');
+        EXCEPTION WHEN others THEN
+          RETURN left(t, 10);
+        END $$`);
+    } catch (err) { console.log('jour_paris:', err.message); }
     // Sessions d'appel clients (commerciaux) : la même liste du jour, côté clients.
     try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS client_ids TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS raison_perte TEXT DEFAULT ''"); } catch { /* déjà là */ }

@@ -78,8 +78,8 @@ export async function terminerAction(prospectId, { rappelId, type, issue, raison
       type: 'passer',
     };
     await db.query(
-      'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [passage.id, passage.prospect_id, passage.commercial_id, passage.date, passage.heure, passage.message, passage.statut, passage.type]
+      'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [passage.id, passage.prospect_id, passage.commercial_id, passage.date, passage.heure, passage.message, passage.statut, passage.type, maintenant.toISOString()]
     );
   }
   if (effet.etape) await changerEtape(prospectId, effet.etape, userId, { raison });
@@ -99,8 +99,8 @@ export async function terminerAction(prospectId, { rappelId, type, issue, raison
       type: effet.prochaine.type,
     };
     await db.query(
-      'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [prochaine.id, prochaine.prospect_id, prochaine.commercial_id, prochaine.date, prochaine.heure, prochaine.message, prochaine.statut, prochaine.type]
+      'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [prochaine.id, prochaine.prospect_id, prochaine.commercial_id, prochaine.date, prochaine.heure, prochaine.message, prochaine.statut, prochaine.type, new Date().toISOString()]
     );
   }
   // Terminer un « Appeler », c'est avoir appelé : l'appel est enregistré, pour qu'il compte

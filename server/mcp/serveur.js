@@ -10,6 +10,7 @@ import outilsContexte from './outils/contexte.js';
 import outilsClients from './outils/clients.js';
 import outilsProspects from './outils/prospects.js';
 import outilsAgenda from './outils/agenda.js';
+import outilsJournal from './outils/journalProspection.js';
 import outilsBoite from './outils/boite.js';
 import outilsSuivi from './outils/suivi.js';
 import outilsVisites from './outils/visites.js';
@@ -23,7 +24,7 @@ import { reponse } from './format.js';
 import { LIBELLES_ROLE } from '../../shared/libelles.js';
 import { outilsCoupes, famillesCoupees } from './familles.js';
 
-export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsBoite, ...outilsSuivi, ...outilsVisites, ...outilsFiches];
+export const OUTILS = [...outilsContexte, ...outilsClients, ...outilsProspects, ...outilsAgenda, ...outilsJournal, ...outilsBoite, ...outilsSuivi, ...outilsVisites, ...outilsFiches];
 
 /** Les outils que ce rôle a le droit d'appeler (matrice du cahier des charges). */
 const INTERDITS = {
@@ -69,6 +70,7 @@ export function construireServeur(utilisateur) {
         'Ces outils qui écrivent travaillent en deux temps : un premier appel sans « confirmer » montre ce qui va être fait, sans rien écrire ; montrez-le à la personne, et n\'appelez avec « confirmer: true » qu\'après son accord explicite. N\'inventez jamais un résultat, une date de relance ni une raison de perte : demandez-les. Les sujets « comptes_rendus » et « visites » de « contexte » donnent les règles.',
         'Tout le reste est en lecture seule : aucun prospect ni client ne peut être créé ni supprimé, et les réglages de l\'appli ne se changent pas d\'ici. « proposer_mail » prépare un texte et n\'envoie rien.',
         'Appelez « contexte » avant d\'interpréter des états, des étapes ou des couleurs : les règles de la maison y sont écrites.',
+        '« activite » donne des compteurs ; « journal_prospection » donne le détail, appel par appel, de ce qu\'une personne a fait sur les prospects un jour donné (résultat, interlocuteur, commentaire, étape, prochaine action, rendez-vous pris). Pour raconter la journée de quelqu\'un, c\'est lui qu\'il faut.',
         'Les réponses citent les établissements par leur nom et leur ville. Les listes indiquent toujours le total réel, même tronquées.',
         'L\'identité légale d\'un établissement (raison sociale, SIREN, SIRET, numéro de TVA) se lit sur sa fiche et se transmet au dépôt. Ces numéros sont vérifiés par leur clé de contrôle : un numéro faux est écarté et la réponse le dit. Ne les devinez jamais — le sujet « identite » de « contexte » explique ce que chacun désigne.',
         'Les photos ne sortent jamais du logiciel : seul leur nombre est indiqué.',

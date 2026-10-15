@@ -40,6 +40,25 @@ export function dateFr(valeur, { relatif = true } = {}) {
   return texte;
 }
 
+const FUSEAU = 'Europe/Paris';
+const HEURE_PARIS = new Intl.DateTimeFormat('fr-FR', { timeZone: FUSEAU, hour: '2-digit', minute: '2-digit' });
+const JOUR_PARIS = new Intl.DateTimeFormat('fr-CA', { timeZone: FUSEAU, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** « 09:12 », à l'heure de Paris, pour un horodatage complet ; vide pour un simple jour. */
+export function heureParis(iso) {
+  if (!iso || !/T/.test(String(iso))) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : HEURE_PARIS.format(d);
+}
+
+/** Le jour AAAA-MM-JJ, à l'heure de Paris ; un simple jour est rendu tel quel. */
+export function jourParis(valeur) {
+  if (!valeur) return '';
+  if (!/T/.test(String(valeur))) return String(valeur).slice(0, 10);
+  const d = new Date(valeur);
+  return Number.isNaN(d.getTime()) ? String(valeur).slice(0, 10) : JOUR_PARIS.format(d);
+}
+
 /** Le jour d'il y a N mois, pour la fenêtre d'historique. */
 export function ilYaDesMois(mois) {
   const d = new Date();
