@@ -5,7 +5,8 @@
 import crypto from 'crypto';
 import db from '../db.js';
 import { logActivity } from './journal.js';
-import { appliquerIssue, estTerminale, issuesPourAction } from '../../shared/tunnel.js';
+import { appliquerIssue, estTerminale, issuesPourAction, ETAPE_NUMERO, etapeApresNumero } from '../../shared/tunnel.js';
+import { aUnNumero, chiffresTelephone } from '../../shared/normalisation.js';
 import { dateLocale } from '../../shared/regles.js';
 
 /**
@@ -36,6 +37,39 @@ export async function changerEtape(prospectId, vers, userId, { raison = '', exec
     await logActivity(userId, 'etape_prospect', `${actuel.rows[0].nom_etablissement} : ${de} → ${vers}${raisonPerte ? ` (${raisonPerte})` : ''}`, 'prospect', prospectId);
   }
   return true;
+}
+
+/**
+ * Un numéro vient d'être saisi sur une fiche qui attendait en « Numéro à attribuer » : elle
+ * revient à l'étape qu'elle avait avant. Renvoie la nouvelle étape, ou null si rien ne bouge
+ * (pas dans cette étape, numéro vide, ou inchangé).
+ */
+export async function retourApresNumero(prospectId, { etapeAvant, telephoneAvant }, telephoneApres, userId) {
+  if (etapeAvant !== ETAPE_NUMERO || !aUnNumero(telephoneApres)) return null;
+  if (chiffresTelephone(telephoneApres) === chiffresTelephone(telephoneAvant)) return null;
+  const historique = (await db.query(
+    'SELECT de, vers FROM prospect_etapes WHERE prospect_id = $1 ORDER BY date DESC', [prospectId]
+  )).rows;
+  const vers = etapeApresNumero(historique);
+  const change = await changerEtape(prospectId, vers, userId);
+  if (!change) return null;
+  // Un numéro tout neuf, c'est un appel à passer : un rappel pour demain, à celui qui suit
+  // la fiche — sauf si une action l'attend déjà.
+  let rappel = null;
+  const dejaPrevu = await db.query("SELECT 1 FROM reminders WHERE prospect_id = $1 AND statut = 'actif' LIMIT 1", [prospectId]);
+  if (dejaPrevu.rows.length === 0) {
+    const fiche = (await db.query('SELECT commercial_id FROM prospects WHERE id = $1', [prospectId])).rows[0];
+    const demain = new Date(); demain.setDate(demain.getDate() + 1);
+    rappel = {
+      id: `rem-${crypto.randomUUID()}`, prospect_id: prospectId, commercial_id: fiche?.commercial_id || userId,
+      date: dateLocale(demain), heure: '09:00', message: 'Appeler (numéro attribué)', statut: 'actif', type: 'appeler',
+    };
+    await db.query(
+      'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [rappel.id, rappel.prospect_id, rappel.commercial_id, rappel.date, rappel.heure, rappel.message, rappel.statut, rappel.type, new Date().toISOString()]
+    );
+  }
+  return { vers, rappel };
 }
 
 /**

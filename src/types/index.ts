@@ -49,6 +49,7 @@ export type PipelineStage =
   | 'nouveau_datagouv'
   | 'nouveau'
   | 'a_contacter'
+  | 'numero_a_attribuer'
   | 'contacte'
   | 'proposition'
   | 'negociation'
@@ -64,6 +65,7 @@ export const PIPELINE_COLORS: Record<PipelineStage, string> = {
   nouveau_datagouv: '#0ea5e9',
   nouveau: '#6b7280',
   a_contacter: '#3b82f6',
+  numero_a_attribuer: '#64748b',
   contacte: '#8b5cf6',
   proposition: '#f97316',
   negociation: '#eab308',
@@ -81,6 +83,7 @@ export const PIPELINE_DESCRIPTIONS: Partial<Record<PipelineStage, string>> = {
   nouveau_datagouv: 'importé automatiquement depuis data.gouv',
   nouveau: 'créé manuellement, pas encore contacte',
   a_contacter: 'en attente du premier appel/visite',
+  numero_a_attribuer: 'appel : numéro non attribué ; revient à son étape dès qu\'un numéro est saisi',
   contacte: 'après appel + rappel programme, ou email envoyé',
   proposition: 'RDV : commande plus tard / à relancer',
   negociation: 'RDV : mail envoyé, ou email envoyé depuis la fiche',

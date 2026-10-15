@@ -26,7 +26,7 @@ const FENETRE_MS = 15 * 60 * 1000;
 const TYPES = ['tout', 'appel', 'mail', 'rdv_pris', 'changement_etape', 'note', 'prospect_cree'];
 /** Les résultats tels qu'on les demande, et ce que l'écran d'appel enregistre. */
 const RESULTATS = { abouti: 'repondu', repondeur: 'messagerie', pas_de_reponse: 'pas_de_reponse', numero_faux: 'injoignable' };
-const LIBELLE_RESULTAT = { repondu: 'abouti', messagerie: 'répondeur', pas_de_reponse: 'pas de réponse', injoignable: 'injoignable' };
+const LIBELLE_RESULTAT = { repondu: 'abouti', messagerie: 'répondeur', pas_de_reponse: 'pas de réponse', injoignable: 'numéro non attribué' };
 const ETAPES_REFUS = ['perdu', 'ne_pas_contacter'];
 
 const ts = (valeur) => { const d = new Date(valeur); return Number.isNaN(d.getTime()) ? null : d.getTime(); };

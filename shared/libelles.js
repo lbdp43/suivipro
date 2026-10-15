@@ -66,6 +66,7 @@ export const LIBELLES_ETAPE = {
   nouveau_datagouv: 'Importé Datagouv',
   nouveau: 'Nouveau',
   a_contacter: 'À contacter',
+  numero_a_attribuer: 'Numéro à attribuer',
   contacte: 'Contacte',
   proposition: 'Proposition',
   negociation: 'Negociation',
@@ -79,7 +80,7 @@ export const LIBELLES_RESULTAT_APPEL = {
   repondu: 'Répondu',
   pas_de_reponse: 'Pas de réponse',
   messagerie: 'Messagerie',
-  injoignable: 'Injoignable',
+  injoignable: 'Numéro non attribué',
   email_envoye: 'Email envoyé',
 };
 

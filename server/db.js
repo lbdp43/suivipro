@@ -441,6 +441,18 @@ async function initDatabase(attempt = 1) {
       }
       await client.query("UPDATE pipeline_columns SET label = 'Nouveau partagé' WHERE id = 'partage' AND label = 'Partagé'");
     } catch (err) { console.log('Migration étape Partagé :', err.message); }
+    // Étape « Numéro à attribuer », après « À contacter » : un prospect dont le numéro
+    // n'est pas attribué y attend qu'on lui en trouve un, puis revient d'où il vient.
+    try {
+      const cols = await client.query('SELECT id, sort_order FROM pipeline_columns ORDER BY sort_order');
+      if (cols.rows.length > 0 && !cols.rows.some(r => r.id === 'numero_a_attribuer')) {
+        const apres = cols.rows.find(r => r.id === 'a_contacter');
+        const position = apres ? Number(apres.sort_order) + 1 : cols.rows.length;
+        await client.query('UPDATE pipeline_columns SET sort_order = sort_order + 1 WHERE sort_order >= $1', [position]);
+        await client.query("INSERT INTO pipeline_columns (id, label, color, sort_order) VALUES ('numero_a_attribuer', 'Numéro à attribuer', '#64748b', $1)", [position]);
+        console.log('Étape « Numéro à attribuer » ajoutée au pipeline.');
+      }
+    } catch (err) { console.log('Migration étape Numéro à attribuer :', err.message); }
     // Lien de la fiche Google Maps d'où vient le prospect.
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_url TEXT DEFAULT ''"); } catch { /* déjà là */ }
     // « Ma session d'appel du jour » : une liste par personne et par jour.

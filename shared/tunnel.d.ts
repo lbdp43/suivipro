@@ -4,6 +4,8 @@ export type RaisonPerte = 'pas_interesse' | 'deja_fournisseur' | 'trop_cher' | '
 export const ETAPES_TERMINALES: string[];
 export const ETAPES_ENTREE: string[];
 export const TYPES_ACTION: Record<TypeAction, string>;
+export const ETAPE_NUMERO: 'numero_a_attribuer';
+export function etapeApresNumero(historique: { de?: string | null; vers: string }[]): string;
 export const RAISONS_PERTE: Record<RaisonPerte, string>;
 export const SEUIL_STAGNATION_JOURS: number;
 
@@ -18,7 +20,7 @@ export interface EffetIssue { etape: string | null; prochaine: ProchaineActionAC
 export function appliquerIssue(type: string, issue: string, etapeActuelle: string): EffetIssue;
 
 export function etapeApresAppel(
-  ctx: { issueNegative?: 'none' | 'pas_interesse' | 'ne_pas_contacter' | null; rdvPris?: boolean; memo?: boolean },
+  ctx: { issueNegative?: 'none' | 'pas_interesse' | 'ne_pas_contacter' | null; rdvPris?: boolean; memo?: boolean; injoignable?: boolean },
   etapeActuelle: string
 ): string | null;
 export function etapeApresCompteRendu(resultat: string, etapeActuelle: string): string | null;
