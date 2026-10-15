@@ -764,21 +764,18 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                   </button>
                   {/* Personne au bout : un appui suffit, l'appel est noté comme non abouti. */}
                   <p className="text-xs text-gray-400 mt-5">Personne au bout ?</p>
-                  <div className="mt-2 flex items-center justify-center gap-2">
+                  {/* Deux boutons qui passent à la ligne sur un petit écran ; « Pas de réponse » reste dans l'écran de fin d'appel. */}
+                  <div className="mt-2 flex flex-wrap items-center justify-center gap-2 px-2">
                     <button disabled={saving} onClick={() => enregistrerSansReponse('messagerie')}
-                      className="px-4 py-2.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-sm font-medium hover:bg-amber-100 flex items-center gap-1.5 disabled:opacity-50">
+                      className="px-4 py-2.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-sm font-medium hover:bg-amber-100 flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50">
                       <MessageSquare className="w-4 h-4" /> Messagerie
                     </button>
-                    <button disabled={saving} onClick={() => enregistrerSansReponse('pas_de_reponse')}
-                      className="px-4 py-2.5 rounded-full bg-gray-100 border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-200 flex items-center gap-1.5 disabled:opacity-50">
-                      <PhoneMissed className="w-4 h-4" /> Pas de réponse
-                    </button>
                     <button disabled={saving} onClick={() => enregistrerSansReponse('injoignable')}
-                      className="px-4 py-2.5 rounded-full bg-slate-100 border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-200 flex items-center gap-1.5 disabled:opacity-50">
+                      className="px-4 py-2.5 rounded-full bg-slate-100 border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-200 flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50">
                       <Ban className="w-4 h-4" /> Numéro non attribué
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">L'appel est noté sans notes ni tag. Messagerie ou pas de réponse : rappel dans 2 jours. Numéro non attribué : la fiche passe en « Numéro à attribuer » et reviendra à son étape dès qu'un numéro sera saisi.</p>
+                  <p className="text-xs text-gray-400 mt-2 px-2">L'appel est noté sans notes ni tag. Messagerie : rappel dans 2 jours. Numéro non attribué : la fiche passe en « Numéro à attribuer » et reviendra à son étape dès qu'un numéro sera saisi.</p>
                 </div>
               )}
 
