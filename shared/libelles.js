@@ -80,7 +80,7 @@ export const LIBELLES_RESULTAT_APPEL = {
   repondu: 'Répondu',
   pas_de_reponse: 'Pas de réponse',
   messagerie: 'Messagerie',
-  injoignable: 'Injoignable',
+  injoignable: 'Numéro non attribué',
   email_envoye: 'Email envoyé',
 };
 

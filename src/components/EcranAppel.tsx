@@ -503,7 +503,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
         dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
         quand = ` · rappel ${formatDate(reminderPayload.date)}`;
       }
-      toast.success(`${resultat === 'injoignable' ? 'Numéro non attribué' : CALL_RESULT_LABELS[resultat]} noté${quand}`);
+      toast.success(`${CALL_RESULT_LABELS[resultat]} noté${quand}`);
       setCallActive(false);
       setCallTimer(0);
       if (!suivantDeSession()) setShowModal(false);

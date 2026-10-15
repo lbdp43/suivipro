@@ -197,7 +197,7 @@ const sections: GuideSection[] = [
           '**Répondu** : Echange effectue.',
           '**Pas de réponse** : Personne n\'a répondu.',
           '**Messagerie** : Message vocal laisse.',
-          '**Injoignable** : Numéro ne fonctionne pas.',
+          '**Numéro non attribué** : le numéro ne fonctionne pas ; la fiche passe en « Numéro à attribuer » et revient à son étape dès qu\'un numéro est saisi.',
         ],
       },
       {
