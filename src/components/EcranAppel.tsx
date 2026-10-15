@@ -23,6 +23,9 @@ import { SelectRaisonPerte } from './RaisonPerte';
 // les fiches client et prospect qu'il affiche, et l'ouverture de l'appli n'en a pas besoin.
 import type { ApiAppel, SessionAppel } from './CallModal';
 
+/** Les résultats où personne n'a décroché : l'appel n'a pas abouti, il n'y a rien à raconter. */
+const SANS_REPONSE: CallResult[] = ['pas_de_reponse', 'messagerie', 'injoignable'];
+
 export default function EcranAppel({ brancher, onSession }: { brancher: (api: ApiAppel) => void; onSession: (s: SessionAppel | null) => void }) {
   const { state, dispatch, dispatchLocal } = useApp();
   const toast = useToast();
@@ -51,6 +54,8 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
     const suite = ISSUES_APPEL_CLIENT.find(i => i.value === v)?.suite;
     if (suite) { const d = new Date(); d.setDate(d.getDate() + suite.jours); setNouvelleTache({ titre: suite.titre, date: dateLocale(d) }); }
     else setNouvelleTache(null);
+    // Sur messagerie, il n'y a rien d'autre à dire : la note est pré-remplie, modifiable.
+    if (v === 'messagerie' && !callNotes.trim()) setCallNotes('Message laissé sur le répondeur.');
   };
   const [callActive, setCallActive] = useState(false);
   const [callTimer, setCallTimer] = useState(0);
@@ -338,10 +343,13 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
     if (genre === 'client') return saveCallClient();
     if (!prospectId || saving) return;
 
-    // Validation: notes et tags obligatoires
+    // Validation : notes et tags obligatoires — sauf quand personne n'a décroché (messagerie,
+    // pas de réponse, injoignable) : il n'y a rien à raconter.
     const errors: string[] = [];
-    if (!callNotes.trim()) errors.push('notes');
-    if (selectedTags.length === 0) errors.push('tags');
+    if (!SANS_REPONSE.includes(callResult)) {
+      if (!callNotes.trim()) errors.push('notes');
+      if (selectedTags.length === 0) errors.push('tags');
+    }
     if (errors.length > 0) {
       setSaveErrors(errors);
       return;
@@ -437,6 +445,54 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
       }
 
       toast.success('Appel enregistré');
+      setCallActive(false);
+      setCallTimer(0);
+      if (!suivantDeSession()) setShowModal(false);
+    } catch (err) {
+      console.error('Erreur sauvegarde appel:', err);
+      toast.error('Erreur lors de la sauvegarde. Veuillez réessayer.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Personne au bout (messagerie, pas de réponse) : un appui note l'appel tel quel — sans
+   * notes ni tag, le prospect ne bouge pas — et programme un rappel dans 2 jours si le
+   * prospect n'a plus de prochaine action. L'appel clôt le rappel du jour (serveur) ; sans
+   * ce nouveau rappel, le prospect sortirait du tunnel sans suite.
+   */
+  const enregistrerSansReponse = async (resultat: CallResult) => {
+    if (!prospectId || saving) return;
+    setSaving(true);
+    const moi = state.currentUser?.id || 'com-1';
+    try {
+      const callPayload = {
+        id: generateId('call'), prospect_id: prospectId, commercial_id: moi,
+        date: new Date().toISOString(), duree: callTimer, resultat,
+        notes: resultat === 'messagerie' ? 'Message laissé sur le répondeur.' : '',
+      };
+      const reponseAppel = await apiPost('/calls', callPayload) as { rappels_termines?: string[]; origine?: Call['origine'] };
+      dispatchLocal({ type: 'ADD_CALL', payload: { ...callPayload, origine: reponseAppel.origine || '' } });
+      const clos = new Set(reponseAppel.rappels_termines || []);
+      for (const id of clos) {
+        const r = state.reminders.find(x => x.id === id);
+        if (r) dispatchLocal({ type: 'UPDATE_REMINDER', payload: { ...r, statut: 'termine' } });
+      }
+      let quand = '';
+      const dejaPrevu = state.reminders.some(r => r.prospect_id === prospectId && r.statut === 'actif' && !clos.has(r.id));
+      if (!dejaPrevu) {
+        const d = new Date(); d.setDate(d.getDate() + 2);
+        const reminderPayload = {
+          id: generateId('rem'), prospect_id: prospectId, commercial_id: moi, date: dateLocale(d), heure: '09:00',
+          message: resultat === 'messagerie' ? 'Rappeler (message laissé)' : 'Rappeler (pas de réponse)',
+          statut: 'actif' as const, type: 'appeler' as const,
+        };
+        await apiPost('/reminders', reminderPayload);
+        dispatchLocal({ type: 'ADD_REMINDER', payload: reminderPayload });
+        quand = ` · rappel ${formatDate(reminderPayload.date)}`;
+      }
+      toast.success(`${CALL_RESULT_LABELS[resultat]} noté${quand}`);
       setCallActive(false);
       setCallTimer(0);
       if (!suivantDeSession()) setShowModal(false);
@@ -572,12 +628,12 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                     {saveErrors.includes('issue') && <p className="text-xs text-red-500 mb-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Dites comment s'est passé l'appel</p>}
                     <div className="grid grid-cols-2 gap-2">
                       {ISSUES_APPEL_CLIENT.map(i => (
-                        <button key={i.value} className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${issueClient === i.value ? (i.value === 'probleme' ? 'border-red-500 bg-red-50 text-red-700' : i.value === 'commande' ? 'border-green-500 bg-green-50 text-green-700' : 'border-brewery-500 bg-brewery-50 text-brewery-700') : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`} onClick={() => choisirIssueClient(i.value)}>
+                        <button key={i.value} className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${issueClient === i.value ? (i.value === 'probleme' || i.value === 'pas_de_reponse' ? 'border-red-500 bg-red-50 text-red-700' : i.value === 'messagerie' ? 'border-amber-500 bg-amber-50 text-amber-700' : i.value === 'commande' ? 'border-green-500 bg-green-50 text-green-700' : 'border-brewery-500 bg-brewery-50 text-brewery-700') : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`} onClick={() => choisirIssueClient(i.value)}>
                           {i.label}
                         </button>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse.</p>
+                    <p className="text-xs text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse ou sur messagerie.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>
@@ -695,6 +751,19 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                   >
                     <PhoneOff className="w-5 h-5" /> Raccrocher
                   </button>
+                  {/* Personne au bout : un appui suffit, l'appel est noté comme non abouti. */}
+                  <p className="text-xs text-gray-400 mt-5">Personne au bout ?</p>
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <button disabled={saving} onClick={() => enregistrerSansReponse('messagerie')}
+                      className="px-4 py-2.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-sm font-medium hover:bg-amber-100 flex items-center gap-1.5 disabled:opacity-50">
+                      <MessageSquare className="w-4 h-4" /> Messagerie
+                    </button>
+                    <button disabled={saving} onClick={() => enregistrerSansReponse('pas_de_reponse')}
+                      className="px-4 py-2.5 rounded-full bg-gray-100 border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-200 flex items-center gap-1.5 disabled:opacity-50">
+                      <PhoneMissed className="w-4 h-4" /> Pas de réponse
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">L'appel est noté sans notes ni tag, et un rappel est programmé dans 2 jours.</p>
                 </div>
               )}
 
@@ -766,6 +835,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                         );
                       })}
                     </div>
+                    {SANS_REPONSE.includes(callResult) && <p className="text-xs text-amber-700 mt-1.5">Personne au bout : notes et tag facultatifs, le prospect ne bouge pas.</p>}
                   </div>
 
                   {/* Negative outcomes: pas interesse / ne pas contacter */}

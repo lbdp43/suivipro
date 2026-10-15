@@ -144,7 +144,7 @@ const noter = {
     type: z.enum(['visite', 'appel']).describe('Visite sur place, ou appel.'),
     commentaire: z.string().describe('Ce qui s\'est dit ou passé. Obligatoire — ne l\'inventez pas, demandez-le.'),
     issue: z.enum(ISSUES_APPEL_CLIENT.map(i => i.value)).optional()
-      .describe(`Pour un appel : ${ISSUES_APPEL_CLIENT.map(i => `${i.value} (${i.label})`).join(', ')}. « pas_de_reponse » ne compte pas comme visite.`),
+      .describe(`Pour un appel : ${ISSUES_APPEL_CLIENT.map(i => `${i.value} (${i.label})`).join(', ')}. « pas_de_reponse » et « messagerie » ne comptent pas comme visite.`),
     date: z.string().optional().describe('AAAA-MM-JJ, aujourd\'hui par défaut. Jamais dans le futur.'),
     taches_faites: z.array(z.string()).optional().describe('Les références des tâches ouvertes du client que ce passage a réglées (l\'aperçu les liste).'),
     tache_de_suivi: z.string().optional().describe('Le titre d\'une tâche de suivi à créer.'),

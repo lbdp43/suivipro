@@ -101,7 +101,7 @@ const SUJETS = {
   visites: () => bloc(
     '# Visites et appels chez un client',
     '- Une visite, c\'est un passage sur place OU un appel : les deux font avancer le calendrier (dernière visite, prochaine visite selon la fréquence du client).',
-    '- Un appel resté sans réponse ne compte pas : personne au bout, le client n\'a pas été vu. Un rendez-vous planifié non plus : il n\'a pas encore eu lieu.',
+    '- Un appel resté sans réponse ne compte pas (pas de réponse, ou message laissé sur la messagerie) : personne au bout, le client n\'a pas été vu. Un rendez-vous planifié non plus : il n\'a pas encore eu lieu.',
     '- Rien ne se note à l\'avance : une visite à venir est un rendez-vous planifié.',
     '- Une date plus ancienne que la dernière visite connue s\'ajoute à l\'historique sans faire reculer le calendrier.',
     `- Issues d'un appel : ${ISSUES_APPEL_CLIENT.map(i => `${i.value} (${i.label}${i.suite ? `, suite conseillée : « ${i.suite.titre} » à ${i.suite.jours} j` : ''})`).join(', ')}.`,

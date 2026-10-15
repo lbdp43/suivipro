@@ -12,7 +12,7 @@ import db from '../db.js';
 import { calculateNextVisit } from './visites.js';
 import { logActivity } from './journal.js';
 import { dateLocale } from '../../shared/regles.js';
-import { ISSUES_APPEL_CLIENT, compteCommeVisite } from '../../shared/visites.js';
+import { ISSUES_APPEL_CLIENT, compteCommeVisite, estSansReponse } from '../../shared/visites.js';
 import { LIBELLES_INTERACTION } from '../../shared/libelles.js';
 
 export const TYPES_INTERACTION = ['VISITE', 'APPEL', 'RDV_PLANIFIE'];
@@ -79,7 +79,7 @@ export async function planInteraction(saisie, auteur, { commentaireObligatoire =
     if (!issue) throw new InteractionRefusee(`Issue d'appel inconnue. Possibles : ${ISSUES_APPEL_CLIENT.map(i => `${i.value} (${i.label})`).join(', ')}.`);
     if (s.type !== 'APPEL') throw new InteractionRefusee('Une issue ne se donne que pour un appel.');
   }
-  const sansReponse = !!s.sans_reponse || issue?.value === 'pas_de_reponse';
+  const sansReponse = !!s.sans_reponse || estSansReponse(issue?.value);
 
   const notes = String(s.comment || '').trim();
   if (commentaireObligatoire && !notes) throw new InteractionRefusee('Le commentaire est obligatoire : qu\'est-ce qui s\'est dit ou passé ?');
