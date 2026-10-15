@@ -3,7 +3,8 @@
 //
 // La règle de la maison : une visite, c'est un passage sur place OU un appel. Les deux font
 // avancer le calendrier (dernière visite, prochaine visite). Ne comptent pas : un rendez-vous
-// planifié (il n'a pas encore eu lieu) et un appel resté sans réponse (personne au bout).
+// planifié (il n'a pas encore eu lieu) et un appel resté sans réponse (personne au bout) —
+// messagerie comprise : un message laissé n'est pas un échange.
 
 /** Les issues d'un appel à un client, et la tâche de suivi que chacune propose. */
 export const ISSUES_APPEL_CLIENT = [
@@ -12,8 +13,16 @@ export const ISSUES_APPEL_CLIENT = [
   { value: 'courtoisie', label: 'Appel de courtoisie, besoin de rien' },
   { value: 'probleme', label: 'Problème ou mécontentement', suite: { titre: 'Suivre le problème signalé', jours: 2 } },
   { value: 'pas_de_reponse', label: 'Pas de réponse', suite: { titre: 'Rappeler (pas de réponse)', jours: 2 } },
+  { value: 'messagerie', label: 'Messagerie (message laissé)', suite: { titre: 'Rappeler (message laissé)', jours: 2 } },
   { value: 'a_rappeler', label: 'À rappeler plus tard', suite: { titre: 'Rappeler', jours: 7 } },
 ];
+
+/** Les issues d'appel où personne n'a décroché : l'appel n'a pas abouti. */
+export const ISSUES_SANS_REPONSE = ['pas_de_reponse', 'messagerie'];
+
+export function estSansReponse(issue) {
+  return ISSUES_SANS_REPONSE.includes(issue);
+}
 
 /** Une visite ou un appel abouti avance le calendrier ; un RDV planifié ou un appel sans réponse, non. */
 export function compteCommeVisite(type, sansReponse = false) {

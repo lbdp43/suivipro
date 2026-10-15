@@ -51,6 +51,8 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
     const suite = ISSUES_APPEL_CLIENT.find(i => i.value === v)?.suite;
     if (suite) { const d = new Date(); d.setDate(d.getDate() + suite.jours); setNouvelleTache({ titre: suite.titre, date: dateLocale(d) }); }
     else setNouvelleTache(null);
+    // Sur messagerie, il n'y a rien d'autre à dire : la note est pré-remplie, modifiable.
+    if (v === 'messagerie' && !callNotes.trim()) setCallNotes('Message laissé sur le répondeur.');
   };
   const [callActive, setCallActive] = useState(false);
   const [callTimer, setCallTimer] = useState(0);
@@ -572,12 +574,12 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                     {saveErrors.includes('issue') && <p className="text-xs text-red-500 mb-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Dites comment s'est passé l'appel</p>}
                     <div className="grid grid-cols-2 gap-2">
                       {ISSUES_APPEL_CLIENT.map(i => (
-                        <button key={i.value} className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${issueClient === i.value ? (i.value === 'probleme' ? 'border-red-500 bg-red-50 text-red-700' : i.value === 'commande' ? 'border-green-500 bg-green-50 text-green-700' : 'border-brewery-500 bg-brewery-50 text-brewery-700') : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`} onClick={() => choisirIssueClient(i.value)}>
+                        <button key={i.value} className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-colors ${issueClient === i.value ? (i.value === 'probleme' || i.value === 'pas_de_reponse' ? 'border-red-500 bg-red-50 text-red-700' : i.value === 'messagerie' ? 'border-amber-500 bg-amber-50 text-amber-700' : i.value === 'commande' ? 'border-green-500 bg-green-50 text-green-700' : 'border-brewery-500 bg-brewery-50 text-brewery-700') : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`} onClick={() => choisirIssueClient(i.value)}>
                           {i.label}
                         </button>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse.</p>
+                    <p className="text-xs text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse ou sur messagerie.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>

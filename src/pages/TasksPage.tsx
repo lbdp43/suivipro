@@ -5,7 +5,7 @@ import {
   ListTodo, Plus, Edit2, Trash2, Save, X, RefreshCw, Filter,
   AlertTriangle, CheckCircle2, Clock, ChevronDown, ChevronRight,
   User, Building2, Calendar, Flag, Search, Loader2, Phone, ClipboardCheck,
-  PhoneOff, MessageCircle, MapPin, UserCircle,
+  PhoneOff, Voicemail, MessageCircle, MapPin, UserCircle,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import type { TaskClient } from '../types';
@@ -102,7 +102,9 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
   // Compte-rendu (appel/visite) modal for a task
   const [crTask, setCrTask] = useState<Task | null>(null);
   const [crType, setCrType] = useState<'APPEL' | 'VISITE'>('APPEL');
-  const [crOutcome, setCrOutcome] = useState<'repondu' | 'pas_repondu' | ''>('');
+  const [crOutcome, setCrOutcome] = useState<'repondu' | 'pas_repondu' | 'messagerie' | ''>('');
+  // Personne au bout : pas de réponse, ou message laissé. L'appel ne compte pas comme visite.
+  const sansReponse = crOutcome === 'pas_repondu' || crOutcome === 'messagerie';
   const [crComment, setCrComment] = useState('');
   const [crCompleteTask, setCrCompleteTask] = useState(true);
   const [crSaving, setCrSaving] = useState(false);
@@ -211,10 +213,10 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
 
   const saveCr = async () => {
     if (!crTask || !crTask.client_id) return;
-    if (crOutcome !== 'pas_repondu' && !crComment.trim()) { toast.warning('Indiquez ce qui a ete dit ou constate'); return; }
+    if (!sansReponse && !crComment.trim()) { toast.warning('Indiquez ce qui a été dit ou constaté'); return; }
     setCrSaving(true);
     try {
-      const outcomePrefix = crOutcome === 'pas_repondu' ? "N'a pas répondu. " : crOutcome === 'repondu' ? 'A répondu. ' : '';
+      const outcomePrefix = crOutcome === 'pas_repondu' ? "N'a pas répondu. " : crOutcome === 'messagerie' ? 'Messagerie, message laissé. ' : crOutcome === 'repondu' ? 'A répondu. ' : '';
       const interaction = {
         id: generateId('int'),
         client_id: crTask.client_id,
@@ -223,8 +225,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
         date: new Date().toISOString(),
         comment: (outcomePrefix + crComment.trim()).trim(),
         date_creation: new Date().toISOString(),
-        // Pas de réponse : l'appel ne compte pas comme visite.
-        sans_reponse: crOutcome === 'pas_repondu',
+        sans_reponse: sansReponse,
         // La tâche se termine avec la visite, dans le même envoi : tout passe, ou rien —
         // et sans réseau, elles partent ensemble au retour du réseau.
         taches_faites: crCompleteTask && crTask.statut !== 'TERMINEE' ? [crTask.id] : [],
@@ -647,20 +648,28 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                   >
                     <PhoneOff className="w-4 h-4" /> N'a pas répondu
                   </button>
+                  <button
+                    onClick={() => setCrOutcome('messagerie')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      crOutcome === 'messagerie' ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Voicemail className="w-4 h-4" /> Messagerie
+                  </button>
                 </div>
               )}
 
               {/* Comment */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  {crOutcome === 'pas_repondu' ? 'Note (optionnel)' : 'Qu\'a-t-il dit / que s\'est-il passe ? *'}
+                  {sansReponse ? 'Note (optionnel)' : 'Qu\'a-t-il dit / que s\'est-il passé ? *'}
                 </label>
                 <textarea
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   rows={4}
                   value={crComment}
                   onChange={e => setCrComment(e.target.value)}
-                  placeholder={crOutcome === 'pas_repondu' ? 'Ex: rappeler demain matin...' : 'Ex: tout va bien, va recommander la semaine prochaine...'}
+                  placeholder={crOutcome === 'messagerie' ? 'Ex: message laissé, rappeler jeudi...' : crOutcome === 'pas_repondu' ? 'Ex: rappeler demain matin...' : 'Ex: tout va bien, va recommander la semaine prochaine...'}
                   autoFocus
                 />
               </div>
@@ -683,7 +692,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
               </button>
               <button
                 onClick={saveCr}
-                disabled={crSaving || (crOutcome !== 'pas_repondu' && !crComment.trim())}
+                disabled={crSaving || (!sansReponse && !crComment.trim())}
                 className="px-4 py-2 text-sm font-medium text-white bg-brewery-600 hover:bg-brewery-700 rounded-lg flex items-center gap-2 disabled:opacity-50"
               >
                 {crSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
