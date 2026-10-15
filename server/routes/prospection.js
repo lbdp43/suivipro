@@ -160,8 +160,8 @@ router.post('/reminders', authMiddleware, asyncHandler(async (req, res) => {
 
   const commercialId = isAdmin(req) ? (r.commercial_id || req.user.id) : req.user.id;
   await db.query(
-    'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [r.id, r.prospect_id, commercialId, r.date, r.heure || '', r.message || '', r.statut || 'actif', r.type || 'appeler']
+    'INSERT INTO reminders (id, prospect_id, commercial_id, date, heure, message, statut, type, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [r.id, r.prospect_id, commercialId, r.date, r.heure || '', r.message || '', r.statut || 'actif', r.type || 'appeler', new Date().toISOString()]
   );
   res.json({ ok: true });
 }));

@@ -27,6 +27,15 @@ export function sansAccentsSql(champ) {
 }
 
 /**
+ * Le jour (AAAA-MM-JJ) d'un horodatage, à l'heure de Paris, côté base. Le serveur vit en
+ * UTC : « left(date, 10) » range un appel passé à 00 h 30 dans la journée d'avant.
+ * La fonction jour_paris est créée au démarrage (db.js) et tolère une valeur illisible.
+ */
+export function jourParisSql(champ) {
+  return `jour_paris(${champ})`;
+}
+
+/**
  * Un « AND (champ LIKE … OR champ LIKE …) » qui ignore accents et casse, ou rien du tout
  * quand il n'y a rien à chercher. Le motif est passé en paramètre : jamais concaténé.
  */

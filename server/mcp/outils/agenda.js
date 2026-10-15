@@ -8,8 +8,9 @@ import { dateLocale, rdvPasse, rdvAnnule, lundiDeLaSemaine, dimancheDeLaSemaine,
 import { LIBELLES_STATUT_RDV, LIBELLES_RESULTAT_RDV } from '../../../shared/libelles.js';
 import { perimetre, estAdmin, faitDeLaProspection, equipe, trouverCommercial } from '../perimetre.js';
 import {
-  LIMITE_DEFAUT, LIMITE_MAX, borner, dateFr, ligne, bloc, entete, extrait, lib, nommer,
+  LIMITE_DEFAUT, LIMITE_MAX, borner, dateFr, heureParis, ligne, bloc, entete, extrait, lib, nommer,
 } from '../format.js';
+import { jourParisSql } from '../sql.js';
 
 async function prenomsEquipe() {
   return new Map((await equipe()).map(g => [g.id, g.prenom]));
@@ -18,17 +19,21 @@ async function prenomsEquipe() {
 const rendezVous = {
   nom: 'rendez_vous',
   titre: 'Les rendez-vous',
-  description: 'Les rendez-vous à venir, ceux qui sont passés, et ceux dont le compte rendu manque. Dit qui a le rendez-vous et qui l\'a pris.',
+  description: 'Les rendez-vous à venir, ceux qui sont passés, et ceux dont le compte rendu manque. Dit qui a le rendez-vous, qui l\'a pris et quand (pris le) ; pour un rendez-vous passé, comment il s\'est conclu (honoré, annulé, reporté, sans compte rendu) et son résultat. « pris_du » / « pris_au » listent les rendez-vous décrochés un jour donné, quelle que soit la date du rendez-vous.',
   schema: {
-    quand: z.enum(['a_venir', 'passes', 'sans_compte_rendu']).optional().describe('« a_venir » par défaut.'),
-    du: z.string().optional().describe('Date de début, au format AAAA-MM-JJ.'),
-    au: z.string().optional().describe('Date de fin, au format AAAA-MM-JJ.'),
+    quand: z.enum(['a_venir', 'passes', 'sans_compte_rendu', 'tous']).optional().describe('« a_venir » par défaut ; « tous » dès qu\'on filtre sur la date de prise.'),
+    du: z.string().optional().describe('Date de début du rendez-vous, au format AAAA-MM-JJ.'),
+    au: z.string().optional().describe('Date de fin du rendez-vous, au format AAAA-MM-JJ.'),
+    pris_du: z.string().optional().describe('Rendez-vous pris à partir de ce jour (AAAA-MM-JJ, heure de Paris).'),
+    pris_au: z.string().optional().describe('Rendez-vous pris jusqu\'à ce jour inclus (AAAA-MM-JJ).'),
     commercial: z.string().optional().describe('Celui qui a le rendez-vous.'),
     pris_par: z.string().optional().describe('Celui qui a décroché le rendez-vous.'),
     limite: z.number().optional().describe(`Nombre de résultats, ${LIMITE_DEFAUT} par défaut, ${LIMITE_MAX} au maximum.`),
   },
   executer: async (a, { utilisateur }) => {
-    const quand = a.quand || 'a_venir';
+    // Filtrer sur le jour de prise, c'est mesurer la prospection : on veut alors tous les
+    // rendez-vous pris ce jour-là, à venir ou passés.
+    const quand = a.quand || (a.pris_du || a.pris_au ? 'tous' : 'a_venir');
     const params = [];
     const conditions = [];
 
@@ -51,6 +56,9 @@ const rendezVous = {
     }
     if (a.du) { params.push(a.du); conditions.push(`r.date >= $${params.length}`); }
     if (a.au) { params.push(a.au); conditions.push(`r.date <= $${params.length}`); }
+    const prisLe = jourParisSql("NULLIF(r.created_at, '')");
+    if (a.pris_du) { params.push(a.pris_du); conditions.push(`${prisLe} >= $${params.length}`); }
+    if (a.pris_au) { params.push(a.pris_au); conditions.push(`${prisLe} <= $${params.length}`); }
 
     const sql = `SELECT r.*, p.nom_etablissement, p.ville AS ville_prospect, c.nom AS nom_client, c.ville AS ville_client
                    FROM appointments r
@@ -63,16 +71,27 @@ const rendezVous = {
     let lignes = r.rows;
     if (quand === 'a_venir') lignes = lignes.filter(x => !rdvAnnule(x) && !rdvPasse(x));
     else if (quand === 'passes') lignes = lignes.filter(x => rdvPasse(x));
-    else lignes = lignes.filter(x => !rdvAnnule(x) && rdvPasse(x) && !x.compte_rendu);
-    if (quand !== 'a_venir') lignes = [...lignes].reverse();
+    else if (quand === 'sans_compte_rendu') lignes = lignes.filter(x => !rdvAnnule(x) && rdvPasse(x) && !x.compte_rendu);
+    if (quand !== 'a_venir' && quand !== 'tous') lignes = [...lignes].reverse();
+    // Comment un rendez-vous passé s'est conclu : la seule chose qui compte pour mesurer la
+    // transformation. « Reporté » = compte rendu « RDV décalé » ; sans compte rendu, on ne
+    // sait pas s'il a eu lieu.
+    const conclusion = (x) => {
+      if (rdvAnnule(x)) return 'annulé';
+      if (!rdvPasse(x)) return '';
+      if (x.compte_rendu === 'decale') return 'reporté';
+      if (x.compte_rendu || x.statut === 'termine') return 'honoré';
+      return 'sans compte rendu';
+    };
 
     const prenoms = await prenomsEquipe();
     const limite = borner(a.limite, LIMITE_DEFAUT, LIMITE_MAX);
-    const titres = { a_venir: 'Rendez-vous à venir', passes: 'Rendez-vous passés', sans_compte_rendu: 'Rendez-vous sans compte rendu' };
+    const titres = { a_venir: 'Rendez-vous à venir', passes: 'Rendez-vous passés', sans_compte_rendu: 'Rendez-vous sans compte rendu', tous: 'Rendez-vous' };
+    const quandPris = a.pris_du || a.pris_au ? `pris ${a.pris_du && a.pris_au && a.pris_du !== a.pris_au ? `du ${dateFr(a.pris_du, { relatif: false })} au ${dateFr(a.pris_au, { relatif: false })}` : `le ${dateFr(a.pris_du || a.pris_au, { relatif: false })}`}` : '';
     return {
       resultats: lignes.length,
       texte: bloc(
-        entete(ligne(titres[quand], a.commercial && `pour ${a.commercial}`, a.pris_par && `pris par ${a.pris_par}`), Math.min(limite, lignes.length), lignes.length),
+        entete(ligne(titres[quand], a.commercial && `pour ${a.commercial}`, a.pris_par && `pris par ${a.pris_par}`, quandPris), Math.min(limite, lignes.length), lignes.length),
         '',
         lignes.slice(0, limite).map(x => ligne(
           dateFr(x.date),
@@ -81,9 +100,10 @@ const rendezVous = {
           x.nom_client ? 'client' : 'prospect',
           `pour ${prenoms.get(x.commercial_id) || '?'}`,
           x.prospecteur_id && x.prospecteur_id !== x.commercial_id ? `pris par ${prenoms.get(x.prospecteur_id) || '?'}` : '',
-          x.statut !== 'planifie' ? lib(LIBELLES_STATUT_RDV, x.statut) : '',
+          x.created_at ? `pris le ${ligne(dateFr(x.created_at, { relatif: false }), heureParis(x.created_at))}` : '',
+          conclusion(x) || (x.statut !== 'planifie' ? lib(LIBELLES_STATUT_RDV, x.statut) : ''),
           x.lieu ? `lieu ${x.lieu}` : '',
-          x.compte_rendu ? `compte rendu : ${lib(LIBELLES_RESULTAT_RDV, x.compte_rendu)}` : '',
+          x.compte_rendu && x.compte_rendu !== 'decale' ? `résultat : ${lib(LIBELLES_RESULTAT_RDV, x.compte_rendu)}` : '',
           extrait(x.notes_compte_rendu || x.notes, 160),
         )).join('\n') || 'Aucun rendez-vous.',
       ),
@@ -110,16 +130,18 @@ const activite = {
     const filtre = (champ) => (idsCible ? ` AND ${champ} = ANY($3)` : '');
     const params = idsCible ? [du, au, idsCible] : [du, au];
     const [appels, interactions, rdvs, comptesRendus, prospectsCrees] = await Promise.all([
-      db.query(`SELECT commercial_id, left(date, 10) AS jour, resultat, COUNT(*)::int AS n FROM calls
-                 WHERE left(date, 10) BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3`, params),
-      db.query(`SELECT commercial_id, left(date, 10) AS jour, type, COUNT(*)::int AS n FROM interactions
-                 WHERE left(date, 10) BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3`, params),
-      db.query(`SELECT COALESCE(prospecteur_id, commercial_id) AS commercial_id, left(COALESCE(NULLIF(created_at, ''), date), 10) AS jour, COUNT(*)::int AS n
-                  FROM appointments WHERE left(COALESCE(NULLIF(created_at, ''), date), 10) BETWEEN $1 AND $2${filtre('COALESCE(prospecteur_id, commercial_id)')} GROUP BY 1,2`, params),
+      // Les jours sont ceux de Paris (le serveur vit en UTC), comme dans journal_prospection :
+      // les deux outils doivent donner les mêmes nombres.
+      db.query(`SELECT commercial_id, ${jourParisSql('date')} AS jour, resultat, COUNT(*)::int AS n FROM calls
+                 WHERE ${jourParisSql('date')} BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3`, params),
+      db.query(`SELECT commercial_id, ${jourParisSql('date')} AS jour, type, COUNT(*)::int AS n FROM interactions
+                 WHERE ${jourParisSql('date')} BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3`, params),
+      db.query(`SELECT COALESCE(prospecteur_id, commercial_id) AS commercial_id, ${jourParisSql("COALESCE(NULLIF(created_at, ''), date)")} AS jour, COUNT(*)::int AS n
+                  FROM appointments WHERE ${jourParisSql("COALESCE(NULLIF(created_at, ''), date)")} BETWEEN $1 AND $2${filtre('COALESCE(prospecteur_id, commercial_id)')} GROUP BY 1,2`, params),
       db.query(`SELECT commercial_id, left(date, 10) AS jour, COUNT(*)::int AS n FROM appointments
                  WHERE compte_rendu <> '' AND left(date, 10) BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2`, params),
-      db.query(`SELECT commercial_id, left(date_creation, 10) AS jour, COUNT(*)::int AS n FROM prospects
-                 WHERE left(date_creation, 10) BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2`, params),
+      db.query(`SELECT commercial_id, ${jourParisSql('date_creation')} AS jour, COUNT(*)::int AS n FROM prospects
+                 WHERE ${jourParisSql('date_creation')} BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2`, params),
     ]);
 
     const groupe = a.groupe_par || 'personne';
