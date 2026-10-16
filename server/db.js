@@ -24,6 +24,13 @@ const pool = new Pool({
   ssl: isLocal ? false : { rejectUnauthorized: false },
 });
 
+// Une connexion inactive que PostgreSQL (ou Railway) coupe émet « error » sur le pool. Sans
+// écouteur, Node considère l'événement comme fatal et tout SuiviPro s'arrête. On note et on
+// continue : le pool ouvre une nouvelle connexion à la requête suivante.
+pool.on('error', (err) => {
+  console.error('[PG] connexion perdue :', err.message);
+});
+
 // ============================================
 // Schema
 // ============================================

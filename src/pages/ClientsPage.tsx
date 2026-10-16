@@ -27,6 +27,8 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { decrocheDuClient } from '../utils/commandes';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import { noterInteraction } from '../utils/interactions';
+import { exporterTableau } from '../utils/tableur';
+import { useVerrou } from '../hooks/useVerrou';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
 import LigneGlissante, { AstuceGlissement } from '../components/ui/LigneGlissante';
@@ -58,6 +60,9 @@ const VISIT_STATUS_CONFIG = {
 
 export default function ClientsPage() {
   const { state, dispatchLocal, getCommercial, getInteractionsForClient, getClient, getCommandesForClient, pausePolling } = useApp();
+  // Verrous anti double appui : un enregistrement à la fois.
+  const verrouClient = useVerrou();
+  const verrouVisite = useVerrou();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -639,7 +644,7 @@ export default function ClientsPage() {
     setShowForm(true);
   };
 
-  const saveClient = async () => {
+  const saveClient = () => verrouClient.verrouiller(async () => {
     if (!formData.nom?.trim()) return;
     if (!editingClient && !forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0)) return;
     const now = new Date().toISOString();
@@ -700,12 +705,10 @@ export default function ClientsPage() {
       }
     }
     setShowForm(false);
-  };
-
-
+  });
 
   // Mark visit
-  const submitInteraction = async () => {
+  const submitInteraction = () => verrouVisite.verrouiller(async () => {
     if (!interactionClient || !interactionComment.trim()) return;
     const now = new Date().toISOString();
     const interaction = {
@@ -752,7 +755,7 @@ export default function ClientsPage() {
     }
 
     resetInteractionModal();
-  };
+  });
 
   const resetInteractionModal = () => {
     setInteractionClient(null);
@@ -772,7 +775,6 @@ export default function ClientsPage() {
   // Export clients
   const handleExportClients = async () => {
     try {
-      const XLSX = await import('xlsx');
       const data = filtered.map(c => ({
         'Nom': c.nom,
         'Type': CLIENT_TYPE_LABELS[c.type_client],
@@ -791,10 +793,7 @@ export default function ClientsPage() {
         'Notes': c.notes,
         'SIRET': c.siret || '',
       }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Clients');
-      XLSX.writeFile(wb, `clients-${dateLocale(new Date())}.xlsx`);
+      await exporterTableau(data, `clients-${dateLocale(new Date())}.xlsx`, { feuille: 'Clients' });
     } catch { /* ignore */ }
   };
 
@@ -1934,7 +1933,7 @@ export default function ClientsPage() {
                 </button>
                 <button
                   onClick={saveClient}
-                  disabled={!formData.nom?.trim()}
+                  disabled={!formData.nom?.trim() || verrouClient.enCours}
                   className="flex items-center gap-1.5 px-4 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 disabled:opacity-50 transition-colors"
                 >
                   <Save className="w-4 h-4" />
@@ -2103,7 +2102,7 @@ export default function ClientsPage() {
                     </button>
                     <button
                       onClick={submitInteraction}
-                      disabled={!interactionComment.trim() || (interactionType === 'RDV_PLANIFIE' && !interactionDate)}
+                      disabled={verrouVisite.enCours || !interactionComment.trim() || (interactionType === 'RDV_PLANIFIE' && !interactionDate)}
                       className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         interactionType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
                           : interactionType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'

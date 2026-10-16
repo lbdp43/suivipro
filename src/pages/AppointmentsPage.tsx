@@ -21,6 +21,7 @@ import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import RepertoireGooglePanel from '../components/RepertoireGooglePanel';
 import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
 import { origineDuRdv } from '../utils/voisinage';
+import { useVerrou } from '../hooks/useVerrou';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
@@ -29,6 +30,8 @@ import Bouton from '../components/ui/Bouton';
 
 export default function AppointmentsPage() {
   const { state, dispatchLocal, getProspect } = useApp();
+  // Verrou anti double appui : un rendez-vous à la fois.
+  const verrouRdv = useVerrou();
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
@@ -204,7 +207,7 @@ export default function AppointmentsPage() {
     setShowForm(true);
   };
 
-  const saveAppointment = async () => {
+  const saveAppointment = () => verrouRdv.verrouiller(async () => {
     const isEvent = formData.event_type !== 'rdv';
     // Pour un RDV classique, prospect/client requis. Pour un evenement, titre requis.
     if (!isEvent && !formData.prospect_id && !formData.client_id) return;
@@ -278,7 +281,7 @@ export default function AppointmentsPage() {
     } catch (err: unknown) {
       toast.error(`Erreur: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     }
-  };
+  });
 
   const deleteAppointment = async (id: string) => {
     if (await confirmer('Supprimer ce RDV ?')) {
@@ -1434,7 +1437,7 @@ export default function AppointmentsPage() {
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
-              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2" onClick={saveAppointment}>
+              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveAppointment} disabled={verrouRdv.enCours}>
                 <Save className="w-4 h-4" /> {editing ? 'Modifier' : 'Créer'}
               </button>
             </div>

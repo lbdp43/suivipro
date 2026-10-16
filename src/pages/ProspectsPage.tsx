@@ -34,6 +34,7 @@ import {
 import { generateId, formatDate, formatTimeAgo, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useVerrou } from '../hooks/useVerrou';
 import { aUnNumero } from '../../shared/normalisation';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
@@ -48,6 +49,8 @@ import { toast as annonce } from 'sonner';
 
 export default function ProspectsPage() {
   const { state, dispatchLocal } = useApp();
+  // Verrou anti double appui : un enregistrement à la fois (l'état « saving » seul arrivait trop tard).
+  const verrouProspect = useVerrou();
   const toast = useToast();
   const { startCall, startSession } = useCallModal();
   const [sessionEnCours, setSessionEnCours] = useState(false);
@@ -625,7 +628,7 @@ export default function ProspectsPage() {
     return candidatsDoublons({ nom: formData.nom_etablissement || '', telephone: formData.telephone || '', email: formData.email || '' }, state.clients);
   }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
 
-  const saveProspect = async () => {
+  const saveProspect = () => verrouProspect.verrouiller(async () => {
     if (!formData.nom_etablissement) return;
     // Block save if duplicates found and user hasn't forced creation
     if (!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0)) {
@@ -687,7 +690,7 @@ export default function ProspectsPage() {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const deleteProspect = async (id: string) => {
     if (await confirmer('Supprimer ce prospect ?')) {
@@ -1997,7 +2000,7 @@ export default function ProspectsPage() {
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
-              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving}>
+              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving || verrouProspect.enCours}>
                 {saving ? (
                   <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Géocodage...</>
                 ) : (

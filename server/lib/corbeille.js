@@ -26,6 +26,9 @@ const DEPENDANCES = {
     { table: 'interactions', cle: 'client_id' },
     { table: 'tasks_client', cle: 'client_id' },
     { table: 'commandes', cle: 'client_id' },
+    // Les rendez-vous pris chez un client n'ont pas de clé étrangère : sans cette ligne, ils
+    // restaient en place en pointant vers une fiche disparue, et ne revenaient pas avec elle.
+    { table: 'appointments', cle: 'client_id' },
   ],
   // Un membre n'est pas effacé (voir plus bas) : son secteur, ses réglages de tournée et
   // son journal restent donc en place tels quels. Seuls ses accès vivants partent avec

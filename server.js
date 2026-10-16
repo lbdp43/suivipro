@@ -23,6 +23,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
+// Une promesse rejetée sans catch (un cron, une synchro de fond) ne doit pas arrêter le
+// serveur pour toute l'équipe : on la note, et on laisse tourner. Une exception vraiment
+// inattendue est notée aussi avant la sortie, pour qu'on sache pourquoi Railway a redémarré.
+process.on('unhandledRejection', (raison) => {
+  console.error('[serveur] promesse rejetée sans suite :', raison instanceof Error ? raison.stack || raison.message : raison);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[serveur] exception non rattrapée :', err.stack || err.message);
+  process.exit(1);
+});
+
 const app = express();
 
 // Trust Railway's reverse proxy (fixes X-Forwarded-For / rate-limit)
