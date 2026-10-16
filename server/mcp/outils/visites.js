@@ -48,7 +48,8 @@ const lire = {
     const { ids } = await perimetre(utilisateur, a.commercial, 'clients', 'visites_et_appels');
 
     const params = [du, au];
-    let where = `WHERE left(i.date, 10) >= $1 AND left(i.date, 10) <= $2${clause('c.commercial_id', ids, params)}`;
+    // Jours de Paris, et les visites de la personne nommée (pas celles chez ses clients faites par d'autres).
+    let where = `WHERE jour_paris(i.date) >= $1 AND jour_paris(i.date) <= $2${clause('i.commercial_id', ids, params)}`;
     if (a.client) {
       params.push(a.client);
       const n = params.length;

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { dateLocale } from '../../shared/regles';
+import { etapesConnues } from '../utils/etapes';
 import { MapContainer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
 import TuilesCarte from '../components/TuilesCarte';
 import L from 'leaflet';
@@ -387,7 +388,7 @@ export default function MapPage() {
       options: (Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({ value: t, label: ESTABLISHMENT_LABELS[t] })),
       selected: new Set(selectedTypes), onToggle: v => toggleType(v as EstablishmentType) },
     { cle: 'etape', titre: 'Étape pipeline', teinte: 'bg-blue-50 text-blue-800 hover:bg-blue-100',
-      options: state.pipelineColumns.map(col => ({ value: col.id, label: col.label, color: col.color })),
+      options: etapesConnues(state.pipelineColumns, state.prospects).map(col => ({ value: col.id, label: col.label, color: col.color })),
       selected: new Set(selectedStages), onToggle: v => toggleStage(v as PipelineStage) },
     { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
       options: state.tags.map(t => ({ value: t.id, label: t.nom, color: t.couleur })),

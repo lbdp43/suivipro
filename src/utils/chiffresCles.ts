@@ -7,6 +7,7 @@
 // mercredi de la semaine d'avant, pas à une semaine entière — sinon chaque lundi serait
 // une chute.
 import { dateLocale, jourDe } from '../../shared/regles';
+import { estAppel, interactionEstAppel, estRdvPris, quiAPrisLeRdv, jourDePriseDuRdv, compteCommeVisite, commandeComptee, montantCA } from '../../shared/activite';
 import type { Appointment, Call, Client, Commande, Interaction } from '../types';
 
 export const NB_SEMAINES = 8;
@@ -59,10 +60,10 @@ function parSemaine(jours: string[], aujourdhui: Date, poids?: number[]): Chiffr
   return { valeur, avant, courbe };
 }
 
-/** Visites et appels notés (le « sans réponse » compte : c'est du travail). */
+/** Visites : ce qui a compté comme une visite (sur place, ou un appel abouti chez un client). Règle partagée. */
 export function visitesEtAppels(interactions: Interaction[], pour: string | null, aujourdhui = new Date()): ChiffreCle {
   const jours = interactions
-    .filter(i => (i.type === 'VISITE' || i.type === 'APPEL') && (!pour || i.commercial_id === pour))
+    .filter(i => compteCommeVisite(i) && (!pour || i.commercial_id === pour))
     .map(i => jourDe(i.date));
   return parSemaine(jours, aujourdhui);
 }
@@ -70,8 +71,8 @@ export function visitesEtAppels(interactions: Interaction[], pour: string | null
 /** Les appels de la prospection : aux prospects (sessions, rappels) et aux clients (tâches). */
 export function appelsProspects(calls: Call[], interactions: Interaction[], pour: string | null, aujourdhui = new Date()): ChiffreCle {
   const jours = [
-    ...calls.filter(c => !pour || c.commercial_id === pour).map(c => jourDe(c.date)),
-    ...interactions.filter(i => i.type === 'APPEL' && (!pour || i.commercial_id === pour)).map(i => jourDe(i.date)),
+    ...calls.filter(c => estAppel(c) && (!pour || c.commercial_id === pour)).map(c => jourDe(c.date)),
+    ...interactions.filter(i => interactionEstAppel(i) && (!pour || i.commercial_id === pour)).map(i => jourDe(i.date)),
   ];
   return parSemaine(jours, aujourdhui);
 }
@@ -79,9 +80,8 @@ export function appelsProspects(calls: Call[], interactions: Interaction[], pour
 /** Rendez-vous prospects pris, datés du jour où ils ont été pris (pas du jour du RDV). */
 export function rdvPris(appointments: Appointment[], pour: string | null, aujourdhui = new Date()): ChiffreCle {
   const jours = appointments
-    .filter(a => a.prospect_id && a.created_at && a.statut !== 'annule')
-    .filter(a => !pour || (a.prospecteur_id ? a.prospecteur_id === pour : a.commercial_id === pour))
-    .map(a => { const d = new Date(a.created_at as string); return Number.isNaN(d.getTime()) ? jourDe(a.created_at) : dateLocale(d); });
+    .filter(a => estRdvPris(a) && (!pour || quiAPrisLeRdv(a) === pour))
+    .map(a => jourDePriseDuRdv(a));
   return parSemaine(jours, aujourdhui);
 }
 
@@ -128,9 +128,9 @@ export function clientsEnRetard(clients: Client[], interactions: Interaction[], 
 /** Chiffre d'affaires HT des commandes EasyBeer : le mois en cours contre le mois d'avant au même jour ; courbe par semaine. */
 export function chiffreAffaires(commandes: Commande[], clients: Client[], pour: string | null, aujourdhui = new Date()): ChiffreCle {
   const aQui = new Map(clients.map(c => [c.id, c.commercial_id]));
-  const valides = commandes.filter(c => c.statut !== 'annulee' && c.date_commande && (!pour || aQui.get(c.client_id) === pour));
+  const valides = commandes.filter(c => commandeComptee(c) && (!pour || aQui.get(c.client_id) === pour));
   const jours = valides.map(c => jourDe(c.date_commande));
-  const montants = valides.map(c => Number(c.montant_ht) || 0);
+  const montants = valides.map(c => montantCA(c));
   const { courbe } = parSemaine(jours, aujourdhui, montants);
 
   const auj = dateLocale(aujourdhui);

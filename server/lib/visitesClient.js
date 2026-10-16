@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import db from '../db.js';
 import { calculateNextVisit } from './visites.js';
 import { logActivity } from './journal.js';
-import { dateLocale } from '../../shared/regles.js';
+import { dateLocale, jourDe } from '../../shared/regles.js';
 import { ISSUES_APPEL_CLIENT, compteCommeVisite, estSansReponse } from '../../shared/visites.js';
 import { LIBELLES_INTERACTION } from '../../shared/libelles.js';
 
@@ -88,7 +88,8 @@ export async function planInteraction(saisie, auteur, { commentaireObligatoire =
   const maintenant = new Date().toISOString();
   const aujourdhui = dateLocale();
   const date = s.date ? String(s.date) : maintenant;
-  const jour = date.slice(0, 10);
+  // Le jour local de l'horodatage : une visite notée à 0 h 30 reste datée du bon jour.
+  const jour = jourDe(date);
   if (!dateValide(jour)) throw new InteractionRefusee('Date invalide (AAAA-MM-JJ).');
   if (s.type !== 'RDV_PLANIFIE' && jour > aujourdhui) {
     throw new InteractionRefusee('Une visite ou un appel ne se note pas à l\'avance : ce qui est à venir est un rendez-vous planifié.');
@@ -232,7 +233,7 @@ export async function recalculerCalendrier(clientId, executeur = db) {
   const c = (await executeur.query('SELECT type_client, custom_recurrence, statut FROM clients WHERE id = $1', [clientId])).rows[0];
   if (!c) return null;
   const r = await executeur.query(
-    'SELECT left(date, 10) AS jour FROM interactions WHERE client_id = $1 AND compte_visite AND left(date, 10) <= $2 ORDER BY date DESC LIMIT 1',
+    'SELECT jour_paris(date) AS jour FROM interactions WHERE client_id = $1 AND compte_visite AND jour_paris(date) <= $2 ORDER BY date DESC LIMIT 1',
     [clientId, dateLocale()]
   );
   const derniere = r.rows[0]?.jour || null;

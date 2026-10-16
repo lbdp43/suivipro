@@ -4,6 +4,7 @@ import { aUnNumero } from '../../shared/normalisation';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { lienMapsDepuisAdresse } from '../utils/signalements';
 import { dateLocale } from '../../shared/regles';
+import { etapesConnues } from '../utils/etapes';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
@@ -215,7 +216,9 @@ export default function PipelinePage() {
     setQuickNoteId(null);
   };
 
-  const columns = state.pipelineColumns;
+  // Les colonnes réglées, plus une par étape que des fiches portent encore sans colonne
+  // (colonne supprimée dans les réglages) : aucun prospect ne disparaît de l'écran.
+  const columns = useMemo(() => etapesConnues(state.pipelineColumns, state.prospects), [state.pipelineColumns, state.prospects]);
 
   // Build set of prospect IDs linked to the selected commercial via calls/appointments
   const prospectIdsForCommercial = useMemo(() => {

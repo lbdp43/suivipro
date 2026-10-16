@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import { dateLocale } from '../../shared/regles';
+import { etapesConnues } from '../utils/etapes';
 import { candidatsDoublons } from '../../shared/rapprochement';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -460,7 +461,7 @@ export default function ProspectsPage() {
       options: (Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({ value: t, label: ESTABLISHMENT_LABELS[t] })),
       selected: filterTypes, onToggle: v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes) },
     { cle: 'etape', titre: 'Étape', teinte: 'bg-blue-50 text-blue-800 hover:bg-blue-100',
-      options: state.pipelineColumns.map(col => ({ value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id] })),
+      options: etapesConnues(state.pipelineColumns, state.prospects).map(col => ({ value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id] })),
       selected: filterStages, onToggle: v => toggleFilter(filterStages, v as PipelineStage, setFilterStages) },
     { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
       options: optionsTags, selected: filterTags, onToggle: v => toggleFilter(filterTags, v, setFilterTags) },

@@ -12,11 +12,19 @@ export function dateLocale(d = new Date()) {
   return `${a}-${m}-${j}`;
 }
 
-/** Ramène une date (chaîne ISO, AAAA-MM-JJ ou Date) à son jour AAAA-MM-JJ. */
+/**
+ * Ramène une date (chaîne ISO, AAAA-MM-JJ ou Date) à son jour AAAA-MM-JJ, à l'heure locale.
+ * Un horodatage (« 2026-10-15T22:30:00.000Z ») est d'abord converti : ses dix premiers
+ * caractères donnent le jour UTC, et un appel passé à 00 h 30 tombait sur la veille.
+ * Un jour nu (« 2026-10-16 ») reste tel quel.
+ */
 export function jourDe(valeur) {
   if (!valeur) return '';
   if (valeur instanceof Date) return dateLocale(valeur);
-  return String(valeur).slice(0, 10);
+  const texte = String(valeur);
+  if (texte.length <= 10) return texte.slice(0, 10);
+  const d = new Date(texte);
+  return Number.isNaN(d.getTime()) ? texte.slice(0, 10) : dateLocale(d);
 }
 
 /** Heure locale HH:MM. */

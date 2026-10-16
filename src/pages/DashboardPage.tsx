@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dateLocale, estEnRetard, joursDeRetard } from '../../shared/regles';
+import { estAppel, rdvRealise, montantCA } from '../../shared/activite';
+import { etapesConnues } from '../utils/etapes';
 import { Link } from 'react-router-dom';
 import {
   Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
@@ -165,7 +167,8 @@ export default function DashboardPage() {
   // ALL users - everyone does prospecting and can be commercial
   const allUsers = state.commerciaux;
 
-  const activeColumns = state.pipelineColumns;
+  // Les colonnes réglées, plus les étapes que des fiches portent encore sans colonne.
+  const activeColumns = useMemo(() => etapesConnues(state.pipelineColumns, state.prospects), [state.pipelineColumns, state.prospects]);
 
   // Perimetre de lecture. /state renvoie toutes les donnees de la brasserie : le filtrage
   // se fait donc ici. Un commercial ne voit que ses clients, ses prospects et son
@@ -299,8 +302,9 @@ export default function DashboardPage() {
   const rankedActivities = useMemo(() => {
     const range = getPeriodRange(rankingPeriod);
     return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userCalls = state.calls.filter(c => estAppel(c) && c.commercial_id === user.id);
+      // Un rendez-vous compte quand il a eu lieu (règle partagée) : ni les annulés, ni ceux à venir.
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id && rdvRealise(a));
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
       const userVisites = (state as any).visites ? (state as any).visites.filter((v: any) => v.commercial_id === user.id) : [];
 
@@ -332,11 +336,12 @@ export default function DashboardPage() {
       // CA: sum commandes of this user's clients in the period
       const userClients = state.clients.filter(c => c.commercial_id === user.id);
       const userClientIds = new Set(userClients.map(c => c.id));
-      const periodCommandes = state.commandes.filter(cmd => {
+      const periodCommandes = commandesCA.filter(cmd => {
         if (!userClientIds.has(cmd.client_id)) return false;
         try { return isWithinInterval(parseISO(cmd.date_commande), { start: range.start, end: range.end }); } catch { return false; }
       });
-      const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+      // Hors taxes, sans les annulées : le même chiffre que l'accueil et les cartes CA.
+      const periodCA = periodCommandes.reduce((sum, c) => sum + montantCA(c), 0);
 
       // Visit coverage: clients visited in time vs late
       const today = dateLocale(new Date());
@@ -368,8 +373,9 @@ export default function DashboardPage() {
     const isMonthPeriod = perfPeriod.startsWith('month');
 
     return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userCalls = state.calls.filter(c => estAppel(c) && c.commercial_id === user.id);
+      // Un rendez-vous compte quand il a eu lieu (règle partagée) : ni les annulés, ni ceux à venir.
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id && rdvRealise(a));
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
       const rdvTakenAsProspector = state.appointments.filter(a => a.prospecteur_id === user.id);
 
@@ -394,11 +400,12 @@ export default function DashboardPage() {
       // CA in period
       const userClients = state.clients.filter(c => c.commercial_id === user.id);
       const userClientIds = new Set(userClients.map(c => c.id));
-      const periodCommandes = state.commandes.filter(cmd => {
+      const periodCommandes = commandesCA.filter(cmd => {
         if (!userClientIds.has(cmd.client_id)) return false;
         try { return isWithinInterval(parseISO(cmd.date_commande), { start: range.start, end: range.end }); } catch { return false; }
       });
-      const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+      // Hors taxes, sans les annulées : le même chiffre que l'accueil et les cartes CA.
+      const periodCA = periodCommandes.reduce((sum, c) => sum + montantCA(c), 0);
 
       // Visit coverage
       const today = dateLocale(new Date());
@@ -443,8 +450,9 @@ export default function DashboardPage() {
     const isMonthPeriod = comparePeriod.startsWith('month');
 
     return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userCalls = state.calls.filter(c => estAppel(c) && c.commercial_id === user.id);
+      // Un rendez-vous compte quand il a eu lieu (règle partagée) : ni les annulés, ni ceux à venir.
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id && rdvRealise(a));
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
 
       const periodCalls = getCallsInRange(userCalls, range.start, range.end);
@@ -762,7 +770,7 @@ export default function DashboardPage() {
   const caByCommChartData = {
     labels: allUsers.map(u => u.prenom),
     datasets: [{
-      label: 'CA total (TTC)',
+      label: 'CA total (HT)',
       data: allUsers.map(u => Math.round((topClientsData.caByCommercial[u.id] || 0) * 100) / 100),
       backgroundColor: '#6366f1',
       borderRadius: 6,

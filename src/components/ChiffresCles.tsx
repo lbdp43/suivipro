@@ -23,7 +23,7 @@ const DEFINITIONS: Record<Sorte, {
   euros?: boolean;
   couleur: string;
 }> = {
-  visites: { titre: 'Visites et appels', icone: Navigation, lien: '/clients', periode: 'cette semaine', couleur: 'text-green-600' },
+  visites: { titre: 'Visites', icone: Navigation, lien: '/clients', periode: 'cette semaine', couleur: 'text-green-600' },
   appels: { titre: 'Appels', icone: Phone, lien: '/appels', periode: 'cette semaine', couleur: 'text-blue-600' },
   rdv: { titre: 'RDV pris', icone: CalendarCheck, lien: '/rdv', periode: 'cette semaine', couleur: 'text-purple-600' },
   retards: { titre: 'Clients en retard', icone: AlertTriangle, lien: '/clients', periode: "aujourd'hui", inverse: true, couleur: 'text-red-600' },

@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import db from '../../db.js';
 import { dateLocale, rdvPasse, rdvAnnule, lundiDeLaSemaine, dimancheDeLaSemaine, semaineIso } from '../../../shared/regles.js';
+import { SQL_RDV_PRIS, SQL_QUI_A_PRIS } from '../../../shared/activite.js';
 import { LIBELLES_STATUT_RDV, LIBELLES_RESULTAT_RDV } from '../../../shared/libelles.js';
 import { perimetre, estAdmin, faitDeLaProspection, equipe, trouverCommercial } from '../perimetre.js';
 import {
@@ -134,10 +135,12 @@ const activite = {
       // les deux outils doivent donner les mêmes nombres.
       db.query(`SELECT commercial_id, ${jourParisSql('date')} AS jour, resultat, COUNT(*)::int AS n FROM calls
                  WHERE ${jourParisSql('date')} BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3`, params),
-      db.query(`SELECT commercial_id, ${jourParisSql('date')} AS jour, type, COUNT(*)::int AS n FROM interactions
-                 WHERE ${jourParisSql('date')} BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3`, params),
-      db.query(`SELECT COALESCE(prospecteur_id, commercial_id) AS commercial_id, ${jourParisSql("COALESCE(NULLIF(created_at, ''), date)")} AS jour, COUNT(*)::int AS n
-                  FROM appointments WHERE ${jourParisSql("COALESCE(NULLIF(created_at, ''), date)")} BETWEEN $1 AND $2${filtre('COALESCE(prospecteur_id, commercial_id)')} GROUP BY 1,2`, params),
+      // Une interaction « compte » quand elle a valu une visite (règle partagée shared/activite).
+      db.query(`SELECT commercial_id, ${jourParisSql('date')} AS jour, type, COALESCE(compte_visite, type = 'VISITE') AS compte, COUNT(*)::int AS n FROM interactions
+                 WHERE ${jourParisSql('date')} BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2,3,4`, params),
+      // RDV pris : la règle partagée (prospect, date de prise, non annulé, au nom de qui l'a pris).
+      db.query(`SELECT ${SQL_QUI_A_PRIS} AS commercial_id, ${jourParisSql('created_at')} AS jour, COUNT(*)::int AS n
+                  FROM appointments WHERE ${SQL_RDV_PRIS} AND ${jourParisSql('created_at')} BETWEEN $1 AND $2${filtre(SQL_QUI_A_PRIS)} GROUP BY 1,2`, params),
       db.query(`SELECT commercial_id, left(date, 10) AS jour, COUNT(*)::int AS n FROM appointments
                  WHERE compte_rendu <> '' AND left(date, 10) BETWEEN $1 AND $2${filtre('commercial_id')} GROUP BY 1,2`, params),
       db.query(`SELECT commercial_id, ${jourParisSql('date_creation')} AS jour, COUNT(*)::int AS n FROM prospects
@@ -169,7 +172,10 @@ const activite = {
     }
     for (const r of interactions.rows) {
       const k = cle(r.commercial_id, r.jour);
-      if (r.type === 'VISITE') ajouter(k, 'visites', r.n); else ajouter(k, 'appels', r.n);
+      // Visite = ce qui a compté comme telle (sur place, ou appel abouti) ; appel = type APPEL ;
+      // un rendez-vous planifié n'est ni l'un ni l'autre.
+      if (r.compte) ajouter(k, 'visites', r.n);
+      if (r.type === 'APPEL') { ajouter(k, 'appels', r.n); if (r.compte) ajouter(k, 'aboutis', r.n); }
     }
     for (const r of rdvs.rows) ajouter(cle(r.commercial_id, r.jour), 'rdv_pris', r.n);
     for (const r of comptesRendus.rows) ajouter(cle(r.commercial_id, r.jour), 'comptes_rendus', r.n);

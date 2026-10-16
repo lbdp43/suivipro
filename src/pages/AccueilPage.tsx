@@ -15,6 +15,7 @@ import { useApp } from '../store/AppContext';
 import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, APPOINTMENT_STATUS_LABELS, CALL_RESULT_LABELS, PIPELINE_LABELS } from '../types';
 import { formatDate, formatDuration } from '../utils/helpers';
 import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
+import { estAppel, estRdvPris, quiAPrisLeRdv, jourDePriseDuRdv, compteCommeVisite } from '../../shared/activite';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import ChiffresCles from '../components/ChiffresCles';
 import BlocErreur from '../components/BlocErreur';
@@ -462,7 +463,7 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   };
 
   const rdvPris = useMemo(() => state.appointments
-    .filter(a => a.prospecteur_id === personne.id && dedans(jourDe(a.created_at)) && !rdvAnnule(a))
+    .filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === personne.id && dedans(jourDePriseDuRdv(a)))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
   [state.appointments, personne.id, periode, debut, fin, today]);
 
@@ -1072,11 +1073,11 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
   const rappels = useMemo(() => state.reminders
     .filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today)
     .sort((a, b) => a.date.localeCompare(b.date) || a.heure.localeCompare(b.heure)), [state.reminders, moi.id, today]);
-  const appelsDuJour = useMemo(() => state.calls.filter(c => c.commercial_id === moi.id && jourDe(c.date) === today), [state.calls, moi.id, today]);
+  const appelsDuJour = useMemo(() => state.calls.filter(c => estAppel(c) && c.commercial_id === moi.id && jourDe(c.date) === today), [state.calls, moi.id, today]);
   // Les appels aux clients (tâches) comptent aussi dans « Mes appels aujourd'hui ».
   const appelsClientsDuJour = useMemo(() => state.interactions.filter(i => i.commercial_id === moi.id && i.type === 'APPEL' && jourDe(i.date) === today), [state.interactions, moi.id, today]);
   const rdvPrisDuJour = useMemo(() => state.appointments
-    .filter(a => a.prospecteur_id === moi.id && jourDe(a.created_at) === today && !rdvAnnule(a))
+    .filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === moi.id && jourDePriseDuRdv(a) === today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')), [state.appointments, moi.id, today]);
   const parCommercial = useMemo(() => {
     const m = new Map<string, Appointment[]>();
@@ -1085,7 +1086,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
   }, [rdvPrisDuJour]);
   // Les zones prioritaires passent devant, puis mes prospects, puis le score.
   const aAppeler = useMemo(() => state.prospects
-    .filter(p => ['a_contacter', 'nouveau', 'contacte'].includes(p.etape_pipeline) && p.telephone)
+    .filter(p => ETAPES_A_APPELER.includes(p.etape_pipeline) && p.telephone)
     .sort((a, b) => (estEnZonePrioritaire(state, b) ? 1 : 0) - (estEnZonePrioritaire(state, a) ? 1 : 0)
       || (b.commercial_id === moi.id ? 1 : 0) - (a.commercial_id === moi.id ? 1 : 0) || (b.score || 0) - (a.score || 0))
     .slice(0, 8), [state, moi.id]);
@@ -1329,10 +1330,10 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
     const comm = estCommercial(p);
     // Une même mesure pour un jour ou pour la semaine.
     const mesurer = (dedans: (d: string) => boolean) => ({
-      appels: state.calls.filter(c => c.commercial_id === p.id && dedans(jourDe(c.date))).length,
-      rdvPris: state.appointments.filter(a => a.prospecteur_id === p.id && dedans(jourDe(a.created_at))).length,
+      appels: state.calls.filter(c => estAppel(c) && c.commercial_id === p.id && dedans(jourDe(c.date))).length,
+      rdvPris: state.appointments.filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === p.id && dedans(jourDePriseDuRdv(a))).length,
       rdv: state.appointments.filter(a => a.commercial_id === p.id && dedans(jourDe(a.date)) && !rdvAnnule(a)).length,
-      visites: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'VISITE' && dedans(jourDe(i.date))).length,
+      visites: state.interactions.filter(i => i.commercial_id === p.id && compteCommeVisite(i) && dedans(jourDe(i.date))).length,
       appelsClients: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'APPEL' && dedans(jourDe(i.date))).length,
     });
     // Pour la prospection, un appel est un appel : aux prospects (sessions, rappels) comme

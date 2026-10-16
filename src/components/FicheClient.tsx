@@ -59,10 +59,11 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
   const statsCommandes = useMemo(() => {
     const valides = commandes.filter(c => c.statut !== 'annulee' && c.date_commande).sort((a, b) => (a.date_commande < b.date_commande ? -1 : 1));
     if (valides.length === 0) return null;
-    const totalTtc = valides.reduce((s, c) => s + (c.montant_ttc || 0), 0);
+    // Hors taxes, comme partout ailleurs (accueil, statistiques).
+    const totalHt = valides.reduce((s, c) => s + (c.montant_ht || 0), 0);
     const derniere = valides[valides.length - 1];
     const unAnAvant = new Date(Date.now() - 365 * 86400000).toISOString();
-    const ca12Mois = valides.filter(c => c.date_commande >= unAnAvant).reduce((s, c) => s + (c.montant_ttc || 0), 0);
+    const ca12Mois = valides.filter(c => c.date_commande >= unAnAvant).reduce((s, c) => s + (c.montant_ht || 0), 0);
     let frequenceJours: number | null = null;
     if (valides.length >= 2) {
       const premiere = new Date(valides[0].date_commande).getTime();
@@ -70,7 +71,7 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
       frequenceJours = Math.round((derniereTs - premiere) / 86400000 / (valides.length - 1));
     }
     const joursDepuisDerniere = Math.floor((Date.now() - new Date(derniere.date_commande).getTime()) / 86400000);
-    return { nb: valides.length, totalTtc, panierMoyen: totalTtc / valides.length, ca12Mois, derniere, joursDepuisDerniere, frequenceJours, enRetard: frequenceJours != null && joursDepuisDerniere > frequenceJours * 1.5 };
+    return { nb: valides.length, totalHt, panierMoyen: totalHt / valides.length, ca12Mois, derniere, joursDepuisDerniere, frequenceJours, enRetard: frequenceJours != null && joursDepuisDerniere > frequenceJours * 1.5 };
   }, [commandes]);
 
   const topProduits = useMemo(() => {
@@ -335,12 +336,12 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
             <div className="grid grid-cols-2 gap-2 mb-2">
               <div className="p-2.5 bg-emerald-50 rounded-lg">
                 <div className="text-xs text-emerald-700 uppercase tracking-wide">CA total</div>
-                <div className="text-sm font-bold text-emerald-900">{statsCommandes.totalTtc.toFixed(0)} € TTC</div>
+                <div className="text-sm font-bold text-emerald-900">{statsCommandes.totalHt.toFixed(0)} € HT</div>
                 <div className="text-xs text-emerald-700">{statsCommandes.nb} commande{statsCommandes.nb > 1 ? 's' : ''} · panier moyen {statsCommandes.panierMoyen.toFixed(0)} €</div>
               </div>
               <div className="p-2.5 bg-blue-50 rounded-lg">
                 <div className="text-xs text-blue-700 uppercase tracking-wide">12 derniers mois</div>
-                <div className="text-sm font-bold text-blue-900">{statsCommandes.ca12Mois.toFixed(0)} € TTC</div>
+                <div className="text-sm font-bold text-blue-900">{statsCommandes.ca12Mois.toFixed(0)} € HT</div>
               </div>
               <div className="p-2.5 bg-gray-50 rounded-lg">
                 <div className="text-xs text-gray-500 uppercase tracking-wide">Dernière commande</div>

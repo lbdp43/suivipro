@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { MessageSquare, Copy, Send, Check, Moon } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { Appointment, Commercial, Interaction } from '../types';
-import { dateLocale, jourDe, rdvAnnule } from '../../shared/regles';
+import { dateLocale, jourDe } from '../../shared/regles';
+import { estRdvPris, quiAPrisLeRdv, jourDePriseDuRdv } from '../../shared/activite';
 
 // Bilan du soir du prospecteur : un message par commercial, avec les rendez-vous pris
 // aujourd'hui pour lui et les appels passés sur ses clients (avec ce qui s'est dit) — le
@@ -32,7 +33,7 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
   };
 
   const parCommercial = useMemo(() => {
-    const pris = state.appointments.filter(a => a.prospecteur_id === moi.id && jourDe(a.created_at) === today && !rdvAnnule(a) && a.commercial_id !== moi.id);
+    const pris = state.appointments.filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === moi.id && jourDePriseDuRdv(a) === today && a.commercial_id !== moi.id);
     const m = new Map<string, { rdv: Appointment[]; appels: Interaction[] }>();
     const groupe = (cid: string) => { let g = m.get(cid); if (!g) { g = { rdv: [], appels: [] }; m.set(cid, g); } return g; };
     for (const r of pris) groupe(r.commercial_id).rdv.push(r);
