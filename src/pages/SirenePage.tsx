@@ -1054,7 +1054,7 @@ export default function SirenePage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Departement</label>
+            <label className="block text-xs text-gray-500 mb-0.5">Département</label>
             <input
               type="text"
               className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs w-20"
@@ -1328,7 +1328,7 @@ export default function SirenePage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nom affiche</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nom affiché</label>
                 <input
                   type="text"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"

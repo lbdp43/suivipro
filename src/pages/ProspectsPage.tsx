@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } f
 import { dateLocale } from '../../shared/regles';
 import { etapesConnues } from '../utils/etapes';
 import { candidatsDoublons } from '../../shared/rapprochement';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Calendar, MessageSquare, ArrowUpDown,
@@ -49,7 +49,7 @@ import { useEcranEtroit } from '../utils/useEcranEtroit';
 import { toast as annonce } from 'sonner';
 
 export default function ProspectsPage() {
-  const { state, dispatchLocal } = useApp();
+  const { state, dispatchLocal , stateComplet } = useApp();
   // Verrou anti double appui : un enregistrement à la fois (l'état « saving » seul arrivait trop tard).
   const verrouProspect = useVerrou();
   const toast = useToast();
@@ -74,6 +74,7 @@ export default function ProspectsPage() {
   };
   const maSession = sessionDuJour(state, state.currentUser?.id);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedId = searchParams.get('id');
 
   const [searchTerm, setSearchTerm] = usePersistedState('prospects_searchTerm', '');
@@ -541,7 +542,8 @@ export default function ProspectsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
-  const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
+  // Une fiche ouverte par un lien se trouve même hors du périmètre « Moi » (prospect d'un collègue).
+  const selectedProspect = selectedId ? (state.prospects.find(p => p.id === selectedId) || stateComplet.prospects.find(p => p.id === selectedId)) : null;
 
   // Ce qu'il y a autour du prospect affiche et qui justifie deja un deplacement.
   const voisinsDuProspect = useMemo(() => (selectedProspect ? voisinsAutour(
@@ -630,7 +632,7 @@ export default function ProspectsPage() {
   }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
 
   const saveProspect = () => verrouProspect.verrouiller(async () => {
-    if (!formData.nom_etablissement) return;
+    if (!formData.nom_etablissement) { toast.warning("Le nom de l'établissement est obligatoire."); return; }
     // Block save if duplicates found and user hasn't forced creation
     if (!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0)) {
       return;
@@ -906,7 +908,7 @@ export default function ProspectsPage() {
                   setSortDate(prev => prev === 'none' ? 'recent' : prev === 'recent' ? 'ancien' : 'none');
                   if (sortDate === 'none') setSortScore('none');
                 }}
-                title={sortDate === 'none' ? 'Trier par date' : sortDate === 'recent' ? 'Plus recent d\'abord' : 'Plus ancien d\'abord'}
+                title={sortDate === 'none' ? 'Trier par date' : sortDate === 'recent' ? 'Plus récent d\'abord' : 'Plus ancien d\'abord'}
               >
                 <Calendar className="w-3 h-3" />
                 Date {sortDate === 'recent' ? '↓' : sortDate === 'ancien' ? '↑' : ''}
@@ -1524,10 +1526,15 @@ export default function ProspectsPage() {
                         await apiPut(`/prospects/${convertProspect.id}`, updatedProspect);
                         dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
                       } catch {
-                        // Conversion succeeded but local update failed; reload anyway
+                        // La conversion a réussi côté serveur ; la fiche se mettra à jour au prochain rafraîchissement.
                       }
-                      // Reload state to get the new client
-                      window.location.reload();
+                      // Le nouveau client arrive dans l'état sans recharger la page, avec un lien vers sa fiche.
+                      if (result.client) dispatchLocal({ type: 'ADD_CLIENT', payload: result.client });
+                      const clientId = result.client_id;
+                      annonce.success(`${convertProspect.nom_etablissement} est maintenant un client`, {
+                        action: { label: 'Voir le client', onClick: () => navigate(`/clients?id=${clientId}`) },
+                      });
+                      setConvertProspect(null);
                     }
                   } catch (err) {
                     console.error('Conversion error:', err);
@@ -1735,7 +1742,7 @@ export default function ProspectsPage() {
               )}
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'etablissement *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'établissement *</label>
                 <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => { setFormData(prev => ({ ...prev, nom_etablissement: e.target.value })); setForceCreate(false); }} />
               </div>
 
@@ -1833,7 +1840,7 @@ export default function ProspectsPage() {
                   <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.ville || ''} onChange={e => setFormData(prev => ({ ...prev, ville: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Departement</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Département</label>
                   <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.departement || ''} onChange={e => setFormData(prev => ({ ...prev, departement: e.target.value }))} />
                 </div>
               </div>

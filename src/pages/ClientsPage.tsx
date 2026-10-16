@@ -59,7 +59,7 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getClient, getCommandesForClient, pausePolling } = useApp();
+  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getClient, getCommandesForClient, pausePolling , stateComplet } = useApp();
   // Verrous anti double appui : un enregistrement à la fois.
   const verrouClient = useVerrou();
   const verrouVisite = useVerrou();
@@ -700,7 +700,7 @@ export default function ClientsPage() {
         }) as Client;
         dispatchLocal({ type: 'ADD_CLIENT', payload: newClient });
       } catch {
-        toast.error('Erreur lors de la creation du client');
+        toast.error('Erreur lors de la création du client');
         return;
       }
     }
@@ -902,7 +902,9 @@ export default function ClientsPage() {
   }, [formData.nom, showForm, editingClient, state.prospects]);
 
   // Selected client detail
-  const selectedClient = selectedId ? state.clients.find(c => c.id === selectedId) : null;
+  // Une fiche ouverte par un lien se trouve même hors du périmètre « Moi » (client d'un collègue).
+  const selectedClient = selectedId ? (state.clients.find(c => c.id === selectedId) || stateComplet.clients.find(c => c.id === selectedId)) : null;
+  const clientHorsPerimetre = !!selectedClient && !state.clients.some(c => c.id === selectedClient.id);
 
   return (
     <div className="flex h-full">
@@ -1683,6 +1685,11 @@ export default function ClientsPage() {
       {/* Detail panel */}
       {selectedClient && (
         <div className="w-full md:w-[420px] border-l border-gray-200 bg-white flex flex-col h-full overflow-hidden">
+          {clientHorsPerimetre && (
+            <div className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-b border-amber-100">
+              Client suivi par {getCommercial(selectedClient.commercial_id)?.prenom || 'un collègue'} : il n'apparaît pas dans votre liste « Moi ». Passez en « Toute l'équipe » pour le retrouver.
+            </div>
+          )}
           <FicheClient
             client={selectedClient}
             variante="panneau"
@@ -1711,7 +1718,7 @@ export default function ClientsPage() {
             <div className="p-5 space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nom de l'etablissement *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nom de l'établissement *</label>
                 <input
                   type="text"
                   value={formData.nom || ''}

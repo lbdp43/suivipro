@@ -138,7 +138,7 @@ export default function MapPage() {
   const peutModifierZone = (z: CommercialZone) => peutDefinirZones && (admin || z.commercial_id === moi?.id);
   // La sélection multiple appartient aux commerciaux et à l'administrateur : c'est eux qui
   // réattribuent un secteur. La prospection ne réattribue pas les fiches des autres.
-  const peutSelectionner = estCommercial(moi);
+  const peutSélectionner = estCommercial(moi);
   const basculer = (setter: typeof setSelProspects) => (id: string) => setter(prev => {
     const suivant = new Set(prev);
     if (suivant.has(id)) suivant.delete(id); else suivant.add(id);
@@ -425,10 +425,10 @@ export default function MapPage() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header bar */}
+    <div className="h-full flex flex-col overflow-x-hidden">
+      {/* Header bar : sur téléphone, les boutons passent à la ligne au lieu de faire défiler la page. */}
       <div className="p-3 sm:p-4 bg-white border-b border-gray-200 space-y-2 sm:space-y-3">
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
             <input
               type="text"
@@ -500,7 +500,7 @@ export default function MapPage() {
             <span className="sr-only sm:not-sr-only">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
           </button>}
           {/* Sélectionner plusieurs fiches d'un coup, pour agir sur le lot. */}
-          {peutSelectionner && <button
+          {peutSélectionner && <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
               modeSelection ? 'bg-brewery-600 text-white' : 'bg-brewery-50 text-brewery-700 hover:bg-brewery-100'
             }`}

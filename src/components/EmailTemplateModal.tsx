@@ -8,6 +8,7 @@ import { generateId } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { etapeApresMail } from '../../shared/tunnel';
 import Fenetre from './ui/Fenetre';
+import { toast } from 'sonner';
 
 interface ProspectProps {
   prospect: Prospect;
@@ -123,7 +124,7 @@ export default function EmailTemplateModal(props: Props) {
       const etape = etapeApresMail(prospect.etape_pipeline);
       if (etape) dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: etape as Prospect['etape_pipeline'] } });
       // Le clic vaut envoi : tag « Mail envoyé » + trace dans l'historique.
-      marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => { /* tracé au mieux */ });
+      marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => toast.error("L'envoi n'a pas pu être tracé dans l'historique du prospect"));
     }
 
     // Relance à 7 jours : un rappel pour un prospect, une tâche pour un client

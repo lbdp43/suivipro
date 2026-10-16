@@ -118,6 +118,11 @@ export function rdvAnnule(rdv) {
   return !rdv || rdv.statut === 'annule';
 }
 
+/** Un événement d'agenda (réunion, boutique, dépôt, marché) : pas un rendez-vous avec un établissement. */
+export function estEvenement(rdv) {
+  return !!rdv && !!rdv.event_type && rdv.event_type !== 'rdv';
+}
+
 export function rdvPasse(rdv, maintenant = new Date()) {
   if (!rdv) return false;
   const jour = jourDe(rdv.date);
@@ -130,7 +135,7 @@ export function rdvPasse(rdv, maintenant = new Date()) {
 }
 
 export function rdvSansCompteRendu(rdv, maintenant = new Date()) {
-  return !rdvAnnule(rdv) && !rdv.compte_rendu && rdvPasse(rdv, maintenant);
+  return !rdvAnnule(rdv) && !estEvenement(rdv) && !rdv.compte_rendu && rdvPasse(rdv, maintenant);
 }
 
 export function rdvAVenir(rdv, maintenant = new Date()) {

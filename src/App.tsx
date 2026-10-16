@@ -22,6 +22,7 @@ const EmailsPage = pageParesseuse(() => import('./pages/EmailsPage'));
 const ImportPage = pageParesseuse(() => import('./pages/ImportPage'));
 const AdminPage = pageParesseuse(() => import('./pages/AdminPage'));
 const ProfilePage = pageParesseuse(() => import('./pages/ProfilePage'));
+const PageIntrouvable = pageParesseuse(() => import('./pages/PageIntrouvable'));
 const DocumentsPage = pageParesseuse(() => import('./pages/DocumentsPage'));
 const GuidePage = pageParesseuse(() => import('./pages/GuidePage'));
 const ClientsPage = pageParesseuse(() => import('./pages/ClientsPage'));
@@ -140,6 +141,7 @@ export default function App() {
           <Route path="/sirene" element={<AdminRoute><SirenePage /></AdminRoute>} />
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/profil" element={<ProfilePage />} />
+          <Route path="*" element={<PageIntrouvable />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="/easybeer" element={<AdminRoute><AdminPage section="easybeer" /></AdminRoute>} />
         </Route>

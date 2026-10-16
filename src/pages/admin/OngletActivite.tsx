@@ -107,7 +107,7 @@ export default function OngletActivite() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <Activity className="w-5 h-5 text-gray-500" />
-                Historique d'activite
+                Historique d'activité
               </h3>
               <select
                 value={activityFilter}

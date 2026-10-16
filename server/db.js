@@ -857,6 +857,13 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS client_ids TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
     // D'où part la session : le rendez-vous autour duquel on appelle (JSON), pour le montrer sur l'écran d'appel.
     try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS origine TEXT NOT NULL DEFAULT ''"); } catch { /* déjà là */ }
+    // Événements d'agenda sans établissement (réunion, boutique, dépôt, marché) : type, titre, participants.
+    try { await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT 'rdv'"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS titre TEXT NOT NULL DEFAULT ''"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS participants TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
+    // Le tag « Mail envoyé » existe d'office : un commercial ne peut pas créer de tag, et sa
+    // trace d'envoi restait silencieusement perdue tant qu'un administrateur ne l'avait pas fait.
+    try { await client.query("INSERT INTO tags (id, nom, couleur, points) SELECT 'tag-mail-envoye', 'Mail envoyé', '#3b82f6', 0 WHERE NOT EXISTS (SELECT 1 FROM tags WHERE lower(nom) IN ('mail envoyé', 'mail envoye'))"); } catch (err) { console.log('Tag Mail envoyé :', err.message); }
     // Le rayon d'« Appeler autour », que chacun règle (3, 5, 10, 15 ou 20 km).
     try { await client.query('ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS rayon_appels_km INTEGER NOT NULL DEFAULT 10'); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS raison_perte TEXT DEFAULT ''"); } catch { /* déjà là */ }

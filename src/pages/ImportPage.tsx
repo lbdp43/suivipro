@@ -191,21 +191,21 @@ export default function ImportPage() {
           return;
         }
 
-        // Contact: Nom + Prenom or combined
+        // Contact: Nom + Prénom or combined
         const contactNom = getVal(row, 'Nom', 'nom');
-        const contactPrenom = getVal(row, 'Prénom', 'Prenom', 'prenom');
+        const contactPrenom = getVal(row, 'Prénom', 'Prénom', 'prenom');
         let contact = '';
         if (contactPrenom || (contactNom && contactNom !== nom)) {
           contact = `${contactPrenom} ${contactNom}`.trim();
         }
         if (!contact) {
           contact = getVal(row,
-            'Nom/Prenom', 'Nom/prenom', 'nom/prenom', 'Nom Prenom',
+            'Nom/Prenom', 'Nom/prenom', 'nom/prenom', 'Nom Prénom',
             'Contact', 'contact', 'Nom Contact', 'nom_contact'
           );
         }
 
-        // Telephone: tel fixe + tel mobile
+        // Téléphone: tel fixe + tel mobile
         const telFixe = getVal(row,
           'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Téléphone fixe',
           'Téléphone', 'telephone', 'Tel', 'tel',
@@ -392,7 +392,7 @@ export default function ImportPage() {
       }];
       await exporterTableau(template, 'template-import-prospects.xlsx', { feuille: 'Template', largeurs: [15, 25, 22, 18, 18, 15, 12, 25, 16, 16, 35, 30, 6] });
     } catch (err) {
-      toast.error('Erreur lors de la creation du template');
+      toast.error('Erreur lors de la création du template');
     }
   };
 
@@ -595,7 +595,7 @@ export default function ImportPage() {
 
         // Contact: combine Nom + Prénom
         const contactNom = getVal(row, 'Nom');
-        const contactPrenom = getVal(row, 'Prénom', 'Prenom');
+        const contactPrenom = getVal(row, 'Prénom', 'Prénom');
         const contact = [contactPrenom, contactNom].filter(Boolean).join(' ') ||
           getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom', 'Type contact');
 
@@ -770,7 +770,7 @@ export default function ImportPage() {
       setParseErrors(errors);
       setClientImportStep('preview');
     } catch (err) {
-      errors.push('Erreur de lecture du fichier. Verifiez le format.');
+      errors.push('Erreur de lecture du fichier. Vérifiez le format.');
       setParseErrors(errors);
     }
     setClientImporting(false);
@@ -906,7 +906,7 @@ export default function ImportPage() {
         setClientImportResults({ success: 0, skipped: duplicates.length, errors, commerciauxCreated: 0, enrichedFromProspect: 0 });
       }
     } catch (err) {
-      errors.push('Erreur lors de l\'import. Verifiez votre connexion.');
+      errors.push('Erreur lors de l\'import. Vérifiez votre connexion.');
       setClientImportResults({ success: 0, skipped: 0, errors, commerciauxCreated: 0, enrichedFromProspect: 0 });
     }
     setClientImporting(false);
@@ -975,7 +975,7 @@ export default function ImportPage() {
       }];
       await exporterTableau(template, 'template-import-clients-easybeer.xlsx', { feuille: 'Template Clients EasyBeer', largeurs: Array(Object.keys(template[0]).length).fill(22) });
     } catch {
-      toast.error('Erreur lors de la creation du template');
+      toast.error('Erreur lors de la création du template');
     }
   };
 
@@ -1124,7 +1124,7 @@ export default function ImportPage() {
       setCrossMatches(matches);
       setCrossSelected(new Set(matches.map(m => m.prospect.id)));
     } catch {
-      toast.error('Erreur de lecture du fichier. Verifiez le format.');
+      toast.error('Erreur de lecture du fichier. Vérifiez le format.');
     }
     setCrossSearching(false);
     setCrossDone(true);
@@ -1301,7 +1301,7 @@ export default function ImportPage() {
             className="text-sm text-brewery-600 hover:text-brewery-700 font-medium flex items-center gap-1"
             onClick={downloadTemplate}
           >
-            <Download className="w-4 h-4" /> Telecharger le template d'import
+            <Download className="w-4 h-4" /> Télécharger le template d'import
           </button>
         </div>
 
@@ -1315,7 +1315,7 @@ export default function ImportPage() {
             <p><span className="font-medium text-gray-700">Type de prospect</span> - type d'etablissement</p>
             <p><span className="font-medium text-gray-700">Tournée / Secteur</span> - secteur geographique</p>
             <p><span className="font-medium text-gray-700">Nom</span> - nom du contact</p>
-            <p><span className="font-medium text-gray-700">Prenom</span> - prenom du contact</p>
+            <p><span className="font-medium text-gray-700">Prénom</span> - prenom du contact</p>
             <p><span className="font-medium text-gray-700">E-mail</span> - adresse email</p>
             <p><span className="font-medium text-gray-700">Tel. fixe</span> - téléphone fixe</p>
             <p><span className="font-medium text-gray-700">Tel. mobile</span> - téléphone mobile (prioritaire)</p>
@@ -1591,7 +1591,7 @@ export default function ImportPage() {
                 <p>Numéro client</p>
                 <p>Type de client</p>
                 <p>Tournée / Zone</p>
-                <p>Nom / Prenom</p>
+                <p>Nom / Prénom</p>
                 <p>E-mail</p>
                 <p>Tel. fixe / Tel. mobile</p>
                 <p>Adresse de facturation</p>
@@ -1631,7 +1631,7 @@ export default function ImportPage() {
                 {duplicates.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span className="text-amber-700 font-medium">{duplicates.length} doublon(s) detecte(s)</span>
+                    <span className="text-amber-700 font-medium">{duplicates.length} doublon(s) détecté(s)</span>
                   </div>
                 )}
                 {[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length > 0 && (
@@ -1691,7 +1691,7 @@ export default function ImportPage() {
               <div className="border border-amber-200 rounded-lg overflow-hidden">
                 <div className="bg-amber-50 px-4 py-3 flex items-center justify-between">
                   <div>
-                    <h4 className="font-semibold text-amber-800 text-sm">Doublons detectes ({duplicates.length})</h4>
+                    <h4 className="font-semibold text-amber-800 text-sm">Doublons détectés ({duplicates.length})</h4>
                     <p className="text-xs text-amber-600 mt-0.5">Choisissez l'action pour chaque doublon</p>
                   </div>
                   <div className="flex gap-2">
@@ -1881,7 +1881,7 @@ export default function ImportPage() {
                 {clientImportResults.success > 0 && (
                   <div className="flex items-center gap-2 text-green-700">
                     <CheckCircle className="w-4 h-4" />
-                    <span className="font-medium">{clientImportResults.success} client(s) importe(s) / mis a jour</span>
+                    <span className="font-medium">{clientImportResults.success} client(s) importe(s) / mis à jour</span>
                   </div>
                 )}
                 {clientImportResults.skipped > 0 && (

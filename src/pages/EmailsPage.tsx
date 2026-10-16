@@ -121,7 +121,7 @@ export default function EmailsPage() {
   const variables = [
     { var: '{{nom_etablissement}}', desc: 'Nom du prospect (ex : Cave Martin, Le Suffren)' },
     { var: '{{nom_contact}}', desc: 'Nom du contact (ex : Nathalie, M. Bauchart)' },
-    { var: '{{commercial}}', desc: 'Prenom du commercial (ex : Guillaume, Alban, Loic)' },
+    { var: '{{commercial}}', desc: 'Prénom du commercial (ex : Guillaume, Alban, Loic)' },
     { var: '{{telephone_commercial}}', desc: 'Téléphone du commercial (ex : 06 84 44 40 44)' },
     { var: '{{date_rdv}}', desc: 'Date du RDV (ex : Mardi 18 février 2026 a 10h30)' },
   ];

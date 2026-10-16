@@ -35,7 +35,10 @@ export function validateCall(body) {
 
 export function validateAppointment(body) {
   const errors = [];
-  if (!body.prospect_id && !body.client_id) errors.push('prospect_id ou client_id est requis');
+  // Un événement d'agenda (réunion, boutique, dépôt, marché) n'a pas d'établissement : il lui faut un titre.
+  const evenement = body.event_type && body.event_type !== 'rdv';
+  if (evenement && !String(body.titre || '').trim()) errors.push('titre est requis pour un événement');
+  if (!evenement && !body.prospect_id && !body.client_id) errors.push('prospect_id ou client_id est requis');
   if (!body.commercial_id) errors.push('commercial_id est requis');
   if (!body.date) errors.push('date est requise');
   return errors;

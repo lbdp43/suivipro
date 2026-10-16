@@ -6,7 +6,7 @@
 // trois choses. Les règles sont écrites ici en JavaScript pour les écrans, et en SQL
 // (mêmes noms, mêmes conditions) pour les requêtes du serveur et de l'IA.
 // ============================================================================
-import { jourDe, rdvAnnule } from './regles.js';
+import { jourDe, rdvAnnule, estEvenement } from './regles.js';
 
 // ----------------------------------------------------------------------------
 // APPELS. Un appel, c'est un appel : les mails envoyés depuis l'écran d'appel
@@ -85,10 +85,10 @@ export const SQL_QUI_A_PRIS = `COALESCE(NULLIF(prospecteur_id, ''), commercial_i
 // Il se compte au jour du rendez-vous, pour la personne qui l'a tenu (commercial_id).
 // ----------------------------------------------------------------------------
 export function rdvRealise(rdv) {
-  return !!rdv && !rdvAnnule(rdv) && (rdv.statut === 'termine' || !!rdv.compte_rendu);
+  return !!rdv && !rdvAnnule(rdv) && !estEvenement(rdv) && (rdv.statut === 'termine' || !!rdv.compte_rendu);
 }
 
-export const SQL_RDV_REALISE = `(statut <> 'annule' AND (statut = 'termine' OR COALESCE(compte_rendu, '') <> ''))`;
+export const SQL_RDV_REALISE = `(statut <> 'annule' AND COALESCE(event_type, 'rdv') = 'rdv' AND (statut = 'termine' OR COALESCE(compte_rendu, '') <> ''))`;
 
 // ----------------------------------------------------------------------------
 // CHIFFRE D'AFFAIRES. Toujours hors taxes, et sans les commandes annulées.

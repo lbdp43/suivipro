@@ -355,6 +355,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const state = useMemo(() => appliquerPerimetre(stateComplet, perimetre), [stateComplet, perimetre]);
   const [authError, setAuthError] = useState<string | null>(null);
   const currentUserRef = useRef<Commercial | null>(null);
+  // Le profil modifié à l'écran (nom, rayon d'appel…) doit survivre au prochain rafraîchissement :
+  // la référence suit l'état, sinon l'ancien profil revenait trente secondes plus tard.
+  useEffect(() => { if (stateComplet.currentUser) currentUserRef.current = stateComplet.currentUser; }, [stateComplet.currentUser]);
   const pollPausedUntilRef = useRef<number>(0);
 
   // Pause polling temporarily (e.g. during bulk operations)

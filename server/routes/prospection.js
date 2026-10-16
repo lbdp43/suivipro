@@ -8,7 +8,7 @@ import { dateLocale } from '../../shared/regles.js';
 import { validateAppointment, validateCall, validateReminder, validationError } from '../lib/validation.js';
 import { poserRendezVous, retirerRendezVous, lienGoogleAgenda } from '../lib/agendaGoogle.js';
 import { enregistrerCompteRendu, CompteRenduRefuse } from '../lib/compteRendu.js';
-import { parseProspect } from '../lib/parse.js';
+import { parseProspect, parseAppointment } from '../lib/parse.js';
 
 const router = Router();
 
@@ -59,7 +59,7 @@ router.delete('/calls/:id', authMiddleware, asyncHandler(async (req, res) => {
 
 router.get('/appointments', authMiddleware, asyncHandler(async (req, res) => {
   const result = await db.query('SELECT * FROM appointments');
-  res.json(result.rows);
+  res.json(result.rows.map(parseAppointment));
 }));
 
 router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
@@ -69,8 +69,8 @@ router.post('/appointments', authMiddleware, asyncHandler(async (req, res) => {
 
   const rdvCommercialId = a.commercial_id || req.user.id;
   await db.query(
-    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu, created_at, client_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
-    [a.id, a.prospect_id || null, rdvCommercialId, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString(), a.client_id || null]
+    'INSERT INTO appointments (id, prospect_id, commercial_id, prospecteur_id, date, heure_debut, heure_fin, lieu, notes, statut, compte_rendu, notes_compte_rendu, created_at, client_id, event_type, titre, participants) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)',
+    [a.id, a.prospect_id || null, rdvCommercialId, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut || 'planifie', a.compte_rendu || '', a.notes_compte_rendu || '', a.created_at || new Date().toISOString(), a.client_id || null, a.event_type || 'rdv', String(a.titre || '').slice(0, 200), JSON.stringify(Array.isArray(a.participants) ? a.participants.filter(x => typeof x === 'string') : [])]
   );
 
   // Auto-assign prospect to commercial when RDV is created (if not already assigned)
@@ -94,8 +94,8 @@ router.put('/appointments/:id', authMiddleware, asyncHandler(async (req, res) =>
   if (errors.length > 0) return validationError(res, errors);
 
   await db.query(
-    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11, client_id=$12 WHERE id=$13',
-    [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', a.client_id || null, req.params.id]
+    'UPDATE appointments SET prospect_id=$1, commercial_id=$2, prospecteur_id=$3, date=$4, heure_debut=$5, heure_fin=$6, lieu=$7, notes=$8, statut=$9, compte_rendu=$10, notes_compte_rendu=$11, client_id=$12, event_type=$14, titre=$15, participants=$16 WHERE id=$13',
+    [a.prospect_id || null, a.commercial_id, a.prospecteur_id || null, a.date, a.heure_debut || '', a.heure_fin || '', a.lieu || '', a.notes || '', a.statut, a.compte_rendu || '', a.notes_compte_rendu || '', a.client_id || null, req.params.id, a.event_type || 'rdv', String(a.titre || '').slice(0, 200), JSON.stringify(Array.isArray(a.participants) ? a.participants.filter(x => typeof x === 'string') : [])]
   );
   if (a.compte_rendu) {
     await logActivity(req.user.id, 'compte_rendu_rdv', `Compte rendu: ${a.compte_rendu}`, 'appointment', req.params.id);

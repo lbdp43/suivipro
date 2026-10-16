@@ -1116,7 +1116,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
 
               {/* Start time */}
               <div className="flex items-center gap-3">
-                <label className="text-xs font-medium text-gray-600 w-12">Debut</label>
+                <label className="text-xs font-medium text-gray-600 w-12">Début</label>
                 <input
                   type="time"
                   value={scheduleStartTime}

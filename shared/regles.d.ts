@@ -18,3 +18,4 @@ export function rdvPasse(rdv: RdvPourRegles | null | undefined, maintenant?: Dat
 export function rdvSansCompteRendu(rdv: RdvPourRegles | null | undefined, maintenant?: Date): boolean;
 export function rdvAVenir(rdv: RdvPourRegles | null | undefined, maintenant?: Date): boolean;
 export const REGLES: { id: string; titre: string; regle: string; detail: string }[];
+export function estEvenement(rdv: { event_type?: string | null } | null | undefined): boolean;

@@ -552,7 +552,7 @@ export function processEmailTemplate(
 export function exportProspectsCSV(prospects: Prospect[]): void {
   const headers = [
     'Etablissement', 'Type', 'Contact', 'Téléphone', 'Email',
-    'Adresse', 'Ville', 'Code Postal', 'Departement', 'Secteur',
+    'Adresse', 'Ville', 'Code Postal', 'Département', 'Secteur',
     'Étape Pipeline', 'Score', 'Notes', 'Date Creation',
   ];
 

@@ -722,7 +722,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
           >
             <option value="">Mon activité</option>
-            <option value="all">Toute l'equipe</option>
+            <option value="all">Toute l'équipe</option>
             {state.commerciaux.map((c: any) => (
               <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
             ))}
@@ -1211,7 +1211,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                       className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Debut</label>
+                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Début</label>
                     <input type="time" value={visitRdvHeureDebut[rdvModalClient.id] || '10:00'}
                       onChange={e => setVisitRdvHeureDebut(prev => ({ ...prev, [rdvModalClient.id]: e.target.value }))}
                       className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />

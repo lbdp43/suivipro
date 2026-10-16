@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { asyncHandler, authMiddleware } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
-import { parseCommercial, parseProspect, parseSessionAppel } from '../lib/parse.js';
+import { parseCommercial, parseProspect, parseSessionAppel, parseAppointment } from '../lib/parse.js';
 import { parseSignalement, SELECT_SIGNALEMENTS } from './signalements.js';
 import { COLONNES_DOCUMENT, documentPourEcran } from './documents.js';
 import { etatCommun } from '../lib/etatCache.js';
@@ -68,7 +68,7 @@ async function calculerEtatCommun() {
   return {
     prospects: prospects.rows.map(parseProspect),
     calls: calls.rows,
-    appointments: appointments.rows,
+    appointments: appointments.rows.map(parseAppointment),
     reminders: reminders.rows,
     commerciaux: commerciaux.rows.map(parseCommercial),
     tags: tags.rows,

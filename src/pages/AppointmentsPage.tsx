@@ -210,9 +210,9 @@ export default function AppointmentsPage() {
   const saveAppointment = () => verrouRdv.verrouiller(async () => {
     const isEvent = formData.event_type !== 'rdv';
     // Pour un RDV classique, prospect/client requis. Pour un evenement, titre requis.
-    if (!isEvent && !formData.prospect_id && !formData.client_id) return;
-    if (isEvent && !formData.titre.trim()) return;
-    if (!formData.date) return;
+    if (!isEvent && !formData.prospect_id && !formData.client_id) { toast.warning('Choisissez le prospect ou le client du rendez-vous.'); return; }
+    if (isEvent && !formData.titre.trim()) { toast.warning("Donnez un titre à l'événement."); return; }
+    if (!formData.date) { toast.warning('La date est obligatoire.'); return; }
 
     const baseData = {
       ...formData,
@@ -1354,7 +1354,7 @@ export default function AppointmentsPage() {
                   <input type="date" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.date} onChange={e => setFormData(prev => ({ ...prev, date: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Debut</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Début</label>
                   <input type="time" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.heure_debut} onChange={e => setFormData(prev => ({ ...prev, heure_debut: e.target.value }))} />
                 </div>
                 <div>

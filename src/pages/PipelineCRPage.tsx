@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, DragEvent } from 'react';
 import {
   GripVertical, MapPin, Calendar, X, Eye, ChevronDown, ChevronUp,
   UserCheck, Mail, Clock, PhoneOff, Trophy, Settings, Plus, Pencil, Trash2,
-  FileText, CalendarClock, Check, Save,
+  FileText, CalendarClock, Check, Save, ClipboardCheck,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
@@ -21,6 +21,7 @@ import { generateId } from '../utils/helpers';
 import { apiPost, apiPut } from '../api/client';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
+import CompteRenduModal from '../components/CompteRenduModal';
 
 // ============================================
 // CR Column definition
@@ -40,7 +41,7 @@ const DEFAULT_COLUMNS: CRColumnDef[] = [
   { id: 'mail_envoye', label: 'Mail envoyé', color: '#3b82f6', description: 'Mail/devis envoyé', builtin: true },
   { id: 'commande_plus_tard', label: 'Commande plus tard', color: '#f59e0b', description: 'Intéressé, a recontacter', builtin: true },
   { id: 'a_relancer', label: 'À relancer', color: '#f97316', description: 'Relance nécessaire', builtin: true },
-  { id: 'client', label: 'Client gagne', color: '#22c55e', description: 'Devenu client !', builtin: true },
+  { id: 'client', label: 'Client gagné', color: '#22c55e', description: 'Devenu client !', builtin: true },
   { id: 'pas_interesse', label: 'Pas intéressé', color: '#ef4444', description: 'Pas intéressé / Perdu', builtin: true },
 ];
 
@@ -118,6 +119,8 @@ export default function PipelineCRPage() {
   // Jusqu'à un an devant : les rendez-vous à venir font partie du suivi.
   const [filterDateEnd, setFilterDateEnd] = useState(() => format(addYears(new Date(), 1), 'yyyy-MM-dd'));
   const [detailApt, setDetailApt] = useState<Appointment | null>(null);
+  // Le compte rendu passe par la fenêtre partagée (règles du tunnel, relance, conversion) : au doigt aussi.
+  const [crRdv, setCrRdv] = useState<Appointment | null>(null);
 
   // Reschedule modal
   const [rescheduleApt, setRescheduleApt] = useState<Appointment | null>(null);
@@ -349,27 +352,12 @@ export default function PipelineCRPage() {
       return;
     }
 
-    const newCR = colId === 'en_attente' ? '' : colId;
-
-    const updated = {
-      ...apt,
-      compte_rendu: newCR as AppointmentResult,
-      statut: 'termine' as const,
-    };
-
-    try {
-      await apiPut(`/appointments/${apt.id}`, updated);
-      dispatchLocal({ type: 'UPDATE_APPOINTMENT', payload: updated });
-
-      const colLabel = columns.find(c => c.id === colId)?.label || colId;
-      toast.success(
-        colId === 'client'
-          ? 'Client gagne ! Le prospect a ete converti.'
-          : `Compte-rendu mis à jour: ${colLabel}`
-      );
-    } catch {
-      toast.error('Erreur lors de la mise à jour du RDV');
-    }
+    // Déposer sur un résultat ouvre le compte rendu : c'est lui qui applique la règle partagée
+    // (étape du prospect, relance, conversion en client), pas un simple changement de colonne.
+    setDraggedId(null);
+    setDragOverColumn(null);
+    setCrRdv(apt);
+    return;
 
     setDraggedId(null);
     setDragOverColumn(null);
@@ -514,7 +502,7 @@ export default function PipelineCRPage() {
 
         {/* Filters row */}
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-          <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-1 text-xs flex-wrap">
             <span className="text-gray-500 text-xs">Du</span>
             <input
               type="date"
@@ -791,7 +779,7 @@ export default function PipelineCRPage() {
                                 <button
                                   className="p-1 rounded bg-purple-50 text-purple-600 hover:bg-purple-100"
                                   onClick={e => { e.stopPropagation(); openRescheduleModal(apt); }}
-                                  title="Decaler le RDV"
+                                  title="Décaler le RDV"
                                 >
                                   <CalendarClock className="w-3 h-3" />
                                 </button>
@@ -841,6 +829,7 @@ export default function PipelineCRPage() {
       </div>
 
       {/* Detail modal */}
+      <CompteRenduModal rdv={crRdv} onClose={() => setCrRdv(null)} />
       {detailApt && (
         <Fenetre ouvert brut onFermer={() => setDetailApt(null)} titre="Détails du RDV" largeur="normale">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -921,11 +910,19 @@ export default function PipelineCRPage() {
                 >
                   <Eye className="w-3.5 h-3.5" /> Voir la fiche
                 </Link>
+                {!rdvAVenir(detailApt) && (
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700"
+                    onClick={() => { setDetailApt(null); setCrRdv(detailApt); }}
+                  >
+                    <ClipboardCheck className="w-3.5 h-3.5" /> Compte rendu
+                  </button>
+                )}
                 <button
                   className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700"
                   onClick={() => { setDetailApt(null); openRescheduleModal(detailApt); }}
                 >
-                  <CalendarClock className="w-3.5 h-3.5" /> Decaler
+                  <CalendarClock className="w-3.5 h-3.5" /> Décaler
                 </button>
               </div>
               <button
@@ -944,7 +941,7 @@ export default function PipelineCRPage() {
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <CalendarClock className="w-5 h-5 text-purple-500" />
-                Decaler le RDV
+                Décaler le RDV
               </h3>
               <button aria-label="Fermer" className="p-1 rounded hover:bg-gray-100" onClick={() => setRescheduleApt(null)}>
                 <X className="w-5 h-5 text-gray-500" />

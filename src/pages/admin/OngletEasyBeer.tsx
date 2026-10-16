@@ -209,7 +209,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error('Erreur lors de la correction');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setEbCorrectingClientId(null);
   };
 
@@ -228,7 +228,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error('Erreur lors de la correction');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setEbCorrectingAll(false);
   };
 
@@ -242,7 +242,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
         // Les paires certaines (identifiant commun) sont cochées d'avance.
         setPairesCochees(new Set((data.paires || []).filter((p: any) => p.score === 100).map((p: any) => `${p.clients[0].id}|${p.clients[1].id}`)));
       } else toast.error('Erreur lors de la détection des doublons');
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setDoublonsLoading(false);
   };
 
@@ -308,7 +308,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error(data.error || data.message || 'Échec de la fusion');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setFusionEnCours(null);
   };
 
@@ -384,7 +384,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       });
       const result = await res.json();
       setEbTestResult(result);
-    } catch { setEbTestResult({ ok: false, message: 'Erreur reseau' }); }
+    } catch { setEbTestResult({ ok: false, message: 'Erreur réseau' }); }
     setEbTesting(false);
   };
 
@@ -518,7 +518,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
         toast.success(data.message || 'Synchronisation des clients lancee');
         setTimeout(loadEbSyncLogs, 1500);
       } else { toast.error(data.message || data.error || 'Échec du lancement'); }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setSyncingClients(false);
   };
 
@@ -529,7 +529,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites créées depuis les commandes`);
       else toast.error(data.message || 'Échec');
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setGenVisites(false);
   };
 
@@ -643,7 +643,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error('Erreur lors du retraitement');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setRetryingEbAssignment(false);
   };
 
@@ -1709,7 +1709,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                                     } else {
                                       toast.error(data.error || 'Erreur');
                                     }
-                                  } catch { toast.error('Erreur reseau'); }
+                                  } catch { toast.error('Erreur réseau'); }
                                   setAssigningCmd(null);
                                   setAssignCmdClientSearch('');
                                 }}

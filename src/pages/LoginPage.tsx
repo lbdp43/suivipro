@@ -41,7 +41,7 @@ export default function LoginPage() {
         {/* Login card */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">Connexion</h2>
-          <p className="text-sm text-gray-500 mb-6">Connectez-vous pour acceder a l'application</p>
+          <p className="text-sm text-gray-500 mb-6">Connectez-vous pour accéder à l'application</p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>

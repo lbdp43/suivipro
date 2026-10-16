@@ -796,7 +796,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                       </label>
                       <div className="grid grid-cols-1 gap-2">
                         <div>
-                          <label className="block text-xs text-orange-600 mb-0.5">Nom / Prenom du contact</label>
+                          <label className="block text-xs text-orange-600 mb-0.5">Nom / Prénom du contact</label>
                           <input
                             type="text"
                             className={`w-full px-3 py-1.5 border rounded-lg text-sm bg-white ${

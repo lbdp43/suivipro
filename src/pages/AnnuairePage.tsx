@@ -120,7 +120,7 @@ export default function AnnuairePage() {
       setEntries(data.entries || []);
       setStats(data.stats || {});
     } catch (err) {
-      console.error('Error loading annuaire:', err);
+      annonce(err instanceof Error ? `Annuaire : ${err.message}` : "L'annuaire n'a pas pu être chargé");
     }
   }, [filterType, searchQuery, filterDept, filterCommercial, filterActivity]);
 
@@ -339,7 +339,7 @@ export default function AnnuairePage() {
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
           >
             <option value="none">Tri par defaut</option>
-            <option value="recent">Plus recent</option>
+            <option value="recent">Plus récent</option>
             <option value="ancien">Plus ancien</option>
           </select>
         </div>
