@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dateLocale, estEnRetard, joursDeRetard } from '../../shared/regles';
+import { estAppel, rdvRealise, montantCA } from '../../shared/activite';
+import { etapesConnues } from '../utils/etapes';
 import { Link } from 'react-router-dom';
 import {
   Phone, Calendar, BarChart3, Clock, ChevronLeft, ChevronRight,
@@ -7,6 +9,7 @@ import {
   AlertTriangle, ShoppingCart, TrendingUp, Euro,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { useTheme } from '../utils/theme';
 import { apiGet } from '../api/client';
 import { APPOINTMENT_RESULT_LABELS, CLIENT_TYPE_LABELS, ClientType } from '../types';
 import { getCallsToday, getCallsThisWeek, getCallsThisMonth, getAppointmentsThisWeek, getAppointmentsThisMonth, getResponseRate, getAverageCallDuration, formatDuration, formatDate } from '../utils/helpers';
@@ -19,6 +22,16 @@ import { fr } from 'date-fns/locale';
 import AdminClientsDashboard from '../components/AdminClientsDashboard';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
+
+// Les axes, légendes et grilles des graphiques suivent le thème : en mode sombre, le gris par
+// défaut de Chart.js (#666 sur une surface sombre) était illisible.
+function appliquerCouleursGraphiques() {
+  const style = getComputedStyle(document.documentElement);
+  const encre = style.getPropertyValue('--c-encre-douce').trim();
+  const trait = style.getPropertyValue('--c-trait').trim();
+  if (encre) ChartJS.defaults.color = `rgb(${encre})`;
+  if (trait) ChartJS.defaults.borderColor = `rgb(${trait} / 0.6)`;
+}
 
 // Filter appointments by created_at (fallback to date for old records)
 function getAppointmentsByCreatedAt<T extends { date: string; created_at?: string }>(items: T[], start: Date, end: Date): T[] {
@@ -130,6 +143,8 @@ function chargerActivites(periode: TimePeriod, poser: (v: Record<string, any>) =
 
 export default function DashboardPage() {
   const { state, perimetre: perimetreChoisi } = useApp();
+  const [theme] = useTheme();
+  useEffect(() => { appliquerCouleursGraphiques(); }, [theme]);
   const [monthOffset, setMonthOffset] = useState(0);
   const [crFilterResult, setCrFilterResult] = useState<string>('');
   const [crFilterUser, setCrFilterUser] = useState<string>('');
@@ -165,7 +180,8 @@ export default function DashboardPage() {
   // ALL users - everyone does prospecting and can be commercial
   const allUsers = state.commerciaux;
 
-  const activeColumns = state.pipelineColumns;
+  // Les colonnes réglées, plus les étapes que des fiches portent encore sans colonne.
+  const activeColumns = useMemo(() => etapesConnues(state.pipelineColumns, state.prospects), [state.pipelineColumns, state.prospects]);
 
   // Perimetre de lecture. /state renvoie toutes les donnees de la brasserie : le filtrage
   // se fait donc ici. Un commercial ne voit que ses clients, ses prospects et son
@@ -299,8 +315,9 @@ export default function DashboardPage() {
   const rankedActivities = useMemo(() => {
     const range = getPeriodRange(rankingPeriod);
     return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userCalls = state.calls.filter(c => estAppel(c) && c.commercial_id === user.id);
+      // Un rendez-vous compte quand il a eu lieu (règle partagée) : ni les annulés, ni ceux à venir.
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id && rdvRealise(a));
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
       const userVisites = (state as any).visites ? (state as any).visites.filter((v: any) => v.commercial_id === user.id) : [];
 
@@ -332,11 +349,12 @@ export default function DashboardPage() {
       // CA: sum commandes of this user's clients in the period
       const userClients = state.clients.filter(c => c.commercial_id === user.id);
       const userClientIds = new Set(userClients.map(c => c.id));
-      const periodCommandes = state.commandes.filter(cmd => {
+      const periodCommandes = commandesCA.filter(cmd => {
         if (!userClientIds.has(cmd.client_id)) return false;
         try { return isWithinInterval(parseISO(cmd.date_commande), { start: range.start, end: range.end }); } catch { return false; }
       });
-      const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+      // Hors taxes, sans les annulées : le même chiffre que l'accueil et les cartes CA.
+      const periodCA = periodCommandes.reduce((sum, c) => sum + montantCA(c), 0);
 
       // Visit coverage: clients visited in time vs late
       const today = dateLocale(new Date());
@@ -368,8 +386,9 @@ export default function DashboardPage() {
     const isMonthPeriod = perfPeriod.startsWith('month');
 
     return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userCalls = state.calls.filter(c => estAppel(c) && c.commercial_id === user.id);
+      // Un rendez-vous compte quand il a eu lieu (règle partagée) : ni les annulés, ni ceux à venir.
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id && rdvRealise(a));
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
       const rdvTakenAsProspector = state.appointments.filter(a => a.prospecteur_id === user.id);
 
@@ -394,11 +413,12 @@ export default function DashboardPage() {
       // CA in period
       const userClients = state.clients.filter(c => c.commercial_id === user.id);
       const userClientIds = new Set(userClients.map(c => c.id));
-      const periodCommandes = state.commandes.filter(cmd => {
+      const periodCommandes = commandesCA.filter(cmd => {
         if (!userClientIds.has(cmd.client_id)) return false;
         try { return isWithinInterval(parseISO(cmd.date_commande), { start: range.start, end: range.end }); } catch { return false; }
       });
-      const periodCA = periodCommandes.reduce((sum, c) => sum + (c.montant_ttc || 0), 0);
+      // Hors taxes, sans les annulées : le même chiffre que l'accueil et les cartes CA.
+      const periodCA = periodCommandes.reduce((sum, c) => sum + montantCA(c), 0);
 
       // Visit coverage
       const today = dateLocale(new Date());
@@ -443,8 +463,9 @@ export default function DashboardPage() {
     const isMonthPeriod = comparePeriod.startsWith('month');
 
     return allUsers.map(user => {
-      const userCalls = state.calls.filter(c => c.commercial_id === user.id);
-      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id);
+      const userCalls = state.calls.filter(c => estAppel(c) && c.commercial_id === user.id);
+      // Un rendez-vous compte quand il a eu lieu (règle partagée) : ni les annulés, ni ceux à venir.
+      const userAppointments = state.appointments.filter(a => a.commercial_id === user.id && rdvRealise(a));
       const userProspects = state.prospects.filter(p => p.commercial_id === user.id);
 
       const periodCalls = getCallsInRange(userCalls, range.start, range.end);
@@ -762,7 +783,7 @@ export default function DashboardPage() {
   const caByCommChartData = {
     labels: allUsers.map(u => u.prenom),
     datasets: [{
-      label: 'CA total (TTC)',
+      label: 'CA total (HT)',
       data: allUsers.map(u => Math.round((topClientsData.caByCommercial[u.id] || 0) * 100) / 100),
       backgroundColor: '#6366f1',
       borderRadius: 6,
@@ -812,15 +833,15 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">CA ce mois (HT)</p>
           </div>
           <div className="flex items-baseline gap-1.5 flex-wrap">
-            <p className="text-2xl font-bold text-gray-900">{caStats.caHt.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
+            <p className="text-2xl font-bold text-gray-900">{caStats.caHt.toFixed(0)} <span className="text-sm font-normal text-gray-500">EUR</span></p>
             {caStats.evolution !== null && (
               <span className={`text-xs font-semibold ${caStats.evolution >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {caStats.evolution >= 0 ? '+' : ''}{caStats.evolution}%
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-500">{caStats.caTtc.toFixed(0)} EUR TTC · {caStats.nbCommandes} cmd</p>
+          <p className="text-xs text-gray-500">
             Mois prec. {caStats.caHtPrecedent.toFixed(0)} EUR HT
             {caStats.annuleesMois > 0 && ` · ${caStats.annuleesMois} annulée(s) exclue(s)`}
           </p>
@@ -831,7 +852,7 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">Prospects actifs</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.activeProspects}</p>
-          <p className="text-xs text-gray-400">{stats.totalProspects} total</p>
+          <p className="text-xs text-gray-500">{stats.totalProspects} total</p>
         </div>
         <div className="bg-white rounded-xl border border-green-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -839,7 +860,7 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">Appels</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.callsToday}</p>
-          <p className="text-xs text-gray-400">{stats.callsWeek} sem. / {stats.callsMonth} mois</p>
+          <p className="text-xs text-gray-500">{stats.callsWeek} sem. / {stats.callsMonth} mois</p>
         </div>
         <div className="bg-white rounded-xl border border-blue-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -847,7 +868,7 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">RDV pris ce mois</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.rdvPrisMois}</p>
-          <p className="text-xs text-gray-400">{stats.rdvPrisSemaine} cette semaine · {stats.rdvWeek} a tenir</p>
+          <p className="text-xs text-gray-500">{stats.rdvPrisSemaine} cette semaine · {stats.rdvWeek} a tenir</p>
         </div>
         <div className="bg-white rounded-xl border border-amber-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -855,15 +876,15 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">Taux réponse</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{stats.responseRate}%</p>
-          <p className="text-xs text-gray-400">Duree moy. {formatDuration(stats.avgDuration)}</p>
+          <p className="text-xs text-gray-500">Duree moy. {formatDuration(stats.avgDuration)}</p>
         </div>
         <div className="bg-white rounded-xl border border-teal-100 p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="bg-teal-100 p-1.5 rounded-lg"><ShoppingCart className="w-3.5 h-3.5 text-teal-600" /></div>
             <p className="text-xs text-gray-500">Panier moyen</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{caStats.panierMoyen.toFixed(0)} <span className="text-sm font-normal text-gray-400">EUR</span></p>
-          <p className="text-xs text-gray-400">HT, sur {caStats.nbCommandes} commande(s) du mois</p>
+          <p className="text-2xl font-bold text-gray-900">{caStats.panierMoyen.toFixed(0)} <span className="text-sm font-normal text-gray-500">EUR</span></p>
+          <p className="text-xs text-gray-500">HT, sur {caStats.nbCommandes} commande(s) du mois</p>
         </div>
       </div>
 
@@ -940,7 +961,7 @@ export default function DashboardPage() {
                 },
               }} />
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucune commande sur la période</div>
+              <div className="h-full flex items-center justify-center text-sm text-gray-500">Aucune commande sur la période</div>
             )}
           </div>
         </div>
@@ -964,7 +985,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-6">Aucune ligne produit sur les 90 derniers jours</p>
+            <p className="text-sm text-gray-500 text-center py-6">Aucune ligne produit sur les 90 derniers jours</p>
           )}
         </div>
       </div>
@@ -1023,7 +1044,7 @@ export default function DashboardPage() {
                 plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 10 } } } },
               }} />
             ) : (
-              <p className="text-sm text-gray-400">Aucune commande</p>
+              <p className="text-sm text-gray-500">Aucune commande</p>
             )}
           </div>
         </div>
@@ -1053,7 +1074,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-6">Aucune commande</p>
+            <p className="text-sm text-gray-500 text-center py-6">Aucune commande</p>
           )}
         </div>
 
@@ -1072,7 +1093,7 @@ export default function DashboardPage() {
                   plugins: { legend: { display: false } },
                 }} />
               ) : (
-                <p className="text-sm text-gray-400 text-center py-6">Aucun membre</p>
+                <p className="text-sm text-gray-500 text-center py-6">Aucun membre</p>
               )}
             </div>
           </div>
@@ -1100,7 +1121,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-6">Aucune commande</p>
+            <p className="text-sm text-gray-500 text-center py-6">Aucune commande</p>
           )}
         </div>
 
@@ -1178,7 +1199,7 @@ export default function DashboardPage() {
                     }}
                   />
                 ) : (
-                  <div className="h-full flex items-center justify-center text-sm text-gray-400">Aucun membre</div>
+                  <div className="h-full flex items-center justify-center text-sm text-gray-500">Aucun membre</div>
                 )}
               </div>
             </div>
@@ -1241,7 +1262,7 @@ export default function DashboardPage() {
               </div>
               <div className="space-y-1.5 max-h-[350px] overflow-y-auto">
                 {recentCompteRendus.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">Aucun compte-rendu</p>
+                  <p className="text-sm text-gray-500 text-center py-8">Aucun compte-rendu</p>
                 ) : recentCompteRendus.map(cr => {
                   const colorMap: Record<string, string> = { client: 'text-green-600 bg-green-50', mail_envoye: 'text-blue-600 bg-blue-50', commande_plus_tard: 'text-amber-600 bg-amber-50', a_relancer: 'text-purple-600 bg-purple-50', pas_interesse: 'text-red-600 bg-red-50' };
                   const crColor = colorMap[cr.compte_rendu || ''] || 'text-gray-600 bg-gray-50';
@@ -1257,7 +1278,7 @@ export default function DashboardPage() {
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${crColor}`}>{APPOINTMENT_RESULT_LABELS[cr.compte_rendu || ''] || cr.compte_rendu}</span>
                         </div>
                         <p className="text-xs text-gray-500">{formatDate(cr.date)} - {cr.commercialName}</p>
-                        {cr.notes_compte_rendu && <p className="text-xs text-gray-400 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
+                        {cr.notes_compte_rendu && <p className="text-xs text-gray-500 truncate mt-0.5">{cr.notes_compte_rendu}</p>}
                       </div>
                     </div>
                   );
@@ -1313,13 +1334,13 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-lg font-bold text-gray-900">{ua.score}</p>
-                        <p className="text-xs text-gray-400">score</p>
+                        <p className="text-xs text-gray-500">score</p>
                       </div>
                     </div>
                   </div>
                 );
               })}
-              {rankedActivities.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Aucun membre</p>}
+              {rankedActivities.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Aucun membre</p>}
             </div>
           </div>
           </div>
@@ -1417,12 +1438,12 @@ export default function DashboardPage() {
                           ) : <span className="text-gray-400">—</span>}
                         </td>
                         )}
-                        <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-xs text-gray-400 ml-0.5">({ua.activeProspects})</span></td>
+                        <td className="text-center py-3 px-2 font-semibold">{ua.totalProspects}<span className="text-xs text-gray-500 ml-0.5">({ua.activeProspects})</span></td>
                         <td className="text-center py-3 px-2"><span className={`font-semibold ${ua.wonProspects > 0 ? 'text-green-600' : 'text-gray-400'}`}>{ua.wonProspects}{diffBadge(ua.wonProspects, cmp?.wonProspects)}</span></td>
                       </tr>
                     );
                   })}
-                  {perfUserActivities.length === 0 && <tr><td colSpan={isAdmin ? 14 : 12} className="py-6 text-center text-gray-400 text-sm">Aucun membre</td></tr>}
+                  {perfUserActivities.length === 0 && <tr><td colSpan={isAdmin ? 14 : 12} className="py-6 text-center text-gray-500 text-sm">Aucun membre</td></tr>}
                 </tbody>
               </table>
             </div>

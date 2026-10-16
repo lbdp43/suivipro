@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { etapeApresMail } from '../../shared/tunnel';
 import {
   Mail, Plus, X, Save, Send, Eye, Edit2, Trash2, 
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { useToast } from '../components/Toast';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
-import { EmailTemplate } from '../types';
+import { EmailTemplate, type PipelineStage } from '../types';
 import { generateId, processEmailTemplate } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { confirmer } from '../components/ui/Confirmation';
@@ -87,14 +88,15 @@ export default function EmailsPage() {
     const prospect = state.prospects.find(p => p.id === selectedProspectId);
     if (!prospect) return;
 
-    // Auto-transition: "À contacter" / "Nouveau" → "Contacte" when email is sent
-    if (['a_contacter', 'nouveau'].includes(prospect.etape_pipeline)) {
+    // L'étape après un mail : la règle partagée (la même que depuis la fiche prospect).
+    const etapeApres = etapeApresMail(prospect.etape_pipeline);
+    if (etapeApres) {
       try {
         await apiPatch(`/prospects/${prospect.id}/stage`, {
-          etape_pipeline: 'contacte',
+          etape_pipeline: etapeApres,
           date_modification: new Date().toISOString(),
         });
-        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: 'contacte' } });
+        dispatchLocal({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: etapeApres as PipelineStage } });
       } catch { /* secondary */ }
     }
 
@@ -119,7 +121,7 @@ export default function EmailsPage() {
   const variables = [
     { var: '{{nom_etablissement}}', desc: 'Nom du prospect (ex : Cave Martin, Le Suffren)' },
     { var: '{{nom_contact}}', desc: 'Nom du contact (ex : Nathalie, M. Bauchart)' },
-    { var: '{{commercial}}', desc: 'Prenom du commercial (ex : Guillaume, Alban, Loic)' },
+    { var: '{{commercial}}', desc: 'Prénom du commercial (ex : Guillaume, Alban, Loic)' },
     { var: '{{telephone_commercial}}', desc: 'Téléphone du commercial (ex : 06 84 44 40 44)' },
     { var: '{{date_rdv}}', desc: 'Date du RDV (ex : Mardi 18 février 2026 a 10h30)' },
   ];
@@ -222,7 +224,7 @@ export default function EmailsPage() {
               </div>
             </div>
             <p className="text-xs text-gray-600 mt-3 font-medium">Sujet: {template.sujet}</p>
-            <p className="text-xs text-gray-400 mt-1 line-clamp-3">{template.corps.substring(0, 120)}...</p>
+            <p className="text-xs text-gray-500 mt-1 line-clamp-3">{template.corps.substring(0, 120)}...</p>
             <div className="flex items-center gap-2 mt-4">
               <button className="p-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600" onClick={() => openPreview(template)} title="Previsualiser">
                 <Eye className="w-3.5 h-3.5" />

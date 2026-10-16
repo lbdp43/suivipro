@@ -65,6 +65,14 @@ export default function Layout() {
   useEffect(() => {
     if (nouvelleVersionDisponible()) rechargerUneFois(location.pathname + location.search);
   }, [location.pathname, location.search]);
+  // Le titre de l'onglet dit où on est : « Prospects · SuiviPro », pas le même nom partout.
+  useEffect(() => {
+    // Les pages hors menu (carte, profil) ont aussi leur nom.
+    const entrees = [...groupesDuMenu('admin', true).flatMap(g => g.entrees), { to: '/carte', label: 'Carte', alias: [] }, { to: '/profil', label: 'Mon profil', alias: [] }];
+    const page = entrees.find(e => e.to === location.pathname || (e.alias || []).includes(location.pathname))
+      || entrees.find(e => e.to !== '/' && location.pathname.startsWith(e.to + '/'));
+    document.title = page && page.to !== '/' ? `${page.label} · SuiviPro` : 'SuiviPro - La Brasserie des Plantes';
+  }, [location.pathname]);
   const { state, logout, perimetre, setPerimetre } = useApp();
   const today = dateLocale(new Date());
   // Badge = rappels en retard filtrés par utilisateur

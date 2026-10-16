@@ -115,7 +115,7 @@ export default function OngletEquipe() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-gray-900">Membres de l'equipe</h3>
+              <h3 className="font-semibold text-gray-900">Membres de l'équipe</h3>
               <p className="text-xs text-gray-500">{state.commerciaux.length} utilisateur(s)</p>
             </div>
             <button
@@ -194,7 +194,7 @@ export default function OngletEquipe() {
                 <div className="p-5 space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Prenom *</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Prénom *</label>
                       <input
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                         value={userForm.prenom}

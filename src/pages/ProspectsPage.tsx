@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import { dateLocale } from '../../shared/regles';
+import { etapesConnues } from '../utils/etapes';
 import { candidatsDoublons } from '../../shared/rapprochement';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Phone, Mail, MapPin, Tag, ChevronRight, ChevronLeft, X, Navigation,
   Edit2, Trash2, Save, Calendar, MessageSquare, ArrowUpDown,
@@ -34,6 +35,7 @@ import {
 import { generateId, formatDate, formatTimeAgo, geocodeAddress } from '../utils/helpers';
 import FilterPresets from '../components/FilterPresets';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useVerrou } from '../hooks/useVerrou';
 import { aUnNumero } from '../../shared/normalisation';
 import { scoreDepuisTags, baremeActif } from '../../shared/score';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
@@ -47,7 +49,9 @@ import { useEcranEtroit } from '../utils/useEcranEtroit';
 import { toast as annonce } from 'sonner';
 
 export default function ProspectsPage() {
-  const { state, dispatchLocal } = useApp();
+  const { state, dispatchLocal , stateComplet } = useApp();
+  // Verrou anti double appui : un enregistrement à la fois (l'état « saving » seul arrivait trop tard).
+  const verrouProspect = useVerrou();
   const toast = useToast();
   const { startCall, startSession } = useCallModal();
   const [sessionEnCours, setSessionEnCours] = useState(false);
@@ -70,6 +74,7 @@ export default function ProspectsPage() {
   };
   const maSession = sessionDuJour(state, state.currentUser?.id);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedId = searchParams.get('id');
 
   const [searchTerm, setSearchTerm] = usePersistedState('prospects_searchTerm', '');
@@ -457,7 +462,7 @@ export default function ProspectsPage() {
       options: (Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({ value: t, label: ESTABLISHMENT_LABELS[t] })),
       selected: filterTypes, onToggle: v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes) },
     { cle: 'etape', titre: 'Étape', teinte: 'bg-blue-50 text-blue-800 hover:bg-blue-100',
-      options: state.pipelineColumns.map(col => ({ value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id] })),
+      options: etapesConnues(state.pipelineColumns, state.prospects).map(col => ({ value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id] })),
       selected: filterStages, onToggle: v => toggleFilter(filterStages, v as PipelineStage, setFilterStages) },
     { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
       options: optionsTags, selected: filterTags, onToggle: v => toggleFilter(filterTags, v, setFilterTags) },
@@ -537,7 +542,8 @@ export default function ProspectsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / pageSize));
   const paginatedProspects = filteredProspects.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
-  const selectedProspect = selectedId ? state.prospects.find(p => p.id === selectedId) : null;
+  // Une fiche ouverte par un lien se trouve même hors du périmètre « Moi » (prospect d'un collègue).
+  const selectedProspect = selectedId ? (state.prospects.find(p => p.id === selectedId) || stateComplet.prospects.find(p => p.id === selectedId)) : null;
 
   // Ce qu'il y a autour du prospect affiche et qui justifie deja un deplacement.
   const voisinsDuProspect = useMemo(() => (selectedProspect ? voisinsAutour(
@@ -625,8 +631,8 @@ export default function ProspectsPage() {
     return candidatsDoublons({ nom: formData.nom_etablissement || '', telephone: formData.telephone || '', email: formData.email || '' }, state.clients);
   }, [showForm, editingProspect, formData.nom_etablissement, formData.telephone, formData.email, state.clients]);
 
-  const saveProspect = async () => {
-    if (!formData.nom_etablissement) return;
+  const saveProspect = () => verrouProspect.verrouiller(async () => {
+    if (!formData.nom_etablissement) { toast.warning("Le nom de l'établissement est obligatoire."); return; }
     // Block save if duplicates found and user hasn't forced creation
     if (!editingProspect && !forceCreate && (liveDuplicates.length > 0 || liveClientDuplicates.length > 0)) {
       return;
@@ -687,7 +693,7 @@ export default function ProspectsPage() {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const deleteProspect = async (id: string) => {
     if (await confirmer('Supprimer ce prospect ?')) {
@@ -877,7 +883,7 @@ export default function ProspectsPage() {
           )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <p className="text-xs text-gray-400">{filteredProspects.length} prospect(s)</p>
+              <p className="text-xs text-gray-500">{filteredProspects.length} prospect(s)</p>
               <select
                 className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
                 value={pageSize}
@@ -902,7 +908,7 @@ export default function ProspectsPage() {
                   setSortDate(prev => prev === 'none' ? 'recent' : prev === 'recent' ? 'ancien' : 'none');
                   if (sortDate === 'none') setSortScore('none');
                 }}
-                title={sortDate === 'none' ? 'Trier par date' : sortDate === 'recent' ? 'Plus recent d\'abord' : 'Plus ancien d\'abord'}
+                title={sortDate === 'none' ? 'Trier par date' : sortDate === 'recent' ? 'Plus récent d\'abord' : 'Plus ancien d\'abord'}
               >
                 <Calendar className="w-3 h-3" />
                 Date {sortDate === 'recent' ? '↓' : sortDate === 'ancien' ? '↑' : ''}
@@ -1000,7 +1006,7 @@ export default function ProspectsPage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-sm text-gray-900 truncate">{p.nom_etablissement}</h3>
                   <p className="text-xs text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
-                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
                     <MapPin className="w-3 h-3" /> {p.ville || p.adresse}{p.secteur ? ` - ${p.secteur}` : ''}
                   </div>
                   {p.notes && (
@@ -1393,7 +1399,7 @@ export default function ProspectsPage() {
                 </div>
               )}
 
-              <div className="mt-3 text-xs text-gray-400">
+              <div className="mt-3 text-xs text-gray-500">
                 Cree le {formatDate(selectedProspect.date_creation)} - Modifie {formatTimeAgo(selectedProspect.date_modification)}
               </div>
             </div>
@@ -1520,10 +1526,15 @@ export default function ProspectsPage() {
                         await apiPut(`/prospects/${convertProspect.id}`, updatedProspect);
                         dispatchLocal({ type: 'UPDATE_PROSPECT', payload: updatedProspect });
                       } catch {
-                        // Conversion succeeded but local update failed; reload anyway
+                        // La conversion a réussi côté serveur ; la fiche se mettra à jour au prochain rafraîchissement.
                       }
-                      // Reload state to get the new client
-                      window.location.reload();
+                      // Le nouveau client arrive dans l'état sans recharger la page, avec un lien vers sa fiche.
+                      if (result.client) dispatchLocal({ type: 'ADD_CLIENT', payload: result.client });
+                      const clientId = result.client_id;
+                      annonce.success(`${convertProspect.nom_etablissement} est maintenant un client`, {
+                        action: { label: 'Voir le client', onClick: () => navigate(`/clients?id=${clientId}`) },
+                      });
+                      setConvertProspect(null);
                     }
                   } catch (err) {
                     console.error('Conversion error:', err);
@@ -1731,7 +1742,7 @@ export default function ProspectsPage() {
               )}
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'etablissement *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l'établissement *</label>
                 <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.nom_etablissement || ''} onChange={e => { setFormData(prev => ({ ...prev, nom_etablissement: e.target.value })); setForceCreate(false); }} />
               </div>
 
@@ -1829,7 +1840,7 @@ export default function ProspectsPage() {
                   <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.ville || ''} onChange={e => setFormData(prev => ({ ...prev, ville: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Departement</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Département</label>
                   <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.departement || ''} onChange={e => setFormData(prev => ({ ...prev, departement: e.target.value }))} />
                 </div>
               </div>
@@ -1884,7 +1895,7 @@ export default function ProspectsPage() {
                     </button>
                   ))}
                   {state.tags.length === 0 && (
-                    <p className="text-xs text-gray-400">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
+                    <p className="text-xs text-gray-500">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
                   )}
                 </div>
 
@@ -1987,7 +1998,7 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 {baremeActif(state.tags) ? (
                   <p className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· 50 + points des tags</span>
+                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-500">· 50 + points des tags</span>
                   </p>
                 ) : (
                   <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />
@@ -1997,7 +2008,7 @@ export default function ProspectsPage() {
             </div>
             <div className="p-5 border-t border-gray-200 flex justify-end gap-3">
               <button className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setShowForm(false)}>Annuler</button>
-              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving}>
+              <button className="px-4 py-2 text-sm bg-brewery-600 text-white rounded-lg hover:bg-brewery-700 flex items-center gap-2 disabled:opacity-50" onClick={saveProspect} disabled={saving || verrouProspect.enCours}>
                 {saving ? (
                   <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Géocodage...</>
                 ) : (

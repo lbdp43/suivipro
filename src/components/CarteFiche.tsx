@@ -46,7 +46,7 @@ export default function CarteFiche({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Où c'est</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Où c'est</p>
         <div className="flex items-center gap-2">
         {appelerAutour && localise && (
           <BoutonAppelerAutour points={[{ lat: Number(latitude), lon: Number(longitude) }]} compact />
@@ -70,7 +70,7 @@ export default function CarteFiche({
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center">
           <MapPin className="w-4 h-4 text-gray-300 mx-auto mb-1" />
           <p className="text-xs text-gray-500">Pas encore situé sur la carte</p>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-gray-500 mt-0.5">
             {adresse ? 'L’adresse n’a pas pu être localisée.' : 'Renseignez une adresse pour la voir ici.'}
           </p>
         </div>
@@ -113,7 +113,7 @@ export default function CarteFiche({
             </div>
           ))}
           {voisins.length > montres.length && (
-            <p className="text-xs text-gray-400 px-2.5 py-1.5">
+            <p className="text-xs text-gray-500 px-2.5 py-1.5">
               +{voisins.length - montres.length} autre{voisins.length - montres.length > 1 ? 's' : ''} dans le secteur
             </p>
           )}

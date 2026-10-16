@@ -120,7 +120,7 @@ export default function AnnuairePage() {
       setEntries(data.entries || []);
       setStats(data.stats || {});
     } catch (err) {
-      console.error('Error loading annuaire:', err);
+      annonce(err instanceof Error ? `Annuaire : ${err.message}` : "L'annuaire n'a pas pu être chargé");
     }
   }, [filterType, searchQuery, filterDept, filterCommercial, filterActivity]);
 
@@ -246,7 +246,7 @@ export default function AnnuairePage() {
           <BookOpen className="w-6 h-6 text-indigo-500" />
           Annuaire
         </h1>
-        <span className="text-xs text-gray-400">{totalEntries} entites</span>
+        <span className="text-xs text-gray-500">{totalEntries} entites</span>
       </div>
 
       {/* Entity type tabs */}
@@ -339,7 +339,7 @@ export default function AnnuairePage() {
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
           >
             <option value="none">Tri par defaut</option>
-            <option value="recent">Plus recent</option>
+            <option value="recent">Plus récent</option>
             <option value="ancien">Plus ancien</option>
           </select>
         </div>
@@ -422,10 +422,10 @@ export default function AnnuairePage() {
                       <IconComp className="w-3.5 h-3.5" />
                     </span>
                     <span className="text-sm font-medium text-gray-900">{et.label}</span>
-                    <span className="text-xs text-gray-400">({et.id})</span>
+                    <span className="text-xs text-gray-500">({et.id})</span>
                     {et.show_in_pipeline && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs">Pipeline</span>}
                     {et.is_default && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">Defaut</span>}
-                    {stats[et.id] ? <span className="text-xs text-gray-400">{stats[et.id]} fiche{stats[et.id] > 1 ? 's' : ''}</span> : null}
+                    {stats[et.id] ? <span className="text-xs text-gray-500">{stats[et.id]} fiche{stats[et.id] > 1 ? 's' : ''}</span> : null}
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => {
@@ -679,7 +679,7 @@ export default function AnnuairePage() {
                     </td>
                     <td className="px-2 py-2">
                       <p className="font-medium text-indigo-700 hover:text-indigo-900">{entry.nom}</p>
-                      <p className="text-xs text-gray-400">{entry.type_etablissement}</p>
+                      <p className="text-xs text-gray-500">{entry.type_etablissement}</p>
                     </td>
                     <td className="px-2 py-2 text-gray-600">
                       {entry.ville}
@@ -687,7 +687,7 @@ export default function AnnuairePage() {
                     </td>
                     <td className="px-2 py-2 text-gray-600">{entry.departement}</td>
                     <td className="px-2 py-2 text-gray-600">{entry.telephone}</td>
-                    <td className="px-2 py-2 text-gray-400 font-mono text-xs">{entry.siret}</td>
+                    <td className="px-2 py-2 text-gray-500 font-mono text-xs">{entry.siret}</td>
                     <td className="px-2 py-2 text-xs text-gray-500">
                       {(() => {
                         const comm = state.commerciaux.find(c => c.id === entry.commercial_id);

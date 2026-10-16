@@ -79,10 +79,18 @@ async function request(path: string, options: RequestInit = {}) {
   rangerJetonRenouvele(res);
 
   if (res.status === 401) {
-    // Token expired or invalid
+    // Un mot de passe faux (ou une requête sans jeton) n'est pas une session expirée : on
+    // laisse l'erreur remonter au formulaire au lieu de recharger la page sans un mot.
+    if (path.startsWith('/auth/login') || !authToken) {
+      const body = await res.json().catch(() => ({}));
+      const erreur = new Error(body.error || 'Email ou mot de passe incorrect') as Error & { status?: number };
+      erreur.status = 401;
+      throw erreur;
+    }
+    // Jeton expiré ou invalide : on repart de la page de connexion.
     setToken(null);
     window.location.reload();
-    throw new Error('Session expiree');
+    throw new Error('Session expirée');
   }
 
   if (!res.ok) {
@@ -464,7 +472,7 @@ export async function convertProspectToClient(data: {
   type_client?: string;
   tournee?: string;
   custom_recurrence?: number | null;
-}): Promise<{ ok: boolean; client_id: string }> {
+}): Promise<{ ok: boolean; client_id: string; client?: import('../types').Client }> {
   return request('/convert-prospect-to-client', {
     method: 'POST',
     body: JSON.stringify(data),

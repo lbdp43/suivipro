@@ -13,7 +13,7 @@ const THEMES: { valeur: Theme; libelle: string; detail: string; Icone: typeof Su
 ];
 
 export default function ProfilePage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatchLocal } = useApp();
   const user = state.currentUser;
   const [theme, choisirTheme] = useTheme();
 
@@ -27,12 +27,11 @@ export default function ProfilePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   if (!user) return null;
 
   const isAdmin = user.role === 'admin';
-
-  const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     setError('');
@@ -75,16 +74,17 @@ export default function ProfilePage() {
       }
 
       // Update local state only after API success
+      // Le serveur a déjà la nouvelle version : on met l'écran à jour sans renvoyer un second PUT.
       const saved = { ...updated, password: user.password };
-      dispatch({ type: 'UPDATE_COMMERCIAL', payload: saved });
-      dispatch({ type: 'SET_CURRENT_USER', payload: saved });
+      dispatchLocal({ type: 'UPDATE_COMMERCIAL', payload: saved });
+      dispatchLocal({ type: 'SET_CURRENT_USER', payload: saved });
 
       setPassword('');
       setConfirmPassword('');
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      setError('Erreur reseau, réessayez.');
+      setError('Erreur réseau, réessayez.');
     } finally {
       setSaving(false);
     }
@@ -130,10 +130,10 @@ export default function ProfilePage() {
 
         {/* Form */}
         <div className="p-5 sm:p-6 space-y-5">
-          {/* Prenom / Nom */}
+          {/* Prénom / Nom */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Prenom *</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Prénom *</label>
               <input
                 type="text"
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
@@ -167,7 +167,7 @@ export default function ProfilePage() {
             />
           </div>
 
-          {/* Telephone */}
+          {/* Téléphone */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5" />
@@ -196,7 +196,7 @@ export default function ProfilePage() {
             >
               {RAYONS_APPELS_KM.map(km => <option key={km} value={km}>{km} km</option>)}
             </select>
-            <p className="text-xs text-gray-400 mt-1">Jusqu'à quelle distance d'un rendez-vous chercher les prospects à appeler. Se change aussi à côté de chaque bouton « Appeler autour ».</p>
+            <p className="text-xs text-gray-500 mt-1">Jusqu'à quelle distance d'un rendez-vous chercher les prospects à appeler. Se change aussi à côté de chaque bouton « Appeler autour ».</p>
           </div>
 
           {/* Separator */}
@@ -205,7 +205,7 @@ export default function ProfilePage() {
               <Key className="w-4 h-4 text-gray-500" />
               Changer le mot de passe
             </h3>
-            <p className="text-xs text-gray-400 mb-4">Laissez vide pour conserver le mot de passe actuel.</p>
+            <p className="text-xs text-gray-500 mb-4">Laissez vide pour conserver le mot de passe actuel.</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

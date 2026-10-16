@@ -41,8 +41,9 @@ function classer(entrees: Entree[], q: string): Entree[] {
 }
 
 export default function RechercheGlobale({ ouvert, onChanger }: { ouvert: boolean; onChanger: (o: boolean) => void }) {
-  // Dans le périmètre affiché (« Moi » / « Équipe ») : un client trouvé s'ouvre là où on le voit.
-  const { state: stateComplet } = useApp();
+  // Toute la brasserie, quel que soit le périmètre affiché : un client d'un collègue se trouve
+  // aussi, et sa fiche s'ouvre (la page le signale s'il est hors de « Moi »).
+  const { stateComplet } = useApp();
   const navigate = useNavigate();
   const [texte, setTexte] = useState('');
   const differe = useDeferredValue(texte);

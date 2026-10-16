@@ -69,7 +69,7 @@ export function InfoTourneeModal({ resume, semaine, onClose }: { resume: ResumeT
               return (
                 <div key={jour} className={`p-2 rounded-lg text-center border ${j.aPrendre > 0 ? 'bg-green-50 border-green-200' : j.zones.length ? 'bg-indigo-50 border-indigo-100' : j.pris ? 'bg-blue-50 border-blue-100' : 'bg-gray-50 border-gray-100'}`}>
                   <p className="text-xs font-medium text-gray-500 mb-1">{LIBELLES_JOURS[jour]}</p>
-                  {vide ? <span className="text-xs text-gray-400">-</span> : (
+                  {vide ? <span className="text-xs text-gray-500">-</span> : (
                     <div className="space-y-0.5">
                       {j.zones.map(z => <p key={z} className={`text-xs font-medium ${j.aPrendre ? 'text-green-700' : 'text-indigo-700'}`}>{z}</p>)}
                       {j.visitesTotal > 0 && <p className="inline-flex items-center gap-0.5 text-xs font-semibold text-orange-700 bg-orange-100 rounded-full px-2 py-0.5"><User className="w-2.5 h-2.5" /> {j.visitesFaites}/{j.visitesTotal} visites</p>}

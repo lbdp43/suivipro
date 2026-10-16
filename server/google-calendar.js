@@ -122,7 +122,7 @@ router.get('/google-calendar/callback', asyncHandler(async (req, res) => {
     oauth2Client.setCredentials(tokens);
     let calendarEmail = '';
     try {
-      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client, timeout: 10000 });
       const calendarList = await calendar.calendarList.get({ calendarId: 'primary' });
       calendarEmail = calendarList.data.summary || calendarList.data.id || '';
     } catch {
@@ -230,7 +230,7 @@ router.get('/google-calendar/events/:commercialId', authMiddleware, asyncHandler
         [encrypt(tokens.access_token), tokens.expiry_date, commercialId]).catch(() => {});
     });
 
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client, timeout: 10000 });
 
     const response = await calendar.events.list({
       calendarId: 'primary',
@@ -296,7 +296,7 @@ router.get('/google-calendar/events-all', authMiddleware, asyncHandler(async (re
             [encrypt(tokens.access_token), tokens.expiry_date, tokenRow.commercial_id]).catch(() => {});
         });
 
-        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client, timeout: 10000 });
 
         const response = await calendar.events.list({
           calendarId: 'primary',

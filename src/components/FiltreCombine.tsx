@@ -174,9 +174,9 @@ export default function FiltreCombine({ facettes, enLigne = false, placeholder =
                   {o.color && <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: o.color }} aria-hidden />}
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate ${coche ? 'font-medium' : ''}`}>{o.label}</span>
-                    {o.description && <span className="block truncate text-xs text-gray-400">{o.description}</span>}
+                    {o.description && <span className="block truncate text-xs text-gray-500">{o.description}</span>}
                   </span>
-                  {o.nombre !== undefined && <span className="flex-shrink-0 text-xs tabular-nums text-gray-400">{o.nombre}</span>}
+                  {o.nombre !== undefined && <span className="flex-shrink-0 text-xs tabular-nums text-gray-500">{o.nombre}</span>}
                 </Command.Item>
               );
             })}

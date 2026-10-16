@@ -161,7 +161,7 @@ export default function OngletCorbeille() {
                             : e.type === 'membre' ? <UserRound className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
                             : <Users className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
                           <span className="font-medium text-gray-800 truncate">{e.nom || '(sans nom)'}</span>
-                          {e.ville && <span className="text-xs text-gray-400 truncate">{e.ville}</span>}
+                          {e.ville && <span className="text-xs text-gray-500 truncate">{e.ville}</span>}
                         </div>
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-500">{detail || '—'}</td>

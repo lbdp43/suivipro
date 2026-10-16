@@ -345,7 +345,8 @@ router.post('/convert-prospect-to-client', authMiddleware, asyncHandler(async (r
     dbClient.release();
   }
 
-  res.json({ ok: true, client_id: clientId });
+  const nouveau = (await db.query('SELECT * FROM clients WHERE id = $1', [clientId])).rows[0] || null;
+  res.json({ ok: true, client_id: clientId, client: nouveau });
 }));
 
 export default router;

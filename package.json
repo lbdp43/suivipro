@@ -9,7 +9,9 @@
     "dev:server": "node server.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -36,10 +38,11 @@
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.28.0",
+    "read-excel-file": "^9.3.12",
     "sonner": "^2.0.7",
     "tesseract.js": "^7.0.0",
     "vaul": "^1.1.2",
-    "xlsx": "^0.18.5",
+    "write-excel-file": "^4.1.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

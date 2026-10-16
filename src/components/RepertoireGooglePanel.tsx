@@ -261,11 +261,11 @@ export default function RepertoireGooglePanel() {
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${e?.connected ? 'bg-green-500' : 'bg-gray-300'}`} />
                           <span className="text-xs text-gray-700">{c.prenom} {c.nom}</span>
-                          {c.id === moiId && <span className="text-xs text-gray-400">(vous)</span>}
+                          {c.id === moiId && <span className="text-xs text-gray-500">(vous)</span>}
                         </div>
                         {e?.connected ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 hidden sm:inline">{e.contacts_email}</span>
+                            <span className="text-xs text-gray-500 hidden sm:inline">{e.contacts_email}</span>
                             {(c.id === moiId || state.currentUser?.role === 'admin') && (
                               <button
                                 onClick={() => deconnecter(c.id)}
@@ -277,7 +277,7 @@ export default function RepertoireGooglePanel() {
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Non connecté</span>
+                          <span className="text-xs text-gray-500">Non connecté</span>
                         )}
                       </div>
                     );

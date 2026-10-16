@@ -15,6 +15,7 @@ import { useApp } from '../store/AppContext';
 import { Appointment, Call, Client, Commercial, Prospect, APPOINTMENT_RESULT_LABELS, APPOINTMENT_STATUS_LABELS, CALL_RESULT_LABELS, PIPELINE_LABELS } from '../types';
 import { formatDate, formatDuration } from '../utils/helpers';
 import { dateLocale, heureLocale, estEnRetard, joursDeRetard, rdvSansCompteRendu, rdvAnnule, semaineIso, semainePaire, tourneeActive, jourDe, lundiDeLaSemaine } from '../../shared/regles';
+import { estAppel, estRdvPris, quiAPrisLeRdv, jourDePriseDuRdv, compteCommeVisite } from '../../shared/activite';
 import { mesurerObjectifs, mesurerLeMois, COULEUR_ETAT } from '../utils/objectifs';
 import ChiffresCles from '../components/ChiffresCles';
 import BlocErreur from '../components/BlocErreur';
@@ -98,7 +99,7 @@ function Jauges({ personne }: { personne: Commercial }) {
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Target className="w-4 h-4 text-brewery-600" /> Mes objectifs du mois</h3>
-        <span className="text-xs text-gray-400">{MOIS[new Date().getMonth()]}</span>
+        <span className="text-xs text-gray-500">{MOIS[new Date().getMonth()]}</span>
       </div>
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${mesures.length + (personne.role !== 'prospection' ? 1 : 0) > 4 ? 'lg:grid-cols-3 xl:grid-cols-6' : mesures.length + (personne.role !== 'prospection' ? 1 : 0) > 2 ? 'lg:grid-cols-4' : ''} gap-4`}>
         {mesures.map(m => {
@@ -109,11 +110,11 @@ function Jauges({ personne }: { personne: Commercial }) {
                 <span className="text-xs text-gray-500">{m.label}</span>
                 <span className={`text-xs font-medium ${c.texte}`}>{c.label}</span>
               </div>
-              <p className="text-2xl font-bold text-gray-900 tabular-nums">{m.valeur} <span className="text-sm font-normal text-gray-400">/ {m.objectif || '—'}</span></p>
+              <p className="text-2xl font-bold text-gray-900 tabular-nums">{m.valeur} <span className="text-sm font-normal text-gray-500">/ {m.objectif || '—'}</span></p>
               <div className="bg-gray-200 rounded-full h-2 mt-1">
                 <div className={`h-2 rounded-full ${c.barre}`} style={{ width: `${Math.min(m.pct, 100)}%` }} />
               </div>
-              {m.objectif > 0 && <p className="text-xs text-gray-400 mt-0.5">attendu à ce jour : {m.attendu}</p>}
+              {m.objectif > 0 && <p className="text-xs text-gray-500 mt-0.5">attendu à ce jour : {m.attendu}</p>}
             </div>
           );
         })}
@@ -123,7 +124,7 @@ function Jauges({ personne }: { personne: Commercial }) {
               <span className="text-xs text-gray-500">Comptes rendus</span>
               <span className={`text-xs font-medium ${mois.rdvSansCr === 0 ? 'text-green-700' : 'text-amber-700'}`}>{mois.rdvSansCr === 0 ? 'À jour' : 'À rattraper'}</span>
             </div>
-            <p className="text-2xl font-bold text-gray-900 tabular-nums">{mois.rdvSansCr === 0 ? <CheckCircle2 className="w-7 h-7 text-green-500 inline" /> : mois.rdvSansCr} <span className="text-sm font-normal text-gray-400">{mois.rdvSansCr === 0 ? '' : 'manquant(s)'}</span></p>
+            <p className="text-2xl font-bold text-gray-900 tabular-nums">{mois.rdvSansCr === 0 ? <CheckCircle2 className="w-7 h-7 text-green-500 inline" /> : mois.rdvSansCr} <span className="text-sm font-normal text-gray-500">{mois.rdvSansCr === 0 ? '' : 'manquant(s)'}</span></p>
             <div className="bg-gray-200 rounded-full h-2 mt-1"><div className={`h-2 rounded-full ${mois.rdvSansCr === 0 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: mois.rdvSansCr === 0 ? '100%' : '40%' }} /></div>
             {mois.rdvSansCr > 0 && <Link to="/semaine/bilan" className="text-xs text-brewery-600 hover:underline">Saisir les comptes rendus</Link>}
           </div>
@@ -227,7 +228,7 @@ function LigneRdv({ rdv, nom, cible, aQui, surCompteRendu }: {
               {nom}
             </Link>
           ) : <span className="text-gray-800">{nom}</span>}
-          {aQui && <span className="text-xs text-gray-400"> · {aQui}</span>}
+          {aQui && <span className="text-xs text-gray-500"> · {aQui}</span>}
         </p>
         {lieu && (
           <p className="text-xs truncate flex items-center gap-1">
@@ -462,7 +463,7 @@ function DetailMembre({ personne, prosp, comm, debut, fin, today }: {
   };
 
   const rdvPris = useMemo(() => state.appointments
-    .filter(a => a.prospecteur_id === personne.id && dedans(jourDe(a.created_at)) && !rdvAnnule(a))
+    .filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === personne.id && dedans(jourDePriseDuRdv(a)))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')),
   [state.appointments, personne.id, periode, debut, fin, today]);
 
@@ -836,7 +837,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
                 <Link key={c.id} to={`/clients?id=${c.id}`} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 rounded px-1">
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${estEnRetard(c, today) ? 'bg-red-500' : c.next_visit === today ? 'bg-amber-500' : 'bg-gray-300'}`} />
                   <span className="text-sm text-gray-800 truncate flex-1">{c.nom}</span>
-                  <span className="text-xs text-gray-400 truncate">{c.ville}</span>
+                  <span className="text-xs text-gray-500 truncate">{c.ville}</span>
                   <span className="text-xs text-gray-400 w-20 text-right">{c.last_visit ? `vu le ${formatDate(c.last_visit)}` : 'jamais vu'}</span>
                 </Link>
               ))}
@@ -866,7 +867,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
                         <span className="text-red-600 font-medium tabular-nums">{joursDeRetard(c, today)} j</span>
                       </Link>
                     ))}
-                    {retards.length > 5 && <Link to="/clients" className="text-xs text-gray-400 hover:underline px-1">et {retards.length - 5} autre(s)…</Link>}
+                    {retards.length > 5 && <Link to="/clients" className="text-xs text-gray-500 hover:underline px-1">et {retards.length - 5} autre(s)…</Link>}
                   </div>
                 </div>
               )}
@@ -912,7 +913,7 @@ function AccueilCommercial({ moi }: { moi: Commercial }) {
               <Link key={j.k} to="/semaine" className={`rounded-lg border p-2 text-center ${j.k === dayKey ? 'border-brewery-300 bg-brewery-50' : 'border-gray-100 hover:bg-gray-50'}`}>
                 <p className="text-xs font-semibold text-gray-700 capitalize">{['lun', 'mar', 'mer', 'jeu', 'ven', 'sam'][i]}</p>
                 <p className="text-lg font-bold text-gray-900 tabular-nums">{j.n}</p>
-                <p className="text-xs text-gray-400 truncate" title={j.zones.join(', ')}>{j.zones.length ? j.zones.join(', ') : '—'}</p>
+                <p className="text-xs text-gray-500 truncate" title={j.zones.join(', ')}>{j.zones.length ? j.zones.join(', ') : '—'}</p>
                 {rdvSemaine[i] > 0 && <p className="text-xs text-indigo-600">{rdvSemaine[i]} RDV</p>}
               </Link>
             ))}
@@ -967,7 +968,7 @@ function SessionClientsDuJour({ moi }: { moi: Commercial }) {
                 <ListChecks className="w-4 h-4 text-purple-600" /> Ma session d'appel clients du jour
                 <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">{maSessionClients.clients.length - maSessionClients.clientsRestants.length} / {maSessionClients.clients.length} appelés</span>
               </h3>
-              <button onClick={viderLaSessionClients} className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1" title="Vider la session du jour"><Trash2 className="w-3.5 h-3.5" /> Vider</button>
+              <button onClick={viderLaSessionClients} className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1" title="Vider la session du jour"><Trash2 className="w-3.5 h-3.5" /> Vider</button>
             </div>
             <div className="h-1.5 rounded-full bg-gray-100 mb-3 overflow-hidden">
               <div className="h-full bg-purple-500 progress-bar" style={{ width: `${Math.round(100 * (maSessionClients.clients.length - maSessionClients.clientsRestants.length) / maSessionClients.clients.length)}%` }} />
@@ -984,7 +985,7 @@ function SessionClientsDuJour({ moi }: { moi: Commercial }) {
                 <div key={c.id} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
                   {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                   <Link to={`/clients?id=${c.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{c.nom}</Link>
-                  <span className="text-xs text-gray-400 truncate max-w-[40%]">{c.ville}</span>
+                  <span className="text-xs text-gray-500 truncate max-w-[40%]">{c.ville}</span>
                 </div>); })}
             </div>
           </div>
@@ -1015,7 +1016,7 @@ function SessionProspectsDuJour({ moi }: { moi: Commercial }) {
                 <ListChecks className="w-4 h-4 text-purple-600" /> Ma session d'appel du jour
                 <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">{maSession.prospects.length - maSession.restants.length} / {maSession.prospects.length} appelés</span>
               </h3>
-              <button onClick={viderLaSession} className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1" title="Vider la session du jour"><Trash2 className="w-3.5 h-3.5" /> Vider</button>
+              <button onClick={viderLaSession} className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1" title="Vider la session du jour"><Trash2 className="w-3.5 h-3.5" /> Vider</button>
             </div>
             <div className="h-1.5 rounded-full bg-gray-100 mb-3 overflow-hidden">
               <div className="h-full bg-purple-500 progress-bar" style={{ width: `${Math.round(100 * (maSession.prospects.length - maSession.restants.length) / maSession.prospects.length)}%` }} />
@@ -1032,7 +1033,7 @@ function SessionProspectsDuJour({ moi }: { moi: Commercial }) {
                 <div key={p.id} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
                   {fait ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /> : <Phone className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                   <Link to={`/prospects?id=${p.id}`} className={`flex-1 min-w-0 text-sm truncate ${fait ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{p.nom_etablissement}</Link>
-                  <span className="text-xs text-gray-400 truncate max-w-[40%]">{p.ville}</span>
+                  <span className="text-xs text-gray-500 truncate max-w-[40%]">{p.ville}</span>
                 </div>); })}
             </div>
           </div>
@@ -1072,11 +1073,11 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
   const rappels = useMemo(() => state.reminders
     .filter(r => r.commercial_id === moi.id && r.statut === 'actif' && r.date <= today)
     .sort((a, b) => a.date.localeCompare(b.date) || a.heure.localeCompare(b.heure)), [state.reminders, moi.id, today]);
-  const appelsDuJour = useMemo(() => state.calls.filter(c => c.commercial_id === moi.id && jourDe(c.date) === today), [state.calls, moi.id, today]);
+  const appelsDuJour = useMemo(() => state.calls.filter(c => estAppel(c) && c.commercial_id === moi.id && jourDe(c.date) === today), [state.calls, moi.id, today]);
   // Les appels aux clients (tâches) comptent aussi dans « Mes appels aujourd'hui ».
   const appelsClientsDuJour = useMemo(() => state.interactions.filter(i => i.commercial_id === moi.id && i.type === 'APPEL' && jourDe(i.date) === today), [state.interactions, moi.id, today]);
   const rdvPrisDuJour = useMemo(() => state.appointments
-    .filter(a => a.prospecteur_id === moi.id && jourDe(a.created_at) === today && !rdvAnnule(a))
+    .filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === moi.id && jourDePriseDuRdv(a) === today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.heure_debut || '').localeCompare(b.heure_debut || '')), [state.appointments, moi.id, today]);
   const parCommercial = useMemo(() => {
     const m = new Map<string, Appointment[]>();
@@ -1085,7 +1086,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
   }, [rdvPrisDuJour]);
   // Les zones prioritaires passent devant, puis mes prospects, puis le score.
   const aAppeler = useMemo(() => state.prospects
-    .filter(p => ['a_contacter', 'nouveau', 'contacte'].includes(p.etape_pipeline) && p.telephone)
+    .filter(p => ETAPES_A_APPELER.includes(p.etape_pipeline) && p.telephone)
     .sort((a, b) => (estEnZonePrioritaire(state, b) ? 1 : 0) - (estEnZonePrioritaire(state, a) ? 1 : 0)
       || (b.commercial_id === moi.id ? 1 : 0) - (a.commercial_id === moi.id ? 1 : 0) || (b.score || 0) - (a.score || 0))
     .slice(0, 8), [state, moi.id]);
@@ -1139,7 +1140,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                 <div key={zone.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50/60 border border-red-100">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{zone.nom || 'Zone'} <span className="text-xs text-gray-500 font-normal">· {c ? `${c.prenom} ${c.nom}` : ''}</span></p>
-                    {zone.consigne ? <p className="text-xs text-red-800">{zone.consigne}</p> : <p className="text-xs text-gray-400">Sans consigne</p>}
+                    {zone.consigne ? <p className="text-xs text-red-800">{zone.consigne}</p> : <p className="text-xs text-gray-500">Sans consigne</p>}
                   </div>
                   <button onClick={() => sessionZone(liste.map(p => p.id))} disabled={liste.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50 whitespace-nowrap">
                     <Phone className="w-3.5 h-3.5" /> Session d'appel ({liste.length})
@@ -1197,7 +1198,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                   <span className={`text-xs tabular-nums w-16 ${enRetard ? 'text-red-600 font-medium' : 'text-gray-500'}`}>{enRetard ? formatDate(r.date) : r.heure}</span>
                   <Link to={`/prospects?id=${r.prospect_id}`} className="flex-1 min-w-0">
                     <p className="text-sm text-gray-800 truncate">{p?.nom_etablissement || 'Prospect'}</p>
-                    <p className="text-xs text-gray-400 truncate">{r.message}</p>
+                    <p className="text-xs text-gray-500 truncate">{r.message}</p>
                   </Link>
                   {p?.telephone && <a aria-label={`Appeler ${p?.nom_etablissement || 'le prospect'}`} href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>}
                 </div>); })}
@@ -1209,12 +1210,12 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
               <button onClick={() => startSession(aAppeler.map(p => p.id))} className="w-full mb-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-brewery-600 text-white text-xs font-semibold hover:bg-brewery-700">
                 <Phone className="w-3.5 h-3.5" /> Lancer la session d'appels ({aAppeler.length})
               </button>
-              {!maSession.session && <p className="text-xs text-gray-400 mb-2">Suggestions par score. Pour choisir vous-même : cochez des prospects dans <Link to="/prospects" className="underline">Prospects</Link> ou <Link to="/pipeline" className="underline">Pipeline</Link>, puis « Ma session du jour ».</p>}
+              {!maSession.session && <p className="text-xs text-gray-500 mb-2">Suggestions par score. Pour choisir vous-même : cochez des prospects dans <Link to="/prospects" className="underline">Prospects</Link> ou <Link to="/pipeline" className="underline">Pipeline</Link>, puis « Ma session du jour ».</p>}
               {aAppeler.map(p => (
                 <div key={p.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
                   <Link to={`/prospects?id=${p.id}`} className="flex-1 min-w-0">
                     <p className="text-sm text-gray-800 truncate">{p.nom_etablissement}</p>
-                    <p className="text-xs text-gray-400 truncate">{p.ville}{p.score ? ` · ${p.score} pts` : ''}</p>
+                    <p className="text-xs text-gray-500 truncate">{p.ville}{p.score ? ` · ${p.score} pts` : ''}</p>
                   </Link>
                   <a aria-label={`Appeler ${p.nom_etablissement}`} href={`tel:${p.telephone.replace(/\s/g, '')}`} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100"><Phone className="w-3.5 h-3.5" /></a>
                 </div>
@@ -1329,10 +1330,10 @@ function AccueilAdmin({ moi }: { moi: Commercial }) {
     const comm = estCommercial(p);
     // Une même mesure pour un jour ou pour la semaine.
     const mesurer = (dedans: (d: string) => boolean) => ({
-      appels: state.calls.filter(c => c.commercial_id === p.id && dedans(jourDe(c.date))).length,
-      rdvPris: state.appointments.filter(a => a.prospecteur_id === p.id && dedans(jourDe(a.created_at))).length,
+      appels: state.calls.filter(c => estAppel(c) && c.commercial_id === p.id && dedans(jourDe(c.date))).length,
+      rdvPris: state.appointments.filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === p.id && dedans(jourDePriseDuRdv(a))).length,
       rdv: state.appointments.filter(a => a.commercial_id === p.id && dedans(jourDe(a.date)) && !rdvAnnule(a)).length,
-      visites: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'VISITE' && dedans(jourDe(i.date))).length,
+      visites: state.interactions.filter(i => i.commercial_id === p.id && compteCommeVisite(i) && dedans(jourDe(i.date))).length,
       appelsClients: state.interactions.filter(i => i.commercial_id === p.id && i.type === 'APPEL' && dedans(jourDe(i.date))).length,
     });
     // Pour la prospection, un appel est un appel : aux prospects (sessions, rappels) comme

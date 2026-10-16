@@ -452,7 +452,7 @@ const sections: GuideSection[] = [
     content: [
       {
         subtitle: 'Principe',
-        text: 'Tableau **Kanban** dédié au suivi des résultats de RDV. Colonnes : RDV en attente, RDV décalé, Mail envoyé, Commande plus tard, À relancer, Client gagne, Pas intéressé.',
+        text: 'Tableau **Kanban** dédié au suivi des résultats de RDV. Colonnes : RDV en attente, RDV décalé, Mail envoyé, Commande plus tard, À relancer, Client gagné, Pas intéressé.',
       },
       {
         subtitle: 'Actions rapides',

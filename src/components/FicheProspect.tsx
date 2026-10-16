@@ -113,7 +113,7 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
 
       {(appels.length > 0 || rdv.length > 0 || rappels.length > 0) && (
         <div className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Historique</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Historique</p>
           {rappels.map(r => (
             <div key={r.id} className="flex items-start gap-2 text-xs">
               <Bell className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${r.date < aujourdhui ? 'text-red-500' : 'text-amber-500'}`} />

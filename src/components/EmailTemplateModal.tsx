@@ -8,6 +8,7 @@ import { generateId } from '../utils/helpers';
 import { marquerMailEnvoye } from '../utils/mailEnvoye';
 import { etapeApresMail } from '../../shared/tunnel';
 import Fenetre from './ui/Fenetre';
+import { toast } from 'sonner';
 
 interface ProspectProps {
   prospect: Prospect;
@@ -123,7 +124,7 @@ export default function EmailTemplateModal(props: Props) {
       const etape = etapeApresMail(prospect.etape_pipeline);
       if (etape) dispatch({ type: 'MOVE_PROSPECT', payload: { id: prospect.id, stage: etape as Prospect['etape_pipeline'] } });
       // Le clic vaut envoi : tag « Mail envoyé » + trace dans l'historique.
-      marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => { /* tracé au mieux */ });
+      marquerMailEnvoye(state, dispatchLocal, prospect, replaceVariables(selectedTemplate.sujet)).catch(() => toast.error("L'envoi n'a pas pu être tracé dans l'historique du prospect"));
     }
 
     // Relance à 7 jours : un rappel pour un prospect, une tâche pour un client
@@ -275,7 +276,7 @@ export default function EmailTemplateModal(props: Props) {
                       <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-700 truncate">{doc.nom}</p>
-                        <p className="text-xs text-gray-400">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
+                        <p className="text-xs text-gray-500">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
                       </div>
                     </label>
                   ))}

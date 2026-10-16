@@ -88,7 +88,7 @@ async function dernieresActivites(ids) {
   if (ids.length === 0) return new Map();
   const r = await db.query(
     `SELECT prospect_id, MAX(jour) AS jour FROM (
-       SELECT prospect_id, left(date, 10) AS jour FROM calls WHERE prospect_id = ANY($1)
+       SELECT prospect_id, jour_paris(date) AS jour FROM calls WHERE prospect_id = ANY($1)
        UNION ALL
        SELECT prospect_id, left(date, 10) AS jour FROM appointments
         WHERE prospect_id = ANY($1) AND statut <> 'annule' AND left(date, 10) <= $2

@@ -308,7 +308,7 @@ export default function DocumentsPage() {
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">Aucun document</p>
           {isAdmin && (
-            <p className="text-gray-400 text-xs mt-1">Cliquez sur "Ajouter un document" pour commencer</p>
+            <p className="text-gray-500 text-xs mt-1">Cliquez sur "Ajouter un document" pour commencer</p>
           )}
         </div>
       ) : (
@@ -324,7 +324,7 @@ export default function DocumentsPage() {
                   'bg-gray-400'
                 }`} />
                 {DOCUMENT_CATEGORY_LABELS[cat]}
-                <span className="text-xs text-gray-400 font-normal">({groupedDocs[cat].length})</span>
+                <span className="text-xs text-gray-500 font-normal">({groupedDocs[cat].length})</span>
               </h2>
               <div className="grid grid-cols-1 gap-3">
                 {groupedDocs[cat].map(doc => {
@@ -355,7 +355,7 @@ export default function DocumentsPage() {
                           {doc.description && (
                             <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{doc.description}</p>
                           )}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-400">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-500">
                             <span className="truncate max-w-full">{doc.nom_fichier}</span>
                             <span>{formatFileSize(doc.taille)}</span>
                             <span>Par {getUploaderName(doc.uploaded_by)}</span>
@@ -472,7 +472,7 @@ export default function DocumentsPage() {
                                 );
                               })}
                               {anciennes.length > 0 && (
-                                <p className="text-xs text-gray-400 pt-1">
+                                <p className="text-xs text-gray-500 pt-1">
                                   Versions précédentes : {anciennes.map(s => `${nomDe(s.user_id)} (v${s.version}, ${new Date(s.signe_le).toLocaleDateString('fr-FR')})`).join(' · ')}
                                 </p>
                               )}
@@ -612,7 +612,7 @@ export default function DocumentsPage() {
                     <label className="cursor-pointer">
                       <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">Cliquer pour choisir un fichier</p>
-                      <p className="text-xs text-gray-400 mt-1">PDF, images, Excel... (max 5 Mo)</p>
+                      <p className="text-xs text-gray-500 mt-1">PDF, images, Excel... (max 5 Mo)</p>
                       <input
                         type="file"
                         className="hidden"

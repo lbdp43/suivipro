@@ -152,7 +152,7 @@ function Contenu({ notifications, nonLues, onLue, onToutLu, onFermer }: Props) {
           <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100"><Bell className="h-5 w-5 text-gray-400" /></span>
             <p className="text-sm font-medium text-gray-700">{onglet === 'non_lues' ? 'Tout est lu' : 'Aucune notification'}</p>
-            <p className="text-xs text-gray-400">{onglet === 'non_lues' ? 'Rien de nouveau depuis votre dernier passage.' : 'Les alertes EasyBeer, les signalements et le reste arriveront ici.'}</p>
+            <p className="text-xs text-gray-500">{onglet === 'non_lues' ? 'Rien de nouveau depuis votre dernier passage.' : 'Les alertes EasyBeer, les signalements et le reste arriveront ici.'}</p>
           </div>
         ) : parJour.map(g => (
           <section key={g.jour} aria-label={titreDuJour(g.jour)}>
@@ -171,7 +171,7 @@ function Contenu({ notifications, nonLues, onLue, onToutLu, onFermer }: Props) {
                       <span className="min-w-0 flex-1">
                         <span className={`block text-sm ${n.read ? 'text-gray-700' : 'font-semibold text-gray-900'}`}>{n.title}</span>
                         {n.message && <span className="mt-0.5 block text-xs text-gray-500 line-clamp-2">{n.message}</span>}
-                        <span className="mt-1 block text-xs text-gray-400">{ilYA(n.created_at)}</span>
+                        <span className="mt-1 block text-xs text-gray-500">{ilYA(n.created_at)}</span>
                       </span>
                       <span className="flex flex-shrink-0 flex-col items-end gap-2 pt-1">
                         {!n.read && <span className="h-2 w-2 rounded-full bg-brewery-500" aria-label="non lue" />}

@@ -190,12 +190,12 @@ export default function GoogleCalendarPanel() {
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-300'}`} />
                           <span className="text-xs text-gray-700">{c.prenom} {c.nom}</span>
-                          {c.id === currentUserId && <span className="text-xs text-gray-400">(vous)</span>}
+                          {c.id === currentUserId && <span className="text-xs text-gray-500">(vous)</span>}
                         </div>
                         <div className="flex items-center gap-2">
                           {isConnected ? (
                             <>
-                              <span className="text-xs text-gray-400">{status.calendar_email}</span>
+                              <span className="text-xs text-gray-500">{status.calendar_email}</span>
                               {(c.id === currentUserId || state.currentUser?.role === 'admin') && (
                                 <button
                                   onClick={() => handleDisconnect(c.id)}
@@ -208,7 +208,7 @@ export default function GoogleCalendarPanel() {
                               )}
                             </>
                           ) : (
-                            <span className="text-xs text-gray-400">Non connecté</span>
+                            <span className="text-xs text-gray-500">Non connecté</span>
                           )}
                         </div>
                       </div>

@@ -108,11 +108,11 @@ export default function OngletObjectifs() {
                           />
                         ) : (
                           <>
-                            <p className="text-lg font-bold text-gray-900">{m.valeur} <span className="text-sm font-normal text-gray-400">/ {m.objectif || '—'}</span></p>
+                            <p className="text-lg font-bold text-gray-900">{m.valeur} <span className="text-sm font-normal text-gray-500">/ {m.objectif || '—'}</span></p>
                             <div className="bg-gray-200 rounded-full h-2">
                               <div className={`h-2 rounded-full progress-bar ${couleur.barre}`} style={{ width: `${Math.min(m.pct, 100)}%` }} />
                             </div>
-                            <p className="text-xs text-gray-400">{m.objectif > 0 ? `${m.pct} % · attendu à ce jour : ${m.attendu}` : 'Fixez un objectif pour suivre l\'avancement'}</p>
+                            <p className="text-xs text-gray-500">{m.objectif > 0 ? `${m.pct} % · attendu à ce jour : ${m.attendu}` : 'Fixez un objectif pour suivre l\'avancement'}</p>
                           </>
                         )}
                       </div>

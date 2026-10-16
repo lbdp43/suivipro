@@ -364,7 +364,7 @@ export default function AdminClientsDashboard() {
 
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {activities.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">Aucune activité pour cette période</p>
+              <p className="text-sm text-gray-500 text-center py-4">Aucune activité pour cette période</p>
             ) : activities.slice(0, 30).map(a => (
               <div key={a.id} className="flex items-start gap-2 py-2 border-b border-gray-50 last:border-0">
                 <span className={`text-xs px-1.5 py-0.5 rounded ${ACTIVITY_COLORS[a.type] || 'bg-gray-100 text-gray-600'}`}>
@@ -372,7 +372,7 @@ export default function AdminClientsDashboard() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-800 truncate">{a.description}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-500">
                     {a.commercial} - {formatDateLong(a.date)}
                   </p>
                   {a.comment && (
@@ -421,7 +421,7 @@ export default function AdminClientsDashboard() {
                     <span className="text-sm font-medium text-gray-700">
                       {week.week_number === 1 ? 'Cette semaine' : `Semaine ${week.week_number}`}
                     </span>
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-500">
                       {formatDateShort(week.start)} - {formatDateShort(week.end)}
                     </span>
                   </div>
@@ -456,7 +456,7 @@ export default function AdminClientsDashboard() {
                   </div>
                 )}
                 {expandedWeeks.has(week.week_number) && week.clients.length === 0 && (
-                  <p className="px-3 pb-2 text-xs text-gray-400 italic">Aucune visite planifiée</p>
+                  <p className="px-3 pb-2 text-xs text-gray-500 italic">Aucune visite planifiée</p>
                 )}
               </div>
             ))}

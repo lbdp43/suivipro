@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { lireTableau, tableauVersObjets, exporterTableau } from '../utils/tableur';
 import { normaliserPourComparaison, chiffresTelephone } from '../../shared/normalisation';
 import { dateLocale } from '../../shared/regles';
 import {
@@ -29,7 +30,6 @@ export default function ImportPage() {
 
   const handleExportXLSX = async () => {
     try {
-      const XLSX = await import('xlsx');
       const data = state.prospects.map(p => ({
         'Date de création': p.date_creation?.split('T')[0] || '',
         'Dénomination': p.nom_etablissement,
@@ -45,10 +45,7 @@ export default function ImportPage() {
         'Notes': p.notes,
         'Score': p.score,
       }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Prospects');
-      XLSX.writeFile(wb, `prospects-${dateLocale(new Date())}.xlsx`);
+      await exporterTableau(data, `prospects-${dateLocale(new Date())}.xlsx`, { feuille: 'Prospects' });
     } catch (err) {
       toast.error('Erreur lors de l\'export Excel');
     }
@@ -65,14 +62,10 @@ export default function ImportPage() {
     let geocoded = 0;
 
     try {
-      const XLSX = await import('xlsx');
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      const importRawArrays = await lireTableau(file);
 
       // Auto-detect the real header row (skip title rows, merged cells, etc.)
       const importHeaderPatterns = ['denom', 'raison', 'societe', 'société', 'enseigne', 'nom', 'client', 'tel', 'adresse', 'address', 'mobile', 'fixe', 'portable', 'mail', 'email', 'ville', 'code postal', 'siret', 'siren', 'secteur', 'tournee', 'tournée', 'etape', 'état', 'etat', 'type', 'score', 'note'];
-      const importRawArrays = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
       let importHeaderRow = 0;
       for (let r = 0; r < Math.min(15, importRawArrays.length); r++) {
         const rowVals = (importRawArrays[r] || []).map(v => String(v ?? '').toLowerCase().trim()).filter(Boolean);
@@ -84,7 +77,7 @@ export default function ImportPage() {
         }
       }
 
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { range: importHeaderRow });
+      const rows = tableauVersObjets(importRawArrays, importHeaderRow) as Record<string, any>[];
 
       if (rows.length === 0) {
         errors.push('Le fichier est vide');
@@ -198,21 +191,21 @@ export default function ImportPage() {
           return;
         }
 
-        // Contact: Nom + Prenom or combined
+        // Contact: Nom + Prénom or combined
         const contactNom = getVal(row, 'Nom', 'nom');
-        const contactPrenom = getVal(row, 'Prénom', 'Prenom', 'prenom');
+        const contactPrenom = getVal(row, 'Prénom', 'Prénom', 'prenom');
         let contact = '';
         if (contactPrenom || (contactNom && contactNom !== nom)) {
           contact = `${contactPrenom} ${contactNom}`.trim();
         }
         if (!contact) {
           contact = getVal(row,
-            'Nom/Prenom', 'Nom/prenom', 'nom/prenom', 'Nom Prenom',
+            'Nom/Prenom', 'Nom/prenom', 'nom/prenom', 'Nom Prénom',
             'Contact', 'contact', 'Nom Contact', 'nom_contact'
           );
         }
 
-        // Telephone: tel fixe + tel mobile
+        // Téléphone: tel fixe + tel mobile
         const telFixe = getVal(row,
           'Tél. fixe', 'Tel. fixe', 'Tel fixe', 'Téléphone fixe',
           'Téléphone', 'telephone', 'Tel', 'tel',
@@ -369,7 +362,7 @@ export default function ImportPage() {
         }
       }
     } catch (err) {
-      errors.push('Erreur de lecture du fichier. Verifiez le format (Excel .xlsx ou .csv).');
+      errors.push('Erreur de lecture du fichier. Vérifiez le format (Excel .xlsx ou .csv ; les anciens .xls ne sont plus lus).');
     }
 
     const duplicates = errors.filter(e => e.includes('doublon') || e.includes('en double')).length;
@@ -382,7 +375,6 @@ export default function ImportPage() {
 
   const downloadTemplate = async () => {
     try {
-      const XLSX = await import('xlsx');
       const template = [{
         'Date de création': '2025-01-15',
         'Dénomination': 'Exemple Cafe',
@@ -398,18 +390,9 @@ export default function ImportPage() {
         'Notes': 'Premier contact au marche',
         'Score': '75',
       }];
-      const ws = XLSX.utils.json_to_sheet(template);
-      // Ajuster la largeur des colonnes
-      ws['!cols'] = [
-        { wch: 15 }, { wch: 25 }, { wch: 22 }, { wch: 18 },
-        { wch: 18 }, { wch: 15 }, { wch: 12 }, { wch: 25 },
-        { wch: 16 }, { wch: 16 }, { wch: 35 }, { wch: 30 }, { wch: 6 },
-      ];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Template');
-      XLSX.writeFile(wb, 'template-import-prospects.xlsx');
+      await exporterTableau(template, 'template-import-prospects.xlsx', { feuille: 'Template', largeurs: [15, 25, 22, 18, 18, 15, 12, 25, 16, 16, 35, 30, 6] });
     } catch (err) {
-      toast.error('Erreur lors de la creation du template');
+      toast.error('Erreur lors de la création du template');
     }
   };
 
@@ -536,14 +519,10 @@ export default function ImportPage() {
     const errors: string[] = [];
 
     try {
-      const XLSX = await import('xlsx');
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawArrays = await lireTableau(file);
 
       // Auto-detect header row
       const headerPatterns = ['denom', 'raison', 'societe', 'société', 'nom', 'client', 'tel', 'adresse', 'address', 'mobile', 'fixe', 'mail', 'email', 'ville', 'code postal', 'siret', 'tournee', 'tournée', 'type', 'contact', 'commercial', 'numéro client'];
-      const rawArrays = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
       let headerRow = 0;
       for (let r = 0; r < Math.min(15, rawArrays.length); r++) {
         const rowVals = (rawArrays[r] as unknown[] || []).map(v => String(v ?? '').toLowerCase().trim()).filter(Boolean);
@@ -552,7 +531,7 @@ export default function ImportPage() {
         if (recognizable.length >= 2) { headerRow = r; break; }
       }
 
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { range: headerRow });
+      const rows = tableauVersObjets(rawArrays, headerRow);
       if (rows.length === 0) {
         errors.push('Le fichier est vide');
         setParseErrors(errors);
@@ -616,7 +595,7 @@ export default function ImportPage() {
 
         // Contact: combine Nom + Prénom
         const contactNom = getVal(row, 'Nom');
-        const contactPrenom = getVal(row, 'Prénom', 'Prenom');
+        const contactPrenom = getVal(row, 'Prénom', 'Prénom');
         const contact = [contactPrenom, contactNom].filter(Boolean).join(' ') ||
           getVal(row, 'Contact', 'contact', 'Nom Contact', 'Nom/Prenom', 'Type contact');
 
@@ -791,7 +770,7 @@ export default function ImportPage() {
       setParseErrors(errors);
       setClientImportStep('preview');
     } catch (err) {
-      errors.push('Erreur de lecture du fichier. Verifiez le format.');
+      errors.push('Erreur de lecture du fichier. Vérifiez le format.');
       setParseErrors(errors);
     }
     setClientImporting(false);
@@ -927,7 +906,7 @@ export default function ImportPage() {
         setClientImportResults({ success: 0, skipped: duplicates.length, errors, commerciauxCreated: 0, enrichedFromProspect: 0 });
       }
     } catch (err) {
-      errors.push('Erreur lors de l\'import. Verifiez votre connexion.');
+      errors.push('Erreur lors de l\'import. Vérifiez votre connexion.');
       setClientImportResults({ success: 0, skipped: 0, errors, commerciauxCreated: 0, enrichedFromProspect: 0 });
     }
     setClientImporting(false);
@@ -957,7 +936,6 @@ export default function ImportPage() {
 
   const downloadClientTemplate = async () => {
     try {
-      const XLSX = await import('xlsx');
       const template = [{
         'Date de création': '2025-01-15',
         'Dénomination': 'Bar Le Central',
@@ -995,13 +973,9 @@ export default function ImportPage() {
         'Commercial principal': 'Guillaume',
         'Commercial secondaire': '',
       }];
-      const ws = XLSX.utils.json_to_sheet(template);
-      ws['!cols'] = Array(Object.keys(template[0]).length).fill({ wch: 22 });
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Template Clients EasyBeer');
-      XLSX.writeFile(wb, 'template-import-clients-easybeer.xlsx');
+      await exporterTableau(template, 'template-import-clients-easybeer.xlsx', { feuille: 'Template Clients EasyBeer', largeurs: Array(Object.keys(template[0]).length).fill(22) });
     } catch {
-      toast.error('Erreur lors de la creation du template');
+      toast.error('Erreur lors de la création du template');
     }
   };
 
@@ -1018,16 +992,12 @@ export default function ImportPage() {
     setCrossDetectedCols({ denomination: '', telFixe: '', telMobile: '', adresse: '' });
 
     try {
-      const XLSX = await import('xlsx');
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawArrays = await lireTableau(file);
 
       // Patterns for recognizable column names
       const headerPatterns = ['denom', 'raison', 'societe', 'société', 'enseigne', 'nom', 'client', 'tel', 'adresse', 'address', 'mobile', 'fixe', 'portable', 'mail', 'email', 'ville', 'code postal', 'siret', 'siren', 'activite', 'activité', 'ape', 'naf', 'ca ', 'chiffre'];
 
       // First pass: read as raw arrays to find the real header row
-      const rawArrays = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
       let headerRowIndex = 0;
       for (let r = 0; r < Math.min(15, rawArrays.length); r++) {
         const rowVals = (rawArrays[r] || []).map(v => String(v ?? '').toLowerCase().trim()).filter(Boolean);
@@ -1040,7 +1010,7 @@ export default function ImportPage() {
       }
 
       // Re-parse with correct header row
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { range: headerRowIndex });
+      const rows = tableauVersObjets(rawArrays, headerRowIndex) as Record<string, any>[];
       setCrossTotalRows(rows.length);
       if (rows.length === 0) { setCrossSearching(false); setCrossDone(true); return; }
 
@@ -1154,7 +1124,7 @@ export default function ImportPage() {
       setCrossMatches(matches);
       setCrossSelected(new Set(matches.map(m => m.prospect.id)));
     } catch {
-      toast.error('Erreur de lecture du fichier. Verifiez le format.');
+      toast.error('Erreur de lecture du fichier. Vérifiez le format.');
     }
     setCrossSearching(false);
     setCrossDone(true);
@@ -1311,7 +1281,7 @@ export default function ImportPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.csv"
                 className="hidden"
                 onChange={handleImport}
               />
@@ -1331,7 +1301,7 @@ export default function ImportPage() {
             className="text-sm text-brewery-600 hover:text-brewery-700 font-medium flex items-center gap-1"
             onClick={downloadTemplate}
           >
-            <Download className="w-4 h-4" /> Telecharger le template d'import
+            <Download className="w-4 h-4" /> Télécharger le template d'import
           </button>
         </div>
 
@@ -1345,7 +1315,7 @@ export default function ImportPage() {
             <p><span className="font-medium text-gray-700">Type de prospect</span> - type d'etablissement</p>
             <p><span className="font-medium text-gray-700">Tournée / Secteur</span> - secteur geographique</p>
             <p><span className="font-medium text-gray-700">Nom</span> - nom du contact</p>
-            <p><span className="font-medium text-gray-700">Prenom</span> - prenom du contact</p>
+            <p><span className="font-medium text-gray-700">Prénom</span> - prenom du contact</p>
             <p><span className="font-medium text-gray-700">E-mail</span> - adresse email</p>
             <p><span className="font-medium text-gray-700">Tel. fixe</span> - téléphone fixe</p>
             <p><span className="font-medium text-gray-700">Tel. mobile</span> - téléphone mobile (prioritaire)</p>
@@ -1385,7 +1355,7 @@ export default function ImportPage() {
               <input
                 ref={crossFileRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.csv"
                 className="hidden"
                 onChange={handleCrossRef}
               />
@@ -1590,7 +1560,7 @@ export default function ImportPage() {
                   <input
                     ref={clientFileRef}
                     type="file"
-                    accept=".xlsx,.xls,.csv"
+                    accept=".xlsx,.csv"
                     className="hidden"
                     onChange={handleClientFileParse}
                   />
@@ -1621,7 +1591,7 @@ export default function ImportPage() {
                 <p>Numéro client</p>
                 <p>Type de client</p>
                 <p>Tournée / Zone</p>
-                <p>Nom / Prenom</p>
+                <p>Nom / Prénom</p>
                 <p>E-mail</p>
                 <p>Tel. fixe / Tel. mobile</p>
                 <p>Adresse de facturation</p>
@@ -1661,7 +1631,7 @@ export default function ImportPage() {
                 {duplicates.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span className="text-amber-700 font-medium">{duplicates.length} doublon(s) detecte(s)</span>
+                    <span className="text-amber-700 font-medium">{duplicates.length} doublon(s) détecté(s)</span>
                   </div>
                 )}
                 {[...parsedClients, ...duplicates.map(d => d.parsed)].filter(c => c.matched_prospect).length > 0 && (
@@ -1721,7 +1691,7 @@ export default function ImportPage() {
               <div className="border border-amber-200 rounded-lg overflow-hidden">
                 <div className="bg-amber-50 px-4 py-3 flex items-center justify-between">
                   <div>
-                    <h4 className="font-semibold text-amber-800 text-sm">Doublons detectes ({duplicates.length})</h4>
+                    <h4 className="font-semibold text-amber-800 text-sm">Doublons détectés ({duplicates.length})</h4>
                     <p className="text-xs text-amber-600 mt-0.5">Choisissez l'action pour chaque doublon</p>
                   </div>
                   <div className="flex gap-2">
@@ -1911,7 +1881,7 @@ export default function ImportPage() {
                 {clientImportResults.success > 0 && (
                   <div className="flex items-center gap-2 text-green-700">
                     <CheckCircle className="w-4 h-4" />
-                    <span className="font-medium">{clientImportResults.success} client(s) importe(s) / mis a jour</span>
+                    <span className="font-medium">{clientImportResults.success} client(s) importe(s) / mis à jour</span>
                   </div>
                 )}
                 {clientImportResults.skipped > 0 && (

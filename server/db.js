@@ -24,6 +24,13 @@ const pool = new Pool({
   ssl: isLocal ? false : { rejectUnauthorized: false },
 });
 
+// Une connexion inactive que PostgreSQL (ou Railway) coupe émet « error » sur le pool. Sans
+// écouteur, Node considère l'événement comme fatal et tout SuiviPro s'arrête. On note et on
+// continue : le pool ouvre une nouvelle connexion à la requête suivante.
+pool.on('error', (err) => {
+  console.error('[PG] connexion perdue :', err.message);
+});
+
 // ============================================
 // Schema
 // ============================================
@@ -422,6 +429,18 @@ async function initDatabase(attempt = 1) {
       ['idx_tasks_client_commercial_id', 'tasks_client', 'commercial_id'],
       ['idx_notifications_user_id', 'notifications', 'user_id'],
       ['idx_commandes_date_commande', 'commandes', 'date_commande'],
+      // Les jointures et rapprochements qui parcouraient la table entière (tâches d'un client,
+      // synchro EasyBeer par identifiant, rendez-vous d'un client, client issu d'un prospect,
+      // recherche par SIRET, par e-mail ou par nom sans la casse).
+      ['idx_tasks_client_client_id', 'tasks_client', 'client_id'],
+      ['idx_commandes_easybeer_id', 'commandes', 'easybeer_id'],
+      ['idx_appointments_client_id', 'appointments', 'client_id'],
+      ['idx_clients_siret', 'clients', 'siret'],
+      ['idx_clients_prospect_id', 'clients', 'prospect_id'],
+      ['idx_prospects_email_lower', 'prospects', 'lower(email)'],
+      ['idx_clients_email_lower', 'clients', 'lower(email)'],
+      ['idx_prospects_nom_lower', 'prospects', 'lower(nom_etablissement)'],
+      ['idx_clients_nom_lower', 'clients', 'lower(nom)'],
     ]) {
       try { await client.query(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table}(${cols})`); } catch { /* index déjà présent */ }
     }
@@ -850,6 +869,13 @@ async function initDatabase(attempt = 1) {
     try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS client_ids TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
     // D'où part la session : le rendez-vous autour duquel on appelle (JSON), pour le montrer sur l'écran d'appel.
     try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS origine TEXT NOT NULL DEFAULT ''"); } catch { /* déjà là */ }
+    // Événements d'agenda sans établissement (réunion, boutique, dépôt, marché) : type, titre, participants.
+    try { await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT 'rdv'"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS titre TEXT NOT NULL DEFAULT ''"); } catch { /* déjà là */ }
+    try { await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS participants TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
+    // Le tag « Mail envoyé » existe d'office : un commercial ne peut pas créer de tag, et sa
+    // trace d'envoi restait silencieusement perdue tant qu'un administrateur ne l'avait pas fait.
+    try { await client.query("INSERT INTO tags (id, nom, couleur, points) SELECT 'tag-mail-envoye', 'Mail envoyé', '#3b82f6', 0 WHERE NOT EXISTS (SELECT 1 FROM tags WHERE lower(nom) IN ('mail envoyé', 'mail envoye'))"); } catch (err) { console.log('Tag Mail envoyé :', err.message); }
     // Le rayon d'« Appeler autour », que chacun règle (3, 5, 10, 15 ou 20 km).
     try { await client.query('ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS rayon_appels_km INTEGER NOT NULL DEFAULT 10'); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS raison_perte TEXT DEFAULT ''"); } catch { /* déjà là */ }

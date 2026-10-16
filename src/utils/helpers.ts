@@ -1,4 +1,5 @@
 import { format, formatDistanceToNow, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { estAppel, appelAbouti } from '../../shared/activite';
 import { fr } from 'date-fns/locale';
 import { Prospect, Call, Appointment, EmailTemplate, Client } from '../types';
 
@@ -551,7 +552,7 @@ export function processEmailTemplate(
 export function exportProspectsCSV(prospects: Prospect[]): void {
   const headers = [
     'Etablissement', 'Type', 'Contact', 'Téléphone', 'Email',
-    'Adresse', 'Ville', 'Code Postal', 'Departement', 'Secteur',
+    'Adresse', 'Ville', 'Code Postal', 'Département', 'Secteur',
     'Étape Pipeline', 'Score', 'Notes', 'Date Creation',
   ];
 
@@ -586,16 +587,17 @@ export function getConversionRate(prospects: Prospect[]): number {
   return Math.round((converted / prospects.length) * 100);
 }
 
+// Un mail envoyé depuis l'écran d'appel n'est pas un appel (règle partagée shared/activite).
 export function getCallsThisWeek(calls: Call[]): Call[] {
-  return calls.filter(c => isThisWeek(c.date));
+  return calls.filter(c => estAppel(c) && isThisWeek(c.date));
 }
 
 export function getCallsThisMonth(calls: Call[]): Call[] {
-  return calls.filter(c => isThisMonth(c.date));
+  return calls.filter(c => estAppel(c) && isThisMonth(c.date));
 }
 
 export function getCallsToday(calls: Call[]): Call[] {
-  return calls.filter(c => isToday(c.date));
+  return calls.filter(c => estAppel(c) && isToday(c.date));
 }
 
 export function getAppointmentsThisWeek(appointments: Appointment[]): Appointment[] {
@@ -613,7 +615,8 @@ export function getAverageCallDuration(calls: Call[]): number {
 }
 
 export function getResponseRate(calls: Call[]): number {
-  if (calls.length === 0) return 0;
-  const answered = calls.filter(c => c.resultat === 'repondu').length;
-  return Math.round((answered / calls.length) * 100);
+  const appels = calls.filter(estAppel);
+  if (appels.length === 0) return 0;
+  const answered = appels.filter(appelAbouti).length;
+  return Math.round((answered / appels.length) * 100);
 }

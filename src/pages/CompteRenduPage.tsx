@@ -490,7 +490,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
               {rdv.heure_debut && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>}
               {rdv.lieu && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{rdv.lieu}</span>}
             </div>
-            {rdv.notes && <p className="text-xs text-gray-400 mt-1 italic line-clamp-1">{rdv.notes}</p>}
+            {rdv.notes && <p className="text-xs text-gray-500 mt-1 italic line-clamp-1">{rdv.notes}</p>}
             {hasCR && rdv.notes_compte_rendu && <p className="text-xs text-green-600 mt-1 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
           </div>
         </div>
@@ -614,7 +614,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
               {client.contact && <span className="text-gray-500">{client.contact}</span>}
             </div>
             {client.next_visit && (
-              <div className="mt-1 text-xs text-gray-400">
+              <div className="mt-1 text-xs text-gray-500">
                 Visite prevue: {client.next_visit}
                 {client.last_visit && ` — Dernière: ${client.last_visit}`}
               </div>
@@ -722,7 +722,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brewery-500"
           >
             <option value="">Mon activité</option>
-            <option value="all">Toute l'equipe</option>
+            <option value="all">Toute l'équipe</option>
             {state.commerciaux.map((c: any) => (
               <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>
             ))}
@@ -829,7 +829,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
             <div className="col-span-2 sm:col-span-3 bg-white rounded-xl border border-gray-200 p-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-gray-600">Résultats des RDV</p>
-                <p className="text-xs text-gray-400 italic">Cliquez pour voir le détail</p>
+                <p className="text-xs text-gray-500 italic">Cliquez pour voir le détail</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(stats.resultCounts).map(([key, count]) => {
@@ -967,7 +967,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
         <div className="space-y-2">
           {dayGroups.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-              <p className="text-sm text-gray-400">Aucune activité sur cette période</p>
+              <p className="text-sm text-gray-500">Aucune activité sur cette période</p>
             </div>
           ) : dayGroups.map(group => {
             const isOpen = expandedDay === group.date;
@@ -1025,7 +1025,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                       <div>
                         <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5" /> Clients a visiter ({group.clientsToVisit.length})
-                          <span className="text-xs font-normal text-gray-400 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
+                          <span className="text-xs font-normal text-gray-500 ml-1">— {visitedCount}/{group.clientsToVisit.length} faits</span>
                         </p>
                         <div className="space-y-2">
                           {group.clientsToVisit.map(renderClientCard)}
@@ -1211,7 +1211,7 @@ export default function CompteRenduPage({ embarque = false }: { embarque?: boole
                       className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Debut</label>
+                    <label className="text-xs font-medium text-purple-600 mb-0.5 block">Début</label>
                     <input type="time" value={visitRdvHeureDebut[rdvModalClient.id] || '10:00'}
                       onChange={e => setVisitRdvHeureDebut(prev => ({ ...prev, [rdvModalClient.id]: e.target.value }))}
                       className="w-full text-sm border border-purple-200 rounded-lg px-2 py-1.5" />

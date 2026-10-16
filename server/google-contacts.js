@@ -89,7 +89,7 @@ function connexion(jeton) {
     db.query('UPDATE google_contacts_tokens SET access_token = $1, expiry_date = $2 WHERE commercial_id = $3',
       [encrypt(t.access_token), t.expiry_date || 0, jeton.commercial_id]).catch(() => {});
   });
-  return google.people({ version: 'v1', auth: oauth });
+  return google.people({ version: 'v1', auth: oauth, timeout: 10000 });
 }
 
 // On renvoie aussi l'adresse de retour attendue. Elle n'est pas secrete — elle figure en
@@ -162,7 +162,7 @@ router.get('/google-contacts/callback', asyncHandler(async (req, res) => {
 
     let adresse = '';
     try {
-      const people = google.people({ version: 'v1', auth: oauth });
+      const people = google.people({ version: 'v1', auth: oauth, timeout: 10000 });
       const moi = await people.people.get({ resourceName: 'people/me', personFields: 'emailAddresses' });
       adresse = moi.data.emailAddresses?.[0]?.value || '';
     } catch { /* pas critique */ }

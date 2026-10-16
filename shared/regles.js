@@ -12,11 +12,19 @@ export function dateLocale(d = new Date()) {
   return `${a}-${m}-${j}`;
 }
 
-/** Ramène une date (chaîne ISO, AAAA-MM-JJ ou Date) à son jour AAAA-MM-JJ. */
+/**
+ * Ramène une date (chaîne ISO, AAAA-MM-JJ ou Date) à son jour AAAA-MM-JJ, à l'heure locale.
+ * Un horodatage (« 2026-10-15T22:30:00.000Z ») est d'abord converti : ses dix premiers
+ * caractères donnent le jour UTC, et un appel passé à 00 h 30 tombait sur la veille.
+ * Un jour nu (« 2026-10-16 ») reste tel quel.
+ */
 export function jourDe(valeur) {
   if (!valeur) return '';
   if (valeur instanceof Date) return dateLocale(valeur);
-  return String(valeur).slice(0, 10);
+  const texte = String(valeur);
+  if (texte.length <= 10) return texte.slice(0, 10);
+  const d = new Date(texte);
+  return Number.isNaN(d.getTime()) ? texte.slice(0, 10) : dateLocale(d);
 }
 
 /** Heure locale HH:MM. */
@@ -110,6 +118,11 @@ export function rdvAnnule(rdv) {
   return !rdv || rdv.statut === 'annule';
 }
 
+/** Un événement d'agenda (réunion, boutique, dépôt, marché) : pas un rendez-vous avec un établissement. */
+export function estEvenement(rdv) {
+  return !!rdv && !!rdv.event_type && rdv.event_type !== 'rdv';
+}
+
 export function rdvPasse(rdv, maintenant = new Date()) {
   if (!rdv) return false;
   const jour = jourDe(rdv.date);
@@ -122,7 +135,7 @@ export function rdvPasse(rdv, maintenant = new Date()) {
 }
 
 export function rdvSansCompteRendu(rdv, maintenant = new Date()) {
-  return !rdvAnnule(rdv) && !rdv.compte_rendu && rdvPasse(rdv, maintenant);
+  return !rdvAnnule(rdv) && !estEvenement(rdv) && !rdv.compte_rendu && rdvPasse(rdv, maintenant);
 }
 
 export function rdvAVenir(rdv, maintenant = new Date()) {

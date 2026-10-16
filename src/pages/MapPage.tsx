@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { dateLocale } from '../../shared/regles';
+import { etapesConnues } from '../utils/etapes';
 import { MapContainer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
 import TuilesCarte from '../components/TuilesCarte';
 import L from 'leaflet';
@@ -137,7 +138,7 @@ export default function MapPage() {
   const peutModifierZone = (z: CommercialZone) => peutDefinirZones && (admin || z.commercial_id === moi?.id);
   // La sélection multiple appartient aux commerciaux et à l'administrateur : c'est eux qui
   // réattribuent un secteur. La prospection ne réattribue pas les fiches des autres.
-  const peutSelectionner = estCommercial(moi);
+  const peutSélectionner = estCommercial(moi);
   const basculer = (setter: typeof setSelProspects) => (id: string) => setter(prev => {
     const suivant = new Set(prev);
     if (suivant.has(id)) suivant.delete(id); else suivant.add(id);
@@ -387,7 +388,7 @@ export default function MapPage() {
       options: (Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({ value: t, label: ESTABLISHMENT_LABELS[t] })),
       selected: new Set(selectedTypes), onToggle: v => toggleType(v as EstablishmentType) },
     { cle: 'etape', titre: 'Étape pipeline', teinte: 'bg-blue-50 text-blue-800 hover:bg-blue-100',
-      options: state.pipelineColumns.map(col => ({ value: col.id, label: col.label, color: col.color })),
+      options: etapesConnues(state.pipelineColumns, state.prospects).map(col => ({ value: col.id, label: col.label, color: col.color })),
       selected: new Set(selectedStages), onToggle: v => toggleStage(v as PipelineStage) },
     { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
       options: state.tags.map(t => ({ value: t.id, label: t.nom, color: t.couleur })),
@@ -424,10 +425,10 @@ export default function MapPage() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header bar */}
+    <div className="h-full flex flex-col overflow-x-hidden">
+      {/* Header bar : sur téléphone, les boutons passent à la ligne au lieu de faire défiler la page. */}
       <div className="p-3 sm:p-4 bg-white border-b border-gray-200 space-y-2 sm:space-y-3">
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
             <input
               type="text"
@@ -499,7 +500,7 @@ export default function MapPage() {
             <span className="sr-only sm:not-sr-only">{modeDessin ? 'Terminer le dessin' : 'Dessiner une zone'}</span>
           </button>}
           {/* Sélectionner plusieurs fiches d'un coup, pour agir sur le lot. */}
-          {peutSelectionner && <button
+          {peutSélectionner && <button
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
               modeSelection ? 'bg-brewery-600 text-white' : 'bg-brewery-50 text-brewery-700 hover:bg-brewery-100'
             }`}
@@ -630,7 +631,7 @@ export default function MapPage() {
 
         {/* Legende couleurs pipeline - cachee sur mobile */}
         <div className="hidden sm:flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-400">Legende :</span>
+          <span className="text-xs text-gray-500">Legende :</span>
           {state.pipelineColumns.map(col => (
             <span key={col.id} className="flex items-center gap-1 text-xs text-gray-500">
               <span
@@ -769,7 +770,7 @@ export default function MapPage() {
 
             {/* Liste des RDV groupes par jour */}
             {weekRdvs.length === 0 ? (
-              <div className="text-center py-4 text-gray-400 text-xs">
+              <div className="text-center py-4 text-gray-500 text-xs">
                 <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 Aucun RDV cette semaine
               </div>
@@ -787,7 +788,7 @@ export default function MapPage() {
                           {isToday && ' - AUJOURD\'HUI'}
                         </span>
                         <div className="flex-1 h-px bg-gray-200" />
-                        <span className="text-xs text-gray-400">{rdvs.length} RDV</span>
+                        <span className="text-xs text-gray-500">{rdvs.length} RDV</span>
                       </div>
                       <div className="space-y-1.5">
                         {rdvs.map(rdv => {
@@ -818,11 +819,11 @@ export default function MapPage() {
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 sm:gap-3 mt-0.5">
-                                    <span className="text-xs text-gray-400 flex items-center gap-0.5">
+                                    <span className="text-xs text-gray-500 flex items-center gap-0.5">
                                       <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
                                     </span>
                                     {rdv.lieu && (
-                                      <span className="text-xs text-gray-400 flex items-center gap-0.5 truncate">
+                                      <span className="text-xs text-gray-500 flex items-center gap-0.5 truncate">
                                         <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
                                       </span>
                                     )}
@@ -926,7 +927,7 @@ export default function MapPage() {
                         </p>
                         <p className="text-xs text-gray-500">{commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'} · {state.prospects.filter(p => p.zone_id === zone.id).length} prospect(s)</p>
                       </div>
-                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-xs text-gray-400 hover:text-brewery-600" title="Renommer">Renommer</button>}
+                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-xs text-gray-500 hover:text-brewery-600" title="Renommer">Renommer</button>}
                     </div>
                     {zone.prioritaire && zone.consigne && !modifiable && (
                       <p className="text-xs text-red-800 bg-red-50 border border-red-100 rounded p-1.5">{zone.consigne}</p>
@@ -959,7 +960,7 @@ export default function MapPage() {
                     >
                       <Phone className="w-3.5 h-3.5" /> Session d'appel pour cette zone ({aAppeler})
                     </button>
-                    {activeFilterCount > 0 && <p className="text-xs text-gray-400 text-center">Selon les filtres actifs de la carte</p>}
+                    {activeFilterCount > 0 && <p className="text-xs text-gray-500 text-center">Selon les filtres actifs de la carte</p>}
                   </div>
                 </Popup>
               </Polygon>

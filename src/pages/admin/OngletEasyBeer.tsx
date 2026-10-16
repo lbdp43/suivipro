@@ -209,7 +209,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error('Erreur lors de la correction');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setEbCorrectingClientId(null);
   };
 
@@ -228,7 +228,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error('Erreur lors de la correction');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setEbCorrectingAll(false);
   };
 
@@ -242,7 +242,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
         // Les paires certaines (identifiant commun) sont cochées d'avance.
         setPairesCochees(new Set((data.paires || []).filter((p: any) => p.score === 100).map((p: any) => `${p.clients[0].id}|${p.clients[1].id}`)));
       } else toast.error('Erreur lors de la détection des doublons');
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setDoublonsLoading(false);
   };
 
@@ -308,7 +308,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error(data.error || data.message || 'Échec de la fusion');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setFusionEnCours(null);
   };
 
@@ -384,7 +384,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       });
       const result = await res.json();
       setEbTestResult(result);
-    } catch { setEbTestResult({ ok: false, message: 'Erreur reseau' }); }
+    } catch { setEbTestResult({ ok: false, message: 'Erreur réseau' }); }
     setEbTesting(false);
   };
 
@@ -518,7 +518,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
         toast.success(data.message || 'Synchronisation des clients lancee');
         setTimeout(loadEbSyncLogs, 1500);
       } else { toast.error(data.message || data.error || 'Échec du lancement'); }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setSyncingClients(false);
   };
 
@@ -529,7 +529,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok !== false) toast.success(`${data.created || 0} visites créées depuis les commandes`);
       else toast.error(data.message || 'Échec');
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setGenVisites(false);
   };
 
@@ -643,7 +643,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
       } else {
         toast.error('Erreur lors du retraitement');
       }
-    } catch { toast.error('Erreur reseau'); }
+    } catch { toast.error('Erreur réseau'); }
     setRetryingEbAssignment(false);
   };
 
@@ -1294,19 +1294,19 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                           );
                         })()}
                         {client.contact_name && (
-                          <p className="text-xs text-gray-400">Contact: {client.contact_name}</p>
+                          <p className="text-xs text-gray-500">Contact: {client.contact_name}</p>
                         )}
                         {client.tournee && (
                           <p className="text-xs text-indigo-500">Tournée : {client.tournee}</p>
                         )}
                         {client.phone_mobile && (
-                          <p className="text-xs text-gray-400">Mobile: {client.phone_mobile}</p>
+                          <p className="text-xs text-gray-500">Mobile: {client.phone_mobile}</p>
                         )}
                         {(client.latitude > 0 || client.longitude > 0) && (
                           <p className="text-xs text-green-500">GPS OK</p>
                         )}
                         {client.siret && (
-                          <p className="text-xs text-gray-400">SIRET: {client.siret}</p>
+                          <p className="text-xs text-gray-500">SIRET: {client.siret}</p>
                         )}
                       </div>
                     </div>
@@ -1460,8 +1460,8 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         {d.params && <p className="text-gray-500 text-sm">Params: {typeof d.params === 'string' ? d.params : JSON.stringify(d.params)}</p>}
                         {d.response_keys && d.response_keys.length > 0 && <p className="text-gray-500">Cles: {d.response_keys.join(', ')}</p>}
                         {d.keys && d.keys.length > 0 && <p className="text-gray-500">Cles: {d.keys.join(', ')}</p>}
-                        {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
-                        {d.body && <p className="text-gray-400 text-xs truncate max-w-full">{d.body.substring(0, 300)}</p>}
+                        {d.sample && <p className="text-gray-500 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
+                        {d.body && <p className="text-gray-500 text-xs truncate max-w-full">{d.body.substring(0, 300)}</p>}
                         {d.shape && <p className="text-gray-500">Shape: {d.shape}</p>}
                       </div>
                     ))}
@@ -1473,10 +1473,10 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                           <div key={i} className="mb-1">
                             <p><strong>{d.method} {d.path}</strong>: HTTP {d.status}{d.error ? ` - ${d.error}` : ''}{d.hasListe !== null ? ` (liste: ${d.hasListe})` : ''}</p>
                             {d.keys && d.keys.length > 0 && <p className="text-gray-500 text-xs">Cles: {d.keys.join(', ')}</p>}
-                            {d.sample && <p className="text-gray-400 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
+                            {d.sample && <p className="text-gray-500 text-xs truncate max-w-full">{d.sample.substring(0, 300)}</p>}
                           </div>
                         ))}
-                        <p className="text-gray-400 text-xs mt-1">
+                        <p className="text-gray-500 text-xs mt-1">
                           (Endpoints 404 masques. {syncAllResult.discovery.filter((d: any) => d.status === 404).length} endpoints retournent 404.)
                         </p>
                       </div>
@@ -1540,7 +1540,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                     {r.label && <p className="text-xs text-gray-500">Test: {r.label}</p>}
                     {r.message && <p className="text-xs text-red-500">{r.message}</p>}
                     {r.keys && r.keys.length > 0 && <p className="text-xs text-gray-500">Cles: {r.keys.join(', ')}</p>}
-                    {r.sample && <p className="text-xs text-gray-400 break-all">{r.sample.substring(0, 400)}</p>}
+                    {r.sample && <p className="text-xs text-gray-500 break-all">{r.sample.substring(0, 400)}</p>}
                     {r.error && <p className="text-xs text-red-400">{r.error}</p>}
                   </div>
                 ))}
@@ -1646,7 +1646,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                       {/* Lignes produits */}
                       {lignes.length > 0 && (
                         <div className="pt-2 border-t border-gray-100">
-                          <p className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-1.5">Produits ({lignes.length})</p>
+                          <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-1.5">Produits ({lignes.length})</p>
                           <div className="space-y-1">
                             {lignes.map((l: any, i: number) => (
                               <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-gray-50 rounded">
@@ -1669,7 +1669,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                         if (Object.keys(rawObj).length === 0) return null;
                         return (
                           <details className="pt-2 border-t border-gray-100">
-                            <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 font-medium">
+                            <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-600 font-medium">
                               Voir les données brutes EasyBeer
                             </summary>
                             <pre className="mt-1.5 p-2 bg-gray-100 rounded text-xs overflow-x-auto whitespace-pre-wrap text-gray-600 max-h-60 overflow-y-auto">
@@ -1709,7 +1709,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                                     } else {
                                       toast.error(data.error || 'Erreur');
                                     }
-                                  } catch { toast.error('Erreur reseau'); }
+                                  } catch { toast.error('Erreur réseau'); }
                                   setAssigningCmd(null);
                                   setAssignCmdClientSearch('');
                                 }}
@@ -1724,7 +1724,7 @@ export default function OngletEasyBeer({ ebOnglet }: { ebOnglet: 'connexion' | '
                           </div>
                         )}
                         {assignCmdClientSearch.length >= 2 && searchResults.length === 0 && (
-                          <p className="text-xs text-gray-400 text-center py-2">Aucun client trouve</p>
+                          <p className="text-xs text-gray-500 text-center py-2">Aucun client trouve</p>
                         )}
                         <button
                           onClick={() => { setAssigningCmd(null); setAssignCmdClientSearch(''); }}

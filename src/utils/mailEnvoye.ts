@@ -21,16 +21,20 @@ export async function marquerMailEnvoye(
   const moi = state.currentUser?.id || 'com-1';
   const normaliser = sansAccents;
   let tag = state.tags.find(t => normaliser(t.nom) === normaliser(NOM_TAG_MAIL));
+  // Le tag existe d'office (créé au démarrage du serveur) ; s'il manque, seul un administrateur
+  // peut le créer. Dans tous les cas, la trace de l'envoi est posée : le tag n'est qu'un plus.
   if (!tag) {
-    tag = { id: generateId('tag'), nom: NOM_TAG_MAIL, couleur: '#3b82f6', points: 0 };
-    await apiPost('/tags', tag);
-    dispatchLocal({ type: 'ADD_TAG', payload: tag });
+    const nouveau = { id: generateId('tag'), nom: NOM_TAG_MAIL, couleur: '#3b82f6', points: 0 };
+    try { await apiPost('/tags', nouveau); dispatchLocal({ type: 'ADD_TAG', payload: nouveau }); tag = nouveau; } catch { tag = undefined; }
   }
-  const tags = prospect.tags.includes(tag.id) ? prospect.tags : [...prospect.tags, tag.id];
-  const tousLesTags = state.tags.some(t => t.id === tag!.id) ? state.tags : [...state.tags, tag];
-  const maj: Prospect = { ...prospect, tags, score: scoreDepuisTags(tags, tousLesTags, prospect.score), date_modification: new Date().toISOString() };
-  await apiPut(`/prospects/${prospect.id}`, maj);
-  dispatchLocal({ type: 'UPDATE_PROSPECT', payload: maj });
+  if (tag) {
+    const leTag = tag;
+    const tags = prospect.tags.includes(leTag.id) ? prospect.tags : [...prospect.tags, leTag.id];
+    const tousLesTags = state.tags.some(t => t.id === leTag.id) ? state.tags : [...state.tags, leTag];
+    const maj: Prospect = { ...prospect, tags, score: scoreDepuisTags(tags, tousLesTags, prospect.score), date_modification: new Date().toISOString() };
+    await apiPut(`/prospects/${prospect.id}`, maj);
+    dispatchLocal({ type: 'UPDATE_PROSPECT', payload: maj });
+  }
 
   const trace = {
     id: generateId('call'),

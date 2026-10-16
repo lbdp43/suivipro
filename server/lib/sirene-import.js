@@ -72,6 +72,8 @@ export async function fetchDatagouvPage(nafCodes, page = 1, departement = '') {
       'Accept': 'application/json',
       'User-Agent': 'suivipro-brasserie/3.0',
     },
+    // Dix secondes : un service lent ne doit pas bloquer la requête de l'écran.
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!response.ok) {
@@ -119,6 +121,8 @@ export async function fetchNearPoint(lat, lng, radius = 10, nafCodes = [], page 
       'Accept': 'application/json',
       'User-Agent': 'suivipro-brasserie/3.0',
     },
+    // Dix secondes : un service lent ne doit pas bloquer la requête de l'écran.
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!response.ok) {

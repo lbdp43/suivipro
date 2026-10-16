@@ -27,6 +27,8 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { decrocheDuClient } from '../utils/commandes';
 import { useLancerSession } from '../hooks/useSessionAppel';
 import { noterInteraction } from '../utils/interactions';
+import { exporterTableau } from '../utils/tableur';
+import { useVerrou } from '../hooks/useVerrou';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
 import LigneGlissante, { AstuceGlissement } from '../components/ui/LigneGlissante';
@@ -57,7 +59,10 @@ const VISIT_STATUS_CONFIG = {
 };
 
 export default function ClientsPage() {
-  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getClient, getCommandesForClient, pausePolling } = useApp();
+  const { state, dispatchLocal, getCommercial, getInteractionsForClient, getClient, getCommandesForClient, pausePolling , stateComplet } = useApp();
+  // Verrous anti double appui : un enregistrement à la fois.
+  const verrouClient = useVerrou();
+  const verrouVisite = useVerrou();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -639,7 +644,7 @@ export default function ClientsPage() {
     setShowForm(true);
   };
 
-  const saveClient = async () => {
+  const saveClient = () => verrouClient.verrouiller(async () => {
     if (!formData.nom?.trim()) return;
     if (!editingClient && !forceCreate && (duplicateClients.length > 0 || duplicateProspects.length > 0)) return;
     const now = new Date().toISOString();
@@ -695,17 +700,15 @@ export default function ClientsPage() {
         }) as Client;
         dispatchLocal({ type: 'ADD_CLIENT', payload: newClient });
       } catch {
-        toast.error('Erreur lors de la creation du client');
+        toast.error('Erreur lors de la création du client');
         return;
       }
     }
     setShowForm(false);
-  };
-
-
+  });
 
   // Mark visit
-  const submitInteraction = async () => {
+  const submitInteraction = () => verrouVisite.verrouiller(async () => {
     if (!interactionClient || !interactionComment.trim()) return;
     const now = new Date().toISOString();
     const interaction = {
@@ -752,7 +755,7 @@ export default function ClientsPage() {
     }
 
     resetInteractionModal();
-  };
+  });
 
   const resetInteractionModal = () => {
     setInteractionClient(null);
@@ -772,7 +775,6 @@ export default function ClientsPage() {
   // Export clients
   const handleExportClients = async () => {
     try {
-      const XLSX = await import('xlsx');
       const data = filtered.map(c => ({
         'Nom': c.nom,
         'Type': CLIENT_TYPE_LABELS[c.type_client],
@@ -791,10 +793,7 @@ export default function ClientsPage() {
         'Notes': c.notes,
         'SIRET': c.siret || '',
       }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Clients');
-      XLSX.writeFile(wb, `clients-${dateLocale(new Date())}.xlsx`);
+      await exporterTableau(data, `clients-${dateLocale(new Date())}.xlsx`, { feuille: 'Clients' });
     } catch { /* ignore */ }
   };
 
@@ -903,7 +902,9 @@ export default function ClientsPage() {
   }, [formData.nom, showForm, editingClient, state.prospects]);
 
   // Selected client detail
-  const selectedClient = selectedId ? state.clients.find(c => c.id === selectedId) : null;
+  // Une fiche ouverte par un lien se trouve même hors du périmètre « Moi » (client d'un collègue).
+  const selectedClient = selectedId ? (state.clients.find(c => c.id === selectedId) || stateComplet.clients.find(c => c.id === selectedId)) : null;
+  const clientHorsPerimetre = !!selectedClient && !state.clients.some(c => c.id === selectedClient.id);
 
   return (
     <div className="flex h-full">
@@ -1109,7 +1110,7 @@ export default function ClientsPage() {
                     );
                   })}
                   {allTournees.length === 0 && (
-                    <span className="text-xs text-gray-400">Aucune tournée configurée</span>
+                    <span className="text-xs text-gray-500">Aucune tournée configurée</span>
                   )}
                 </div>
               </div>
@@ -1351,7 +1352,7 @@ export default function ClientsPage() {
                   onChange={e => setBulkNextVisit(e.target.value)}
                   placeholder="Prochaine visite"
                 />
-                <span className="text-xs text-gray-400">(opt.)</span>
+                <span className="text-xs text-gray-500">(opt.)</span>
               </div>
             )}
 
@@ -1518,7 +1519,7 @@ export default function ClientsPage() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
                           {client.tournee && <span className="text-brewery-600 font-medium">{client.tournee}</span>}
                           {isAdmin && commercial && (
                             <span className="flex items-center gap-1">
@@ -1684,6 +1685,11 @@ export default function ClientsPage() {
       {/* Detail panel */}
       {selectedClient && (
         <div className="w-full md:w-[420px] border-l border-gray-200 bg-white flex flex-col h-full overflow-hidden">
+          {clientHorsPerimetre && (
+            <div className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-b border-amber-100">
+              Client suivi par {getCommercial(selectedClient.commercial_id)?.prenom || 'un collègue'} : il n'apparaît pas dans votre liste « Moi ». Passez en « Toute l'équipe » pour le retrouver.
+            </div>
+          )}
           <FicheClient
             client={selectedClient}
             variante="panneau"
@@ -1712,7 +1718,7 @@ export default function ClientsPage() {
             <div className="p-5 space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nom de l'etablissement *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nom de l'établissement *</label>
                 <input
                   type="text"
                   value={formData.nom || ''}
@@ -1934,7 +1940,7 @@ export default function ClientsPage() {
                 </button>
                 <button
                   onClick={saveClient}
-                  disabled={!formData.nom?.trim()}
+                  disabled={!formData.nom?.trim() || verrouClient.enCours}
                   className="flex items-center gap-1.5 px-4 py-2 bg-brewery-600 text-white rounded-lg text-sm font-medium hover:bg-brewery-700 disabled:opacity-50 transition-colors"
                 >
                   <Save className="w-4 h-4" />
@@ -2103,7 +2109,7 @@ export default function ClientsPage() {
                     </button>
                     <button
                       onClick={submitInteraction}
-                      disabled={!interactionComment.trim() || (interactionType === 'RDV_PLANIFIE' && !interactionDate)}
+                      disabled={verrouVisite.enCours || !interactionComment.trim() || (interactionType === 'RDV_PLANIFIE' && !interactionDate)}
                       className={`flex items-center gap-1.5 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         interactionType === 'VISITE' ? 'bg-green-600 hover:bg-green-700'
                           : interactionType === 'APPEL' ? 'bg-blue-600 hover:bg-blue-700'

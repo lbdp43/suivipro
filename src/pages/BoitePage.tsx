@@ -379,7 +379,7 @@ export default function BoitePage() {
                   {/* Supprimer détruit la ligne pour de bon, quand « Ignorer » se rouvre :
                       c'est pour cela que le geste appartient à l'administrateur seul. */}
                   {moi.role === 'admin' && groupe.length === 1 && (
-                    <button type="button" onClick={() => supprimer(s)} className="ml-auto flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-400 hover:text-red-600 text-xs" title="Supprimer définitivement ce signalement"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => supprimer(s)} className="ml-auto flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-500 hover:text-red-600 text-xs" title="Supprimer définitivement ce signalement"><Trash2 className="w-3.5 h-3.5" /></button>
                   )}
                 </div>
               ) : (

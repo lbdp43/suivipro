@@ -683,7 +683,7 @@ export default function TourneesPage() {
               <p className="font-medium text-gray-900 text-sm truncate">
                 {commercial.prenom} {commercial.nom}
                 {isMe && <span className="text-brewery-600 ml-1">(moi)</span>}
-                {readOnly && !isMe && <span className="text-gray-400 ml-1 text-xs">(lecture seule)</span>}
+                {readOnly && !isMe && <span className="text-gray-500 ml-1 text-xs">(lecture seule)</span>}
               </p>
               <p className="text-xs text-gray-500">
                 {WEEK_PATTERN_LABELS[weekPattern]}
@@ -769,7 +769,7 @@ export default function TourneesPage() {
               const commercialRdvs = rdvCountsByCommercialDay[commercial.id] || {};
               const hasAnyRdv = Object.values(commercialRdvs).some(c => c > 0);
 
-              if (!hasConfig && !hasAnyRdv) return <p className="text-sm text-gray-400 italic py-2">Aucune tournée configurée</p>;
+              if (!hasConfig && !hasAnyRdv) return <p className="text-sm text-gray-500 italic py-2">Aucune tournée configurée</p>;
 
               return (
                 <>
@@ -854,7 +854,7 @@ export default function TourneesPage() {
                               })}
                             </div>
                           ) : dayRdvCount === 0 ? (
-                            <span className="text-xs text-gray-400">-</span>
+                            <span className="text-xs text-gray-500">-</span>
                           ) : null}
                           {daySectorStats && daySectorStats.totalClients > 0 && (
                             <div className={`mt-1 ${zones.length > 0 ? 'pt-1 border-t border-gray-200' : ''}`}>
@@ -941,7 +941,7 @@ export default function TourneesPage() {
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-gray-500 mt-0.5">
             {formatWeekRange()}
           </p>
         </div>

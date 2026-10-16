@@ -3,6 +3,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
 import { dateLocale } from '../../shared/regles.js';
+import { SQL_APPEL, SQL_APPEL_ABOUTI, SQL_VISITE, SQL_RDV_PRIS, SQL_QUI_A_PRIS, SQL_RDV_REALISE } from '../../shared/activite.js';
 import { validationError } from '../lib/validation.js';
 
 const router = Router();
@@ -24,34 +25,33 @@ router.get('/prospection/activite', authMiddleware, asyncHandler(async (req, res
   const [appels, rdvTenus, rdvPris, visites, prospects] = await Promise.all([
     db.query(
       `SELECT commercial_id,
-              COUNT(*) FILTER (WHERE LEFT(date,10) BETWEEN $1 AND $2) AS periode,
-              COUNT(*) FILTER (WHERE LEFT(date,10) BETWEEN $1 AND $2 AND resultat = 'repondu') AS repondus,
-              COUNT(*) FILTER (WHERE LEFT(date,10) = $3) AS aujourdhui,
-              COALESCE(AVG(duree) FILTER (WHERE LEFT(date,10) BETWEEN $1 AND $2 AND duree > 0), 0) AS duree_moyenne
-       FROM calls GROUP BY commercial_id`,
+              COUNT(*) FILTER (WHERE jour_paris(date) BETWEEN $1 AND $2) AS periode,
+              COUNT(*) FILTER (WHERE jour_paris(date) BETWEEN $1 AND $2 AND ${SQL_APPEL_ABOUTI}) AS repondus,
+              COUNT(*) FILTER (WHERE jour_paris(date) = $3) AS aujourdhui,
+              COALESCE(AVG(duree) FILTER (WHERE jour_paris(date) BETWEEN $1 AND $2 AND duree > 0), 0) AS duree_moyenne
+       FROM calls WHERE ${SQL_APPEL} GROUP BY commercial_id`,
       [debut, fin, aujourdhui]
     ),
     db.query(
       `SELECT commercial_id, COUNT(*) AS n FROM appointments
-       WHERE LEFT(date,10) BETWEEN $1 AND $2 GROUP BY commercial_id`,
+       WHERE ${SQL_RDV_REALISE} AND LEFT(date,10) BETWEEN $1 AND $2 GROUP BY commercial_id`,
       [debut, fin]
     ),
     // RDV pris : on compte a la date de prise, et au nom de celui qui l'a pris.
     db.query(
-      `SELECT prospecteur_id AS commercial_id, COUNT(*) AS n FROM appointments
-       WHERE prospecteur_id IS NOT NULL AND prospecteur_id <> ''
-         AND LEFT(COALESCE(NULLIF(created_at,''), date),10) BETWEEN $1 AND $2
-       GROUP BY prospecteur_id`,
+      `SELECT ${SQL_QUI_A_PRIS} AS commercial_id, COUNT(*) AS n FROM appointments
+       WHERE ${SQL_RDV_PRIS} AND jour_paris(created_at) BETWEEN $1 AND $2
+       GROUP BY 1`,
       [debut, fin]
     ),
     db.query(
       `SELECT commercial_id, COUNT(*) AS n FROM interactions
-       WHERE type = 'VISITE' AND LEFT(date,10) BETWEEN $1 AND $2 GROUP BY commercial_id`,
+       WHERE ${SQL_VISITE} AND jour_paris(date) BETWEEN $1 AND $2 GROUP BY commercial_id`,
       [debut, fin]
     ),
     db.query(
       `SELECT commercial_id,
-              COUNT(*) FILTER (WHERE LEFT(date_creation,10) BETWEEN $1 AND $2) AS crees,
+              COUNT(*) FILTER (WHERE jour_paris(date_creation) BETWEEN $1 AND $2) AS crees,
               COUNT(*) FILTER (WHERE etape_pipeline = 'client_gagne') AS gagnes
        FROM prospects GROUP BY commercial_id`,
       [debut, fin]

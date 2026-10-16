@@ -143,7 +143,7 @@ export default function FriseProspect({ prospect, onCompteRendu }: { prospect: P
       {/* Frise */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm"><ArrowRightLeft className="w-4 h-4 text-indigo-500" /> Ce qui s'est passé ({evenements.length})</h3>
-        {evenements.length === 0 ? <p className="text-sm text-gray-400">Rien encore : ni appel, ni mail, ni passage, ni rendez-vous.</p> : (
+        {evenements.length === 0 ? <p className="text-sm text-gray-500">Rien encore : ni appel, ni mail, ni passage, ni rendez-vous.</p> : (
           <div className="relative pl-5 space-y-2.5">
             <div className="absolute left-[7px] top-1 bottom-1 w-px bg-gray-200" />
             {evenements.map(e => (

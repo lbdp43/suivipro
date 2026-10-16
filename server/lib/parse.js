@@ -22,6 +22,14 @@ export function parseProspect(p) {
   return { ...p, tags };
 }
 
+/** Un rendez-vous ou un événement : les participants (JSON en base) redeviennent une liste. */
+export function parseAppointment(a) {
+  if (!a) return a;
+  let participants = a.participants;
+  if (typeof participants === 'string') { try { participants = JSON.parse(participants); } catch { participants = []; } }
+  return { ...a, event_type: a.event_type || 'rdv', titre: a.titre || '', participants: Array.isArray(participants) ? participants : [] };
+}
+
 export function parseCommercial(c) {
   if (!c) return c;
   const { password: _, hub_password: __, hub_email: ___, ...u } = c;

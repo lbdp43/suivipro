@@ -107,7 +107,7 @@ export default function OngletActivite() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <Activity className="w-5 h-5 text-gray-500" />
-                Historique d'activite
+                Historique d'activité
               </h3>
               <select
                 value={activityFilter}
@@ -157,7 +157,7 @@ export default function OngletActivite() {
                           <p className="text-xs text-gray-600 mt-0.5 truncate">{entry.details}</p>
                         )}
                       </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">
+                      <span className="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">
                         {date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>

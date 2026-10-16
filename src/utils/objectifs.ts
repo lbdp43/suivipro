@@ -1,5 +1,6 @@
 import { AppState, Commercial, Objectifs } from '../types';
-import { jourDe, rdvAnnule, rdvSansCompteRendu } from '../../shared/regles';
+import { jourDe, rdvSansCompteRendu } from '../../shared/regles';
+import { estAppel, estRdvPris, quiAPrisLeRdv, rdvRealise, compteCommeVisite, commandeComptee } from '../../shared/activite';
 import { faitDeLaProspection, estCommercial } from './roles';
 
 // ============================================================================
@@ -66,17 +67,15 @@ export function mesurerLeMois(state: AppState, personne: Commercial, maintenant 
   // tableau de l'équipe ; un commercial les voit à part, avec ses visites.
   const appelsClients = estCommercial(personne) ? 0
     : state.interactions.filter(i => i.commercial_id === id && i.type === 'APPEL' && dansLeMois(i.date, debut, finExclue)).length;
-  const appels = state.calls.filter(c => c.commercial_id === id && dansLeMois(c.date, debut, finExclue)).length + appelsClients;
-  const rdvPris = state.appointments.filter(a => a.prospecteur_id === id && dansLeMois(a.created_at, debut, finExclue)).length;
-  const rdvRealises = state.appointments.filter(a =>
-    a.commercial_id === id && !rdvAnnule(a) && dansLeMois(a.date, debut, finExclue) && (a.statut === 'termine' || !!a.compte_rendu)
-  ).length;
+  const appels = state.calls.filter(c => estAppel(c) && c.commercial_id === id && dansLeMois(c.date, debut, finExclue)).length + appelsClients;
+  const rdvPris = state.appointments.filter(a => estRdvPris(a) && quiAPrisLeRdv(a) === id && dansLeMois(a.created_at, debut, finExclue)).length;
+  const rdvRealises = state.appointments.filter(a => a.commercial_id === id && rdvRealise(a) && dansLeMois(a.date, debut, finExclue)).length;
   const clientsVus = new Set(
-    state.interactions.filter(i => i.commercial_id === id && i.type === 'VISITE' && dansLeMois(i.date, debut, finExclue)).map(i => i.client_id)
+    state.interactions.filter(i => i.commercial_id === id && compteCommeVisite(i) && dansLeMois(i.date, debut, finExclue)).map(i => i.client_id)
   ).size;
   const mesClients = new Set(state.clients.filter(c => c.commercial_id === id).map(c => c.id));
   const commandes = state.commandes.filter(c =>
-    c.client_id && mesClients.has(c.client_id) && c.statut !== 'annulee' && dansLeMois(c.date_commande, debut, finExclue)
+    c.client_id && mesClients.has(c.client_id) && commandeComptee(c) && dansLeMois(c.date_commande, debut, finExclue)
   ).length;
   const rdvSansCr = state.appointments.filter(a => a.commercial_id === id && rdvSansCompteRendu(a, maintenant)).length;
 
