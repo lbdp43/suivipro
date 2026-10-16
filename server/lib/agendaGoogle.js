@@ -44,7 +44,7 @@ export async function agendaDe(commercialId) {
     db.query('UPDATE google_calendar_tokens SET access_token = $1, expiry_date = $2 WHERE commercial_id = $3',
       [encrypt(t.access_token), t.expiry_date, commercialId]).catch(() => {});
   });
-  return google.calendar({ version: 'v3', auth: oauth });
+  return google.calendar({ version: 'v3', auth: oauth, timeout: 10000 });
 }
 
 /**

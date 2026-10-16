@@ -1,0 +1,26 @@
+# Ce qu'un contributeur lance avant de pousser : le typage, les règles métier, la construction.
+name: Vérifications
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typage
+        run: npm run lint
+      - name: Règles métier (shared)
+        run: npm test
+      - name: Construction
+        run: npx vite build
+      - name: Failles critiques
+        run: npm audit --audit-level=critical

@@ -71,6 +71,8 @@ async function fetchInsee(nafCode, dateFrom, cursor = 0, apiKey = '') {
       'Accept': 'application/json',
       'X-INSEE-Api-Key-Integration': apiKey,
     },
+    // Dix secondes : un service lent ne doit pas bloquer la requête de l'écran.
+    signal: AbortSignal.timeout(10000),
   });
 
   if (response.status === 404) {
@@ -111,6 +113,7 @@ async function enrichWithDatagouv(siret) {
   try {
     const response = await fetch(`${DATAGOUV_BASE_URL}/search?q=${siret}&per_page=1&minimal=true&include=siege,matching_etablissements`, {
       headers: { 'Accept': 'application/json', 'User-Agent': 'suivipro-brasserie/3.0' },
+      signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) return null;
     const data = await response.json();

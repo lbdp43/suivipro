@@ -36,10 +36,14 @@ async function calculerEtatCommun() {
   // On ne renvoie pas les données brutes EasyBeer des commandes (raw_data) : inutiles à
   // l'écran et lourdes ; l'admin les consulte via /commandes/orphelines.
   const hier = dateLocale(new Date(Date.now() - 86400000));
+  // L'historique chargé par l'appli s'arrête à deux ans : au-delà, les appels, visites, rendez-vous
+  // et commandes ne servent plus aux écrans (frises, chiffres sur 8 semaines, 6 mois, un an) et
+  // faisaient grossir l'état sans fin — 3 Mo à cinq mille prospects. L'IA, elle, lit la base entière.
+  const depuis = dateLocale(new Date(Date.now() - 730 * 86400000));
   const [prospects, calls, appointments, reminders, commerciaux, tags, emailTemplates, pipelineColumns, documents, clients, interactions, tasksClient, tourneeConfigs, commandes, sessionsAppel, commercialZones, signalements, documentSignatures] = await Promise.all([
     db.query('SELECT * FROM prospects'),
-    db.query('SELECT * FROM calls'),
-    db.query('SELECT * FROM appointments'),
+    db.query('SELECT * FROM calls WHERE date >= $1', [depuis]),
+    db.query('SELECT * FROM appointments WHERE date >= $1', [depuis]),
     db.query('SELECT * FROM reminders'),
     // Un membre retiré de l'équipe disparaît de toutes les listes d'un coup : sa ligne
     // reste en base pour que son travail garde son nom, mais elle ne sort plus d'ici.
@@ -49,12 +53,12 @@ async function calculerEtatCommun() {
     db.query('SELECT * FROM pipeline_columns ORDER BY sort_order'),
     db.query(`SELECT ${COLONNES_DOCUMENT} FROM documents ORDER BY date_creation DESC`),
     db.query('SELECT * FROM clients ORDER BY date_modification DESC'),
-    db.query('SELECT * FROM interactions ORDER BY date DESC'),
+    db.query('SELECT * FROM interactions WHERE date >= $1 ORDER BY date DESC', [depuis]),
     db.query('SELECT * FROM tasks_client ORDER BY date_echeance ASC'),
     db.query('SELECT * FROM tournee_config'),
     db.query(`SELECT id, client_id, easybeer_id, numero, date_commande, date_livraison, statut, montant_ht, montant_ttc,
                      lignes, notes, source, client_name, date_creation
-              FROM commandes ORDER BY date_commande DESC`),
+              FROM commandes WHERE date_commande >= $1 ORDER BY date_commande DESC`, [depuis]),
     db.query('SELECT * FROM sessions_appel WHERE jour >= $1', [hier]),
     db.query('SELECT * FROM commercial_zones ORDER BY created_at ASC'),
     // La boîte de prospection : tout ce qui attend, un mois de traités, et ce qui est rattaché à

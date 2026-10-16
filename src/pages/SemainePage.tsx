@@ -53,7 +53,7 @@ export default function SemainePage() {
           </div>
         </div>
       </div>
-      <Suspense fallback={<div className="p-6 text-sm text-gray-400">Chargement…</div>}>
+      <Suspense fallback={<div className="p-6 text-sm text-gray-500">Chargement…</div>}>
         {volet === 'preparer' ? <ClientsPlanningPage embarque /> : <CompteRenduPage embarque />}
       </Suspense>
     </div>

@@ -388,12 +388,12 @@ export default function FicheClient({ client, variante, onFermer, onModifier, on
                       {cmd.lignes.slice(0, 6).map((l, i) => (
                         <div key={i} className="flex justify-between text-xs text-gray-500"><span className="truncate flex-1">{l.nom_produit || l.produit}</span><span className="flex-shrink-0 ml-2">x{l.quantite}</span></div>
                       ))}
-                      {cmd.lignes.length > 6 && <p className="text-xs text-gray-400">+{cmd.lignes.length - 6} autres produits</p>}
+                      {cmd.lignes.length > 6 && <p className="text-xs text-gray-500">+{cmd.lignes.length - 6} autres produits</p>}
                     </div>
                   )}
                 </div>
               ))}
-              {commandes.length > 8 && <p className="text-xs text-gray-400 text-center">+{commandes.length - 8} autres commandes</p>}
+              {commandes.length > 8 && <p className="text-xs text-gray-500 text-center">+{commandes.length - 8} autres commandes</p>}
             </div>
           </div>
         )}

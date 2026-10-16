@@ -80,10 +80,10 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
     <div className="bg-white rounded-xl border border-indigo-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm"><Moon className="w-4 h-4 text-indigo-600" /> Bilan du soir</h3>
-        <span className="text-xs text-gray-400">un message par commercial : RDV pris et appels passés sur ses clients aujourd'hui</span>
+        <span className="text-xs text-gray-500">un message par commercial : RDV pris et appels passés sur ses clients aujourd'hui</span>
       </div>
       {parCommercial.length === 0 ? (
-        <p className="text-xs text-gray-400 italic">Aucun rendez-vous pris ni appel passé aujourd'hui pour un commercial : rien à envoyer.</p>
+        <p className="text-xs text-gray-500 italic">Aucun rendez-vous pris ni appel passé aujourd'hui pour un commercial : rien à envoyer.</p>
       ) : (
         <div className="space-y-3">
           {parCommercial.map(({ commercial, liste, appels }) => {
@@ -95,7 +95,7 @@ export default function BilanDuSoir({ moi }: { moi: Commercial }) {
               <div key={id} className={`rounded-lg border p-3 ${fait ? 'border-green-200 bg-green-50/40' : 'border-gray-200'}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-sm font-semibold text-gray-800">
-                    {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial inconnu'} <span className="text-xs font-normal text-gray-400">· {[liste.length ? `${liste.length} RDV` : '', appels.length ? `${appels.length} appel${appels.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</span>
+                    {commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial inconnu'} <span className="text-xs font-normal text-gray-500">· {[liste.length ? `${liste.length} RDV` : '', appels.length ? `${appels.length} appel${appels.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</span>
                     {fait && <span className="ml-2 text-xs text-green-700 inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> envoyé</span>}
                   </p>
                   <div className="flex gap-1.5">

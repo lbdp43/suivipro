@@ -213,7 +213,7 @@ export default function FriseClient({ client }: { client: Client }) {
       </div>
 
       {filtres.length === 0 ? (
-        <p className="py-4 text-center text-xs text-gray-400">Rien encore : ni visite, ni commande, ni rendez-vous.</p>
+        <p className="py-4 text-center text-xs text-gray-500">Rien encore : ni visite, ni commande, ni rendez-vous.</p>
       ) : (
         <ol className="space-y-4">
           {parJour.map(g => (

@@ -625,7 +625,7 @@ export default function PipelinePage() {
                     ) : (
                       <>
                         <span className="flex-1 text-sm font-medium text-gray-900">{col.label}</span>
-                        <span className="text-xs text-gray-400">{count} prospect{count > 1 ? 's' : ''}</span>
+                        <span className="text-xs text-gray-500">{count} prospect{count > 1 ? 's' : ''}</span>
                         <button aria-label={`Modifier la colonne ${col.label}`} className="p-1 text-gray-400 hover:text-blue-600" onClick={() => startEditColumn(col)}>
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -643,7 +643,7 @@ export default function PipelinePage() {
               })}
             </div>
 
-            <p className="text-xs text-gray-400 flex items-center gap-1">
+            <p className="text-xs text-gray-500 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
               Supprimer une étape deplacera ses prospects vers la première étape restante
             </p>
@@ -717,10 +717,10 @@ export default function PipelinePage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-sm text-gray-900 truncate">{col.label}</h3>
                   {PIPELINE_DESCRIPTIONS[col.id] && (
-                    <p className="text-xs text-gray-400 leading-snug">({PIPELINE_DESCRIPTIONS[col.id]})</p>
+                    <p className="text-xs text-gray-500 leading-snug">({PIPELINE_DESCRIPTIONS[col.id]})</p>
                   )}
                 </div>
-                <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200 flex-shrink-0">
+                <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200 flex-shrink-0">
                   {(prospectsByStage[col.id] || []).length}
                 </span>
                 {(prospectsByStage[col.id] || []).some(p => p.telephone) && (
@@ -761,7 +761,7 @@ export default function PipelinePage() {
                               {stagne && <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={r?.sansActivite === null ? 'Jamais contacté' : `Aucune activité depuis ${r?.sansActivite} jours`} />}
                               {prospect.nom_etablissement}
                             </h4>
-                            <span className="text-xs text-gray-400 tabular-nums flex-shrink-0 flex items-center gap-0.5" title="Jours dans cette étape"><Clock className="w-2.5 h-2.5" /> J+{r?.jours ?? 0}</span>
+                            <span className="text-xs text-gray-500 tabular-nums flex-shrink-0 flex items-center gap-0.5" title="Jours dans cette étape"><Clock className="w-2.5 h-2.5" /> J+{r?.jours ?? 0}</span>
                           </div>); })()}
                         <p className="text-xs text-gray-500 mt-0.5">
                           {ESTABLISHMENT_LABELS[prospect.type_etablissement]}
@@ -889,7 +889,7 @@ export default function PipelinePage() {
                               {columns.filter(c => c.id !== prospect.etape_pipeline).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                             </select>
                           ) : (
-                            <span className="text-xs text-gray-400">
+                            <span className="text-xs text-gray-500">
                               Score: {prospect.score}
                             </span>
                           )}

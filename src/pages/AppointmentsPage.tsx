@@ -401,7 +401,7 @@ export default function AppointmentsPage() {
                   {rdvTelephone}
                 </a>
                 {rdvContact && (
-                  <span className="text-xs text-gray-400">({rdvContact})</span>
+                  <span className="text-xs text-gray-500">({rdvContact})</span>
                 )}
               </div>
             )}
@@ -441,7 +441,7 @@ export default function AppointmentsPage() {
           {rdv.notes_compte_rendu && (
             <p className="text-xs text-gray-500 bg-indigo-50/50 px-2 py-1 rounded italic">{rdv.notes_compte_rendu}</p>
           )}
-          <p className="text-xs text-gray-400 flex items-center gap-1">
+          <p className="text-xs text-gray-500 flex items-center gap-1">
             <Users className="w-3 h-3" /> {commercial?.prenom} {commercial?.nom}
           </p>
           {prospecteurCard && prospecteurCard.id !== commercial?.id && (
@@ -451,7 +451,7 @@ export default function AppointmentsPage() {
           )}
           {rdvParticipants.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-xs text-gray-400">Participants :</span>
+              <span className="text-xs text-gray-500">Participants :</span>
               {rdvParticipants.map(p => (
                 <span key={p!.id} className="text-xs bg-brewery-50 text-brewery-700 px-1.5 py-0.5 rounded font-medium">
                   {p!.prenom}
@@ -775,7 +775,7 @@ export default function AppointmentsPage() {
                           <span className="text-xs bg-brewery-600 text-white px-1.5 py-0.5 rounded-full font-medium">Aujourd'hui</span>
                         )}
                       </div>
-                      <span className="text-xs text-gray-400">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
+                      <span className="text-xs text-gray-500">{dayRdvs.length} {dayRdvs.some(r => r.event_type && r.event_type !== 'rdv') ? 'elem.' : 'RDV'}</span>
                     </div>
                     {(() => { const jour = String(new Date(day.date + 'T12:00:00').getDay()); return resumes.length > 0 ? (
                       <div className={`px-4 pb-2 ${day.isToday ? 'bg-brewery-100/50 border-brewery-200' : 'bg-gray-50 border-gray-100'} border-b`}>
@@ -892,7 +892,7 @@ export default function AppointmentsPage() {
                                           {prospect.telephone}
                                         </a>
                                         {prospect.nom_contact && (
-                                          <span className="text-xs text-gray-400">({prospect.nom_contact})</span>
+                                          <span className="text-xs text-gray-500">({prospect.nom_contact})</span>
                                         )}
                                       </div>
                                     )}
@@ -989,7 +989,7 @@ export default function AppointmentsPage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-center text-xs text-gray-400 py-2">Aucun rendez-vous</p>
+                        <p className="text-center text-xs text-gray-500 py-2">Aucun rendez-vous</p>
                       )}
                     </div>
                   </div>
@@ -1034,7 +1034,7 @@ export default function AppointmentsPage() {
           {resumes.length > 0 && (
             <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <div className="min-w-[700px] grid grid-cols-[60px_repeat(7,1fr)] gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1.5">
-                <div className="text-xs text-gray-400 flex items-center">Tournées</div>
+                <div className="text-xs text-gray-500 flex items-center">Tournées</div>
                 {JOURS_SEMAINE.map(jour => (
                   <div key={jour} className="min-w-0"><PucesTourneesDuJour resumes={resumes} jour={jour} onInfo={setInfoTournee} compact /></div>
                 ))}
@@ -1116,7 +1116,7 @@ export default function AppointmentsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-2">Période</label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-1">Du</label>
+                    <label className="block text-xs text-gray-500 mb-1">Du</label>
                     <input
                       type="date"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1125,7 +1125,7 @@ export default function AppointmentsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-400 mb-1">Au</label>
+                    <label className="block text-xs text-gray-500 mb-1">Au</label>
                     <input
                       type="date"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
@@ -1178,7 +1178,7 @@ export default function AppointmentsPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-400 italic">Aucun RDV sur cette période</p>
+                  <p className="text-xs text-gray-500 italic">Aucun RDV sur cette période</p>
                 )}
               </div>
             </div>
@@ -1311,7 +1311,7 @@ export default function AppointmentsPage() {
                   })}
                 </div>
                 {formData.participants.length === 0 && (
-                  <p className="text-xs text-gray-400 mt-0.5">Cliquez pour assigner des personnes</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Cliquez pour assigner des personnes</p>
                 )}
               </div>
 

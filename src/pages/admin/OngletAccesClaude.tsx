@@ -156,13 +156,13 @@ export default function OngletAccesClaude() {
             <Plus className="w-4 h-4" /> Créer
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2">Valable un an. Une personne peut avoir plusieurs accès : créez le nouveau, puis révoquez l'ancien.</p>
+        <p className="text-xs text-gray-500 mt-2">Valable un an. Une personne peut avoir plusieurs accès : créez le nouveau, puis révoquez l'ancien.</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide px-4 pt-4">Accès en service ({actifs.length})</h3>
-        {chargement && <p className="text-sm text-gray-400 p-4">Chargement…</p>}
-        {!chargement && actifs.length === 0 && <p className="text-sm text-gray-400 p-4">Aucun accès pour le moment.</p>}
+        {chargement && <p className="text-sm text-gray-500 p-4">Chargement…</p>}
+        {!chargement && actifs.length === 0 && <p className="text-sm text-gray-500 p-4">Aucun accès pour le moment.</p>}
         <div className="divide-y divide-gray-100 mt-2">
           {actifs.map(j => {
             const restants = joursAvant(j.expire_le);
@@ -174,7 +174,7 @@ export default function OngletAccesClaude() {
                     {j.prenom} {j.nom_commercial}
                     <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{j.role}</span>
                     {j.nom && <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-brewery-50 text-brewery-700">{j.nom}</span>}
-                    <span className="ml-2 text-xs font-mono text-gray-400">…{j.indice}</span>
+                    <span className="ml-2 text-xs font-mono text-gray-500">…{j.indice}</span>
                   </p>
                   <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-3">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> dernière utilisation : {dateEtHeure(j.derniere_utilisation)}</span>
@@ -196,7 +196,7 @@ export default function OngletAccesClaude() {
           <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Accès révoqués ou expirés ({anciens.length})</h3>
           <div className="space-y-1">
             {anciens.map(j => (
-              <p key={j.id} className="text-xs text-gray-400">
+              <p key={j.id} className="text-xs text-gray-500">
                 {j.prenom} {j.nom_commercial} · {j.nom} · …{j.indice} · {j.revoque_le ? `révoqué le ${dateCourte(j.revoque_le)}` : `expiré le ${dateCourte(j.expire_le)}`} · {j.appels} requête(s)
               </p>
             ))}

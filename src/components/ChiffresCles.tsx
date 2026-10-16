@@ -115,7 +115,7 @@ function Carte({ sorte, chiffre }: { sorte: Sorte; chiffre: ChiffreCle }) {
         <Link to={d.lien} className="truncate after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-brewery-500">{d.titre}</Link>
       </p>
       <p className="mt-1 text-2xl font-bold leading-none tabular-nums text-gray-900">{nombre(chiffre.valeur, d.euros)}</p>
-      <p className="mt-0.5 text-xs text-gray-400">{d.periode}</p>
+      <p className="mt-0.5 text-xs text-gray-500">{d.periode}</p>
       <div className="mt-2"><Courbe points={chiffre.courbe} couleur={d.couleur} titre={d.titre} actif={actif} onActif={setActif} /></div>
       <p className="mt-1.5 flex min-h-5 flex-wrap items-center gap-x-1 text-xs" aria-live="polite">
         {actif !== null ? (

@@ -276,7 +276,7 @@ export default function EmailTemplateModal(props: Props) {
                       <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-700 truncate">{doc.nom}</p>
-                        <p className="text-xs text-gray-400">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
+                        <p className="text-xs text-gray-500">{DOCUMENT_CATEGORY_LABELS[doc.categorie as DocumentCategory] || doc.categorie} — {doc.nom_fichier}</p>
                       </div>
                     </label>
                   ))}

@@ -92,7 +92,7 @@ export default function AdminPage({ section }: { section?: 'easybeer' } = {}) {
         ))}
       </div>
 
-      <Suspense fallback={<div className="p-6 text-sm text-gray-400">Chargement…</div>}>
+      <Suspense fallback={<div className="p-6 text-sm text-gray-500">Chargement…</div>}>
         {activeTab === 'team' && <OngletEquipe />}
         {activeTab === 'objectives' && <OngletObjectifs />}
         {activeTab === 'tags' && <OngletTags />}

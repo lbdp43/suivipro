@@ -631,7 +631,7 @@ export default function MapPage() {
 
         {/* Legende couleurs pipeline - cachee sur mobile */}
         <div className="hidden sm:flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-400">Legende :</span>
+          <span className="text-xs text-gray-500">Legende :</span>
           {state.pipelineColumns.map(col => (
             <span key={col.id} className="flex items-center gap-1 text-xs text-gray-500">
               <span
@@ -770,7 +770,7 @@ export default function MapPage() {
 
             {/* Liste des RDV groupes par jour */}
             {weekRdvs.length === 0 ? (
-              <div className="text-center py-4 text-gray-400 text-xs">
+              <div className="text-center py-4 text-gray-500 text-xs">
                 <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 Aucun RDV cette semaine
               </div>
@@ -788,7 +788,7 @@ export default function MapPage() {
                           {isToday && ' - AUJOURD\'HUI'}
                         </span>
                         <div className="flex-1 h-px bg-gray-200" />
-                        <span className="text-xs text-gray-400">{rdvs.length} RDV</span>
+                        <span className="text-xs text-gray-500">{rdvs.length} RDV</span>
                       </div>
                       <div className="space-y-1.5">
                         {rdvs.map(rdv => {
@@ -819,11 +819,11 @@ export default function MapPage() {
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 sm:gap-3 mt-0.5">
-                                    <span className="text-xs text-gray-400 flex items-center gap-0.5">
+                                    <span className="text-xs text-gray-500 flex items-center gap-0.5">
                                       <Users className="w-2.5 h-2.5" /> {commercial?.prenom}
                                     </span>
                                     {rdv.lieu && (
-                                      <span className="text-xs text-gray-400 flex items-center gap-0.5 truncate">
+                                      <span className="text-xs text-gray-500 flex items-center gap-0.5 truncate">
                                         <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {rdv.lieu}
                                       </span>
                                     )}
@@ -927,7 +927,7 @@ export default function MapPage() {
                         </p>
                         <p className="text-xs text-gray-500">{commercial ? `${commercial.prenom} ${commercial.nom}` : 'Commercial'} · {state.prospects.filter(p => p.zone_id === zone.id).length} prospect(s)</p>
                       </div>
-                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-xs text-gray-400 hover:text-brewery-600" title="Renommer">Renommer</button>}
+                      {modifiable && <button onClick={() => renommerZone(zone)} className="text-xs text-gray-500 hover:text-brewery-600" title="Renommer">Renommer</button>}
                     </div>
                     {zone.prioritaire && zone.consigne && !modifiable && (
                       <p className="text-xs text-red-800 bg-red-50 border border-red-100 rounded p-1.5">{zone.consigne}</p>
@@ -960,7 +960,7 @@ export default function MapPage() {
                     >
                       <Phone className="w-3.5 h-3.5" /> Session d'appel pour cette zone ({aAppeler})
                     </button>
-                    {activeFilterCount > 0 && <p className="text-xs text-gray-400 text-center">Selon les filtres actifs de la carte</p>}
+                    {activeFilterCount > 0 && <p className="text-xs text-gray-500 text-center">Selon les filtres actifs de la carte</p>}
                   </div>
                 </Popup>
               </Polygon>

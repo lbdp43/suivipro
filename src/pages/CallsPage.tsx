@@ -204,8 +204,8 @@ export default function CallsPage() {
                 </div>
                 <div className="text-right flex-shrink-0 hidden sm:block">
                   <p className="text-xs font-medium text-gray-600">{CALL_RESULT_LABELS[call.resultat]}</p>
-                  <p className="text-xs text-gray-400">{formatDuration(call.duree)} - {commercial?.prenom}</p>
-                  <p className="text-xs text-gray-400">{formatTimeAgo(call.date)}</p>
+                  <p className="text-xs text-gray-500">{formatDuration(call.duree)} - {commercial?.prenom}</p>
+                  <p className="text-xs text-gray-500">{formatTimeAgo(call.date)}</p>
                 </div>
                 <div className="sm:hidden text-right flex-shrink-0">
                   <p className="text-xs text-gray-500">{formatTimeAgo(call.date)}</p>
@@ -231,7 +231,7 @@ export default function CallsPage() {
             );
           })}
           {filteredCalls.length === 0 && (
-            <div className="p-8 text-center text-sm text-gray-400">Aucun appel enregistré</div>
+            <div className="p-8 text-center text-sm text-gray-500">Aucun appel enregistré</div>
           )}
         </div>
 
@@ -258,7 +258,7 @@ export default function CallsPage() {
                 }, [])
                 .map((item, idx) =>
                   item === 'dots' ? (
-                    <span key={`dots-${idx}`} className="px-1 text-xs text-gray-400">...</span>
+                    <span key={`dots-${idx}`} className="px-1 text-xs text-gray-500">...</span>
                   ) : (
                     <button
                       key={item}
@@ -300,7 +300,7 @@ export default function CallsPage() {
                 <p className="text-sm font-medium text-gray-900">
                   {state.prospects.find(p => p.id === editingCall.prospect_id)?.nom_etablissement || 'Inconnu'}
                 </p>
-                <p className="text-xs text-gray-400">{formatTimeAgo(editingCall.date)}</p>
+                <p className="text-xs text-gray-500">{formatTimeAgo(editingCall.date)}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Résultat</label>
@@ -323,7 +323,7 @@ export default function CallsPage() {
                   value={editForm.duree}
                   onChange={e => setEditForm(prev => ({ ...prev, duree: parseInt(e.target.value) || 0 }))}
                 />
-                <p className="text-xs text-gray-400 mt-0.5">{formatDuration(editForm.duree)}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{formatDuration(editForm.duree)}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>

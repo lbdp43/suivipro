@@ -883,7 +883,7 @@ export default function ProspectsPage() {
           )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <p className="text-xs text-gray-400">{filteredProspects.length} prospect(s)</p>
+              <p className="text-xs text-gray-500">{filteredProspects.length} prospect(s)</p>
               <select
                 className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white"
                 value={pageSize}
@@ -1006,7 +1006,7 @@ export default function ProspectsPage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-sm text-gray-900 truncate">{p.nom_etablissement}</h3>
                   <p className="text-xs text-gray-500">{p.nom_contact} - {ESTABLISHMENT_LABELS[p.type_etablissement]}</p>
-                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
                     <MapPin className="w-3 h-3" /> {p.ville || p.adresse}{p.secteur ? ` - ${p.secteur}` : ''}
                   </div>
                   {p.notes && (
@@ -1399,7 +1399,7 @@ export default function ProspectsPage() {
                 </div>
               )}
 
-              <div className="mt-3 text-xs text-gray-400">
+              <div className="mt-3 text-xs text-gray-500">
                 Cree le {formatDate(selectedProspect.date_creation)} - Modifie {formatTimeAgo(selectedProspect.date_modification)}
               </div>
             </div>
@@ -1895,7 +1895,7 @@ export default function ProspectsPage() {
                     </button>
                   ))}
                   {state.tags.length === 0 && (
-                    <p className="text-xs text-gray-400">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
+                    <p className="text-xs text-gray-500">Aucun tag. Cliquez "Gérer les tags" pour en créer.</p>
                   )}
                 </div>
 
@@ -1998,7 +1998,7 @@ export default function ProspectsPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Score (0-100)</label>
                 {baremeActif(state.tags) ? (
                   <p className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-400">· 50 + points des tags</span>
+                    {scoreDepuisTags(formData.tags || [], state.tags, formData.score || 50)} pts <span className="text-xs text-gray-500">· 50 + points des tags</span>
                   </p>
                 ) : (
                   <input type="number" min="0" max="100" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" value={formData.score || 50} onChange={e => setFormData(prev => ({ ...prev, score: parseInt(e.target.value) || 0 }))} />

@@ -620,7 +620,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
               <p className="text-sm font-semibold text-gray-700">Résultats des RDV</p>
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">{resultsData.totalRdv} RDV</span>
             </div>
-            <p className="text-xs text-gray-400 italic hidden sm:block">Cliquez pour voir le détail</p>
+            <p className="text-xs text-gray-500 italic hidden sm:block">Cliquez pour voir le détail</p>
           </div>
 
           {/* Period selector */}
@@ -644,7 +644,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                 {p.label}
               </button>
             ))}
-            <span className="text-xs text-gray-400 ml-1">({resultsData.periodLabel})</span>
+            <span className="text-xs text-gray-500 ml-1">({resultsData.periodLabel})</span>
           </div>
 
           {/* Stats summary */}
@@ -867,7 +867,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                         {day.visitDueCount} a visiter
                       </span>
                     )}
-                    <span className="text-xs text-gray-400">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
+                    <span className="text-xs text-gray-500">{day.totalClients} client{day.totalClients > 1 ? 's' : ''}</span>
                     {(planningData.rdvByDate[day.dateStr] || []).length > 0 && (
                       <span className="text-xs font-medium text-blue-600">
                         {planningData.rdvByDate[day.dateStr].length} rendez-vous
@@ -940,7 +940,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                                     {rdv.heure_debut && <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{rdv.heure_debut}{rdv.heure_fin ? ` - ${rdv.heure_fin}` : ''}</span>}
                                     {rdv.lieu && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{rdv.lieu}</span>}
                                   </div>
-                                  {rdv.notes && <p className="text-xs text-gray-400 mt-0.5 italic line-clamp-1">{rdv.notes}</p>}
+                                  {rdv.notes && <p className="text-xs text-gray-500 mt-0.5 italic line-clamp-1">{rdv.notes}</p>}
                                   {hasCR && rdv.notes_compte_rendu && <p className="text-xs text-green-600 mt-0.5 italic line-clamp-1">{rdv.notes_compte_rendu}</p>}
                                 </div>
                               </div>
@@ -968,7 +968,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                   )}
 
                   {day.sectors.length === 0 && !(planningData.rdvByDate[day.dateStr] || []).length ? (
-                    <p className="text-xs text-gray-400 italic">Aucun secteur prévu ce jour</p>
+                    <p className="text-xs text-gray-500 italic">Aucun secteur prévu ce jour</p>
                   ) : day.sectors.length > 0 ? (
                     <div className="space-y-3">
                       {day.sectors.map(sector => (
@@ -976,7 +976,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <Map className="w-3.5 h-3.5 text-indigo-400" />
                             <span className="text-xs font-semibold text-indigo-600">{sector.zone}</span>
-                            <span className="text-xs text-gray-400">{sector.clients.length} client{sector.clients.length > 1 ? 's' : ''}</span>
+                            <span className="text-xs text-gray-500">{sector.clients.length} client{sector.clients.length > 1 ? 's' : ''}</span>
                             {sector.visitDueClients.length > 0 && (
                               <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-600 rounded">
                                 {sector.visitDueClients.length} en attente
@@ -1058,7 +1058,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
           </span>
           <button
             onClick={() => setSelectedClients(new Set())}
-            className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
+            className="text-xs text-gray-500 hover:text-gray-600 whitespace-nowrap"
           >
             Tout désélectionner
           </button>
@@ -1157,7 +1157,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
             {/* Client list */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {scheduleEntries.length === 0 ? (
-                <p className="text-sm text-gray-400 italic text-center py-4">Aucun client sélectionné</p>
+                <p className="text-sm text-gray-500 italic text-center py-4">Aucun client sélectionné</p>
               ) : (
                 scheduleEntries.map((entry, idx) => {
                   const client = state.clients.find(c => c.id === entry.clientId);
@@ -1167,7 +1167,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
                       <span className="text-xs text-gray-400 font-mono w-5 text-center">{idx + 1}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800 truncate">{client.nom}</p>
-                        <p className="text-xs text-gray-400 truncate">{client.ville}{client.adresse ? ` - ${client.adresse}` : ''}</p>
+                        <p className="text-xs text-gray-500 truncate">{client.ville}{client.adresse ? ` - ${client.adresse}` : ''}</p>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <input
@@ -1294,7 +1294,7 @@ export default function ClientsPlanningPage({ embarque = false }: { embarque?: b
           </span>
           <button
             onClick={() => setMassSelectedClients(new Set())}
-            className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
+            className="text-xs text-gray-500 hover:text-gray-600 whitespace-nowrap"
           >
             Tout désélectionner
           </button>

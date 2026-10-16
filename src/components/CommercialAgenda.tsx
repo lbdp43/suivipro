@@ -223,7 +223,7 @@ export default function CommercialAgenda({
           {hours.map(h => (
             <div
               key={h}
-              className="absolute left-0 right-0 text-xs text-gray-400 text-right pr-2 -translate-y-1/2"
+              className="absolute left-0 right-0 text-xs text-gray-500 text-right pr-2 -translate-y-1/2"
               style={{ top: (h - HOUR_START) * SLOT_HEIGHT }}
             >
               {h}:00
@@ -378,13 +378,13 @@ export default function CommercialAgenda({
                         </p>
                       )}
                       {height >= 52 && !filterCommercial && (
-                        <p className="text-xs text-gray-400 truncate">
+                        <p className="text-xs text-gray-500 truncate">
                           {commercial?.prenom}
                           {(rdv.participants || []).length > 0 && ` +${rdv.participants!.length}`}
                         </p>
                       )}
                       {height >= 68 && rdv.lieu && (
-                        <p className="text-[8px] text-gray-400 truncate flex items-center gap-0.5">
+                        <p className="text-[8px] text-gray-500 truncate flex items-center gap-0.5">
                           <MapPin className="w-2.5 h-2.5 inline flex-shrink-0" /> {rdv.lieu}
                         </p>
                       )}

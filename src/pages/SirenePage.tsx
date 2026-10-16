@@ -460,7 +460,7 @@ export default function SirenePage() {
           <Database className="w-6 h-6 text-sky-500" />
           Import Datagouv
         </h1>
-        <span className="text-xs text-gray-400">API recherche-entreprises.api.gouv.fr (aucune cle requise)</span>
+        <span className="text-xs text-gray-500">API recherche-entreprises.api.gouv.fr (aucune cle requise)</span>
       </div>
 
       {/* Stats */}
@@ -513,7 +513,7 @@ export default function SirenePage() {
 
         {/* List of configs */}
         {zoneConfigs.length === 0 && !showNewConfigForm && (
-          <p className="text-sm text-gray-400 text-center py-4">Aucune configuration. Creez-en une pour lancer la sync automatique INSEE.</p>
+          <p className="text-sm text-gray-500 text-center py-4">Aucune configuration. Creez-en une pour lancer la sync automatique INSEE.</p>
         )}
 
         <div className="space-y-3">
@@ -822,13 +822,13 @@ export default function SirenePage() {
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Nouveau (SIRENE)</p>
+                        <p className="text-xs text-gray-500 mb-0.5">Nouveau (SIRENE)</p>
                         <p className="font-medium text-gray-900">{dup.sirene_nom}</p>
                         <p className="text-gray-500">{dup.sirene_ville} - SIRET: {dup.sirene_siret}</p>
-                        <p className="text-gray-400 text-xs">NAF: {dup.sirene_naf}</p>
+                        <p className="text-gray-500 text-xs">NAF: {dup.sirene_naf}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Existant (prospect)</p>
+                        <p className="text-xs text-gray-500 mb-0.5">Existant (prospect)</p>
                         <p className="font-medium text-gray-900">{dup.existing_nom}</p>
                         <p className="text-gray-500">{dup.existing_ville}{dup.existing_siret ? ` - SIRET: ${dup.existing_siret}` : ''}</p>
                       </div>
@@ -916,7 +916,7 @@ export default function SirenePage() {
                   value={customNafInput}
                   onChange={e => setCustomNafInput(e.target.value)}
                 />
-                <p className="text-xs text-gray-400 mt-0.5">Ajoutez des codes NAF hors liste (hotellerie, loisirs, epiceries, etc.)</p>
+                <p className="text-xs text-gray-500 mt-0.5">Ajoutez des codes NAF hors liste (hotellerie, loisirs, epiceries, etc.)</p>
               </div>
             </div>
 
@@ -1188,7 +1188,7 @@ export default function SirenePage() {
                   <td className="px-2 py-2">
                     <p className="font-medium text-gray-800">{etab.enseigne || etab.nom}</p>
                     {etab.enseigne && etab.nom !== etab.enseigne && (
-                      <p className="text-xs text-gray-400">{etab.nom}</p>
+                      <p className="text-xs text-gray-500">{etab.nom}</p>
                     )}
                   </td>
                   <td className="px-2 py-2 text-gray-500 font-mono">{etab.siret}</td>
@@ -1196,7 +1196,7 @@ export default function SirenePage() {
                     <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded text-xs">
                       {etab.code_naf}
                     </span>
-                    <p className="text-xs text-gray-400 mt-0.5">{etab.libelle_naf}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{etab.libelle_naf}</p>
                   </td>
                   <td className="px-2 py-2 text-gray-600">{etab.commune}</td>
                   <td className="px-2 py-2 text-gray-600">{etab.departement}</td>
@@ -1259,7 +1259,7 @@ export default function SirenePage() {
                   <p className="text-xs text-red-600 mt-1">{log.error_message}</p>
                 )}
                 {log.naf_codes && (
-                  <p className="text-xs text-gray-400 mt-1">NAF: {log.naf_codes} | Depts: {log.departements}</p>
+                  <p className="text-xs text-gray-500 mt-1">NAF: {log.naf_codes} | Depts: {log.departements}</p>
                 )}
               </div>
             ))}

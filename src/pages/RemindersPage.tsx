@@ -252,7 +252,7 @@ export default function RemindersPage({ embarque = false, idsVisibles = null }: 
                 </Link>
               )}
               {commercial && (
-                <span className="text-xs text-gray-400 flex items-center gap-1">
+                <span className="text-xs text-gray-500 flex items-center gap-1">
                   <User className="w-3 h-3" /> {commercial.prenom} {commercial.nom}
                 </span>
               )}

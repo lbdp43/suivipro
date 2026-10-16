@@ -196,7 +196,7 @@ export default function ProfilePage() {
             >
               {RAYONS_APPELS_KM.map(km => <option key={km} value={km}>{km} km</option>)}
             </select>
-            <p className="text-xs text-gray-400 mt-1">Jusqu'à quelle distance d'un rendez-vous chercher les prospects à appeler. Se change aussi à côté de chaque bouton « Appeler autour ».</p>
+            <p className="text-xs text-gray-500 mt-1">Jusqu'à quelle distance d'un rendez-vous chercher les prospects à appeler. Se change aussi à côté de chaque bouton « Appeler autour ».</p>
           </div>
 
           {/* Separator */}
@@ -205,7 +205,7 @@ export default function ProfilePage() {
               <Key className="w-4 h-4 text-gray-500" />
               Changer le mot de passe
             </h3>
-            <p className="text-xs text-gray-400 mb-4">Laissez vide pour conserver le mot de passe actuel.</p>
+            <p className="text-xs text-gray-500 mb-4">Laissez vide pour conserver le mot de passe actuel.</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

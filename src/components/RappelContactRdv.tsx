@@ -86,7 +86,7 @@ export default function RappelContactRdv({
                 <span className="truncate">{nomDe(r)}</span>
               </p>
             ))}
-            {rdvs.length > 6 && <p className="text-xs text-gray-400">et {rdvs.length - 6} autre(s)…</p>}
+            {rdvs.length > 6 && <p className="text-xs text-gray-500">et {rdvs.length - 6} autre(s)…</p>}
           </div>
           <p className="text-xs text-gray-500 mt-3">
             Ce rappel disparaîtra tout seul dès que ces fiches auront un contact.

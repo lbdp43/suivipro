@@ -49,7 +49,7 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
               L'application a rencontre un problème inattendu. Rechargez la page pour continuer.
             </p>
             {this.state.error && (
-              <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 mb-2 font-mono break-all">
+              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 mb-2 font-mono break-all">
                 {this.state.error.message}
               </p>
             )}

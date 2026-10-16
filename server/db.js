@@ -429,6 +429,18 @@ async function initDatabase(attempt = 1) {
       ['idx_tasks_client_commercial_id', 'tasks_client', 'commercial_id'],
       ['idx_notifications_user_id', 'notifications', 'user_id'],
       ['idx_commandes_date_commande', 'commandes', 'date_commande'],
+      // Les jointures et rapprochements qui parcouraient la table entière (tâches d'un client,
+      // synchro EasyBeer par identifiant, rendez-vous d'un client, client issu d'un prospect,
+      // recherche par SIRET, par e-mail ou par nom sans la casse).
+      ['idx_tasks_client_client_id', 'tasks_client', 'client_id'],
+      ['idx_commandes_easybeer_id', 'commandes', 'easybeer_id'],
+      ['idx_appointments_client_id', 'appointments', 'client_id'],
+      ['idx_clients_siret', 'clients', 'siret'],
+      ['idx_clients_prospect_id', 'clients', 'prospect_id'],
+      ['idx_prospects_email_lower', 'prospects', 'lower(email)'],
+      ['idx_clients_email_lower', 'clients', 'lower(email)'],
+      ['idx_prospects_nom_lower', 'prospects', 'lower(nom_etablissement)'],
+      ['idx_clients_nom_lower', 'clients', 'lower(nom)'],
     ]) {
       try { await client.query(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table}(${cols})`); } catch { /* index déjà présent */ }
     }

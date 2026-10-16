@@ -1110,7 +1110,7 @@ export default function ClientsPage() {
                     );
                   })}
                   {allTournees.length === 0 && (
-                    <span className="text-xs text-gray-400">Aucune tournée configurée</span>
+                    <span className="text-xs text-gray-500">Aucune tournée configurée</span>
                   )}
                 </div>
               </div>
@@ -1352,7 +1352,7 @@ export default function ClientsPage() {
                   onChange={e => setBulkNextVisit(e.target.value)}
                   placeholder="Prochaine visite"
                 />
-                <span className="text-xs text-gray-400">(opt.)</span>
+                <span className="text-xs text-gray-500">(opt.)</span>
               </div>
             )}
 
@@ -1519,7 +1519,7 @@ export default function ClientsPage() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
                           {client.tournee && <span className="text-brewery-600 font-medium">{client.tournee}</span>}
                           {isAdmin && commercial && (
                             <span className="flex items-center gap-1">

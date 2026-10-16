@@ -664,8 +664,8 @@ export default function PipelineCRPage() {
                     ) : (
                       <>
                         <span className="flex-1 text-sm font-medium text-gray-700">{col.label}</span>
-                        {col.builtin && <span className="text-xs text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">Defaut</span>}
-                        <span className="text-xs text-gray-400">{(aptsByColumn[col.id] || []).length} RDV</span>
+                        {col.builtin && <span className="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Defaut</span>}
+                        <span className="text-xs text-gray-500">{(aptsByColumn[col.id] || []).length} RDV</span>
                         <button className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" onClick={() => startEditColumn(col)} title="Modifier"><Pencil className="w-3.5 h-3.5" /></button>
                         {!col.builtin && (
                           <button className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => deleteColumn(col)} title="Supprimer"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -708,9 +708,9 @@ export default function PipelineCRPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-sm text-gray-900 truncate">{col.label}</h3>
-                      <p className="text-xs text-gray-400">{col.description}</p>
+                      <p className="text-xs text-gray-500">{col.description}</p>
                     </div>
-                    <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200 font-bold">
+                    <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200 font-bold">
                       {apts.length}
                     </span>
                   </div>
@@ -743,13 +743,13 @@ export default function PipelineCRPage() {
                             </p>
 
                             {info.ville && (
-                              <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                              <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
                                 <MapPin className="w-3 h-3" />
                                 <span className="truncate">{info.ville}</span>
                               </div>
                             )}
 
-                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
                               <Calendar className="w-3 h-3" />
                               {format(parseISO(apt.date), 'dd MMM yyyy', { locale: fr })}
                               {apt.heure_debut && <span className="ml-1">{apt.heure_debut}</span>}
@@ -817,7 +817,7 @@ export default function PipelineCRPage() {
                   )}
 
                   {apts.length === 0 && (
-                    <div className="text-center py-8 text-xs text-gray-400">
+                    <div className="text-center py-8 text-xs text-gray-500">
                       Aucun RDV
                     </div>
                   )}
@@ -843,39 +843,39 @@ export default function PipelineCRPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-xs text-gray-400 uppercase tracking-wider">Établissement</label>
-                <p className="font-semibold text-gray-900"><NomFiche prospectId={detailApt.client_id ? undefined : detailApt.prospect_id} clientId={detailApt.client_id}>{getEntityName(detailApt)}</NomFiche> <span className="text-xs font-normal text-gray-400">· voir la fiche et l'historique</span></p>
+                <label className="text-xs text-gray-500 uppercase tracking-wider">Établissement</label>
+                <p className="font-semibold text-gray-900"><NomFiche prospectId={detailApt.client_id ? undefined : detailApt.prospect_id} clientId={detailApt.client_id}>{getEntityName(detailApt)}</NomFiche> <span className="text-xs font-normal text-gray-500">· voir la fiche et l'historique</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">Date</label>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider">Date</label>
                   <p className="text-sm text-gray-700">{format(parseISO(detailApt.date), 'EEEE dd MMMM yyyy', { locale: fr })}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">Horaire</label>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider">Horaire</label>
                   <p className="text-sm text-gray-700">{detailApt.heure_debut} - {detailApt.heure_fin}</p>
                 </div>
               </div>
               {detailApt.lieu && (
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">Lieu</label>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider">Lieu</label>
                   <p className="text-sm text-gray-700">{detailApt.lieu}</p>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">Commercial</label>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider">Commercial</label>
                   <p className="text-sm text-gray-700">{commercialMap.get(detailApt.commercial_id) || '-'}</p>
                 </div>
                 {detailApt.prospecteur_id && (
                   <div>
-                    <label className="text-xs text-gray-400 uppercase tracking-wider">Pris par</label>
+                    <label className="text-xs text-gray-500 uppercase tracking-wider">Pris par</label>
                     <p className="text-sm text-gray-700">{commercialMap.get(detailApt.prospecteur_id) || '-'}</p>
                   </div>
                 )}
               </div>
               <div>
-                <label className="text-xs text-gray-400 uppercase tracking-wider">Compte-rendu</label>
+                <label className="text-xs text-gray-500 uppercase tracking-wider">Compte-rendu</label>
                 <p className="text-sm">
                   {detailApt.compte_rendu ? (
                     <span
@@ -891,13 +891,13 @@ export default function PipelineCRPage() {
               </div>
               {detailApt.notes && (
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">Notes RDV</label>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider">Notes RDV</label>
                   <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-2">{detailApt.notes}</p>
                 </div>
               )}
               {detailApt.notes_compte_rendu && (
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">Notes compte-rendu</label>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider">Notes compte-rendu</label>
                   <p className="text-sm text-gray-700 bg-amber-50 rounded-lg p-2">{detailApt.notes_compte_rendu}</p>
                 </div>
               )}

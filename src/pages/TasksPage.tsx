@@ -840,7 +840,7 @@ export default function TasksPage({ embarque = false, idsVisibles = null }: { em
                     {task.description && (
                       <p className="text-sm text-gray-600 whitespace-pre-wrap">{task.description}</p>
                     )}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                       <span>Creee le {formatDate(task.date_creation)}</span>
                       {task.creator_prenom && <span>par {task.creator_prenom}</span>}
                       {task.completed_at && <span>Terminee le {formatDate(task.completed_at)}</span>}

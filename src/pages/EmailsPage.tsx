@@ -224,7 +224,7 @@ export default function EmailsPage() {
               </div>
             </div>
             <p className="text-xs text-gray-600 mt-3 font-medium">Sujet: {template.sujet}</p>
-            <p className="text-xs text-gray-400 mt-1 line-clamp-3">{template.corps.substring(0, 120)}...</p>
+            <p className="text-xs text-gray-500 mt-1 line-clamp-3">{template.corps.substring(0, 120)}...</p>
             <div className="flex items-center gap-2 mt-4">
               <button className="p-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600" onClick={() => openPreview(template)} title="Previsualiser">
                 <Eye className="w-3.5 h-3.5" />

@@ -55,7 +55,7 @@ export default function MultiSelectDropdown({ label, options, selected, onToggle
         <div className={enLigne ? 'mt-1 bg-white border border-gray-200 rounded-lg max-h-72 overflow-y-auto' : 'absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] max-h-64 overflow-y-auto'} role="listbox">
           {/* Select/Deselect all */}
           <div className="sticky top-0 bg-white border-b border-gray-100 px-3 py-2 flex items-center justify-between">
-            <span className="text-xs text-gray-400">{count}/{options.length} selectionne(s)</span>
+            <span className="text-xs text-gray-500">{count}/{options.length} selectionne(s)</span>
             <button
               className="text-xs text-brewery-600 hover:text-brewery-800 font-medium"
               onClick={() => {
@@ -91,7 +91,7 @@ export default function MultiSelectDropdown({ label, options, selected, onToggle
               <span className="min-w-0">
                 <span className="block truncate text-gray-700">{option.label}</span>
                 {option.description && (
-                  <span className="block truncate text-xs text-gray-400">({option.description})</span>
+                  <span className="block truncate text-xs text-gray-500">({option.description})</span>
                 )}
               </span>
             </button>

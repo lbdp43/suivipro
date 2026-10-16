@@ -135,7 +135,7 @@ export default function PartagePage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-400">Devanture, carte, ardoise… Sur iPhone, copiez l'image dans WhatsApp puis collez-la ici.</p>
+              <p className="text-xs text-gray-500">Devanture, carte, ardoise… Sur iPhone, copiez l'image dans WhatsApp puis collez-la ici.</p>
             )}
           </div>
           <div>

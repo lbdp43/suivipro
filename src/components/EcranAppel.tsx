@@ -644,7 +644,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                         </button>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-400 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse ou sur messagerie.</p>
+                    <p className="text-xs text-gray-500 mt-1.5 italic">Enregistré dans l'historique du client. Un appel compte comme une visite, sauf s'il est resté sans réponse ou sur messagerie.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Notes de l'appel <span className="text-red-500">*</span></label>
@@ -763,7 +763,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                     <PhoneOff className="w-5 h-5" /> Raccrocher
                   </button>
                   {/* Personne au bout : un appui suffit, l'appel est noté comme non abouti. */}
-                  <p className="text-xs text-gray-400 mt-5">Personne au bout ?</p>
+                  <p className="text-xs text-gray-500 mt-5">Personne au bout ?</p>
                   {/* Deux boutons qui passent à la ligne sur un petit écran ; « Pas de réponse » reste dans l'écran de fin d'appel. */}
                   <div className="mt-2 flex flex-wrap items-center justify-center gap-2 px-2">
                     <button disabled={saving} onClick={() => enregistrerSansReponse('messagerie')}
@@ -775,7 +775,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                       <Ban className="w-4 h-4" /> Numéro non attribué
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2 px-2">L'appel est noté sans notes ni tag. Messagerie : rappel dans 2 jours. Numéro non attribué : la fiche passe en « Numéro à attribuer » et reviendra à son étape dès qu'un numéro sera saisi.</p>
+                  <p className="text-xs text-gray-500 mt-2 px-2">L'appel est noté sans notes ni tag. Messagerie : rappel dans 2 jours. Numéro non attribué : la fiche passe en « Numéro à attribuer » et reviendra à son étape dès qu'un numéro sera saisi.</p>
                 </div>
               )}
 
@@ -936,7 +936,7 @@ export default function EcranAppel({ brancher, onSession }: { brancher: (api: Ap
                       ))}
                       {!showNewTag ? (
                         <button
-                          className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:border-brewery-400 hover:text-brewery-600 flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-brewery-400 hover:text-brewery-600 flex items-center gap-1"
                           onClick={() => setShowNewTag(true)}
                         >
                           <Plus className="w-3 h-3" /> Nouveau
