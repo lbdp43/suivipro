@@ -9,7 +9,7 @@
 // chevauchent, et savoir qu'Alban monte à Riom jeudi est utile même quand ce n'est pas soi
 // qui y va.
 import { statutVisite } from '../../shared/regles';
-import type { Appointment, Client, Prospect, Commercial } from '../types';
+import type { Appointment, Client, Prospect, Commercial, OrigineSession } from '../types';
 
 /**
  * Deux rayons, parce que ce sont deux questions differentes.
@@ -23,6 +23,16 @@ import type { Appointment, Client, Prospect, Commercial } from '../types';
  */
 export const RAYON_KM = 3;
 export const RAYON_APPELS_KM = 10;
+
+/**
+ * Depuis que chacun règle son rayon, il n'y en a plus qu'un : celui du profil (3, 5, 10,
+ * 15 ou 20 km), pour « Appeler autour » comme pour les voisins d'une fiche. 10 km à défaut.
+ */
+export const RAYONS_APPELS_KM: readonly number[] = [3, 5, 10, 15, 20];
+export function rayonAppelsDe(c: { rayon_appels_km?: number } | null | undefined): number {
+  const r = Number(c?.rayon_appels_km);
+  return RAYONS_APPELS_KM.includes(r) ? r : RAYON_APPELS_KM;
+}
 
 /**
  * Une session d'appel ne prend que les cinquante meilleurs scores.
@@ -73,6 +83,8 @@ export interface Voisin {
   qui?: string;
   /** Depuis combien de jours la visite est due, pour un client en retard. */
   jours?: number;
+  /** Le rendez-vous d'où part la session d'appel en cours : montré quelle que soit la distance. */
+  origine?: boolean;
 }
 
 export interface SourcesVoisinage {
@@ -299,4 +311,53 @@ export function tourneesAGarnir(
   }
   // La tournee la plus proche dans le temps d'abord : c'est celle qu'il faut remplir maintenant.
   return tournees.sort((a, b) => a.date.localeCompare(b.date) || a.prenom.localeCompare(b.prenom));
+}
+
+/** Le lieu d'un rendez-vous : l'établissement où il a lieu (client ou prospect). */
+export function lieuDuRdv(rdv: Appointment, sources: { prospects: Prospect[]; clients: Client[] }): Client | Prospect | undefined {
+  return rdv.client_id
+    ? sources.clients.find(c => c.id === rdv.client_id)
+    : (rdv.prospect_id ? sources.prospects.find(p => p.id === rdv.prospect_id) : undefined);
+}
+
+/** Le point d'un rendez-vous, pour chercher qui appeler autour : vide s'il n'est pas situé. */
+export function pointsDuRdv(rdv: Appointment, sources: { prospects: Prospect[]; clients: Client[] }): { lat: number; lon: number }[] {
+  const lieu = lieuDuRdv(rdv, sources);
+  return localise(lieu) ? [{ lat: Number(lieu!.latitude), lon: Number(lieu!.longitude) }] : [];
+}
+
+/** Ce qu'une session lancée autour d'un rendez-vous retient de lui, pour l'écran d'appel. */
+export function origineDuRdv(rdv: Appointment, sources: { prospects: Prospect[]; clients: Client[]; commerciaux: Commercial[] }): OrigineSession | undefined {
+  const lieu = lieuDuRdv(rdv, sources);
+  if (!localise(lieu)) return undefined;
+  return {
+    genre: 'rdv',
+    appointment_id: rdv.id,
+    nom: (lieu as Client).nom || (lieu as Prospect).nom_etablissement || 'Établissement',
+    latitude: Number(lieu!.latitude),
+    longitude: Number(lieu!.longitude),
+    date: rdv.date,
+    heure: rdv.heure_debut,
+    qui: sources.commerciaux.find(c => c.id === rdv.commercial_id)?.prenom || '',
+  };
+}
+
+/**
+ * Le rendez-vous d'origine comme voisin de la fiche appelée, avec la distance qui les
+ * sépare — quelle qu'elle soit : c'est justement ce qu'on veut lire.
+ */
+export function voisinOrigine(centre: { latitude?: number | null; longitude?: number | null }, origine: OrigineSession | null | undefined): Voisin | null {
+  if (!origine || !localise(centre)) return null;
+  return {
+    cle: `rdv-${origine.appointment_id}`,
+    genre: 'rdv',
+    origine: true,
+    nom: origine.nom,
+    latitude: origine.latitude,
+    longitude: origine.longitude,
+    km: distanceKm(Number(centre.latitude), Number(centre.longitude), origine.latitude, origine.longitude),
+    date: origine.date,
+    heure: origine.heure,
+    qui: origine.qui,
+  };
 }

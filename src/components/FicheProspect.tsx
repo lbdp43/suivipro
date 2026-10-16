@@ -7,7 +7,8 @@ import { dateLocale, jourDe } from '../../shared/regles';
 import { prochaineActionDe } from '../../shared/tunnel';
 import { libelleRaisonPerte } from './RaisonPerte';
 import CarteFiche from './CarteFiche';
-import { voisinsAutour, RAYON_KM } from '../utils/voisinage';
+import { voisinsAutour, voisinOrigine, rayonAppelsDe } from '../utils/voisinage';
+import { sessionDuJour } from '../utils/sessionAppel';
 
 // La fiche d'un établissement, telle qu'on veut l'avoir sous les yeux avant de composer :
 // qui c'est, où, ce qu'on sait déjà (tags, notes) et ce qui s'est passé avec lui
@@ -33,13 +34,20 @@ export default function FicheProspect({ prospect, pendantUnAppel = false }: { pr
 
   // Ce qu'il y a autour et qui justifie deja un deplacement : un rendez-vous de l'equipe
   // deja cale a cote, ou un client qu'on aurait du revoir. Voir utils/voisinage.
-  const voisins = useMemo(() => voisinsAutour(
-    { id: prospect.id, latitude: prospect.latitude, longitude: prospect.longitude },
-    { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: aujourdhui },
-    RAYON_KM,
-    // La prospection ne visite pas les clients : pas de visites en retard chez elle.
-    state.currentUser?.role !== 'prospection',
-  ), [prospect, state.prospects, state.clients, state.appointments, state.commerciaux, state.currentUser?.role]);
+  // Pendant une session lancée autour d'un rendez-vous, ce rendez-vous passe en tête, quelle
+  // que soit la distance : c'est elle qu'on veut lire.
+  const origine = pendantUnAppel ? sessionDuJour(state, state.currentUser?.id).session?.origine : null;
+  const voisins = useMemo(() => {
+    const autour = voisinsAutour(
+      { id: prospect.id, latitude: prospect.latitude, longitude: prospect.longitude },
+      { prospects: state.prospects, clients: state.clients, appointments: state.appointments, commerciaux: state.commerciaux, aujourdhui: aujourdhui },
+      rayonAppelsDe(state.currentUser),
+      // La prospection ne visite pas les clients : pas de visites en retard chez elle.
+      state.currentUser?.role !== 'prospection',
+    );
+    const depart = voisinOrigine(prospect, origine);
+    return depart ? [depart, ...autour.filter(v => v.cle !== depart.cle)] : autour;
+  }, [prospect, origine, state.prospects, state.clients, state.appointments, state.commerciaux, state.currentUser?.role, state.currentUser?.rayon_appels_km]);
 
   return (
     <div className="space-y-3 text-sm">

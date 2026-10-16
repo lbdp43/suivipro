@@ -82,6 +82,24 @@ router.delete('/prospects/:id', authMiddleware, asyncHandler(async (req, res) =>
 // l'écran (heure de Paris) ; les prospects appelés se déduisent des appels du jour.
 function jourValide(j) { return /^\d{4}-\d{2}-\d{2}$/.test(String(j || '')) ? j : dateLocale(new Date()); }
 
+/** L'origine d'une session : un rendez-vous situé, avec juste ce qu'il faut pour le montrer sur l'écran d'appel. */
+function lireOrigineSession(o) {
+  if (!o || typeof o !== 'object' || o.genre !== 'rdv') return null;
+  const lat = Number(o.latitude); const lon = Number(o.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !lat || !lon) return null;
+  const texte = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
+  return {
+    genre: 'rdv',
+    appointment_id: texte(o.appointment_id, 80),
+    nom: texte(o.nom, 200),
+    latitude: lat,
+    longitude: lon,
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || '')) ? o.date : '',
+    heure: texte(o.heure, 5),
+    qui: texte(o.qui, 60),
+  };
+}
+
 router.put('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res) => {
   const jour = jourValide(req.body.jour);
   const mode = req.body.mode === 'remplacer' ? 'remplacer' : 'ajouter';
@@ -100,19 +118,22 @@ router.put('/sessions-appel/jour', authMiddleware, asyncHandler(async (req, res)
   const prospectsValides = prospectsDemandes.filter(d => prospectsOk.has(d));
   const clientsValides = clientsDemandes.filter(d => clientsOk.has(d));
   const existante = await db.query('SELECT * FROM sessions_appel WHERE commercial_id = $1 AND jour = $2', [req.user.id, jour]);
-  const avant = existante.rows[0] ? parseSessionAppel(existante.rows[0]) : { prospect_ids: [], client_ids: [] };
+  const avant = existante.rows[0] ? parseSessionAppel(existante.rows[0]) : { prospect_ids: [], client_ids: [], origine: null };
   // En mode « remplacer », seule la liste envoyée est remplacée ; l'autre reste telle quelle.
   const prospects = mode === 'ajouter' ? [...new Set([...avant.prospect_ids, ...prospectsValides])]
     : (req.body.prospect_ids !== undefined ? prospectsDemandes.filter(d => prospectsValides.includes(d)) : avant.prospect_ids);
   const clients = mode === 'ajouter' ? [...new Set([...avant.client_ids, ...clientsValides])]
     : (req.body.client_ids !== undefined ? clientsDemandes.filter(d => clientsValides.includes(d)) : avant.client_ids);
+  // D'où part la session : le rendez-vous autour duquel on appelle. Envoyée, elle remplace
+  // la précédente ; « null » l'efface ; absente, elle reste.
+  const origine = req.body.origine === undefined ? (avant.origine || null) : lireOrigineSession(req.body.origine);
   const now = new Date().toISOString();
   const row = await db.query(
-    `INSERT INTO sessions_appel (id, commercial_id, jour, prospect_ids, client_ids, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $6)
-     ON CONFLICT (commercial_id, jour) DO UPDATE SET prospect_ids = EXCLUDED.prospect_ids, client_ids = EXCLUDED.client_ids, updated_at = EXCLUDED.updated_at
+    `INSERT INTO sessions_appel (id, commercial_id, jour, prospect_ids, client_ids, origine, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+     ON CONFLICT (commercial_id, jour) DO UPDATE SET prospect_ids = EXCLUDED.prospect_ids, client_ids = EXCLUDED.client_ids, origine = EXCLUDED.origine, updated_at = EXCLUDED.updated_at
      RETURNING *`,
-    [`session-${req.user.id}-${jour}`, req.user.id, jour, JSON.stringify(prospects), JSON.stringify(clients), now]
+    [`session-${req.user.id}-${jour}`, req.user.id, jour, JSON.stringify(prospects), JSON.stringify(clients), origine ? JSON.stringify(origine) : '', now]
   );
   res.json({
     ok: true,

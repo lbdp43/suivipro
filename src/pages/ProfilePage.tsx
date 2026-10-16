@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { User, Shield, Phone, Mail, Key, Eye, EyeOff, Save, Check, ArrowLeft, Sun, Moon, SunMoon } from 'lucide-react';
+import { User, Shield, Phone, Mail, Key, Eye, EyeOff, Save, Check, ArrowLeft, Sun, Moon, SunMoon, Navigation } from 'lucide-react';
+import { RAYONS_APPELS_KM, rayonAppelsDe } from '../utils/voisinage';
 import { useApp } from '../store/AppContext';
 import { apiPut } from '../api/client';
 import { Link } from 'react-router-dom';
@@ -20,6 +21,7 @@ export default function ProfilePage() {
   const [nom, setNom] = useState(user?.nom || '');
   const [email, setEmail] = useState(user?.email || '');
   const [telephone, setTelephone] = useState(user?.telephone || '');
+  const [rayonAppels, setRayonAppels] = useState(rayonAppelsDe(user));
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,6 +61,7 @@ export default function ProfilePage() {
       nom: nom.trim(),
       email: email.trim(),
       telephone: telephone.trim(),
+      rayon_appels_km: rayonAppels,
       ...(password ? { password } : {}),
     };
 
@@ -177,6 +180,23 @@ export default function ProfilePage() {
               value={telephone}
               onChange={e => setTelephone(e.target.value)}
             />
+          </div>
+
+          {/* Rayon d'« Appeler autour » : le même partout, et à côté de chaque bouton. */}
+          <div>
+            <label htmlFor="rayon-appels" className="block text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-1.5">
+              <Navigation className="w-3.5 h-3.5" />
+              Rayon d'« Appeler autour »
+            </label>
+            <select
+              id="rayon-appels"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brewery-500 focus:border-brewery-500"
+              value={rayonAppels}
+              onChange={e => setRayonAppels(Number(e.target.value))}
+            >
+              {RAYONS_APPELS_KM.map(km => <option key={km} value={km}>{km} km</option>)}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Jusqu'à quelle distance d'un rendez-vous chercher les prospects à appeler. Se change aussi à côté de chaque bouton « Appeler autour ».</p>
           </div>
 
           {/* Separator */}

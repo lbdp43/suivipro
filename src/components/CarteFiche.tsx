@@ -94,12 +94,15 @@ export default function CarteFiche({
       {localise && montres.length > 0 && (
         <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
           {montres.map(v => (
-            <div key={v.cle} className="flex items-start gap-2 px-2.5 py-1.5">
+            <div key={v.cle} className={`flex items-start gap-2 px-2.5 py-1.5 ${v.origine ? 'bg-purple-50/60' : ''}`}>
               {v.genre === 'rdv'
-                ? <Calendar className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+                ? <Calendar className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${v.origine ? 'text-purple-600' : 'text-blue-600'}`} />
                 : <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />}
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-gray-900 truncate">{v.nom}</p>
+                <p className="text-xs text-gray-900 truncate">
+                  {v.nom}
+                  {v.origine && <span className="ml-1.5 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">rendez-vous de départ</span>}
+                </p>
                 <p className="text-xs text-gray-500">
                   {v.genre === 'rdv'
                     ? <>RDV {formatDate(v.date || '')}{v.heure ? ` à ${v.heure}` : ''}{v.qui ? ` · ${v.qui}` : ''}</>

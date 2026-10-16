@@ -400,6 +400,8 @@ export interface Commercial {
   role: UserRole;
   /** Un commercial (ou admin) qui fait AUSSI de la prospection : deux accueils, deux jeux d'objectifs. */
   prospection?: boolean;
+  /** Le rayon d'« Appeler autour » (3, 5, 10, 15 ou 20 km), réglé par chacun ; 10 à défaut. */
+  rayon_appels_km?: number;
   password: string;
   objectifs: Objectifs;
 }
@@ -665,8 +667,23 @@ export interface SessionAppel {
   prospect_ids: string[];
   /** Clients à appeler (commerciaux) ; les appelés se déduisent des interactions « APPEL » du jour. */
   client_ids: string[];
+  /** D'où part la session : le rendez-vous autour duquel on appelle, pour le montrer sur l'écran d'appel. */
+  origine?: OrigineSession | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Le rendez-vous autour duquel une session d'appel a été lancée. */
+export interface OrigineSession {
+  genre: 'rdv';
+  appointment_id: string;
+  nom: string;
+  latitude: number;
+  longitude: number;
+  date?: string;
+  heure?: string;
+  /** Le prénom de qui y va. */
+  qui?: string;
 }
 
 // ============================================
