@@ -23,7 +23,7 @@ import FriseProspect from '../components/FriseProspect';
 import { libelleRaisonPerte } from '../components/RaisonPerte';
 import { ocrProspect, convertProspectToClient, apiGet, apiPost, apiPut, apiDelete } from '../api/client';
 import { useToast } from '../components/Toast';
-import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import FiltreCombine, { type Facette } from '../components/FiltreCombine';
 import {
   ESTABLISHMENT_LABELS, PIPELINE_LABELS, PIPELINE_COLORS, PIPELINE_DESCRIPTIONS,
     Appointment,
@@ -385,7 +385,7 @@ export default function ProspectsPage() {
     return state.tags
       .filter(t => compte.has(t.id))
       .sort((a, b) => a.nom.localeCompare(b.nom))
-      .map(t => ({ value: t.id, label: `${t.nom} (${compte.get(t.id)})`, color: t.couleur }));
+      .map(t => ({ value: t.id, label: t.nom, nombre: compte.get(t.id), color: t.couleur }));
   }, [state.prospects, state.tags]);
 
   const allDepartments = useMemo(() => {
@@ -432,9 +432,9 @@ export default function ProspectsPage() {
       else if (p.latitude && p.longitude) hors += 1;
       else nonPlaces += 1;
     });
-    const opts = state.commercialZones.map(z => ({ value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'} (${compte.get(z.id) || 0})` }));
-    opts.push({ value: '__hors__', label: `Hors zone (${hors})` });
-    opts.push({ value: '__nonplace__', label: `Sans coordonnées (${nonPlaces})` });
+    const opts = state.commercialZones.map(z => ({ value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'}`, nombre: compte.get(z.id) || 0 }));
+    opts.push({ value: '__hors__', label: 'Hors zone', nombre: hors });
+    opts.push({ value: '__nonplace__', label: 'Sans coordonnées', nombre: nonPlaces });
     return opts;
   }, [state.prospects, state.commercialZones]);
   const clearAllFilters = () => {
@@ -450,6 +450,30 @@ export default function ProspectsPage() {
     setFilterCommercial('');
   };
   const effacerFiltres = () => { setSearchTerm(''); clearAllFilters(); };
+
+  // Toutes les facettes dans un seul filtre (FiltreCombine) : on tape, on coche.
+  const facettes: Facette[] = [
+    { cle: 'type', titre: 'Type', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
+      options: (Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({ value: t, label: ESTABLISHMENT_LABELS[t] })),
+      selected: filterTypes, onToggle: v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes) },
+    { cle: 'etape', titre: 'Étape', teinte: 'bg-blue-50 text-blue-800 hover:bg-blue-100',
+      options: state.pipelineColumns.map(col => ({ value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id] })),
+      selected: filterStages, onToggle: v => toggleFilter(filterStages, v as PipelineStage, setFilterStages) },
+    { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
+      options: optionsTags, selected: filterTags, onToggle: v => toggleFilter(filterTags, v, setFilterTags) },
+    { cle: 'secteur', titre: 'Secteur', teinte: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+      options: allSecteurs.map(s => ({ value: s, label: s, nombre: secteurCounts.get(s) || 0 })),
+      selected: filterSecteurs, onToggle: v => toggleFilter(filterSecteurs, v, setFilterSecteurs) },
+    { cle: 'zone', titre: 'Zone', teinte: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+      options: state.commercialZones.length > 0 ? optionsZones : [],
+      selected: filterZones, onToggle: v => toggleFilter(filterZones, v, setFilterZones) },
+    { cle: 'dept', titre: 'Département', teinte: 'bg-teal-50 text-teal-800 hover:bg-teal-100',
+      options: allDepartments.map(d => ({ value: d.code, label: d.code, nombre: d.count })),
+      selected: filterDepartments, onToggle: v => toggleFilter(filterDepartments, v, setFilterDepartments) },
+    { cle: 'cp', titre: 'Code postal', teinte: 'bg-teal-50 text-teal-800 hover:bg-teal-100',
+      options: allPostalCodes.map(c => ({ value: c, label: c })),
+      selected: filterPostalCodes, onToggle: v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes) },
+  ];
 
   // Build set of prospect IDs linked to the selected commercial via calls/appointments
   const prospectIdsForCommercial = useMemo(() => {
@@ -727,69 +751,7 @@ export default function ProspectsPage() {
             <Fenetre ouvert={filtresOuverts} onFermer={() => setFiltresOuverts(false)} titre="Filtres" sousTitre={`${filteredProspects.length} prospect(s)`}
               pied={<><Bouton variante="discret" onClick={clearAllFilters} disabled={!hasActiveFilters}>Tout effacer</Bouton><Bouton variante="principal" onClick={() => setFiltresOuverts(false)}>Voir les {filteredProspects.length} prospect(s)</Bouton></>}>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <MultiSelectDropdown enLigne={etroit}
-              label="Type"
-              options={(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({
-                value: t, label: ESTABLISHMENT_LABELS[t],
-              }))}
-              selected={filterTypes}
-              onToggle={v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes)}
-              color="brewery"
-            />
-            <MultiSelectDropdown enLigne={etroit}
-              label="Étape"
-              options={state.pipelineColumns.map(col => ({
-                value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id],
-              }))}
-              selected={filterStages}
-              onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
-              color="blue"
-            />
-            {optionsTags.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Tag"
-                options={optionsTags}
-                selected={filterTags}
-                onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
-                color="brewery"
-              />
-            )}
-            {allSecteurs.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Secteur"
-                options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
-                selected={filterSecteurs}
-                onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
-                color="amber"
-              />
-            )}
-            {state.commercialZones.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Zone"
-                options={optionsZones}
-                selected={filterZones}
-                onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
-                color="amber"
-              />
-            )}
-            {allDepartments.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Dept (CP)"
-                options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
-                selected={filterDepartments}
-                onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
-                color="brewery"
-              />
-            )}
-            {allPostalCodes.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Code postal"
-                options={allPostalCodes.map(c => ({ value: c, label: c }))}
-                selected={filterPostalCodes}
-                onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
-                color="brewery"
-              />
-            )}
+            <FiltreCombine facettes={facettes} enLigne={etroit} />
             <select
               className="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
               value={filterCommercial}
@@ -852,69 +814,7 @@ export default function ProspectsPage() {
             </Fenetre>
           ) : (
           <div className="flex gap-2 flex-wrap">
-            <MultiSelectDropdown enLigne={etroit}
-              label="Type"
-              options={(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({
-                value: t, label: ESTABLISHMENT_LABELS[t],
-              }))}
-              selected={filterTypes}
-              onToggle={v => toggleFilter(filterTypes, v as EstablishmentType, setFilterTypes)}
-              color="brewery"
-            />
-            <MultiSelectDropdown enLigne={etroit}
-              label="Étape"
-              options={state.pipelineColumns.map(col => ({
-                value: col.id, label: col.label, color: col.color, description: PIPELINE_DESCRIPTIONS[col.id],
-              }))}
-              selected={filterStages}
-              onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
-              color="blue"
-            />
-            {optionsTags.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Tag"
-                options={optionsTags}
-                selected={filterTags}
-                onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
-                color="brewery"
-              />
-            )}
-            {allSecteurs.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Secteur"
-                options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
-                selected={filterSecteurs}
-                onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
-                color="amber"
-              />
-            )}
-            {state.commercialZones.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Zone"
-                options={optionsZones}
-                selected={filterZones}
-                onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
-                color="amber"
-              />
-            )}
-            {allDepartments.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Dept (CP)"
-                options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
-                selected={filterDepartments}
-                onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
-                color="brewery"
-              />
-            )}
-            {allPostalCodes.length > 0 && (
-              <MultiSelectDropdown enLigne={etroit}
-                label="Code postal"
-                options={allPostalCodes.map(c => ({ value: c, label: c }))}
-                selected={filterPostalCodes}
-                onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
-                color="brewery"
-              />
-            )}
+            <FiltreCombine facettes={facettes} enLigne={etroit} />
             <select
               className="px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600"
               value={filterCommercial}
@@ -974,41 +874,6 @@ export default function ProspectsPage() {
             />
           </div>
 
-          )}
-          {/* Active filter chips */}
-          {hasActiveFilters && (
-            <div className="flex gap-1 flex-wrap">
-              {[...filterTypes].map(t => (
-                <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-brewery-100 text-brewery-700">
-                  {ESTABLISHMENT_LABELS[t]}
-                  <button aria-label={`Retirer le filtre ${ESTABLISHMENT_LABELS[t]}`} className="hover:text-brewery-900" onClick={() => toggleFilter(filterTypes, t, setFilterTypes)}><X className="w-2.5 h-2.5" /></button>
-                </span>
-              ))}
-              {[...filterStages].map(s => (
-                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium text-white" style={{ backgroundColor: PIPELINE_COLORS[s] || '#6b7280' }}>
-                  {state.pipelineColumns.find(c => c.id === s)?.label || PIPELINE_LABELS[s] || s}
-                  <button aria-label="Retirer le filtre d'étape" className="hover:text-gray-200" onClick={() => toggleFilter(filterStages, s, setFilterStages)}><X className="w-2.5 h-2.5" /></button>
-                </span>
-              ))}
-              {[...filterSecteurs].map(s => (
-                <span key={s} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-                  {s}
-                  <button aria-label={`Retirer le filtre ${s}`} className="hover:text-amber-900" onClick={() => toggleFilter(filterSecteurs, s, setFilterSecteurs)}><X className="w-2.5 h-2.5" /></button>
-                </span>
-              ))}
-              {[...filterDepartments].map(d => (
-                <span key={d} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
-                  Dept. {d}
-                  <button aria-label={`Retirer le filtre département ${d}`} className="hover:text-indigo-900" onClick={() => toggleFilter(filterDepartments, d, setFilterDepartments)}><X className="w-2.5 h-2.5" /></button>
-                </span>
-              ))}
-              {[...filterPostalCodes].map(c => (
-                <span key={c} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
-                  {c}
-                  <button aria-label={`Retirer le filtre ${c}`} className="hover:text-teal-900" onClick={() => toggleFilter(filterPostalCodes, c, setFilterPostalCodes)}><X className="w-2.5 h-2.5" /></button>
-                </span>
-              ))}
-            </div>
           )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

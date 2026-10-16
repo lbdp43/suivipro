@@ -23,6 +23,7 @@ import { formatDate } from '../utils/helpers';
 import { estCommercial } from '../utils/roles';
 import { ouvrirDansGoogleAgenda } from '../utils/agenda';
 import FilterPresets from '../components/FilterPresets';
+import FiltreCombine, { type Facette } from '../components/FiltreCombine';
 import SelectionCarte from '../components/SelectionCarte';
 
 // Custom marker icon factory
@@ -376,8 +377,39 @@ export default function MapPage() {
   };
 
   const activeFilterCount = selectedTypes.length + selectedStages.length + selectedTags.length + selectedSecteurs.length + selectedPostalCodes.length + selectedDepartments.length + selectedRegions.length + selectedZones.length + (sansNumero ? 1 : 0);
-  const toggleZone = (id: string) => setSelectedZones(prev => prev.includes(id) ? prev.filter(z => z !== id) : [...prev, id]);
   const prospectsHorsZone = useMemo(() => state.prospects.filter(p => p.latitude && p.longitude && !p.zone_id).length, [state.prospects]);
+  const toggleZone = (id: string) => setSelectedZones(prev => prev.includes(id) ? prev.filter(z => z !== id) : [...prev, id]);
+
+  // Toutes les facettes de la carte dans un seul filtre (FiltreCombine) : on tape, on coche.
+  const facettes: Facette[] = [
+    { cle: 'type', titre: "Type d'établissement", teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
+      options: (Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(t => ({ value: t, label: ESTABLISHMENT_LABELS[t] })),
+      selected: new Set(selectedTypes), onToggle: v => toggleType(v as EstablishmentType) },
+    { cle: 'etape', titre: 'Étape pipeline', teinte: 'bg-blue-50 text-blue-800 hover:bg-blue-100',
+      options: state.pipelineColumns.map(col => ({ value: col.id, label: col.label, color: col.color })),
+      selected: new Set(selectedStages), onToggle: v => toggleStage(v as PipelineStage) },
+    { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
+      options: state.tags.map(t => ({ value: t.id, label: t.nom, color: t.couleur })),
+      selected: new Set(selectedTags), onToggle: toggleTag },
+    { cle: 'zone', titre: 'Zone dessinée', teinte: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+      options: zones.length === 0 ? [] : [
+        ...zones.map(z => { const c = getCommercial(z.commercial_id); return { value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'}`, nombre: state.prospects.filter(p => p.zone_id === z.id).length, description: c ? `${c.prenom} ${c.nom}` : undefined }; }),
+        { value: '__hors__', label: 'Hors zone', nombre: prospectsHorsZone, description: 'géolocalisé, dans aucune zone dessinée' },
+      ],
+      selected: new Set(selectedZones), onToggle: toggleZone },
+    { cle: 'secteur', titre: 'Secteur / Tournée', teinte: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+      options: tournees.map(t => ({ value: t.nom, label: t.nom, nombre: t.count })),
+      selected: new Set(selectedSecteurs), onToggle: toggleSecteur },
+    { cle: 'region', titre: 'Région', teinte: 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
+      options: availableRegions.map(r => ({ value: r, label: r })),
+      selected: new Set(selectedRegions), onToggle: toggleRegion },
+    { cle: 'dept', titre: 'Département', teinte: 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
+      options: allDepartments.map(d => ({ value: d.code, label: d.code, nombre: d.count })),
+      selected: new Set(selectedDepartments), onToggle: toggleDepartment },
+    { cle: 'cp', titre: 'Code postal', teinte: 'bg-teal-50 text-teal-800 hover:bg-teal-100',
+      options: allPostalCodes.map(c => ({ value: c, label: c })),
+      selected: new Set(selectedPostalCodes), onToggle: togglePostalCode },
+  ];
 
   // Center map on Saint-Didier-en-Velay area
   const center: [number, number] = [45.37, 4.27];
@@ -618,177 +650,7 @@ export default function MapPage() {
         {/* Filter panels */}
         {showFilters && (
           <div className="space-y-3 pt-2 border-t border-gray-100 fade-in">
-            {/* Region filters */}
-            {availableRegions.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Region</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {availableRegions.map(region => (
-                    <button
-                      key={region}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        selectedRegions.includes(region)
-                          ? 'bg-brewery-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                      onClick={() => toggleRegion(region)}
-                    >
-                      {region}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Zones dessinées */}
-            {zones.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Zone dessinée</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {zones.map(z => {
-                    const c = getCommercial(z.commercial_id);
-                    const n = state.prospects.filter(p => p.zone_id === z.id).length;
-                    return (
-                      <button
-                        key={z.id}
-                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                          selectedZones.includes(z.id) ? 'bg-brewery-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                        onClick={() => toggleZone(z.id)}
-                        title={c ? `${c.prenom} ${c.nom}` : ''}
-                      >
-                        {z.prioritaire && <Star className="w-3 h-3 fill-current" />}
-                        {z.nom || 'Zone'}
-                        <span className={`text-xs rounded-full px-1.5 ${selectedZones.includes(z.id) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'}`}>{n}</span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                      selectedZones.includes('__hors__') ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                    }`}
-                    onClick={() => toggleZone('__hors__')}
-                    title="Fiches géolocalisées qui ne tombent dans aucune zone dessinée"
-                  >
-                    Hors zone
-                    <span className={`text-xs rounded-full px-1.5 ${selectedZones.includes('__hors__') ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>{prospectsHorsZone}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Sector / Tournee filters */}
-            {tournees.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Secteur / Tournée</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {tournees.map(t => (
-                    <button
-                      key={t.nom}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                        selectedSecteurs.includes(t.nom)
-                          ? 'bg-brewery-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                      onClick={() => toggleSecteur(t.nom)}
-                    >
-                      {t.nom}
-                      <span className={`text-xs rounded-full px-1.5 ${
-                        selectedSecteurs.includes(t.nom) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'
-                      }`}>{t.count}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Department filters (2 first digits of postal code) */}
-            {allDepartments.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Departement (CP)</p>
-                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-                  {allDepartments.map(d => (
-                    <button
-                      key={d.code}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                        selectedDepartments.includes(d.code)
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                      onClick={() => toggleDepartment(d.code)}
-                    >
-                      {d.code}
-                      <span className={`text-xs rounded-full px-1.5 ${
-                        selectedDepartments.includes(d.code) ? 'bg-white/20' : 'bg-gray-200 text-gray-500'
-                      }`}>{d.count}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Postal code filters */}
-            {allPostalCodes.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Code postal (exact)</p>
-                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-                  {allPostalCodes.map(code => (
-                    <button
-                      key={code}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        selectedPostalCodes.includes(code)
-                          ? 'bg-teal-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                      onClick={() => togglePostalCode(code)}
-                    >
-                      {code}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Type filters */}
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Type d'etablissement</p>
-              <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(ESTABLISHMENT_LABELS) as EstablishmentType[]).map(type => (
-                  <button
-                    key={type}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      selectedTypes.includes(type)
-                        ? 'bg-brewery-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                    onClick={() => toggleType(type)}
-                  >
-                    {ESTABLISHMENT_LABELS[type]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Pipeline stage filters */}
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Étape pipeline</p>
-              <div className="flex flex-wrap gap-1.5">
-                {state.pipelineColumns.map(col => (
-                  <button
-                    key={col.id}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      selectedStages.includes(col.id)
-                        ? 'text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                    style={selectedStages.includes(col.id) ? { backgroundColor: col.color } : {}}
-                    onClick={() => toggleStage(col.id)}
-                  >
-                    {col.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FiltreCombine facettes={facettes} enLigne placeholder="Filtrer : type, étape, tag, zone, secteur, département, code postal…" />
 
             {/* À compléter */}
             <div>
@@ -802,27 +664,6 @@ export default function MapPage() {
               >
                 <PhoneOff className="w-3 h-3" /> Sans numéro
               </button>
-            </div>
-
-            {/* Tag filters */}
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {state.tags.map(tag => (
-                  <button
-                    key={tag.id}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      selectedTags.includes(tag.id)
-                        ? 'text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                    style={selectedTags.includes(tag.id) ? { backgroundColor: tag.couleur } : {}}
-                    onClick={() => toggleTag(tag.id)}
-                  >
-                    {tag.nom}
-                  </button>
-                ))}
-              </div>
             </div>
 
             <div className="flex items-center justify-between flex-wrap gap-2">

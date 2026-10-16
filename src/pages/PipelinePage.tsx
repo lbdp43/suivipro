@@ -9,7 +9,7 @@ import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
 import { apiPost, apiPut, apiDelete, apiPatch } from '../api/client';
 import EmailTemplateModal from '../components/EmailTemplateModal';
-import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import FiltreCombine, { type Facette } from '../components/FiltreCombine';
 import { PIPELINE_DESCRIPTIONS, ESTABLISHMENT_LABELS, PipelineStage, PipelineColumn, Prospect, CALL_RESULT_LABELS, APPOINTMENT_RESULT_LABELS } from '../types';
 import { prochaineActionDe, derniereActiviteDe, joursDansEtape, joursSansActivite, estTerminale, SEUIL_STAGNATION_JOURS } from '../../shared/tunnel';
 import { formatDate } from '../utils/helpers';
@@ -55,8 +55,8 @@ export default function PipelinePage() {
   const optionsZones = useMemo(() => {
     const compte = new Map<string, number>(); let hors = 0;
     state.prospects.forEach(p => { if (p.zone_id) compte.set(p.zone_id, (compte.get(p.zone_id) || 0) + 1); else if (p.latitude && p.longitude) hors += 1; });
-    const opts = state.commercialZones.map(z => ({ value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'} (${compte.get(z.id) || 0})` }));
-    opts.push({ value: '__hors__', label: `Hors zone (${hors})` });
+    const opts = state.commercialZones.map(z => ({ value: z.id, label: `${z.prioritaire ? '★ ' : ''}${z.nom || 'Zone'}`, nombre: compte.get(z.id) || 0 }));
+    opts.push({ value: '__hors__', label: 'Hors zone', nombre: hors });
     return opts;
   }, [state.prospects, state.commercialZones]);
   const [filterPostalCodes, setFilterPostalCodes] = useState<Set<string>>(new Set());
@@ -128,7 +128,7 @@ export default function PipelinePage() {
     state.prospects.forEach(p => { const t = p.type_etablissement || 'autre'; compte.set(t, (compte.get(t) || 0) + 1); });
     return (Object.keys(ESTABLISHMENT_LABELS) as (keyof typeof ESTABLISHMENT_LABELS)[])
       .filter(t => compte.has(t))
-      .map(t => ({ value: t as string, label: `${ESTABLISHMENT_LABELS[t]} (${compte.get(t)})` }));
+      .map(t => ({ value: t as string, label: ESTABLISHMENT_LABELS[t], nombre: compte.get(t) }));
   }, [state.prospects]);
 
   const optionsTags = useMemo(() => {
@@ -137,7 +137,7 @@ export default function PipelinePage() {
     return state.tags
       .filter(t => compte.has(t.id))
       .sort((a, b) => a.nom.localeCompare(b.nom))
-      .map(t => ({ value: t.id, label: `${t.nom} (${compte.get(t.id)})` }));
+      .map(t => ({ value: t.id, label: t.nom, nombre: compte.get(t.id), color: t.couleur }));
   }, [state.prospects, state.tags]);
 
   const allSecteurs = useMemo(() =>
@@ -176,6 +176,26 @@ export default function PipelinePage() {
   };
 
   const hasActiveFilters = filterTypes.size > 0 || filterTags.size > 0 || filterSecteurs.size > 0 || filterZones.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '';
+
+  // Toutes les facettes dans un seul filtre (FiltreCombine) : on tape, on coche.
+  const facettes: Facette[] = [
+    { cle: 'type', titre: 'Type', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
+      options: optionsTypes, selected: filterTypes, onToggle: v => toggleFilter(filterTypes, v, setFilterTypes) },
+    { cle: 'tag', titre: 'Tag', teinte: 'bg-brewery-50 text-brewery-800 hover:bg-brewery-100',
+      options: optionsTags, selected: filterTags, onToggle: v => toggleFilter(filterTags, v, setFilterTags) },
+    { cle: 'secteur', titre: 'Secteur', teinte: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+      options: allSecteurs.map(s => ({ value: s, label: s, nombre: secteurCounts.get(s) || 0 })),
+      selected: filterSecteurs, onToggle: v => toggleFilter(filterSecteurs, v, setFilterSecteurs) },
+    { cle: 'zone', titre: 'Zone', teinte: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+      options: state.commercialZones.length > 0 ? optionsZones : [],
+      selected: filterZones, onToggle: v => toggleFilter(filterZones, v, setFilterZones) },
+    { cle: 'dept', titre: 'Département', teinte: 'bg-teal-50 text-teal-800 hover:bg-teal-100',
+      options: allDepartments.map(d => ({ value: d.code, label: d.code, nombre: d.count })),
+      selected: filterDepartments, onToggle: v => toggleFilter(filterDepartments, v, setFilterDepartments) },
+    { cle: 'cp', titre: 'Code postal', teinte: 'bg-teal-50 text-teal-800 hover:bg-teal-100',
+      options: allPostalCodes.map(c => ({ value: c, label: c })),
+      selected: filterPostalCodes, onToggle: v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes) },
+  ];
 
   const openQuickNote = (prospect: Prospect, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -382,60 +402,7 @@ export default function PipelinePage() {
             <Fenetre ouvert={filtresOuverts} onFermer={() => setFiltresOuverts(false)} titre="Filtres du pipeline"
               pied={<Bouton variante="principal" onClick={() => setFiltresOuverts(false)}>Voir le pipeline</Bouton>}>
         <div className="flex flex-col gap-2">
-          {optionsTypes.length > 0 && (
-            <MultiSelectDropdown enLigne
-              label="Type"
-              options={optionsTypes}
-              selected={filterTypes}
-              onToggle={v => toggleFilter(filterTypes, v, setFilterTypes)}
-              color="brewery"
-            />
-          )}
-          {optionsTags.length > 0 && (
-            <MultiSelectDropdown enLigne
-              label="Tag"
-              options={optionsTags}
-              selected={filterTags}
-              onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
-              color="brewery"
-            />
-          )}
-          {allSecteurs.length > 0 && (
-            <MultiSelectDropdown enLigne
-              label="Secteur"
-              options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
-              selected={filterSecteurs}
-              onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
-              color="amber"
-            />
-          )}
-          {state.commercialZones.length > 0 && (
-            <MultiSelectDropdown enLigne
-              label="Zone"
-              options={optionsZones}
-              selected={filterZones}
-              onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
-              color="amber"
-            />
-          )}
-          {allDepartments.length > 0 && (
-            <MultiSelectDropdown enLigne
-              label="Dept (CP)"
-              options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
-              selected={filterDepartments}
-              onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
-              color="teal"
-            />
-          )}
-          {allPostalCodes.length > 0 && (
-            <MultiSelectDropdown enLigne
-              label="Code postal"
-              options={allPostalCodes.map(c => ({ value: c, label: c }))}
-              selected={filterPostalCodes}
-              onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
-              color="teal"
-            />
-          )}
+          <FiltreCombine facettes={facettes} enLigne />
           <button
             className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
               filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -479,60 +446,7 @@ export default function PipelinePage() {
           </>
         ) : (
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-          {optionsTypes.length > 0 && (
-            <MultiSelectDropdown
-              label="Type"
-              options={optionsTypes}
-              selected={filterTypes}
-              onToggle={v => toggleFilter(filterTypes, v, setFilterTypes)}
-              color="brewery"
-            />
-          )}
-          {optionsTags.length > 0 && (
-            <MultiSelectDropdown
-              label="Tag"
-              options={optionsTags}
-              selected={filterTags}
-              onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
-              color="brewery"
-            />
-          )}
-          {allSecteurs.length > 0 && (
-            <MultiSelectDropdown
-              label="Secteur"
-              options={allSecteurs.map(s => ({ value: s, label: `${s} (${secteurCounts.get(s) || 0})` }))}
-              selected={filterSecteurs}
-              onToggle={v => toggleFilter(filterSecteurs, v, setFilterSecteurs)}
-              color="amber"
-            />
-          )}
-          {state.commercialZones.length > 0 && (
-            <MultiSelectDropdown
-              label="Zone"
-              options={optionsZones}
-              selected={filterZones}
-              onToggle={v => toggleFilter(filterZones, v, setFilterZones)}
-              color="amber"
-            />
-          )}
-          {allDepartments.length > 0 && (
-            <MultiSelectDropdown
-              label="Dept (CP)"
-              options={allDepartments.map(d => ({ value: d.code, label: `${d.code} (${d.count})` }))}
-              selected={filterDepartments}
-              onToggle={v => toggleFilter(filterDepartments, v, setFilterDepartments)}
-              color="teal"
-            />
-          )}
-          {allPostalCodes.length > 0 && (
-            <MultiSelectDropdown
-              label="Code postal"
-              options={allPostalCodes.map(c => ({ value: c, label: c }))}
-              selected={filterPostalCodes}
-              onToggle={v => toggleFilter(filterPostalCodes, v, setFilterPostalCodes)}
-              color="teal"
-            />
-          )}
+          <FiltreCombine facettes={facettes} enLigne={false} />
           <button
             className={`px-2 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 transition-colors ${
               filterAvecRdv ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
