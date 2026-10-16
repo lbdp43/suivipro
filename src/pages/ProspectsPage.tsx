@@ -93,6 +93,15 @@ export default function ProspectsPage() {
   }, [setFilterStagesArr]);
   const [showForm, setShowForm] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
+  const [filterTagsArr, setFilterTagsArr] = usePersistedState<string[]>('prospects_filterTags', []);
+  const filterTags = useMemo(() => new Set(filterTagsArr), [filterTagsArr]);
+  const setFilterTags = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof v === 'function') {
+      setFilterTagsArr(prev => Array.from(v(new Set(prev))));
+    } else {
+      setFilterTagsArr(Array.from(v));
+    }
+  }, [setFilterTagsArr]);
   const [filterSecteursArr, setFilterSecteursArr] = usePersistedState<string[]>('prospects_filterSecteurs', []);
   const filterSecteurs = useMemo(() => new Set(filterSecteursArr), [filterSecteursArr]);
   const setFilterSecteurs = useCallback((v: Set<string> | ((prev: Set<string>) => Set<string>)) => {
@@ -369,6 +378,16 @@ export default function ProspectsPage() {
     return map;
   }, [state.prospects]);
 
+  // Les tags posés sur au moins un prospect, par ordre alphabétique, avec leur nombre.
+  const optionsTags = useMemo(() => {
+    const compte = new Map<string, number>();
+    state.prospects.forEach(p => (p.tags || []).forEach(t => compte.set(t, (compte.get(t) || 0) + 1)));
+    return state.tags
+      .filter(t => compte.has(t.id))
+      .sort((a, b) => a.nom.localeCompare(b.nom))
+      .map(t => ({ value: t.id, label: `${t.nom} (${compte.get(t.id)})`, color: t.couleur }));
+  }, [state.prospects, state.tags]);
+
   const allDepartments = useMemo(() => {
     const deptCounts = new Map<string, number>();
     state.prospects.forEach(p => {
@@ -404,7 +423,7 @@ export default function ProspectsPage() {
     return ids;
   }, [state.appointments]);
 
-  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '' || filterZones.size > 0;
+  const hasActiveFilters = filterTypes.size > 0 || filterStages.size > 0 || filterTags.size > 0 || filterSecteurs.size > 0 || filterPostalCodes.size > 0 || filterDepartments.size > 0 || filterAvecRdv || filterSansNumero || filterCommercial !== '' || filterZones.size > 0;
   const optionsZones = useMemo(() => {
     const compte = new Map<string, number>();
     let hors = 0; let nonPlaces = 0;
@@ -422,6 +441,7 @@ export default function ProspectsPage() {
     setFilterZones(new Set());
     setFilterTypes(new Set());
     setFilterStages(new Set());
+    setFilterTags(new Set());
     setFilterSecteurs(new Set());
     setFilterPostalCodes(new Set());
     setFilterDepartments(new Set());
@@ -453,6 +473,7 @@ export default function ProspectsPage() {
       if (filterStages.size === 0 && p.etape_pipeline === 'client_gagne') return false;
       if (filterTypes.size > 0 && !filterTypes.has(p.type_etablissement)) return false;
       if (filterStages.size > 0 && !filterStages.has(p.etape_pipeline)) return false;
+      if (filterTags.size > 0 && !(p.tags || []).some(t => filterTags.has(t))) return false;
       if (filterSecteurs.size > 0 && !filterSecteurs.has(p.secteur)) return false;
       if (filterPostalCodes.size > 0 && !filterPostalCodes.has(p.code_postal)) return false;
       if (filterDepartments.size > 0 && !(p.code_postal && filterDepartments.has(p.code_postal.substring(0, 2)))) return false;
@@ -482,7 +503,7 @@ export default function ProspectsPage() {
     if (sortDate === 'recent') return parDate('date_creation', -1);
     if (sortDate === 'ancien') return parDate('date_creation', 1);
     return parDate('date_modification', -1);
-  }, [state.prospects, filterTypes, filterStages, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, rechercheDifferee, sortScore, sortDate, pipelineEntityTypes]);
+  }, [state.prospects, filterTypes, filterStages, filterTags, filterSecteurs, filterPostalCodes, filterDepartments, filterAvecRdv, filterSansNumero, filterZones, prospectIdsForCommercial, prospectIdsWithRdv, rechercheDifferee, sortScore, sortDate, pipelineEntityTypes]);
 
   // Reset to page 0 when filters/search change
   useEffect(() => {
@@ -724,6 +745,15 @@ export default function ProspectsPage() {
               onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
               color="blue"
             />
+            {optionsTags.length > 0 && (
+              <MultiSelectDropdown enLigne={etroit}
+                label="Tag"
+                options={optionsTags}
+                selected={filterTags}
+                onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
+                color="brewery"
+              />
+            )}
             {allSecteurs.length > 0 && (
               <MultiSelectDropdown enLigne={etroit}
                 label="Secteur"
@@ -801,6 +831,7 @@ export default function ProspectsPage() {
               getCurrentFilters={() => ({
                 types: [...filterTypes],
                 stages: [...filterStages],
+                tags: [...filterTags],
                 secteurs: [...filterSecteurs],
                 postalCodes: [...filterPostalCodes],
                 departments: [...filterDepartments],
@@ -809,6 +840,7 @@ export default function ProspectsPage() {
               applyFilters={(f) => {
                 setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
                 setFilterStages(new Set((f.stages as PipelineStage[]) || []));
+                setFilterTags(new Set((f.tags as string[]) || []));
                 setFilterSecteurs(new Set((f.secteurs as string[]) || []));
                 setFilterPostalCodes(new Set((f.postalCodes as string[]) || []));
                 setFilterDepartments(new Set((f.departments as string[]) || []));
@@ -838,6 +870,15 @@ export default function ProspectsPage() {
               onToggle={v => toggleFilter(filterStages, v as PipelineStage, setFilterStages)}
               color="blue"
             />
+            {optionsTags.length > 0 && (
+              <MultiSelectDropdown enLigne={etroit}
+                label="Tag"
+                options={optionsTags}
+                selected={filterTags}
+                onToggle={v => toggleFilter(filterTags, v, setFilterTags)}
+                color="brewery"
+              />
+            )}
             {allSecteurs.length > 0 && (
               <MultiSelectDropdown enLigne={etroit}
                 label="Secteur"
@@ -915,6 +956,7 @@ export default function ProspectsPage() {
               getCurrentFilters={() => ({
                 types: [...filterTypes],
                 stages: [...filterStages],
+                tags: [...filterTags],
                 secteurs: [...filterSecteurs],
                 postalCodes: [...filterPostalCodes],
                 departments: [...filterDepartments],
@@ -923,6 +965,7 @@ export default function ProspectsPage() {
               applyFilters={(f) => {
                 setFilterTypes(new Set((f.types as EstablishmentType[]) || []));
                 setFilterStages(new Set((f.stages as PipelineStage[]) || []));
+                setFilterTags(new Set((f.tags as string[]) || []));
                 setFilterSecteurs(new Set((f.secteurs as string[]) || []));
                 setFilterPostalCodes(new Set((f.postalCodes as string[]) || []));
                 setFilterDepartments(new Set((f.departments as string[]) || []));
