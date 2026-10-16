@@ -1,12 +1,18 @@
 // Les règles métier partagées (shared/) : ce que l'appli, le serveur et l'IA appliquent tous.
-// Lancer : npm test
-import { describe, it, expect, beforeAll } from 'vitest';
+// Lancer : npm test — avec le lanceur de tests de Node, sans dépendance à installer.
+import { describe, it, before as beforeAll } from 'node:test';
+import assert from 'node:assert/strict';
 import { jourDe, dateLocale, rdvPasse, rdvSansCompteRendu, estEnRetard, estEvenement, lundiDeLaSemaine } from '../shared/regles.js';
 import { estAppel, estMail, estRdvPris, quiAPrisLeRdv, jourDePriseDuRdv, rdvRealise, compteCommeVisite, montantCA } from '../shared/activite.js';
 import { etapeApresAppel, etapeApresMail, etapeApresNumero, ETAPE_NUMERO } from '../shared/tunnel.js';
 import { sirenValide, siretValide, tvaIntracom } from '../shared/siret.js';
 import { normaliserPourComparaison, memeTelephone, aUnNumero } from '../shared/normalisation.js';
 import { estSansReponse } from '../shared/visites.js';
+
+const expect = (obtenu) => ({
+  toBe: (attendu) => assert.equal(obtenu, attendu),
+  toBeNull: () => assert.equal(obtenu, null),
+});
 
 beforeAll(() => { process.env.TZ = 'Europe/Paris'; });
 

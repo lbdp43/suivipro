@@ -10,7 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "test": "vitest run",
+    "test": "node --test \"tests/**/*.test.mjs\"",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -55,7 +55,6 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
-    "vitest": "^3.2.7"
+    "vite": "^5.4.11"
   }
 }
