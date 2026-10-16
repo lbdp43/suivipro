@@ -86,6 +86,8 @@ export default function FiltreCombine({ facettes, enLigne = false, placeholder =
   const [ouvert, setOuvert] = useState(enLigne);
   const [texte, setTexte] = useState('');
   const [choix, setChoix] = useState('');
+  // Les facettes qu'on a demandé à voir en entier (sans recherche, les longues listes sont tronquées).
+  const [depliees, setDepliees] = useState<Set<string>>(new Set());
   const conteneur = useRef<HTMLDivElement>(null);
   const q = normaliserPourComparaison(texte.trim());
   const total = nombreDeFiltres(facettes);
@@ -104,12 +106,12 @@ export default function FiltreCombine({ facettes, enLigne = false, placeholder =
       const visibles = q
         ? f.options.filter(o => normaliserPourComparaison(`${o.label} ${o.description || ''}`).includes(q) || normaliserPourComparaison(f.titre).includes(q))
         : f.options;
-      const tronque = !q && visibles.length > MAX_SANS_RECHERCHE;
+      const tronque = !q && !depliees.has(f.cle) && visibles.length > MAX_SANS_RECHERCHE;
       // Les cochées restent visibles même quand la liste est tronquée.
       const liste = tronque ? visibles.filter((o, i) => i < MAX_SANS_RECHERCHE || f.selected.has(o.value)) : visibles;
       return { facette: f, liste, caches: tronque ? visibles.length - liste.length : 0 };
     })
-    .filter(g => g.liste.length > 0), [facettes, q]);
+    .filter(g => g.liste.length > 0), [facettes, q, depliees]);
 
   const vide = groupes.length === 0;
 
@@ -179,7 +181,15 @@ export default function FiltreCombine({ facettes, enLigne = false, placeholder =
               );
             })}
             {caches > 0 && (
-              <p className="px-2.5 py-1.5 text-xs text-gray-400">… et {caches} autre(s) : tapez pour affiner.</p>
+              <button
+                type="button"
+                onClick={() => setDepliees(prev => new Set(prev).add(f.cle))}
+                className={`flex w-full items-center gap-1.5 rounded-lg px-2.5 text-left text-xs font-medium text-brewery-700 hover:bg-brewery-50 ${enLigne ? 'min-h-11 py-2' : 'min-h-9 py-1.5'}`}
+              >
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                Voir les {caches} autre(s)
+                <span className="font-normal text-gray-400">· ou tapez pour affiner</span>
+              </button>
             )}
           </Command.Group>
         ))}
