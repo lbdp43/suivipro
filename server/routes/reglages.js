@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import db from '../db.js';
 import { scoreDepuisTags, baremeActif } from '../../shared/score.js';
 import { adminOnly, asyncHandler, authMiddleware, isAdmin } from '../lib/auth.js';
-import { parseCommercial, parseProspect } from '../lib/parse.js';
+import { parseCommercial, parseProspect, RAYONS_APPELS_KM } from '../lib/parse.js';
 import { EMAIL_RE } from '../lib/validation.js';
 import { calculateNextVisit } from '../lib/visites.js';
 import { archiver, EncoreRattache, Introuvable } from '../lib/corbeille.js';
@@ -177,6 +177,11 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
   // Hors admin, on garde la casquette en place ; un admin envoie la valeur voulue.
   const prospection = isAdmin(req) ? !!c.prospection : (await db.query('SELECT prospection FROM commerciaux WHERE id = $1', [targetId])).rows[0]?.prospection === true;
 
+  // Rayon d'« Appeler autour » : une des valeurs proposées, sinon celui en place.
+  const rayon = RAYONS_APPELS_KM.includes(Number(c.rayon_appels_km))
+    ? Number(c.rayon_appels_km)
+    : ((await db.query('SELECT rayon_appels_km FROM commerciaux WHERE id = $1', [targetId])).rows[0]?.rayon_appels_km ?? 10);
+
   // Password policy
   if (c.password && c.password.length > 0) {
     if (c.password.length < 8) {
@@ -184,16 +189,16 @@ router.put('/commerciaux/:id', authMiddleware, asyncHandler(async (req, res) => 
     }
     const hashedPwd = bcrypt.hashSync(c.password, 10);
     await db.query(
-      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7, prospection=$9 WHERE id=$8',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId, prospection]
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, password=$6, objectifs=$7, prospection=$9, rayon_appels_km=$10 WHERE id=$8',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', hashedPwd, JSON.stringify(c.objectifs || {}), targetId, prospection, rayon]
     );
   } else {
     await db.query(
-      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6, prospection=$8 WHERE id=$7',
-      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId, prospection]
+      'UPDATE commerciaux SET prenom=$1, nom=$2, email=$3, telephone=$4, role=$5, objectifs=$6, prospection=$8, rayon_appels_km=$9 WHERE id=$7',
+      [c.prenom, c.nom, c.email, c.telephone || '', c.role || 'commercial', JSON.stringify(c.objectifs || {}), targetId, prospection, rayon]
     );
   }
-  res.json({ ok: true });
+  res.json({ ok: true, rayon_appels_km: rayon });
 }));
 
 // Retirer quelqu'un de l'équipe le range dans la corbeille avec son secteur, ses réglages

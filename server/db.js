@@ -848,6 +848,10 @@ async function initDatabase(attempt = 1) {
     } catch (err) { console.log('jour_paris:', err.message); }
     // Sessions d'appel clients (commerciaux) : la même liste du jour, côté clients.
     try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS client_ids TEXT NOT NULL DEFAULT '[]'"); } catch { /* déjà là */ }
+    // D'où part la session : le rendez-vous autour duquel on appelle (JSON), pour le montrer sur l'écran d'appel.
+    try { await client.query("ALTER TABLE sessions_appel ADD COLUMN IF NOT EXISTS origine TEXT NOT NULL DEFAULT ''"); } catch { /* déjà là */ }
+    // Le rayon d'« Appeler autour », que chacun règle (3, 5, 10, 15 ou 20 km).
+    try { await client.query('ALTER TABLE commerciaux ADD COLUMN IF NOT EXISTS rayon_appels_km INTEGER NOT NULL DEFAULT 10'); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS raison_perte TEXT DEFAULT ''"); } catch { /* déjà là */ }
     try { await client.query("ALTER TABLE prospects ADD COLUMN IF NOT EXISTS date_etape TEXT"); } catch { /* déjà là */ }
     try { await client.query("UPDATE prospects SET date_etape = date_modification WHERE date_etape IS NULL"); } catch { /* */ }

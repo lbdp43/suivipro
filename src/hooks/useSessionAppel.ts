@@ -5,14 +5,14 @@ import { useToast } from '../components/Toast';
 import { useCallModal } from '../components/CallModal';
 import { apiPut } from '../api/client';
 import { dateLocale } from '../../shared/regles';
-import { SessionAppel } from '../types';
+import { SessionAppel, OrigineSession } from '../types';
 
 export function useLancerSession() {
   const { dispatchLocal } = useApp();
   const toast = useToast();
   const { startSession, startSessionClients } = useCallModal();
 
-  const enregistrer = async (corps: { prospect_ids?: string[]; client_ids?: string[] }) => {
+  const enregistrer = async (corps: { prospect_ids?: string[]; client_ids?: string[]; origine?: OrigineSession | null }) => {
     try {
       const r = await apiPut('/sessions-appel/jour', { jour: dateLocale(new Date()), mode: 'ajouter', ...corps }) as { session: SessionAppel; sans_telephone: number };
       dispatchLocal({ type: 'SET_SESSION_APPEL', payload: r.session });
@@ -21,10 +21,14 @@ export function useLancerSession() {
   };
 
   return {
-    /** Prospects : ajoutés à ma session du jour, puis appelés dans l'ordre. */
-    prospects: async (ids: string[]) => {
+    /**
+     * Prospects : ajoutés à ma session du jour, puis appelés dans l'ordre. `origine` : le
+     * rendez-vous autour duquel on appelle, montré sur l'écran d'appel ; sans origine, la
+     * précédente est effacée (une session lancée depuis le pipeline ne part d'aucun rendez-vous).
+     */
+    prospects: async (ids: string[], origine?: OrigineSession) => {
       if (ids.length === 0) { toast.info('Rien à appeler'); return; }
-      await enregistrer({ prospect_ids: ids });
+      await enregistrer({ prospect_ids: ids, origine: origine || null });
       startSession(ids);
     },
     /** Clients : idem ; `taches` = les tâches qui motivent la session, précochées dans la fenêtre d'appel. */

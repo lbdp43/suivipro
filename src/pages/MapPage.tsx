@@ -10,6 +10,7 @@ import {
 import { aUnNumero } from '../../shared/normalisation';
 import DessinZones from '../components/DessinZones';
 import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
+import { origineDuRdv, pointsDuRdv } from '../utils/voisinage';
 import { prospectsAAppelerDansLaZone } from '../utils/zones';
 import { sessionDuJour } from '../utils/sessionAppel';
 import { useApp } from '../store/AppContext';
@@ -800,9 +801,18 @@ export default function MapPage() {
                                     <span className="text-xs sm:text-xs font-mono text-gray-500 flex-shrink-0">
                                       {rdv.heure_debut}-{rdv.heure_fin}
                                     </span>
-                                    <span className="text-xs sm:text-xs font-semibold text-gray-900 truncate">
-                                      {prospect?.nom_etablissement || 'Inconnu'}
-                                    </span>
+                                    {/* Le nom ouvre la fiche ; appeler autour se fait par le bouton violet. */}
+                                    {prospect ? (
+                                      <Link to={`/prospects?id=${prospect.id}`} className="text-xs sm:text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline truncate">
+                                        {prospect.nom_etablissement}
+                                      </Link>
+                                    ) : rdv.client_id ? (
+                                      <Link to={`/clients?id=${rdv.client_id}`} className="text-xs sm:text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline truncate">
+                                        {state.clients.find(c => c.id === rdv.client_id)?.nom || 'Client'}
+                                      </Link>
+                                    ) : (
+                                      <span className="text-xs sm:text-xs font-semibold text-gray-900 truncate">Inconnu</span>
+                                    )}
                                     <span className={`badge text-[8px] flex-shrink-0 ${statusColors[rdv.statut] || 'bg-gray-100 text-gray-600'}`}>
                                       {APPOINTMENT_STATUS_LABELS[rdv.statut]}
                                     </span>
@@ -820,6 +830,8 @@ export default function MapPage() {
                                 </div>
                                 {/* Actions rapides */}
                                 <div className="flex items-center gap-1 flex-shrink-0">
+                                  {/* Quelqu'un monte là-bas : c'est le moment d'appeler le secteur. */}
+                                  <BoutonAppelerAutour points={pointsDuRdv(rdv, state)} compact origine={origineDuRdv(rdv, state)} />
                                   {prospect?.telephone && (
                                     <button
                                       className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100"

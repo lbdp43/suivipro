@@ -20,6 +20,7 @@ import { resumeTournees, lundiDe, JOURS_SEMAINE, type ResumeTournee } from '../u
 import GoogleCalendarPanel from '../components/GoogleCalendarPanel';
 import RepertoireGooglePanel from '../components/RepertoireGooglePanel';
 import BoutonAppelerAutour from '../components/BoutonAppelerAutour';
+import { origineDuRdv } from '../utils/voisinage';
 import { getAllGoogleCalendarEvents, apiPost, apiPut, apiDelete, apiPatch, type GoogleCalendarEvent } from '../api/client';
 import { confirmer } from '../components/ui/Confirmation';
 import Fenetre from '../components/ui/Fenetre';
@@ -481,7 +482,7 @@ export default function AppointmentsPage() {
             </button>
           )}
           {/* Quelqu'un monte la-bas : c'est le moment d'appeler le secteur. */}
-          <BoutonAppelerAutour points={pointDuRdv(rdv)} />
+          <BoutonAppelerAutour points={pointDuRdv(rdv)} origine={origineDuRdv(rdv, state)} />
           <button aria-label="Supprimer le rendez-vous"
             className="p-1.5 rounded bg-red-50 hover:bg-red-100 text-red-500"
             onClick={() => deleteAppointment(rdv.id)}
@@ -942,7 +943,7 @@ export default function AppointmentsPage() {
                                   {/* Actions */}
                                   <div className="flex items-center gap-1 flex-shrink-0">
                                     {/* Quelqu'un monte la-bas : c'est le moment d'appeler le secteur. */}
-                                    <BoutonAppelerAutour points={pointDuRdv(rdv)} compact />
+                                    <BoutonAppelerAutour points={pointDuRdv(rdv)} compact origine={origineDuRdv(rdv, state)} />
                                     <button
                                       className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                                       onClick={() => openEditForm(rdv)}

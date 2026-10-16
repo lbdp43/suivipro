@@ -4,7 +4,7 @@
 // et il n'a rien a faire dans le paquet principal pour une carte qu'on ne regarde qu'en
 // ouvrant une fiche.
 import { useEffect } from 'react';
-import { MapContainer, Marker, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import TuilesCarte from './TuilesCarte';
 import type { Voisin } from '../utils/voisinage';
@@ -43,6 +43,8 @@ function marqueur(couleur: string, taille = 26): L.DivIcon {
 
 /** Bleu pour un rendez-vous déjà calé, ambre pour une visite en retard. */
 export const COULEUR_VOISIN: Record<Voisin['genre'], string> = { rdv: '#2563eb', retard: '#d97706' };
+/** Violet, comme le bouton « Appeler autour » : le rendez-vous d'où part la session. */
+export const COULEUR_ORIGINE = '#7c3aed';
 
 /**
  * Cadrer sur tout le monde, et pas seulement sur l'établissement.
@@ -90,13 +92,19 @@ export default function CarteFicheLeaflet({
       {/* Les voisins d'abord : l'etablissement de la fiche passe par-dessus, c'est lui
           qu'on regarde. */}
       {voisins.map(v => (
-        <Marker key={v.cle} position={[v.latitude, v.longitude]} icon={marqueur(COULEUR_VOISIN[v.genre], 18)}>
-          <Tooltip direction="top" offset={[0, -10]}>
-            {v.genre === 'rdv'
-              ? `${v.nom} — RDV${v.qui ? ` (${v.qui})` : ''} · ${distanceLisible(v.km)}`
-              : `${v.nom} — visite en retard · ${distanceLisible(v.km)}`}
+        <Marker key={v.cle} position={[v.latitude, v.longitude]} icon={marqueur(v.origine ? COULEUR_ORIGINE : COULEUR_VOISIN[v.genre], v.origine ? 22 : 18)} zIndexOffset={v.origine ? 500 : 0}>
+          <Tooltip direction="top" offset={[0, -10]} permanent={!!v.origine}>
+            {v.origine
+              ? `${v.nom} — rendez-vous de départ · ${distanceLisible(v.km)}`
+              : v.genre === 'rdv'
+                ? `${v.nom} — RDV${v.qui ? ` (${v.qui})` : ''} · ${distanceLisible(v.km)}`
+                : `${v.nom} — visite en retard · ${distanceLisible(v.km)}`}
           </Tooltip>
         </Marker>
+      ))}
+      {/* Un trait entre le rendez-vous de départ et la fiche appelée : la distance se voit. */}
+      {voisins.filter(v => v.origine).map(v => (
+        <Polyline key={`trait-${v.cle}`} positions={[[v.latitude, v.longitude], [latitude, longitude]]} pathOptions={{ color: COULEUR_ORIGINE, weight: 2, dashArray: '6 6', opacity: 0.8 }} />
       ))}
       <Marker position={[latitude, longitude]} icon={marqueur(couleur)} zIndexOffset={1000}>
         <Tooltip direction="top" offset={[0, -14]} permanent={false}>{nom}</Tooltip>

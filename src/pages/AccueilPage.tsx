@@ -8,7 +8,7 @@ import {
 import { sessionDuJour } from '../utils/sessionAppel';
 import { apiGet, apiPut } from '../api/client';
 import { zonesPrioritaires, prospectsAAppelerDansLaZone, estEnZonePrioritaire, ETAPES_A_APPELER } from '../utils/zones';
-import { tourneesAGarnir, RAYON_APPELS_KM, SESSION_MAX } from '../utils/voisinage';
+import { tourneesAGarnir, rayonAppelsDe, SESSION_MAX } from '../utils/voisinage';
 import { aQualifier, concerne, titreDuSignalement, lienMapsDepuisAdresse, LIBELLES_SOURCE } from '../utils/signalements';
 import { useToast } from '../components/Toast';
 import { useApp } from '../store/AppContext';
@@ -1098,11 +1098,13 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
   // bon jour pour appeler Riom. On l'affiche plutot que de creer des taches automatiques :
   // une tache que personne ne traite devient du bruit, alors qu'une liste qui se vide toute
   // seule quand la date passe ne laisse rien derriere elle.
+  const rayonAppels = rayonAppelsDe(state.currentUser);
   const tournees = useMemo(() => tourneesAGarnir(
     { prospects: state.prospects, clients: state.clients, appointments: state.appointments,
       commerciaux: state.commerciaux, aujourdhui: today, etapesAAppeler: ETAPES_A_APPELER },
     maSession.appeles,
-  ).slice(0, 5), [state.prospects, state.clients, state.appointments, state.commerciaux, today, maSession.appeles]);
+    rayonAppels,
+  ).slice(0, 5), [state.prospects, state.clients, state.appointments, state.commerciaux, today, maSession.appeles, rayonAppels]);
 
   const sessionZone = async (ids: string[]) => {
     if (ids.length === 0) { toast.info('Tout le monde a déjà été appelé dans cette zone'); return; }
@@ -1168,7 +1170,7 @@ function BlocsProspection({ moi }: { moi: Commercial }) {
                       {t.villes.length > 0 && <span className="text-xs text-gray-500 font-normal"> · {t.villes.slice(0, 2).join(', ')}{t.villes.length > 2 ? '…' : ''}</span>}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {t.rdvPoses} RDV déjà posé{t.rdvPoses > 1 ? 's' : ''} · {t.aAppeler.length} prospect{t.aAppeler.length > 1 ? 's' : ''} à appeler dans les {RAYON_APPELS_KM} km
+                      {t.rdvPoses} RDV déjà posé{t.rdvPoses > 1 ? 's' : ''} · {t.aAppeler.length} prospect{t.aAppeler.length > 1 ? 's' : ''} à appeler dans les {rayonAppels} km
                       {t.aAppeler.length > SESSION_MAX && <span> · les {SESSION_MAX} meilleurs d'abord</span>}
                     </p>
                   </div>
